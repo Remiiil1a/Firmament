@@ -1,0 +1,318 @@
+// Steadfast is a fast and high-quality graphical overhaul for Minecraft (JE)
+// Copyright (C) 2026 coderbot
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+// Modified 2026-09-13 by Remiiil1a for Firmament - v0.1 (edit of coderbot's Steadfast).
+
+// We must make a copy of colortex0 for forward-rendered reflections and
+// refraction, as we cannot sample a texture we are rendering into.
+const int R11F_G11F_B10F = 0;
+const int R8 = 0;
+
+// We must write to colortex4, as per OptiFine/Iris specifications, that is the
+// first colortex buffer number that gbuffers shaders can sample. colortex0-3
+// are not bound in gbuffers shaders.
+const int colortex4Format = R11F_G11F_B10F;
+const int colortex2Format = R8;
+const int colortex5Format = R8;
+
+// Water absorption configuration, has wide-reaching impacts across the
+// codebase.
+#include "/environment/water/absorption_settings.glsl"
+
+// vec4 Fog(...)
+#include "/environment/fog.glsl"
+
+// vec3 SkyColor(vec3 ray, float dither)
+#include "/environment/sky.glsl"
+
+// The material model, for the Fresnel term and the option switches its
+// environment reflection is built on. Nothing here is read from a resource pack:
+// this pass has no material textures bound and no need for them.
+#include "/environment/lighting/pbr.glsl"
+
+// PbrReflectionDirection, PbrReflectionFresnel, PbrReflectionPossible
+#include "/environment/lighting/reflections.glsl"
+
+// The trace's step budget, which is an option rather than the water reflections'
+// constant: this trace runs on every smooth pixel of the screen, and spending
+// the same number of steps on all of them as on a surface of water is a
+// different proposition. Has to be set before the include below, which only
+// falls back to its own default if nobody has chosen one.
+#define RAYMARCH_STEPS PBR_SSR_STEPS
+
+// Raytrace(...), for the screen-space reflection
+#include "/lib/raytrace.glsl"
+
+uniform mat4 gbufferModelView;
+uniform mat4 gbufferModelViewInverse;
+uniform mat4 gbufferProjection;
+uniform mat4 gbufferProjectionInverse;
+uniform vec2 windowToNdc;
+
+uniform sampler2D colortex2;
+uniform sampler2D colortex0;
+uniform sampler2D depthtex1;
+
+// The previous frame, resolved. The screen-space reflection traces against the
+// depth buffer below and reads the colour it finds here: this frame's own
+// colortex0 is being written by this very pass, so it cannot be sampled at
+// arbitrary points, and the deferred copy of it is not written yet either.
+uniform sampler2D colortex3;
+
+// The material the surface programs wrote: the normal to reflect around and the
+// roughness in one, the reflectance in the other. See lit.fsh.
+uniform sampler2D colortex7;
+uniform sampler2D colortex8;
+
+#ifdef DISTANT_HORIZONS
+	uniform mat4 dhProjectionInverse;
+	uniform sampler2D dhDepthTex0;
+#endif
+
+// The view-space position of the fragment at the given depth.
+//
+// Note: w must be 1.0 in these homogenous coordinates, as 1.0 means a point in
+// space rather than a vector.
+vec3 ViewPosFromDepth(mat4 inverseProjection, float depth) {
+	vec3 ndcPos = vec3(gl_FragCoord.xy * windowToNdc, depth * 2.0) - 1.0;
+	vec4 viewPosH = inverseProjection * vec4(ndcPos, 1.0);
+
+	return viewPosH.xyz / viewPosH.w;
+}
+
+vec3 ApplyFog(
+	mat4 inverseProjection,
+	vec3 fragCoord,
+	vec3 background,
+	float skyLight
+) {
+	// Project back to view space from the fragment coordinates
+	vec3 viewPos = ViewPosFromDepth(inverseProjection, fragCoord.z);
+	vec3 cameraRelativePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+
+	vec3 worldSpaceVector = normalize(cameraRelativePos);
+	vec3 sky = SkyDither(fragCoord.xy, SkyColor(worldSpaceVector));
+
+	// Compute the fog against the sky background
+	float fragDistance = max(
+		abs(cameraRelativePos.y),
+		length(cameraRelativePos.xz)
+	);
+	vec4 fog = Fog(sky, fragDistance, fragDistance, skyLight);
+
+	return background * fog.a + fog.rgb;
+}
+
+// The environment this fragment reflects, in linear RGB.
+//
+// Zero wherever there is nothing to reflect anything - see
+// PbrReflectionPossible - which is most of the screen: only surfaces with a
+// reflectance and a roughness to speak of, under an open sky, are covered.
+//
+// This is the only place the environment reflection exists. It used to be added
+// where each surface was drawn, which meant the reflection could not include the
+// world: a surface is drawn while the frame it belongs to is still being filled,
+// so the depth buffer it would have to trace against is not finished. Here, one
+// pass later, it is.
+vec3 EnvironmentReflection(
+	vec3 viewPos,
+	vec3 cameraRelativePos,
+	float skyLight
+) {
+	#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
+		// Read the material the surface programs left for this pixel. Both
+		// fetches are of this same pixel, which is why they can be exact.
+		vec4 material = texelFetch(colortex7, ivec2(gl_FragCoord), 0);
+		vec3 worldNormal = material.xyz;
+		float roughness = material.w;
+		vec3 f0 = texelFetch(colortex8, ivec2(gl_FragCoord), 0).rgb;
+
+		if (!PbrReflectionPossible(worldNormal, roughness, f0)) {
+			return vec3(0.0);
+		}
+
+		// The camera sits at the origin of camera-relative space, so the view
+		// direction is simply the direction back towards the origin.
+		vec3 viewDirection = normalize(-cameraRelativePos);
+		float NdotV = max(dot(worldNormal, viewDirection), 1.0e-4);
+
+		vec3 worldReflected = PbrReflectionDirection(
+			worldNormal,
+			viewDirection,
+			roughness);
+
+		// The sky, which is what an environment reflection is made of on its own,
+		// and which is also where a trace that finds nothing ends up.
+		//
+		// Faded out by how much of the sky this fragment can actually see, so
+		// that a cave floor or an interior does not reflect a sky that is not
+		// visible from it.
+		vec3 environment = SkyDither(
+			gl_FragCoord.xy,
+			SkyColor(worldReflected)) * PbrSkyExposure(skyLight);
+
+		#if defined(PBR_SSR)
+			// Only the smooth surfaces are traced. See PBR_SSR_ROUGHNESS: a rough
+			// surface would be shown a mirror image it should not have, and since
+			// the trace costs the same whether or not it finds anything, skipping
+			// the rough ones is most of the cost of it in a scene that is mostly
+			// made of rough things.
+			if (roughness < PBR_SSR_ROUGHNESS) {
+				vec2 hitPos;
+				vec3 hitViewPos;
+
+				// Tracing the reflected ray through the depth buffer finds
+				// whatever is on screen along it. The thickness control is the
+				// tolerance for accepting a hit: a surface as smooth as this one
+				// shows every artefact of a stretched reflection, so it is kept
+				// tight.
+				if (Raytrace(
+					depthtex1,
+					gbufferProjection,
+					gbufferProjectionInverse,
+					viewPos,
+					mat3(gbufferModelView) * worldReflected,
+					vec2(0.5, 1.0),
+					hitPos,
+					hitViewPos
+				)) {
+					// What the ray found, which is the previous frame: the frame
+					// this one is being drawn from is complete in depth but not in
+					// colour at this point in the pipeline.
+					vec3 hitColor = texture(colortex3, hitPos).rgb;
+
+					// Fade the result out near the edge of the screen, where the
+					// ray is about to leave the buffer and there is nothing more
+					// to find. Without this the reflection would stop at a hard
+					// line.
+					vec2 hitPosAbs = abs(hitPos * 2.0 - 1.0);
+					float edgeFade = min(
+						1.0,
+						(1.0 - max(hitPosAbs.x, hitPosAbs.y)) / 0.10);
+
+					environment = mix(environment, hitColor, edgeFade);
+				}
+			}
+		#endif
+
+		return PBR_REFLECTIONS_STRENGTH
+			* PbrReflectionFresnel(f0, NdotV, roughness)
+			* environment;
+	#else
+		return vec3(0.0);
+	#endif
+}
+
+void main() {
+	// texelFetch & gl_FragCoord used like this are a perfect way to copy a
+	// texture.
+	//
+	// ivec2 cast functionality per the GLSL specification:
+	//
+	// > When constructors are used to convert a floating-point type to an
+	// > integer type, the fractional part of the floating-point value is
+	// > dropped.
+	//
+	// gl_FragCoord per the GLSL reference:
+	// https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_FragCoord.xhtml
+	//
+	// > By default, gl_FragCoord assumes a lower-left origin for window
+	// > coordinates and assumes pixel centers are located at half-pixel
+	// > centers. For example, the (0.5, 0.5) location is returned for the
+	// > lower-left-most pixel in the window.
+	vec3 background = texelFetch(colortex0, ivec2(gl_FragCoord), 0).rgb;
+
+	// colortex4 is a copy of the image for reflection and refraction, and does
+	// not apply fog.
+	//
+	// The environment reflection is deliberately not part of it: this is the
+	// buffer the water reflections read, and a surface reflecting a world that
+	// already has reflections baked into it would be feeding itself.
+	gl_FragData[0] = vec4(background, 1.0);
+
+#if WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED || defined(VOXY)
+	float skylight = texelFetch(colortex2, ivec2(gl_FragCoord), 0).r;
+	float depth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
+
+	vec3 scene = background;
+
+	if (depth < 1.0) {
+		vec3 viewPos = ViewPosFromDepth(gbufferProjectionInverse, depth);
+		vec3 cameraRelativePos =
+			(gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+
+		// The reflection goes on before the fog, so that a reflection far away
+		// fades into the distance exactly as the surface it is on does.
+		scene += EnvironmentReflection(viewPos, cameraRelativePos, skylight);
+
+		scene = ApplyFog(
+			gbufferProjectionInverse,
+			vec3(gl_FragCoord.xy, depth),
+			scene,
+			skylight
+		);
+	} else {
+		#ifdef DISTANT_HORIZONS
+			depth = texelFetch(dhDepthTex0, ivec2(gl_FragCoord), 0).r;
+			if (depth < 1.0) {
+				scene = ApplyFog(
+					dhProjectionInverse,
+					vec3(gl_FragCoord.xy, depth),
+					scene,
+					skylight
+				);
+			}
+		#endif
+	}
+
+	// colortex0 from here on out will now be a complete image of the scene with
+	// fog applied, so that translucents can blend fog.
+	gl_FragData[1] = vec4(scene, 1.0);
+
+	// colortex5 is an immutable copy of colortex2.
+	// They both store skylight.
+	gl_FragData[2] = vec4(vec3(skylight), 1.0);
+
+	/* DRAWBUFFERS:405 */
+#else
+	// Water absorption is off, so nothing here applies fog and the scene has no
+	// output of its own yet. It still has to be written, because the environment
+	// reflection belongs to the scene rather than to the copy - and in this
+	// configuration the reflection is the only reason this pass runs at all
+	// unless something else asked for it.
+	//
+	// Note that the fog in this configuration was applied by the surface
+	// programs themselves, which means the reflection added here is not fogged
+	// with it. That is the price of adding it after the fact in this
+	// configuration; the refraction-assisted one above gets it right.
+	float skylight = texelFetch(colortex2, ivec2(gl_FragCoord), 0).r;
+	float depth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
+
+	vec3 scene = background;
+
+	if (depth < 1.0) {
+		vec3 viewPos = ViewPosFromDepth(gbufferProjectionInverse, depth);
+		vec3 cameraRelativePos =
+			(gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+
+		scene += EnvironmentReflection(viewPos, cameraRelativePos, skylight);
+	}
+
+	gl_FragData[1] = vec4(scene, 1.0);
+
+	/* DRAWBUFFERS:40 */
+#endif
+}

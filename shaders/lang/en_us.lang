@@ -1,0 +1,1123 @@
+option.STEADFAST=Steadfast Shaders
+option.STEADFAST.comment=Made by coderbot16, the original developer of Iris. \
+	This is a closed alpha release - §c§lplease do not redistribute in public!
+value.STEADFAST.BY_CODERBOT=by coderbot16
+
+option.FIRMAMENT=Firmament - v0.1 (edit of coderbot's Steadfast)
+option.FIRMAMENT.comment=An edit of Steadfast made by Remiiil1a. It adds labPBR \
+	material support (normal, specular, parallax, subsurface and emissive maps, \
+	plus reflections) and support for the End.\n\n\
+	The original shader is Steadfast, developed by coderbot, and can be \
+	downloaded from https://modrinth.com/shader/steadfast-shaders (Modrinth), \
+	https://www.curseforge.com/minecraft/shaders/steadfast (CurseForge), or \
+	https://github.com/coderbot16/Steadfast (GitHub). Anyone can modify and \
+	distribute it under the terms of the GNU General Public License, version 3. \
+	Steadfast's additional terms require the name of a modified version to end \
+	with "(edit of coderbot's Steadfast)", which is why this one does.\n\n\
+	The material support follows Mellow Shader v3.4 by TheCMK, whose licence \
+	asks for the credit. Everything from that shader here is mathematics taken \
+	from the published BRDF and labPBR specifications rather than their code, \
+	and none of their assets or branding are used.\n\n\
+	This is not an official Steadfast release and is not supported by coderbot. \
+	See NOTICE.md and README.md for the full licence summary.
+value.FIRMAMENT.BY_REMIIIL1A=edited by Remiiil1a
+
+option.MELLOW_PBR=Material support
+option.MELLOW_PBR.comment=The material (PBR) support in this pack follows \
+	Mellow Shader v3.4, by TheCMK. Their licence asks that the credit be kept, \
+	and that their name, logo and screenshots not be reused for another \
+	project - so the mathematics was rewritten in Steadfast's own style rather \
+	than copied across. The GGX distribution, the Smith visibility term, \
+	Schlick Fresnel, the Henyey-Greenstein phase function and the labPBR 1.3 \
+	channel layout are all published specifications.\n\n\
+	Nothing from Mellow's pack ships here: the material decode, the reflections \
+	and the screen-space ray march are Steadfast's own code. Mellow's MIT \
+	licence is included as LICENSE-MELLOW-MIT.txt.
+value.MELLOW_PBR.BY_THECMK=Mellow Shader v3.4, by TheCMK
+
+profile.EDIT_DEFAULT=§2✎ EDIT默认 style§r
+profile.MINISHITA_HIGH=§aMinishita (WIP)§r style - §b🔥 High§r
+profile.MINISHITA_HIGH=§aMinishita (WIP)§r style - §b🔥 High§r
+profile.MINISHITA_MEDIUM=§aMinishita (WIP)§r style - §a» Medium§r
+profile.MINISHITA_LOW=§aMinishita (WIP)§r style - §e↓ Low§r
+profile.MINISHITA_TOASTER=§aMinishita (WIP)§r style - §c▶ Toaster§r
+profile.PARAGON_HIGH=§a★ Paragon§r style - §b🔥 High§r
+profile.PARAGON_MEDIUM=§a★ Paragon§r style - §a» Medium§r
+profile.PARAGON_LOW=§a★ Paragon§r style - §e↓ Low§r
+profile.PARAGON_TOASTER=§a★ Paragon§r style - §c▶ Toaster§r
+profile.FANTASY_HIGH=§d🪄 Fantasy§r style - §b🔥 High§r
+profile.FANTASY_MEDIUM=§d🪄 Fantasy§r style - §a» Medium§r
+profile.FANTASY_LOW=§d🪄 Fantasy§r style - §e↓ Low§r
+profile.FANTASY_TOASTER=§d🪄 Fantasy§r style - §c▶ Toaster§r
+profile.SEMI_NATURAL_HIGH=§b🗻 Semi-Natural§r style - §b🔥 High§r
+profile.SEMI_NATURAL_MEDIUM=§b🗻 Semi-Natural§r style - §a» Medium§r
+profile.SEMI_NATURAL_LOW=§b🗻 Semi-Natural§r style - §e↓ Low§r
+profile.SEMI_NATURAL_TOASTER=§b🗻 Semi-Natural§r style - §c▶ Toaster§r
+profile.RETRO_MEDIUM=§6😎 Retro§r style - §a» Medium§r
+profile.RETRO_LOW=§6😎 Retro§r style - §e↓ Low§r
+profile.RETRO_TOASTER=§6😎 Retro§r style - §c▶ Toaster§r
+profile.comment=\
+	§a★ Paragon§r: The flagship style of Steadfast.. \
+	Colorful and pleasing, Paragon unifies the Semi-Natural (daytime) and \
+	Fantasy (nighttime) styles and is the very best that Steadfast has to \
+	offer.\n\n\
+	\
+	§d🪄 Fantasy§r: A warm style emphasizing blue and yellow.. \
+	Fantasy draws inspiration from the classic look of Chocapic13's shaders \
+	and edits like Sildur's shaders.\n\n\
+	\
+	§b⛰ Semi-Natural§r: A bright, realism-focused style.. \
+	Semi-Natural draws inspiration from the brighter, colder aesthetic of the \
+	SEUS v10.1 era, and approximates a more "natural" / "realistic" look.\n\n\
+	\
+	§6😎 Retro§r: A warm, cozy, and very lightweight style.. \
+	A throwback to 2012 shaders, Retro features weakened contrast between the \
+	sun and shadows, no directional shading from sunlight (like internal \
+	shaders), and the vanilla water texture.\n\n\
+	\
+	§b🔥 High§r / §a» Medium§r / §e↓ Low§r / §c▶ Toaster§r - Pre-tuned \
+	tradeoffs between quality and performance allowing you to adapt Steadfast \
+	to your device..\n\n\
+	\
+	§2✎ EDIT默认 style§r: The configuration this edit ships with.. \
+	Steadfast's own look, with the material options switched on at the values \
+	they were tuned to. The colour grading, the atmosphere model, the tonemap \
+	and the sky are Steadfast's own defaults, so this is also the way back to \
+	them after trying one of the styles above..
+
+screen.EFFECTS=Effects & post-processing
+screen.WATER=Water & stained glass
+screen.ATMOSPHERE_CLOUDS=Atmosphere & clouds
+screen.LIGHTING=Lighting & shadows
+screen.PBR=Materials (PBR)
+screen.PBR_MATERIALS=Material maps and detail
+screen.PBR_RESPONSE=Surface response and reflections
+screen.PBR_COVERAGE=Coverage
+screen.DEVELOPMENT=Development & debugging
+screen.ABOUT=Credits & licence
+
+option.shadowDistance=Shadow Distance
+value.shadowDistance.32.0=Minimum (2 chunks)
+value.shadowDistance.48.0=Very Low (3 chunks)
+value.shadowDistance.64.0=Low (4 chunks)
+value.shadowDistance.80.0=Low (5 chunks)
+value.shadowDistance.96.0=Low (6 chunks)
+value.shadowDistance.112.0=Medium (7 chunks)
+value.shadowDistance.128.0=Medium (8 chunks)
+value.shadowDistance.144.0=Medium (9 chunks)
+value.shadowDistance.160.0=Normal (10 chunks)
+value.shadowDistance.192.0=High (12 chunks)
+value.shadowDistance.256.0=Extreme (16 chunks)
+option.shadowDistance.comment=The shadow render distance controls how far away \
+	terrain can potentially cast or receive real-time shadows.\n\n\
+	Terrain outside of this distance will cast and receive approximate, static \
+	shadows based on skylight.\n\n\
+	Lower distances mean that less terrain will be rendered, improving frame \
+	rates.\n\n\
+	The actual shadow render distance is capped by the View Distance setting \
+	in Video Settings..
+
+option.SURFACE_COLORS=Surface colors
+value.SURFACE_COLORS.STANDARD=Standard
+value.SURFACE_COLORS.NONE=None (whiteworld)
+value.SURFACE_COLORS.VERTEX_COLOR=Vertex color (foliage)
+option.SURFACE_COLORS.comment=When None, the object's base color is \
+	disregarded in favor of simply treating every surface as white. \
+	With vertex color, only the texture color is disregarded, so foliage \
+	remains green. \
+	Useful for debugging lighting. \
+	Alpha testing is still applied.
+
+option.PBR_FORMAT=Material format
+value.PBR_FORMAT.PBR_OFF=Off
+value.PBR_FORMAT.LAB_PBR=LabPBR
+option.PBR_FORMAT.comment=Whether to read the normal (_n) and specular (_s) \
+	maps of a PBR resource pack, following the shaderLABS LabPBR 1.3 standard. \
+	Each of the individual material features below can be switched off on top \
+	of this.\n\n\
+	It only affects the block atlas - terrain, and blocks held or placed. \
+	Entities, held items, and Distant Horizons terrain are lit exactly as \
+	before.\n\n\
+	Set this to Off when playing without a PBR resource pack if you would \
+	rather not pay for reading the material maps. Resource packs without \
+	normal or specular maps decode to a flat normal, no reflection, and no \
+	emission, so leaving it on is safe either way..
+
+option.PBR_PARALLAX=Parallax mapping
+option.PBR_PARALLAX.comment=Makes the height stored in the alpha channel of \
+	the normal map displace the surface, so that deep parts of a texture appear \
+	to sit further back than shallow ones and the surface reads as having real \
+	depth.\n\n\
+	This is the most expensive material feature. It traces the surface along \
+	the view ray, one layer at a time, so its cost is set by the number of \
+	layers below.\n\n\
+	It fades out with distance, and a resource pack with a flat height channel \
+	is effectively free.
+
+option.PBR_PARALLAX_STEPS=Parallax layers
+option.PBR_PARALLAX_STEPS.comment=How many layers the parallax ray march \
+	takes. Each layer is one texture sample, and more layers track the height \
+	field more closely at shallow viewing angles.\n\n\
+	Too few layers show up as banding on surfaces you look at almost edge-on. \
+	Too many are simply wasted samples.
+
+option.PBR_PARALLAX_REFINE=Parallax refinement
+option.PBR_PARALLAX_REFINE.comment=How many binary search steps are used to \
+	pin down where the view ray crosses the height field.\n\n\
+	The layer march can only land on a layer boundary, and a height channel \
+	usually covers only a fraction of its range, so few layers fall inside the \
+	real variation. Without refinement the texture visibly snaps between a \
+	handful of positions instead of following the surface.\n\n\
+	Each step is one more texture sample; 0 turns refinement off.
+
+option.PBR_PARALLAX_DEPTH=Parallax depth
+option.PBR_PARALLAX_DEPTH.comment=How deep the height field is, in blocks, at \
+	its deepest point.\n\n\
+	LabPBR asks resource packs to keep this within a quarter of a block, so \
+	values much above 0.25 will likely look wrong on most packs.
+
+option.PBR_PARALLAX_MAX_OFFSET=Maximum displacement
+option.PBR_PARALLAX_MAX_OFFSET.comment=How far a sample is allowed to be \
+	displaced, in blocks.\n\n\
+	Shallow view angles divide the displacement by the view direction's slope, \
+	which would otherwise drag samples into the neighbouring sprites of the \
+	block atlas. The material data read there belongs to a different block, \
+	which shows up as a visible line across the ground at a fixed distance from \
+	the player.\n\n\
+	Lower this if you see such a line; it costs some depth at glancing angles.
+
+option.PBR_PARALLAX_DISTANCE=Parallax distance
+option.PBR_PARALLAX_DISTANCE.comment=Distance in meters at which parallax \
+	mapping fades out, then stops entirely.\n\n\
+	Past a certain distance a single screen pixel covers more than the whole \
+	height range, so the ray march costs full price and produces nothing but \
+	shimmer.
+
+option.PBR_PARALLAX_SHADOW=Parallax self-shadowing
+option.PBR_PARALLAX_SHADOW.comment=Whether the height field should cast shadows \
+	on itself.\n\n\
+	Parallax mapping on its own only slides the texture around: the raised parts \
+	do not darken what is behind them, so the surface reads as a flat picture \
+	pasted onto the block. Shadowing the height field against the light is what \
+	makes the sides of bumps look like sides, and is the single biggest \
+	improvement to how deep the effect looks.\n\n\
+	Costs one round of texture samples per pixel, and is skipped entirely for \
+	materials with a flat height channel.
+
+option.PBR_PARALLAX_SHADOW_STRENGTH=Shadow strength
+option.PBR_PARALLAX_SHADOW_STRENGTH.comment=How dark the height field shadows \
+	get. 1.0 is a fully occluded crevice.\n\n\
+	Too high can look like dirt rather than shadow on resource packs with a \
+	very bumpy height channel.
+
+option.PBR_TANGENT_ATTRIBUTE=Geometry tangents
+option.PBR_TANGENT_ATTRIBUTE.comment=Whether to build the material tangent frame \
+	from the tangent the geometry actually has, instead of rebuilding one out of \
+	screen-space derivatives.\n\n\
+	The derivative route has to reconstruct the surface position from the depth \
+	buffer before it can differentiate it, and the depth buffer quantizes: past a \
+	certain distance the step between two neighbouring pixels is larger than the \
+	distance between those pixels across the surface, so the frame stops \
+	describing the surface and the normal map bends the normal along axes that \
+	have nothing to do with the material.\n\n\
+	The symptom is a normal map that appears to invert from a fixed distance \
+	outwards, and it cannot be tuned away with the mip or parallax settings, \
+	because neither of those is what is wrong - the distance depends on the depth \
+	buffer's precision and on how obliquely the surface is seen, not on the \
+	resource pack.\n\n\
+	The vertex tangent has none of that to worry about: it comes from the quad \
+	itself, and interpolating it across a flat triangle is exact. This is on by \
+	default, since it is a correctness fix rather than a look.\n\n\
+	Turn it off to compare the two on the same scene. Geometry that carries no \
+	tangent at all falls back to the old method automatically, so a mob or a \
+	modded model cannot break because of this.
+
+option.PBR_NORMAL_MAP=Normal mapping
+option.PBR_NORMAL_MAP.comment=Whether the normal map should bend the surface \
+	normal, which is what makes texture detail react to the direction of the \
+	light.\n\n\
+	Turning this off leaves the height channel of the same texture available to \
+	parallax mapping, so the two can be used independently.
+
+option.PBR_NORMAL_STRENGTH=Normal strength
+option.PBR_NORMAL_STRENGTH.comment=How far the normal map is allowed to bend \
+	the surface normal.\n\n\
+	Raise this if the surface detail is there but too subtle to notice, or lower \
+	it if the lighting starts to look noisy or dirty.
+
+option.PBR_MATERIAL_MAX_LOD=Material detail limit
+option.PBR_MATERIAL_MAX_LOD.comment=The finest level of the material maps that \
+	the block atlas is allowed to be sampled at. The default of 0 samples the \
+	full-resolution texture everywhere.\n\n\
+	The block atlas has no useful data past the edge of a sprite, and an empty \
+	texel is black - which is not a neutral value for a normal map. Once a level \
+	of detail is coarse enough for its texels to reach into that empty space, \
+	every sample near a sprite's edge picks up that black, and the surface's \
+	normal map appears to tilt or invert. Since the level of detail grows with \
+	distance, this appears as a hard line across the ground a fixed distance \
+	from the player, and a sharper resource pack reaches it sooner.\n\n\
+	Raising this restores filtering on distant material maps, at the risk of \
+	that artefact coming back; PBR_NORMAL_FADE_LOD below is what keeps it away \
+	when you do. Set this to the Material detail limit debug view first if you \
+	want to see which level a given distance actually lands on.
+
+option.PBR_NORMAL_FADE_LOD=Normal fade distance
+option.PBR_NORMAL_FADE_LOD.comment=The level of detail at which normal mapping \
+	has faded out to a flat surface entirely, reached gradually from about 40% \
+	of this value.\n\n\
+	A normal map finer than a screen pixel cannot be resolved, so all it does at \
+	a distance is shimmer. Fading it out leaves the material's colour and \
+	reflection intact while removing the noise.\n\n\
+	Lower this if distant terrain looks noisy; raise it if you would rather keep \
+	the surface detail and accept some sparkle.
+
+
+option.PBR_MATERIAL_AO=Material occlusion
+option.PBR_MATERIAL_AO.comment=Whether to darken the ambient and block light that \
+	reaches a fragment by the occlusion the resource pack baked into the blue \
+	channel of the normal map.\n\n\
+	That channel is the third of the three things LabPBR stores in a normal map: \
+	X and Y are the normal, alpha is the height, and blue is occlusion. It is \
+	baked from the block's own geometry - the inside of a brick, the corners of a \
+	plank, the gaps between leaves - all of which Minecraft's per-vertex ambient \
+	occlusion cannot produce, since it only knows about block corners.\n\n\
+	Off by default, as it is the one material feature that changes how bright \
+	familiar blocks are: a pack with strong occlusion makes the world read darker \
+	than Steadfast's original rendering. Before switching it on, look at a block \
+	with the Occlusion channel selected under the material debug view to see what \
+	the pack actually authored.\n\n\
+	Only ambient and block light are affected. Sunlight is left to the shadow map \
+	and to parallax self-shadowing, so a sunlit surface is never darkened twice.
+
+option.PBR_MATERIAL_AO_STRENGTH=Occlusion strength
+option.PBR_MATERIAL_AO_STRENGTH.comment=How much of that occlusion is applied. \
+	1.0 uses the channel exactly as the resource pack authored it; lower it if \
+	the pack overdoes the effect.\n\n\
+	Has no effect while Material occlusion is off.
+
+option.PBR_SPECULAR=Specular reflections
+option.PBR_SPECULAR.comment=Whether the smoothness and reflectance (F0) stored \
+	in the specular map should drive a specular highlight.\n\n\
+	Rough surfaces get a broad, soft sheen and smooth ones a sharp highlight, \
+	which is what separates polished stone from plastic.
+
+option.PBR_SPECULAR_STRENGTH=Specular strength
+option.PBR_SPECULAR_STRENGTH.comment=How strong the specular reflection is.\n\n\
+	1.0 is the physically correct value, but a correct dielectric reflects only \
+	about 4% of the light that hits it, and Steadfast tonemaps its highlights \
+	down on top of that, so the correct value is much less visible than most \
+	people expect from a reflective material.\n\n\
+	Raise this if surfaces still look flat; lower it towards 1.0 if everything \
+	looks wet or plasticky.\n\n\
+	With Energy conservation on, 1.0 is the value that keeps the light budget \
+	balanced and anything above it is deliberate over-reflection.
+
+option.PBR_ENERGY_CONSERVATION=Energy conservation
+option.PBR_ENERGY_CONSERVATION.comment=Whether to weight the diffuse light by \
+	the part of it that the surface did not reflect, so that diffuse and \
+	specular cannot add up to more light than arrived.\n\n\
+	Fresnel decides the split: a surface reflects a fraction of the light hitting \
+	it and lets the rest through into the material, and that transmitted part is \
+	what the diffuse response is made of. Adding the two together without it is \
+	what lets a shiny surface be brighter than the light falling on it, and what \
+	makes a metal - which reflects most of the light and should have almost no \
+	diffuse response - still take half a diffuse response and read as shiny \
+	plastic instead.\n\n\
+	Off by default, as it changes the brightness of everything with a specular \
+	map at once. Worth pairing with a specular strength of 1.0, which is the \
+	value at which the budget balances; 2.0 was only ever a way of fighting the \
+	tonemapper.\n\n\
+	Note that bright metals become noticeably darker in caves and at night, \
+	which is correct but is a large enough change in look to be worth trying \
+	rather than assuming.\n\n\
+	Sky reflections are the natural companion to this: they are what a metal \
+	reflects once its diffuse response is gone, which is what keeps it looking \
+	like a metal rather than like a hole in the world.
+
+option.PBR_REFLECTIONS=Sky reflections
+option.PBR_REFLECTIONS.comment=Whether a material reflects the sky, with a \
+	direction and a roughness, instead of reflecting a flat wash of the light \
+	around it.\n\n\
+	Without this, the only environment a material reflects is the ambient light \
+	at that point, which has no direction: a polished block reflects the same \
+	thing whichever way it faces, and a rough surface is exactly as reflective as \
+	a mirror. With it on, the colour comes from the sky model along the reflected \
+	ray, so a surface facing the sun picks up the bright part of the sky, one \
+	facing away picks up the darker part, and a rough surface has its ray bent \
+	towards its own normal until it reflects the sky above it rather than a \
+	mirror image.\n\n\
+	On its own it reflects the sky and not the world. Screen-space reflections \
+	below is what adds the world; this option is the part that always applies, \
+	and it is what a ray that finds nothing falls back to.\n\n\
+	One sky model evaluation per covered pixel, which makes it the most expensive \
+	option here. Turn it off if the frame budget is tight.
+
+option.PBR_REFLECTIONS_STRENGTH=Sky reflection strength
+option.PBR_REFLECTIONS_STRENGTH.comment=How strong the sky reflection is. 1.0 is \
+	the value it was tuned at.\n\n\
+	Has no effect while Sky reflections is off, and no effect indoors or \
+	underground either, where there is no sky to reflect.
+
+option.PBR_REFLECTIONS_ROUGHNESS=Roughness spread
+option.PBR_REFLECTIONS_ROUGHNESS.comment=How far a rough surface bends the \
+	reflected ray towards its own normal.\n\n\
+	At 1.0 a fully rough surface looks straight up, which is the average of the \
+	sky above it. At 0.0 roughness would not affect the direction at all, and a \
+	rough surface would show the same mirror image a polished one does.\n\n\
+	Has no effect while Sky reflections is off.
+
+option.PBR_REFLECTION_SKY_MIN=Sky needed to reflect
+option.PBR_REFLECTION_SKY_MIN.comment=How much sky a surface has to see before it \
+	reflects any of it.\n\n\
+	Minecraft's sky light spreads sideways under an overhang and passes straight \
+	through glass, so a block can be lit as if it were outdoors while nothing of \
+	the sky is visible from it - which is what a polished block on the floor of a \
+	shallow cave reflecting a noon sky looks like. Keeping this near the top of \
+	the range is what stops that.\n\n\
+	The one case it cannot fix is a surface lit through a glass window: its sky \
+	light is 15, exactly like one standing in the open, and nothing available here \
+	can tell the two apart. Lower this if you would rather have reflections \
+	indoors and put up with them in caves.\n\n\
+	Only the sky part of the reflection is affected by it. What a traced ray finds \
+	is already lit for where it is, so a metal in a cave reflecting the cave \
+	around it stays.
+
+option.PBR_SSR=Screen-space reflections
+option.PBR_SSR.comment=Whether a reflection may include the world and not only \
+	the sky, by tracing the reflected ray through the depth buffer.\n\n\
+	Sky reflections on their own make everything with a reflectance pick up the \
+	same wash of sky, which reads as a frosted sheen rather than as a reflection. \
+	With this on, a polished block reflects the terrain, the trees, and whatever \
+	else the ray finds on screen.\n\n\
+	It can only reflect what is on screen, and only from the previous frame: a \
+	shader mod cannot see what is behind you, and the frame being drawn is not \
+	finished at the point the reflection is worked out. A ray that finds nothing \
+	falls back to the sky, so the result degrades towards the sky-only reflection \
+	rather than to nothing at all.\n\n\
+	Very expensive: the trace runs on every covered pixel that passes the \
+	roughness limit, and the two settings below it are what decide how much it \
+	costs and which surfaces it applies to. Turn it off if the frame budget is \
+	tight.
+
+option.PBR_SSR_STEPS=Reflection trace steps
+option.PBR_SSR_STEPS.comment=How many steps the reflection trace may take.\n\n\
+	Only the material reflections use this. The water reflections keep their own \
+	budget, because spending this many steps on a body of water and on every \
+	smooth pixel of the screen are two very different propositions.\n\n\
+	More steps find more hits and refine the ones they find better. The cost is \
+	paid whether or not anything is found, which makes this the first setting to \
+	lower if the reflections are too expensive.
+
+option.PBR_SSR_ROUGHNESS=Roughness limit
+option.PBR_SSR_ROUGHNESS.comment=How rough a surface may be and still have the \
+	world traced into its reflection.\n\n\
+	Above this the reflection is the sky term alone: a rough surface scatters the \
+	reflected ray over too wide a range of directions for one sharp sample to \
+	stand in for, so it would be shown a mirror image it should not have.\n\n\
+	Raising it reflects the world in rougher surfaces at a higher cost, and those \
+	reflections will be sharper than they should be - there is no blur behind \
+	this, only a direction.
+
+option.PBR_DEFAULT_MATERIAL=Default material
+option.PBR_DEFAULT_MATERIAL.comment=Whether blocks that the resource pack gives \
+	no usable specular data for should fall back to a plain dielectric.\n\n\
+	Many resource packs ship normal maps for everything but specular maps for \
+	only some blocks, and the blocks without one decode to "no reflectance and \
+	fully rough" - which looks like the shader simply does not apply to them.\n\n\
+	Turn this off to see exactly what the resource pack authored, matte blocks \
+	included.
+
+option.PBR_DEFAULT_ROUGHNESS=Default roughness
+option.PBR_DEFAULT_ROUGHNESS.comment=The roughness given to those fallback \
+	materials. Lower is glossier.\n\n\
+	This is also what a block looks like when the resource pack ships no \
+	specular data at all, so it sets the baseline shine of an ordinary block.
+
+option.PBR_METALS=Hardcoded metals
+option.PBR_METALS.comment=Whether to use the reflectance values that LabPBR \
+	hardcodes for iron, gold, aluminum, chrome, copper, lead, platinum, and \
+	silver.\n\n\
+	With this off, those materials are treated as albedo-based metals instead, \
+	which is far closer than treating them as ordinary dielectrics.
+
+option.PBR_METAL_DIFFUSE=Metal diffuse
+option.PBR_METAL_DIFFUSE.comment=How much of its diffuse response a metal \
+	keeps.\n\n\
+	Metals have no diffuse response at all in reality, but Steadfast has no \
+	environment reflections for opaque terrain, so a fully metallic surface \
+	would be lit by its highlight alone and read as a black hole in caves.\n\n\
+	0.0 keeps all of the diffuse response, which looks like coloured plastic. \
+	1.0 removes it entirely, which is physically correct and very dark indoors.
+
+option.PBR_SUBSURFACE=Subsurface scattering
+option.PBR_SUBSURFACE.comment=Whether to add the light that scatters through a \
+	thin surface, using the amount the resource pack stored in the blue channel \
+	of the specular map.\n\n\
+	LabPBR splits that channel in two: values up to 64 out of 255 are porosity, \
+	and anything above that is how much light the material lets through. Leaves, \
+	grass, paper, and similar thin materials are what use the upper range, and \
+	what this adds is the glow of a backlit leaf - light that comes through the \
+	surface instead of bouncing off it, so the brightest side is the one facing \
+	away from the sun.\n\n\
+	Steadfast already brightens foliage from every direction based on the block \
+	being leaves or grass. This option makes the effect follow the texture \
+	instead, so that a pack can mark a single leaf or a single plant as thin, and \
+	it is what adds the directional glow on top.\n\n\
+	A material that stores nothing in that channel is unaffected, so this cannot \
+	brighten a solid block.
+
+option.PBR_SSS_STRENGTH=Scattering strength
+option.PBR_SSS_STRENGTH.comment=How much scattered light is added. 0.7 is the \
+	value the effect was tuned at.\n\n\
+	Raise it for a stronger glow through leaves; lower it if foliage looks like \
+	it is lit from the inside rather than by the sun.
+
+option.PBR_POROSITY_WETNESS=Wet porous surfaces
+option.PBR_POROSITY_WETNESS.comment=Whether surfaces the resource pack marked as \
+	porous get darker while they are wet, which is what makes brick, dirt, and \
+	wood look soaked after rain rather than merely shiny.\n\n\
+	LabPBR stores porosity in the lower half of the specular map's blue channel. \
+	A porous material gets its light response from scattering inside it, and \
+	water filling those pores takes that scattering away - so the surface \
+	darkens, and what is left is the wet sheen.\n\n\
+	The darkening is scaled by the sky light, so it only applies outdoors: a \
+	torch-lit cellar looks the same in the rain as out of it.\n\n\
+	It only shows itself in rain, and only on the materials a pack marked as \
+	porous, so it costs nothing anywhere else. The Porosity / scattering channel \
+	under the material debug view shows which ones those are - the dark values \
+	are porosity.
+
+option.PBR_TRANSLUCENT=PBR on ice and glass
+option.PBR_TRANSLUCENT.comment=Whether ice and other translucent solids take \
+	their reflectance and their normal from the resource pack.\n\n\
+	Ice is drawn by the translucent pass, which gives water a reflectance of 0.1 \
+	and gives everything else none at all - so an icy surface currently reflects \
+	nothing except at grazing angles, no matter what the resource pack authored \
+	for it. With this on, ice is decoded like any other block and the reflections \
+	it already had become reflections of that material.\n\n\
+	Water is deliberately not included: Steadfast's water is an animated surface \
+	whose normal comes from its own wave model, and a pack's water material \
+	describes a thinner and much smoother surface than the one being drawn.\n\n\
+	Turn it off to see an icy biome the way the resource pack left it.
+
+option.PBR_HAND_ITEMS=PBR on held items
+option.PBR_HAND_ITEMS.comment=Whether the item or block in your hand gets PBR \
+	materials as well.\n\n\
+	A held block is drawn from the block atlas, so it carries exactly the same \
+	material data as the same block placed in the world: turning this on is what \
+	stops a held stone from looking flat while the stone in the wall beside it \
+	does not. A held item reads its materials from the resource pack the same \
+	way.\n\n\
+	On by default, so that the world is consistent: a held block carries the same \
+	materials as the one placed next to it.
+
+option.PBR_ENTITIES=PBR on entities
+option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials.\n\n\
+	This one is an experiment, and turning it on is how to find out whether it \
+	works: the block atlas is the only atlas Iris and OptiFine are documented to \
+	build normal and specular maps for, so an entity may end up shaded with some \
+	arbitrary block's materials instead of its own.\n\n\
+	To check: turn it on, look at a mob, and select the Occlusion channel under \
+	the material debug view. A flat, uniform picture means no material data is \
+	bound for that entity, and this should be turned back off. Detail that varies \
+	across the mob and lines up with its own texture means it works.\n\n\
+	On by default: if a resource pack ships no material maps for entities there \
+	is nothing for it to read. Turn it off if the check above shows it picking up \
+	materials that are not the entity's own.
+
+option.PBR_DEBUG=Material debug view [build 15]
+value.PBR_DEBUG.PBR_DEBUG_NONE=Off
+value.PBR_DEBUG.PBR_DEBUG_HEIGHT=Height channel
+value.PBR_DEBUG.PBR_DEBUG_SMOOTHNESS=Smoothness
+value.PBR_DEBUG.PBR_DEBUG_F0=Reflectance (F0)
+value.PBR_DEBUG.PBR_DEBUG_NORMAL=Normal
+value.PBR_DEBUG.PBR_DEBUG_MIP=Material detail limit
+value.PBR_DEBUG.PBR_DEBUG_TANGENT_NORMAL=Tangent-space normal
+value.PBR_DEBUG.PBR_DEBUG_MATERIAL_AO=Occlusion channel
+value.PBR_DEBUG.PBR_DEBUG_SUBSURFACE=Porosity / scattering channel
+value.PBR_DEBUG.PBR_DEBUG_EMISSION=Emission
+option.PBR_DEBUG.comment=Replaces the image with a visualisation of the material \
+	data, which is the quickest way to find out whether a resource pack actually \
+	provides what an effect needs.\n\n\
+	Look at a block with Height selected: if it comes out flat grey, that \
+	resource pack has no height channel for it, and no amount of parallax tuning \
+	will produce any displacement.\n\n\
+	Tangent-space normal shows the normal map as the resource pack authored it, \
+	before the block's orientation is applied. A flat normal is light blue; black \
+	is a texel from outside the sprite, which decodes to a strong tilt rather \
+	than a flat one. Compare it with Normal to tell a bad sample apart from a bad \
+	tangent frame.\n\n\
+	Occlusion channel is what the Material occlusion option reads. Flat white \
+	means the pack ships no occlusion data for that block, and there is nothing \
+	for the feature to apply there.\n\n\
+	Porosity / scattering channel is the counterpart for the specular map: black \
+	means the pack stores nothing in that channel, dark colours are porosity, and \
+	anything brighter is the material letting light through.
+
+option.GLASS_REFLECTIONS=Glass reflections
+option.GLASS_REFLECTIONS.comment=Whether glass and stained glass reflect the way \
+	water and ice do.\n\n\
+	Glass reflects about 4% of the light that lands on it head on, and nearly all \
+	of it at a glancing angle - which is what a window looks like: mostly you see \
+	through it, but from the side it turns into a mirror. Without this, glass has \
+	no specular response at all, and a pane is a tinted hole in the world.\n\n\
+	The reflections use the same code the water and ice ones do, so they include \
+	the screen-space pass and therefore reflect the world rather than only the \
+	sky. Like every reflection here they fade out with the sky light, so glass \
+	underground and deep indoors stays unreflective.\n\n\
+	Water and ice are not affected: they always reflected.
+
+option.TAA=Temporal anti-aliasing
+value.TAA.TAA_OFF=Off
+value.TAA.TAA_ON=On
+option.TAA.comment=Off by default, as it is the one effect here that trades \
+	image stability for smoothness.\n\n\
+	Renders each frame with a small sub-pixel offset and \
+	averages several frames together, so that each pixel is sampled from \
+	several positions instead of one. This smooths out edges that no single \
+	frame can resolve, for far less than rendering at a higher resolution.\n\n\
+	Steadfast has no motion vectors, so things that move on their own - \
+	entities, water, particles, the held item - cannot be reprojected correctly \
+	and are handled by throwing away history that does not match the current \
+	frame instead. Lower the strength if you see anything smearing.\n\n\
+	Voxy terrain is not covered, as its geometry is emitted by the Voxy mod \
+	rather than by these vertex shaders.
+
+option.TAA_STRENGTH=Anti-aliasing strength
+option.TAA_STRENGTH.comment=How much of the accumulated history each frame \
+	keeps.\n\n\
+	Higher resolves more detail and leaves less noise, at the cost of more \
+	ghosting behind moving objects.
+
+option.TAA_JITTER=Jitter radius
+option.TAA_JITTER.comment=The radius of the sub-pixel offset, in pixels.\n\n\
+	One pixel places each frame's sample anywhere within the pixel, which is \
+	what an anti-aliasing filter wants. 0 turns the offset off, which leaves \
+	the pass running but with nothing to average.
+
+option.TAA_CLAMP=History clamp
+option.TAA_CLAMP.comment=How many standard deviations of the current frame's \
+	neighbourhood the history is allowed to fall outside of.\n\n\
+	This is what stops a moving object from dragging its old positions along \
+	behind it, and what keeps textures from being averaged into a smudge. Raise \
+	it if the image flickers, lower it if surfaces look soft or smeared.
+
+option.TAA_SHARPEN=Sharpening
+option.TAA_SHARPEN.comment=How much to sharpen the resolved image, to counter \
+	the softening that averaging frames together introduces.\n\n\
+	A little goes a long way - too much brings back the aliasing the effect \
+	exists to remove.
+
+option.PBR_EMISSION=Emission
+option.PBR_EMISSION.comment=Whether the emission stored in the alpha channel of \
+	the specular map should be added to the surface color.\n\n\
+	Emissive blocks then glow with their own color regardless of the light \
+	around them, and still fade into the fog with distance.
+
+option.PBR_EMISSION_STRENGTH=Emission strength
+option.PBR_EMISSION_STRENGTH.comment=How bright the emission from the resource \
+	pack is.\n\n\
+	LabPBR stores it as a fraction of the surface color, which on its own is \
+	rarely bright enough to look like it is lit from within, since the \
+	tonemapper compresses it straight back down.
+
+option.BLOCK_EMISSION=Block self-emission
+option.BLOCK_EMISSION.comment=Whether light sources glow with their own color: \
+	glowstone, sea lanterns, lava, torches, and so on.\n\n\
+	Unlike the emission above, this needs nothing from the resource pack - it \
+	uses the marker that Iris and OptiFine put in the lightmap for faces that \
+	can emit light.\n\n\
+	This lights up the block itself, not its surroundings; the light it casts \
+	on its neighbours is already part of the block lighting.
+
+option.BLOCK_EMISSION_STRENGTH=Self-emission strength
+option.BLOCK_EMISSION_STRENGTH.comment=How bright block self-emission is.\n\n\
+	Values above 1.0 push the surface past the white point of the tonemapper, \
+	which is what a light source should look like.
+
+option.BLOCKLIGHT_STRENGTH=Block light strength
+option.BLOCKLIGHT_STRENGTH.comment=How bright block light is at full light level.\n\n\
+	The color of block light now comes from the lightmap itself, which is how a \
+	resource pack says what color its lights are, rather than from a color this \
+	pack picked. What the lightmap cannot answer is how bright block light \
+	should be here, because it has its own falloff baked into it and this model \
+	replaces that with its own - so that is what this is.\n\n\
+	Raising it brightens everything a torch lights; it does not change its \
+	color.
+
+option.LIGHT_TINT_STRENGTH=Light color tinting
+option.LIGHT_TINT_STRENGTH.comment=How far a surface takes the color of the \
+	light sources near it, rather than merely having their light added on top of \
+	its own color.\n\n\
+	Adding light alone cannot turn an orange-lit wall blue: the wall already has \
+	a strong orange under it, and pouring blue on top of that gives a paler \
+	orange rather than a blue wall. This pulls the surface's own color towards \
+	the color of the light around it at the same time, which is what a surface \
+	lit by a blue light actually does - it reflects mostly blue.\n\n\
+	The effect fades out with distance from the sources on its own, because it \
+	is driven by how much light source is nearby. Raise it for stronger color, \
+	lower it to get closer to how the pack looked before.
+
+option.MIN_AMBIENT_BRIGHTNESS=Minimum ambient brightness
+option.MIN_AMBIENT_BRIGHTNESS.comment=A floor under the ambient light: what \
+	every surface is lit with regardless of whether anything is lighting \
+	it.\n\n\
+	Steadfast's ambient light is driven by sky light, which leaves anywhere \
+	without a light source of its own - the inside of a cave, the Nether, and \
+	the End, which has no sky light at all - very close to black.\n\n\
+	The values are linear light, so they look small: the default of 0.01 is \
+	several times the floor the pack has without it. Raise it until dark places \
+	are readable; set it back to 0.0 for exactly the pack's original look.
+
+option.COLORED_LIGHTS=Colored lights
+option.COLORED_LIGHTS.comment=Whether light sources take the color of the light \
+	they actually give off - a soul lantern's blue, a redstone torch's red - \
+	instead of the one warm orange the pack uses for all block light.\n\n\
+	Minecraft tells a shader how much light arrived at a position, but not what \
+	color it was or which block it came from, so this is done in two parts. The \
+	block that is glowing takes the color of its own light, which is the one \
+	place where the source is known. The surfaces around it are then lit by a \
+	screen-space bleed, which spreads the colors of the light sources that are \
+	on screen onto what is near them.\n\n\
+	Turning this off removes both, and skips the bleed pass entirely, so it is \
+	also the cheapest setting.
+
+option.COLORED_LIGHTS_STRENGTH=Light source color
+option.COLORED_LIGHTS_STRENGTH.comment=How far a light source's own surface \
+	takes the color of its light rather than the color of its texture.\n\n\
+	At 1.0 the emitter is lit purely by its light's color; the brightness \
+	pattern of the texture is kept either way, so a torch still reads as a \
+	torch rather than as a flat orange rectangle. Lower this if a resource \
+	pack's textures carry detail on their glowing parts that you would rather \
+	keep.
+
+option.LIGHT_BLEED_STRENGTH=Light bleed strength
+option.LIGHT_BLEED_STRENGTH.comment=How much light the sources on screen spread \
+	onto the surfaces around them.\n\n\
+	This is what makes a soul lantern tint the wall beside it blue, and lava \
+	tint the stone around it orange. It adds light rather than recoloring what \
+	is already there, so a surface that block light has already lit strongly \
+	orange keeps that orange underneath - raise this until the color reads, and \
+	lower it if surfaces near a source look washed out.
+
+option.LIGHT_BLEED_RADIUS=Light bleed radius
+option.LIGHT_BLEED_RADIUS.comment=How far the color spreads, in pixels at \
+	1080p, scaled to your resolution.\n\n\
+	This costs nothing extra, as the number of samples is fixed. Very large \
+	values spread a source's color across most of the screen, where it stops \
+	reading as light coming from that source.
+
+option.LIGHT_BLEED_DEPTH=Light bleed depth tolerance
+option.LIGHT_BLEED_DEPTH.comment=How different in depth two pixels may be \
+	before light stops spreading between them.\n\n\
+	Without this, a light source would bleed straight through a wall onto \
+	whatever is in front of it. Raise it if the color stops too abruptly at the \
+	edges of objects; lower it if a light seems to shine through the wall it is \
+	behind.
+
+option.END_SKY=End sky
+value.END_SKY.END_SKY_AUTO=End only
+value.END_SKY.END_SKY_ALWAYS=Everywhere
+value.END_SKY.END_SKY_OFF=Off
+option.END_SKY.comment=Whether the End gets a sky of its own: open space with a \
+	starfield and a body of its own in it, rather than the Overworld's atmosphere \
+	model, which has a sun and a horizon that the End does not have.\n\n\
+	End only picks it by dimension, which is what you want. Everywhere is a \
+	test: it draws the same sky in the Overworld and the Nether, which is the \
+	quickest way to confirm the sky itself works if you are not seeing it in \
+	the End.\n\n\
+	The End has no sky light at all, so its islands are lit only by the Minimum \
+	ambient brightness option above; raise that if the End is too dark to \
+	navigate.
+
+option.END_STAR_DENSITY=Star density
+option.END_STAR_DENSITY.comment=How crowded the End's starfield is. At 0.0 the \
+	sky is empty, and each step above the default roughly doubles the number of \
+	stars drawn.
+
+option.END_STAR_BRIGHTNESS=Star brightness
+option.END_STAR_BRIGHTNESS.comment=How bright the stars are.\n\n\
+	They are the only thing in the End that is brighter than the surface of a \
+	lit block, so this sets how much the sky comes to dominate the view.
+
+option.END_BODY=The End's body
+value.END_BODY.END_BODY_OFF=Off
+value.END_BODY.END_BODY_STAR=Star
+value.END_BODY.END_BODY_BLACK_HOLE=Black hole
+option.END_BODY.comment=What to put at the point in the End's sky that the \
+	dimension is lit from.\n\n\
+	The End has no sky light, so the only thing lighting its islands is this \
+	pack's direct light, and in the End that light comes from a fixed direction - \
+	the sun sits where noon puts it and stays there, tilted by the pack's sun \
+	path rotation. That is the one place in this sky where something belongs, so \
+	whichever is chosen here is drawn exactly where that light comes from, above \
+	the light it casts.\n\n\
+	Star: a disc with a boiling surface and a corona. This is the one that makes \
+	sense of the lighting, since the light is coming from it.\n\n\
+	Black hole: a black shadow, a ring of light bent around its edge, and an \
+	accretion disc that is brighter on the side coming towards you. The disc \
+	turns at a speed that falls with distance, so it shears rather than rotating \
+	as a rigid texture, and the sky around the hole is bent so that what is \
+	behind it is seen around it. It is nonsense as a light source and looks the \
+	best.\n\n\
+	Off leaves the stars on their own.
+
+option.END_AMBIENT=End light
+option.END_AMBIENT.comment=How much light the End has of its own.\n\n\
+	Every other dimension is lit by its sky, and the End has no sky light at \
+	all, so without this its islands are lit by nothing but the Minimum ambient \
+	brightness above - which is to say, almost not at all. This stands in for \
+	the light the End's sky does not give it, and it is a violet-white light \
+	rather than a neutral one, so that the End reads as somewhere else rather \
+	than as an unlit overworld.\n\n\
+	Off by default. It was reported as having no effect at all where it was \
+	written, and the cause was never found. What is known: the End's sky and \
+	haze do work there, so the dimension is recognized, and the debug view's \
+	version of this light - ten times brighter and ignoring this value - does \
+	show up. That leaves the value itself reaching the terrain as the only \
+	question, which points at the terrain rather than at this option: terrain \
+	drawn by another mod, Voxy for instance, is rendered by a shader path that \
+	is given no biome information and would take itself for the overworld.\n\n\
+	Raise it to try it; around 0.35 is a readable but still very dim End.
+option.END_VOID_GLOW=Void glow
+option.END_VOID_GLOW.comment=How much light comes up out of the void below the \
+	End's islands.\n\n\
+	It lights the undersides of everything, which is what stops the islands \
+	from reading as flat cutouts, and it costs nothing anywhere else.\n\n\
+	Off by default, for the same reason as the light above.
+
+option.END_FOG=End haze
+option.END_FOG.comment=How far the End's haze takes the color of its sky.\n\n\
+	The End has no sky light, so the fog treats it as one enormous cave and \
+	fogs it with the cave color. This fogs it with the color of its sky instead, \
+	which is what lets its islands fade into space rather than into a grey \
+	wall.\n\n\
+	At 0.0 the End is fogged exactly as it was before.
+
+option.END_DEBUG=End detection debug view
+option.END_DEBUG.comment=Replaces the sky with a report of what the checks that \
+	decide whether this is the End actually returned.\n\n\
+	There are two ways to ask, not every version provides both, and there is no \
+	way to tell from here: a uniform the shader mod does not provide reads as 0, \
+	which looks exactly like "not the End". This turns the answer into a color, \
+	in the sky, where it is easy to see:\n\n\
+	red - the dimension uniform says the End\ngreen - the biome category says \
+	the End\nblue - the pack concluded it is the End\n\n\
+	So in the End: white means both work, magenta or cyan means only one does, \
+	and black means neither does - in which case setting End sky to Everywhere \
+	forces the effect on. In the overworld red and green should be black and the \
+	sky should look normal.\n\n\
+	It also paints, in the End, the things each program draws, which is how the \
+	End's light flash can be traced to the program responsible for it:\n\n\
+	red - the terrain: the End's own light reaching it\ngreen - glowing parts \
+	(eyes)\nblue - the enchant glint\nwhite - the beacon beam\nblack - lines and \
+	the block outline\nmagenta - weather and entities\norange - block \
+	entities\nteal - water and translucents\npurple - translucent entities\n\
+	yellow - the held item\ngrey - the block breaking overlay\n\n\
+	If the patch of block texture in the sky turns one of those colors, that is \
+	the program drawing it. If the terrain turns red, the End's light is working \
+	and the sliders under Lighting are doing something.\n\n\
+	This is a diagnostic, and is off by default.
+
+option.HIDE_END_FLASH=Hide the End's light flash
+option.HIDE_END_FLASH.comment=Whether to drop the light flash that Minecraft \
+	1.21.9 and up draws in the End's sky.\n\n\
+	It does not survive being shadered: it is a textured quad that the shader \
+	mod has no texture binding for, so it ends up sampling whatever was left \
+	bound - the block atlas - and appears as a patch of some random block's \
+	texture hanging in the sky. There is nothing to be done with it from here, \
+	since it is not this pack's sky and cannot be lit by it, so it is dropped \
+	instead.\n\n\
+	On versions without the flash this does nothing at all, which is checked \
+	for rather than assumed. Turn it off if you would rather keep the flash.
+
+option.FANCY_TRANSLUCENTS=Fancy translucents
+option.FANCY_TRANSLUCENTS.comment=Whether water, ice, and glass get their own \
+	shading: reflections, refraction, and the absorption that darkens things with \
+	depth.\n\n\
+	With it off, translucent surfaces are shaded exactly like solid blocks - \
+	faster, and closer to how they looked before any of those effects existed, but \
+	a window and a pool of water both turn into flat sheets of colour.
+
+option.VANILLA_ISH_WATER=Vanilla-style water
+option.VANILLA_ISH_WATER.comment=Whether the water surface is drawn with the \
+	water texture and vanilla's flat alpha, instead of being tinted towards the \
+	sky colour and faded by the strength of its reflection.\n\n\
+	Off - the default - is what makes water calm down into a reflective surface \
+	where the sky reaches it and turn opaque where it does not.
+
+option.SCREENSPACE_REFLECTIONS=Screen-space reflections
+option.SCREENSPACE_REFLECTIONS.comment=Whether water, ice, and glass may reflect \
+	the world and not only the sky, by tracing the reflected ray through the depth \
+	buffer.\n\n\
+	A reflection can only show what is already on screen, so the edges of the \
+	view and anything hidden behind the surface itself fall back to the sky. Water \
+	hides that with its waves; a mirror-like surface does not, which is why this is \
+	a compromise rather than a correct reflection.
+
+option.SCREENSPACE_REFRACTION=Screen-space refraction
+option.SCREENSPACE_REFRACTION.comment=Whether what is seen through a water \
+	surface is displaced by its waves, based on how deep the water is behind it.\n\n\
+	This is deliberately not physically correct: real refraction moves objects \
+	far enough to be disorienting to play with, and needs information that is not \
+	on the screen. What it does instead is move the background around a little, \
+	which is enough to read as water without making it hard to see through.
+
+option.WATER_PARALLAX=Water parallax
+option.WATER_PARALLAX.comment=Displaces the sampled water surface along the view \
+	ray by the height of its waves, so that ripples have visible depth when seen \
+	at a glancing angle instead of looking painted onto a flat sheet.\n\n\
+	Only applies to the noise water surface, which is the one that has waves to \
+	displace by.
+
+option.WATER_PARALLAX_DISTANCE=Water parallax distance
+option.WATER_PARALLAX_DISTANCE.comment=Distance in meters at which water parallax \
+	fades out.\n\n\
+	Past a certain distance one pixel covers more than a whole wave, so the \
+	effect stops describing anything and only costs samples - which is what this \
+	fades it away before.
+
+option.WATER_AA=Water antialiasing
+option.WATER_AA.comment=How much the wave normals are smoothed, which is what \
+	keeps distant water from shimmering as the fine waves fall below one pixel.\n\n\
+	Smoothing them also flattens the water, so this trades sparkle against detail: \
+	Off keeps every wave and its aliasing, High is the calmest and the least \
+	detailed.
+
+option.NUM_CRESTS=Wave crests
+option.NUM_CRESTS.comment=How many crest waves the water surface is built from, \
+	which are the large, slow shapes that give it its form. Noise water only.\n\n\
+	More crests make a choppier sea at a higher cost.
+
+option.NUM_RIPPLES=Wave ripples
+option.NUM_RIPPLES.comment=How many ripple waves are added on top of the crests, \
+	which are the fine, fast detail. Noise water only.
+
+option.NUM_CAUSTICS=Caustic waves
+option.NUM_CAUSTICS.comment=How many waves the underwater caustic pattern is \
+	built from.\n\n\
+	Each one adds another set of bright lines to the pattern, so lowering this \
+	makes caustics cheaper and blobbier.
+
+option.WATER_SURFACE=Water surface
+option.WATER_SURFACE.comment=Which model the water surface uses.\n\n\
+	Noise generates its waves procedurally and works out the normal from their \
+	slopes, which is smooth and is what every other water option here builds on. \
+	Basic is a flat surface with no waves at all - the cheapest, and the one to \
+	pick if the water is causing trouble.
+
+option.WATER_CAUSTICS=Water caustics
+option.WATER_CAUSTICS.comment=The moving pattern of light that sunlit water \
+	casts onto the terrain below it, brightened where the light is focused.\n\n\
+	It is read out of the shadow map, which only covers as far as the shadow \
+	distance and only knows the water depth where the water surface is itself in \
+	the shadow map, so caustics fade out at that range rather than being drawn \
+	wrongly past it.
+
+option.WATER_CHARACTER=Water colour
+option.WATER_CHARACTER.comment=How quickly water takes different colours of light \
+	away with depth, which is what decides whether a body of water reads as \
+	tropical, as cold, or as neither.\n\n\
+	Cold takes the red out first, leaving the blue-green of deep northern water. \
+	Tropical takes nearly everything but blue, which is what makes shallow warm \
+	water glow. Balanced sits between them.
+
+option.WATER_ABSORPTION_METHOD=Water absorption
+option.WATER_ABSORPTION_METHOD.comment=How light is absorbed by water.\n\n\
+	Refraction assisted applies it through the refraction pass, where the water \
+	surface can be seen through, and falls back to a sky light estimate for scenes \
+	that are entirely underwater. No absorption switches it off altogether, which \
+	is what to use if the water looks wrong for a particular resource pack or mod \
+	that draws its own.
+
+value.WATER_AA.OFF=Off
+value.WATER_AA.LOW=Low
+value.WATER_AA.BALANCED=Balanced
+value.WATER_AA.HIGH=High
+
+value.WATER_SURFACE.BASIC=Basic
+value.WATER_SURFACE.NOISE=Noise
+
+value.WATER_CHARACTER.COLD=Cold
+value.WATER_CHARACTER.BALANCED=Balanced
+value.WATER_CHARACTER.TROPICAL=Tropical
+
+value.WATER_ABSORPTION_METHOD.NO_ABSORPTION=No absorption
+value.WATER_ABSORPTION_METHOD.REFRACTION_ASSISTED=Refraction assisted
+
+option.DAY_SKY_LIGHTING=Day sky lighting
+option.DAY_SKY_LIGHTING.comment=The style of direct and ambient sky lighting used \
+	during the day.\n\n\
+	The three styles match the atmosphere presets, so pick the one that goes with \
+	the sky above you: Semi-natural keeps the sun's light close to white and its \
+	shadows natural, Fantasy warms and saturates it, and Retro flattens it towards \
+	the look of a much older shader.
+
+option.NIGHT_SKY_LIGHTING=Night sky lighting
+option.NIGHT_SKY_LIGHTING.comment=The style of direct and ambient sky lighting \
+	used at night, matching the atmosphere presets the same way the day setting \
+	does. The sun is replaced by the moon, so this decides how blue and how bright \
+	a moonlit night is.
+
+value.DAY_SKY_LIGHTING.FANTASY=Fantasy
+value.DAY_SKY_LIGHTING.SEMI_NATURAL=Semi-natural
+value.DAY_SKY_LIGHTING.RETRO=Retro
+
+value.NIGHT_SKY_LIGHTING.FANTASY=Fantasy
+value.NIGHT_SKY_LIGHTING.SEMI_NATURAL=Semi-natural
+value.NIGHT_SKY_LIGHTING.RETRO=Retro
+
+option.HELD_BLOCK_LIGHTING=Held light
+option.HELD_BLOCK_LIGHTING.comment=Whether the block or item in your hand lights \
+	the world around you, as if you were carrying it as a lamp.\n\n\
+	This is on top of the light Minecraft gives the block itself: a torch in your \
+	hand lights the ground at your feet here, where vanilla would only light the \
+	torch.
+
+option.SOFTER_SHADOWS=Softer shadows
+option.SOFTER_SHADOWS.comment=Whether the shadow map is sampled four times \
+	instead of once, each of those being a hardware-filtered 2x2 tap - sixteen \
+	texels in all.\n\n\
+	This is what keeps a shadow's edge from looking like a staircase, and it costs \
+	three extra taps.
+
+option.SHADOW_SOFTNESS=Shadow softness
+option.SHADOW_SOFTNESS.comment=How far apart the four shadow taps are placed. \
+	Higher is softer and blurrier.\n\n\
+	At the low end the taps overlap and the extra samples stop buying anything, so \
+	there is nothing to gain by lowering it below the smallest steps.
+
+option.SHADOW_DISTORT_FACTOR=Shadow distortion factor
+option.SHADOW_DISTORT_FACTOR.comment=How far the shadow sampling position is \
+	pushed along the surface normal, on faces that point away from the light.\n\n\
+	This is the fixed part of the shadow bias, and it is what decides whether \
+	shadows hold tight against the objects casting them. Lower it and contact \
+	shadows get closer and darker; raise it if surfaces show shadows they should \
+	not be casting on themselves.
+
+option.shadowMapResolution=Shadow map resolution
+option.shadowMapResolution.comment=The size of the shadow map, which decides how \
+	much detail a shadow can resolve.\n\n\
+	Higher is sharper and costs both memory and fill rate, since the whole shadow \
+	pass is redrawn at this size. If shadows look blocky at their edges, this is \
+	the setting that fixes it - softness only blurs what resolution has already \
+	resolved.
+
+option.REAL_TIME_SHADOWS=Real-time shadows
+option.REAL_TIME_SHADOWS.comment=Whether terrain, entities, and block entities \
+	cast shadows through the shadow map.\n\n\
+	With it off, only the static light map shadows remain: much cheaper, and \
+	correct for enclosed spaces, but nothing moving casts anything and the sun \
+	stops being something you can stand behind.
+
+option.DIRECTIONAL_SKYLIGHT_SHADING=Directional sky light
+option.DIRECTIONAL_SKYLIGHT_SHADING.comment=Whether the sky's ambient light \
+	depends on which way a surface faces, making an upward face brighter than a \
+	downward one.\n\n\
+	With it off, every face of a block receives the same amount of sky light, \
+	which is the flatter and more stylised of the two and the one to pick if the \
+	undersides of things look too dark.
+
+option.GODRAYS=Volumetric light
+option.GODRAYS.comment=Whether light shafts are drawn radiating from the sun, \
+	from a mask of where the sky itself is visible.\n\n\
+	This is a screen-space effect built by blurring that mask outwards, so it only \
+	knows about what is on screen: something that should block a shaft but is off \
+	the edge of the view does not.
+
+option.NIGHT_DESATURATION_EFFECT=Night desaturation
+option.NIGHT_DESATURATION_EFFECT.comment=Drains the colour out of surfaces as \
+	the light around them goes away, which is roughly what an eye does in the \
+	dark.\n\n\
+	It is applied per surface from its own sky and block light rather than to the \
+	screen as a whole, so a torch in a dark room stays fully coloured.
+
+option.SATURATED_TONEMAP=Saturated tonemap
+option.SATURATED_TONEMAP.comment=A tonemapping curve that holds on to colour as \
+	things brighten, instead of letting them wash towards white.\n\n\
+	This makes sunsets, stained glass, and light sources more colourful, and costs \
+	some detail in the brightest highlights to do it.
+
+option.DAY_ATMOSPHERE=Day atmosphere
+option.DAY_ATMOSPHERE.comment=The sky and sunlight preset used during the day.\n\n\
+	Each one changes the sky gradient, the colour of the sun, and how the \
+	atmosphere thickens with distance, so of everything here this decides what the \
+	world looks like more than any other setting. It is also what the sky lighting \
+	styles above are matched to.
+
+option.NIGHT_ATMOSPHERE=Night atmosphere
+option.NIGHT_ATMOSPHERE.comment=The sky and moonlight preset used at night, \
+	chosen separately from the day one so that a bright day and a dark night can \
+	be had at the same time.
+
+option.HARDER_HORIZON_DAY=Harder horizon (day)
+option.HARDER_HORIZON_DAY.comment=Whether the sky loses its soft gradient near \
+	the horizon and becomes a sharper band of colour. This goes with the Retro \
+	atmospheres; with the others it mostly just looks wrong.
+
+option.HARDER_HORIZON_NIGHT=Harder horizon (night)
+option.HARDER_HORIZON_NIGHT.comment=The same for the night sky. It is set \
+	separately because a sharp horizon behind the moon and a soft one behind a \
+	low sun are wanted at different times.
+
+option.BORDER_FOG=Border fog
+option.BORDER_FOG.comment=Fades the far edge of the render distance into the sky \
+	colour, so that the world does not simply stop at a hard line where it is cut \
+	off.\n\n\
+	It is fog laid over the distance rather than anything the terrain does, so it \
+	also covers the gap that Distant Horizons terrain would otherwise leave.
+
+option.ATMOSPHERE_FOG_STRENGTH_NOON=Atmosphere thickness
+option.ATMOSPHERE_FOG_STRENGTH_NOON.comment=How thick the atmosphere is at noon, \
+	which is what decides how much the distance is tinted and washed out.\n\n\
+	Lower keeps distant terrain clearer and more contrasty, which some prefer for \
+	building; higher is what makes a landscape recede convincingly.
+
+option.PLANAR_CLOUD_LAYERS=Planar clouds
+option.PLANAR_CLOUD_LAYERS.comment=Draws the clouds as flat layers of a \
+	procedural texture instead of Minecraft's own boxes.\n\n\
+	This is a different kind of cloud rather than a prettier version of the same \
+	one: it lets them be thicker and softer, lit by the sun, and lit from \
+	underneath at sunset.
+
+option.DEBUG=Debug view
+option.DEBUG.comment=Replaces the image with one of the buffers the pack works \
+	in, which is how to find out what it thinks is happening when something looks \
+	wrong.\n\n\
+	None of these are meant to be played with; they exist for working out why a \
+	scene looks the way it does.
+
+option.FREEZE_ANIMATION_TIMER=Freeze animation timer
+option.FREEZE_ANIMATION_TIMER.comment=Stops time for everything the frame timer \
+	drives - water waves, waving foliage, clouds - so that a single frame can be \
+	looked at closely without anything moving under it.\n\n\
+	Everything else keeps running: this freezes the animations, not the game.
+
+option.PREFER_FDM_GRADIENT=Prefer gradient fog
+option.PREFER_FDM_GRADIENT.comment=Works out how much fog is in front of a water \
+	surface with a coarser and cheaper method.\n\n\
+	It is an approximation of an approximation, kept because the accurate path \
+	needs derivatives that are not available in every situation. Leave it off \
+	unless the accurate path is what is giving you trouble.
+
+value.SURFACE_COLORS.WORLD_POSITION=World position
+value.SURFACE_COLORS.WORLD_NORMAL=World normal
+
+value.DAY_ATMOSPHERE.RETRO=Retro
+value.DAY_ATMOSPHERE.FANTASY=Fantasy
+value.DAY_ATMOSPHERE.SEMI_NATURAL=Semi-natural
+
+value.NIGHT_ATMOSPHERE.FANTASY=Fantasy
+value.NIGHT_ATMOSPHERE.SEMI_NATURAL=Semi-natural
+value.NIGHT_ATMOSPHERE.RETRO=Retro
+
+value.DEBUG.DEBUG_NONE=None
+value.DEBUG.DEBUG_GODRAYS_NOISY=Noisy godrays
+value.DEBUG.DEBUG_GODRAYS_SMOOTH=Smooth godrays
+value.DEBUG.DEBUG_SKYLIGHT=Sky light
+
+value.ATMOSPHERE_MODEL.GRADIENT=Gradient
+value.ATMOSPHERE_MODEL.MINISHITA=Physical
+
+value.TONEMAP.TONEMAP_UCHIMURA=Uchimura
+value.TONEMAP.TONEMAP_UNCHARTED2=Uncharted 2

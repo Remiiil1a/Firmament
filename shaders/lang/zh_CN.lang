@@ -1,0 +1,400 @@
+option.STEADFAST=Steadfast Shaders
+option.STEADFAST.comment=由coderbot16制作, Iris 的原始开发者. 
+	这是一个封闭测试版 - §c§l请不要公开分发！
+value.STEADFAST.BY_CODERBOT=by coderbot16
+
+option.FIRMAMENT=Firmament - v0.1 (edit of coderbot's Steadfast)
+option.FIRMAMENT.comment=由 Remiiil1a 制作的 Steadfast 修改版。加入了 labPBR 材质支持（法线、高光、视差、次表面散射、自发光贴图，以及材质反射）与末地维度支持。\n\n\
+	原光影为 coderbot 开发的 Steadfast，可从 https://modrinth.com/shader/steadfast-shaders（Modrinth）、https://www.curseforge.com/minecraft/shaders/steadfast（CurseForge）或 https://github.com/coderbot16/Steadfast（GitHub）下载。任何人都可以按 GNU 通用公共许可证第 3 版的条款修改和分发它。Steadfast 的附加条款要求修改版的名称以“(edit of coderbot's Steadfast)”结尾，本修改版因此这样命名。\n\n\
+	材质部分参考了 TheCMK 的 Mellow Shader v3.4，其许可要求保留署名。这里用到的都是公开的 BRDF 与 labPBR 规范中的数学，而不是他们的代码，也没有使用他们的任何素材或标志。\n\n\
+	本包不是 Steadfast 的官方发行版，coderbot 不为它提供支持。完整许可摘要见 NOTICE.md 与 README.md。
+value.FIRMAMENT.BY_REMIIIL1A=由 Remiiil1a 修改
+
+option.MELLOW_PBR=材质支持
+option.MELLOW_PBR.comment=本包的材质（PBR）支持参考了 TheCMK 的 Mellow Shader v3.4。其许可要求保留署名，并要求不要把他们的名称、标志与截图用在其它项目上——因此这里的数学是照着 Steadfast 的风格重写的，而不是直接搬运。GGX 分布、Smith 可见项、Schlick 菲涅耳、Henyey-Greenstein 相位函数与 labPBR 1.3 的通道布局都是公开规范。\n\n\
+	Mellow 包中没有任何内容被直接引入：材质解码、反射与屏幕空间追踪都是 Steadfast 自己的代码。Mellow 的 MIT 许可文本收录为 LICENSE-MELLOW-MIT.txt。
+value.MELLOW_PBR.BY_THECMK=Mellow Shader v3.4, by TheCMK
+
+profile.EDIT_DEFAULT=§2✎ EDIT默认 style§r
+profile.MINISHITA_HIGH=§a物理(WIP)§r style - §b🔥 高§r
+profile.MINISHITA_HIGH=§a物理(WIP)§r style - §b🔥 高§r
+profile.MINISHITA_MEDIUM=§a物理(WIP)§r style - §a» 中§r
+profile.MINISHITA_LOW=§a物理(WIP)§r style - §e↓ 低§r
+profile.MINISHITA_TOASTER=§a物理(WIP)§r style - §c▶ 土豆§r
+profile.PARAGON_HIGH=§a★ 经典§r style - §b🔥 高§r
+profile.PARAGON_MEDIUM=§a★ 经典§r style - §a» 中§r
+profile.PARAGON_LOW=§a★ 经典§r style - §e↓ 低§r
+profile.PARAGON_TOASTER=§a★ 经典§r style - §c▶ 土豆§r
+profile.FANTASY_HIGH=§d🪄 梦幻§r style - §b🔥 高§r
+profile.FANTASY_MEDIUM=§d🪄 梦幻§r style - §a» 中§r
+profile.FANTASY_LOW=§d🪄 梦幻§r style - §e↓ 低§r
+profile.FANTASY_TOASTER=§d🪄 梦幻§r style - §c▶ 土豆§r
+profile.SEMI_NATURAL_HIGH=§b🗻 半自然§r style - §b🔥 高§r
+profile.SEMI_NATURAL_MEDIUM=§b🗻 半自然§r style - §a» 中§r
+profile.SEMI_NATURAL_LOW=§b🗻 半自然§r style - §e↓ 低§r
+profile.SEMI_NATURAL_TOASTER=§b🗻 半自然§r style - §c▶ 土豆§r
+profile.RETRO_MEDIUM=§6😎 复古§r style - §a» 中§r
+profile.RETRO_LOW=§6😎 复古§r style - §e↓ 低§r
+profile.RETRO_TOASTER=§6😎 复古§r style - §c▶ 土豆§r
+profile.comment=\
+	§a★ 经典§r: Steadfast 的旗舰风格。色彩丰富且赏心悦目，经典风格将半自然（白天）风格和梦幻（夜晚）风格融合在一起，是 Steadfast 所能提供的最棒选择.\n\n\
+	\
+	§d🪄 梦幻§r: 一种强调蓝色和黄色的温暖风格。幻想风格的灵感来自Chocapic13着色器的经典外观，以及像Sildur着色器这样的修改版本.\n\n\
+	\
+	§b⛰ 半自然§r: 一种明亮、注重写实的风格。半自然风格从 SEUS v10.1 时代更明亮、更冷的美学中汲取灵感，并近似一种更“自然”/“真实”的外观.\n\n\
+	\
+	§6😎 复古§r: 一种温暖、舒适且非常轻盈的款式。复古风格是 2012 年着色器的致敬，削弱了 
+阳光和阴影，没有阳光的方向性阴影（比如内部的着色器），以及原版水质纹理.\n\n\
+	\
+	§b🔥 高§r / §a» 中§r / §e↓ 低§r / §c▶ 土豆§r - Pre-tuned \
+	在质量和性能之间做权衡，让你可以根据你的设备调整 Steadfast..\n\n\
+	\
+	§2✎ EDIT默认 style§r: 本修改版自带的配置。是 Steadfast 原本的外观，加上按调校值开启的材质选项。色彩、大气模型、色调映射与天空都沿用 Steadfast 的默认值，因此试过其它风格之后，也可以用这一项回到原来的样子。
+
+screen.EFFECTS=特效与后期处理
+screen.WATER=水体与彩色玻璃
+screen.ATMOSPHERE_CLOUDS=大气与云层
+screen.LIGHTING=光照与阴影
+screen.PBR=材质（PBR）
+screen.PBR_MATERIALS=材质贴图与细节
+screen.PBR_RESPONSE=表面响应与反射
+screen.PBR_COVERAGE=覆盖范围
+screen.DEVELOPMENT=开发与调试选项
+screen.ABOUT=制作与许可
+
+option.shadowDistance=阴影渲染距离
+value.shadowDistance.32.0=最低（2区块）
+value.shadowDistance.48.0=极低（3区块）
+value.shadowDistance.64.0=低（4区块）
+value.shadowDistance.80.0=低（5区块）
+value.shadowDistance.96.0=低（6区块）
+value.shadowDistance.112.0=中等（7区块）
+value.shadowDistance.128.0=中等（8区块）
+value.shadowDistance.144.0=中等（9区块）
+value.shadowDistance.160.0=标准（10区块）
+value.shadowDistance.192.0=高（12区块）
+value.shadowDistance.256.0=极致（16区块）
+option.shadowDistance.comment=The shadow render distance controls how far away \
+	terrain can potentially cast or receive real-time shadows.\n\n\
+	Terrain outside of this distance will cast and receive approximate, static \
+	shadows based on skylight.\n\n\
+	Lower distances mean that less terrain will be rendered, improving frame \
+	rates.\n\n\
+	The actual shadow render distance is capped by the View Distance setting \
+	in Video Settings..
+
+option.SURFACE_COLORS=表面色彩模式
+value.SURFACE_COLORS.STANDARD=标准模式
+value.SURFACE_COLORS.NONE=关闭（纯白世界）
+value.SURFACE_COLORS.VERTEX_COLOR=顶点色（保留植被颜色）
+value.SURFACE_COLORS.WORLD_POSITION=世界位置
+value.SURFACE_COLORS.WORLD_NORMAL=世界正常
+option.SURFACE_COLORS.comment=当选择“无”时，对象的基础颜色将被忽略，所有表面都统一视为白色。使用顶点颜色时，只会忽略纹理颜色，因此树叶仍然是绿色。适合用于调试光照。Alpha测试仍然会被应用。
+
+option.PBR_FORMAT=材质格式
+value.PBR_FORMAT.PBR_OFF=关闭
+value.PBR_FORMAT.LAB_PBR=LabPBR
+option.PBR_FORMAT.comment=是否读取 PBR 资源包提供的法线贴图（_n）与高光贴图（_s），遵循 shaderLABS 的 LabPBR 1.3 标准。下面每一项材质效果都可以在此之上单独关闭。\n\n只影响方块图集，也就是地形以及放置和手持的方块。实体、手持物品与 Distant Horizons 远景地形的光照与之前完全一致。\n\n在没有 PBR 资源包时，如果不想承担读取材质贴图的开销，可以设为“关闭”。没有法线或高光贴图的资源包会被解码为平坦法线、无反射、无发射，所以保持开启同样是安全的。.
+
+option.PBR_PARALLAX=视差映射
+option.PBR_PARALLAX.comment=用法线贴图 alpha 通道中的高度数据位移表面，让贴图中较深的部分看起来更靠后，表面因此产生真实的凹凸纵深。\n\n这是最耗性能的一项材质效果：它会沿视线逐层追踪表面，开销由下面的层数决定。\n\n效果会随距离淡出；高度通道为平坦的资源包几乎不产生开销。
+
+option.PBR_PARALLAX_STEPS=视差层数
+option.PBR_PARALLAX_STEPS.comment=视差光线追踪的层数。每层需要一次贴图采样，层数越多，在接近平视的角度下对高度场的还原越准确。\n\n层数太少会在掠射视角下出现条带；太多则纯属浪费采样。
+
+option.PBR_PARALLAX_REFINE=视差细化步数
+option.PBR_PARALLAX_REFINE.comment=用多少步二分搜索来精确定位视线与高度场的交点。\n\n分层行进只能落在层边界上，而高度通道通常只占其取值范围的一小部分，真正落在起伏范围内的层很少。不做细化时，贴图会在几个离散位置之间跳变，而不是连续贴合表面。\n\n每步多一次贴图采样；设为 0 即关闭细化。
+
+option.PBR_PARALLAX_DEPTH=视差深度
+option.PBR_PARALLAX_DEPTH.comment=高度场最深处的深度，单位为方块。\n\nLabPBR 要求资源包把该值控制在大约四分之一个方块以内，因此明显超过 0.25 的取值在多数资源包上都会显得失真。
+
+option.PBR_PARALLAX_MAX_OFFSET=最大位移
+option.PBR_PARALLAX_MAX_OFFSET.comment=单个采样点最多被位移多少方块。\n\n掠射视角会把位移除以视线倾角，若不限制就会把采样拖进方块图集中相邻的 sprite，读到的材质数据属于别的方块——表现为地面上距玩家固定距离处出现一条明显的分界线。\n\n如果看到这种分界线，调低这一项；代价是掠射角下的纵深感会减弱。
+
+option.PBR_PARALLAX_DISTANCE=视差距离
+option.PBR_PARALLAX_DISTANCE.comment=视差映射开始淡出、直至完全停止的距离（米）。\n\n超过一定距离后，一个屏幕像素覆盖的范围已经超过整个高度范围，此时光线追踪只会白白付出采样开销并产生闪烁。
+
+option.PBR_PARALLAX_SHADOW=视差自阴影
+option.PBR_PARALLAX_SHADOW.comment=高度场是否对自身投射阴影。\n\n单纯的视差映射只是把贴图挪来挪去：凸起部分不会让身后的区域变暗，于是表面看起来就像贴在方块上的一张平移的平面图。让高度场对着光线做遮蔽，才能让凸起的侧面看起来真的像侧面——这是提升"深度感"最明显的一项。\n\n每像素多一轮贴图采样；高度通道为平坦的材质会完全跳过。
+
+option.PBR_PARALLAX_SHADOW_STRENGTH=自阴影强度
+option.PBR_PARALLAX_SHADOW_STRENGTH.comment=高度场阴影的深度，1.0 表示完全遮蔽。\n\n在高度通道起伏非常剧烈的资源包上，数值过高会让阴影看起来像污渍。
+
+option.PBR_TANGENT_ATTRIBUTE=使用几何切线
+option.PBR_TANGENT_ATTRIBUTE.comment=是否用几何体自身携带的切线构建材质切线基，而不是从屏幕空间导数重建一个。\n\n导数路线必须先由深度缓冲重建表面位置再求导，而深度缓冲是有量化的：超过一定距离后，相邻两像素之间的深度台阶会比这两个像素在表面上的实际间距还大，切线基便不再描述该表面，法线贴图随之沿与材质无关的轴弯折法线。\n\n症状就是从某个固定距离开始，法线贴图看起来整体反转，而且靠 mip 或视差参数都调不掉——因为出问题的不是它们。这个距离取决于深度缓冲的精度与表面的掠射程度，与资源包无关。\n\n顶点切线没有这个问题：它来自四边形本身，在平面三角形上插值是精确的。本项默认开启，因为它属于正确性修复而非风格调整。\n\n关闭它可以对比两种方案。完全不携带切线的几何体会自动退回旧方法，因此生物与模组模型不会因此出错。
+
+option.PBR_NORMAL_MAP=法线映射
+option.PBR_NORMAL_MAP.comment=是否用法线贴图弯折表面法线，这是让贴图细节随光照方向产生明暗变化的关键。\n\n关闭后，同一张贴图的高度通道仍可供视差映射使用，两者可以独立开关。
+
+option.PBR_NORMAL_STRENGTH=法线强度
+option.PBR_NORMAL_STRENGTH.comment=法线贴图能弯折表面法线的程度。\n\n如果细节存在但太不明显，调高这一项；如果光照开始显得杂乱或发脏，调低它。
+
+option.PBR_MATERIAL_MAX_LOD=材质细节上限
+option.PBR_MATERIAL_MAX_LOD.comment=方块图集的材质贴图最多允许采样到第几级 mip。默认值 0 表示任何距离都采样全分辨率贴图。\n\n方块图集里，精灵（sprite）之外没有任何有效数据，而空texel 是纯黑的——黑色对法线贴图并不是中性值。当某一级 mip 的一个 texel 粗到会伸进那片空白时，精灵边缘附近的每次采样都会取到黑色，表面的法线贴图就会看起来被整体倾斜甚至反转。由于 mip 级别随距离增大，这个现象表现为离玩家固定距离处地面上的一条硬边分界线；资源包分辨率越高，这条线越近。\n\n调高这一项可以恢复远处材质贴图的过滤，代价是那个瑕疵可能重新出现——下方的“法线淡出距离”就是为此准备的。想先看清某个距离究竟落在第几级，可以先用“材质细节上限”这个调试视图。
+
+option.PBR_NORMAL_FADE_LOD=法线淡出距离
+option.PBR_NORMAL_FADE_LOD.comment=法线贴图完全淡出为平坦表面的 mip 级别，从该值约 40% 处开始逐渐淡出。\n\n比一个屏幕像素还细的法线贴图无法被分辨，在远处只会闪烁。把它淡出可以在保留材质颜色与反射的同时消除这些噪点。\n\n远处地形显得噪杂就调低；宁可保留表面细节、接受一些闪烁就调高。
+
+option.PBR_MATERIAL_AO=材质环境光遮蔽
+option.PBR_MATERIAL_AO.comment=是否用资源包烘焙在法线贴图蓝通道里的遮蔽信息，压暗到达该像素的环境光与方块光。\n\n蓝通道是 LabPBR 存放在法线贴图里的第三项数据：X、Y 是法线，alpha 是高度，蓝色是遮蔽。它由方块自身的结构烘焙而来——砖块内部、木板边角、树叶之间的空隙，而 Minecraft 的顶点环境光遮蔽只知道方块棱角，生成不了这些细节。\n\n默认关闭，因为它是唯一会改变熟悉方块亮度的材质功能：遮蔽烘焙得重的资源包会让整个世界比 Steadfast 原始渲染更暗。开启之前，建议先用材质调试视图里的「遮蔽通道」看看这个资源包究竟烘焙了什么。\n\n只影响环境光与方块光。阳光交给阴影贴图与视差自阴影处理，被阳光照到的表面不会被压暗两次。
+
+option.PBR_MATERIAL_AO_STRENGTH=遮蔽强度
+option.PBR_MATERIAL_AO_STRENGTH.comment=应用多少遮蔽。1.0 表示完全按资源包烘焙的数值使用；如果资源包做得过重就调低。\n\n「材质环境光遮蔽」关闭时此项无效。
+
+option.PBR_SPECULAR=镜面高光
+option.PBR_SPECULAR.comment=是否用高光贴图中的光滑度与反射率（F0）计算镜面高光。\n\n粗糙表面得到宽而柔的光泽，光滑表面得到锐利的高光——这正是抛光石材与塑料的区别所在。
+
+option.PBR_SPECULAR_STRENGTH=高光强度
+option.PBR_SPECULAR_STRENGTH.comment=镜面反射的强度。\n\n1.0 是物理正确的取值，但真实的电介质只反射约 4% 的入射光，而 Steadfast 的色调映射又会进一步压缩高光，因此物理正确值远没有大多数人期待的“反光”那么明显。\n\n如果表面看起来仍然发闷，调高这一项；如果一切都显得湿滑或像塑料，就往 1.0 回调。\n\n开启「能量守恒」后，1.0 才是使光照收支平衡的取值，高于它的部分都属于刻意的过反射。
+
+option.PBR_ENERGY_CONSERVATION=能量守恒
+option.PBR_ENERGY_CONSERVATION.comment=是否用“表面没有反射掉的那部分光”来加权漫反射，使漫反射与高光相加不会超过入射的总光量。\n\n菲涅耳决定这个分配：表面会反射一部分入射光，其余透入材质内部，而透入的那部分才是漫反射响应的来源。不做这个分配而直接把两者相加，正是光滑表面能亮过入射光的原因，也是金属——它反射掉了大部分光，本应几乎没有漫反射——仍然保留一半漫反射响应、看起来像亮塑料的原因。\n\n默认关闭，因为它会一次性改变所有带高光贴图的材质亮度。建议配合把「高光强度」设为 1.0 使用，那是收支平衡的取值；2.0 原本只是为了对抗色调映射的压缩。\n\n注意：明亮的金属（金、银、铝）在洞穴与夜间会明显变暗。这在物理上是正确的，但视觉变化很大，值得先试再决定。\n\n「天空反射」是它的天然搭档：当金属的漫反射响应被去掉之后，它反射的东西正是让金属看起来像金属、而不是像地上一个洞的原因。
+
+option.PBR_REFLECTIONS=天空反射
+option.PBR_REFLECTIONS.comment=材质是否以带方向、带粗糙度的方式反射天空，而不是反射周围光线的均匀一片。\n\n不开启时，材质唯一能反射的环境就是该点周围的环境光，而它没有方向：抛光方块无论朝哪一面都反射同样的东西，粗糙表面也与镜面一样反光。开启后，颜色取自反射方向上的天空模型：朝向太阳的一面反射天空较亮的部分，背向它的一面反射较暗的部分；粗糙表面则会把反射方向朝自身法线偏折，最终反射的是头顶上方的天空，而不是镜面倒影。\n\n单独开启时它只反射天空，不反射世界；下方「屏幕空间反射」才会把世界一并加进来——这一项负责的是始终可用的那部分，也是射线没打中任何东西时的回退。\n\n每个被覆盖的像素都要计算一次天空模型，因此它是这里最昂贵的一项；帧率吃紧时可以先关掉它。
+
+option.PBR_REFLECTIONS_STRENGTH=天空反射强度
+option.PBR_REFLECTIONS_STRENGTH.comment=天空反射的强度。1.0 是调校时使用的取值。\n\n「天空反射」关闭时无效；在室内与地下同样无效，因为那里没有天空可反射。
+
+option.PBR_REFLECTIONS_ROUGHNESS=粗糙度扩散
+option.PBR_REFLECTIONS_ROUGHNESS.comment=粗糙表面把反射方向朝自身法线偏折多少。\n\n1.0 时完全粗糙的表面朝向正上方，也就是它上方天空的平均色；0.0 时粗糙度完全不影响方向，粗糙表面会显示与抛光表面相同的镜面倒影。\n\n「天空反射」关闭时无效。
+
+option.PBR_REFLECTION_SKY_MIN=反射所需天空曝光
+option.PBR_REFLECTION_SKY_MIN.comment=表面需要看到多少天空，才会反射天空。\n\nMinecraft 的天空光会在屋檐下横向扩散，也会直接穿过玻璃，因此一个方块可能被照得像在户外，而实际上从它那里看不到任何天空——浅洞穴地板上的抛光方块映出正午天空，就是这么来的。把这一项保持在高位就是用来挡住这种情况的。\n\n它唯一解决不了的情况是"透过玻璃窗受光"的表面：那种表面的天空光是 15，与露天表面完全相同，这里可用的信息无法区分二者。如果你更希望室内也有反射、并接受洞穴里也有，就把这一项调低。\n\n它只影响反射中的天空部分。追踪射线找到的东西本身就已经带有它所在位置的亮度，所以洞穴里金属映出洞壁这件事不受影响。
+
+option.PBR_SSR=屏幕空间反射
+option.PBR_SSR.comment=材质的反射是否可以包含世界而不只是天空——做法是让反射射线穿过深度缓冲去追踪。\n\n只有天空反射时，所有带反射率的表面都会染上同一层天空色，看起来更像一层霜而不是反射。开启后，抛光方块会映出地形、树木，以及射线在屏幕上找到的一切。\n\n它只能反射屏幕内的东西，而且只能取上一帧：着色器看不到你背后的画面，而当前正在绘制的这一帧在计算反射时尚未完成。射线没打中任何东西时回退到天空，因此结果是渐变地退化为「只有天空」，而不是什么都没有。\n\n开销很大：每个通过粗糙度上限的像素都要追踪一次；它要花多少开销、作用于哪些表面，由下方两个选项决定。帧率吃紧时可以先关掉它。
+
+option.PBR_SSR_STEPS=反射追踪步数
+option.PBR_SSR_STEPS.comment=反射追踪最多走多少步。\n\n只有材质反射使用这一项；水面反射有自己的预算——把这么多步花在一片水和花在屏幕里每一个光滑像素上，是两件事。\n\n步数越多，越容易命中、命中后细化得越好；而代价无论是否命中都要付出，所以如果反射开销太高，这是第一个该调低的选项。
+
+option.PBR_SSR_ROUGHNESS=粗糙度上限
+option.PBR_SSR_ROUGHNESS.comment=表面粗糙到这个值之前，反射里才会加入世界内容。\n\n超过这个值就只剩天空项：粗糙表面会把反射方向散射到过宽的范围，单次锐利采样无法代表它，硬要追踪就会给它一个不该有的镜面倒影。\n\n调高可以让更粗糙的表面也映出世界，代价更高，而且那些反射会比应有的更锐利——这里背后没有模糊，只有一个方向。
+
+option.PBR_DEFAULT_MATERIAL=默认材质
+option.PBR_DEFAULT_MATERIAL.comment=资源包没有提供可用高光数据的方块，是否退回为普通电介质处理。\n\n很多资源包给所有方块都做了法线贴图，但只为部分方块做了高光贴图；没有高光贴图的方块会被解码成“无反射且完全粗糙”，看起来就像着色器根本没生效。\n\n关闭此项可以完全忠于资源包的原始数据，包括那些本该哑光的方块。
+
+option.PBR_DEFAULT_ROUGHNESS=默认粗糙度
+option.PBR_DEFAULT_ROUGHNESS.comment=上述回退材质所使用的粗糙度，数值越低越光滑。\n\n当资源包完全没有高光贴图时，普通方块看起来就是这样，因此这一项决定了方块的基准光泽。
+
+option.PBR_METALS=硬编码金属
+option.PBR_METALS.comment=是否使用 LabPBR 为铁、金、铝、铬、铜、铅、铂、银硬编码的反射率数值。\n\n关闭后，这些材质会按“基于反照率的金属”处理，效果仍远好于把它们当作普通电介质。
+
+option.PBR_METAL_DIFFUSE=金属漫反射
+option.PBR_METAL_DIFFUSE.comment=金属保留多少漫反射响应。\n\n现实中金属完全没有漫反射，但 Steadfast 的不透明方块没有环境反射，完全金属化的表面就只剩高光，在洞穴里会变成一块黑斑。\n\n0.0 保留全部漫反射，看起来像彩色塑料；1.0 完全去除，物理正确但在室内会非常暗。
+
+option.PBR_SUBSURFACE=次表面散射
+option.PBR_SUBSURFACE.comment=是否加入穿过薄表面散射出来的光，数量取自资源包存放在高光贴图蓝通道里的数值。\n\nLabPBR 把这个通道一分为二：0 到 64（满值 255）是孔隙度，64 以上表示材质能透过多少光。树叶、草、纸这类薄材质用的就是上面一段；这项效果加的是逆光树叶的透光感——光穿过表面而不是被表面反射，所以最亮的一面是背对太阳的那一面。\n\nSteadfast 原本已经会根据方块是否为树叶或草，从各个方向提亮植被。这一项让该效果改为跟随贴图，于是资源包可以单独把某一种树叶或某一株草标记为薄的，并在此基础上叠加带方向的透光。\n\n该通道里没有数据的材质完全不受影响，因此它不可能把实心方块照亮。
+
+option.PBR_SSS_STRENGTH=散射强度
+option.PBR_SSS_STRENGTH.comment=加入多少散射光。0.7 是该效果调校时使用的取值。\n\n想让树叶透光更明显就调高；如果植被看起来像自己在发光而不是被太阳照亮，就调低。
+
+option.PBR_POROSITY_WETNESS=湿润的多孔表面
+option.PBR_POROSITY_WETNESS.comment=资源包标记为多孔的材质在潮湿时是否变暗——这正是砖块、泥土、木材在雨后显得“泡湿了”而不是“只是变亮”的原因。\n\nLabPBR 把孔隙度存放在高光贴图蓝通道的下半段。多孔材质的光响应来自内部散射，水填满这些孔隙后散射就消失了，于是表面变暗，只剩下湿润的光泽。\n\n变暗量按天空光缩放，因此只发生在露天：火把照亮的地窖在雨天与晴天看起来一样。\n\n它只在雨天、且只在资源包标记为多孔的材质上显现，因此在别处没有代价。用材质调试视图里的「孔隙度／散射通道」可以看哪些材质属于这一类——偏暗的数值就是孔隙度。
+
+option.PBR_TRANSLUCENT=冰与玻璃的 PBR
+option.PBR_TRANSLUCENT.comment=冰与玻璃等半透明固体是否从资源包读取反射率与法线。\n\n冰由半透明通道绘制，而该通道给水 0.1 的反射率、给其它一切 0——所以无论资源包为冰写了什么，冰面目前除了掠射角之外几乎不反射任何东西。开启这一项后，冰会像普通方块一样被解码，它本来就有的那套反射也就变成了该材质的反射。\n\n水被有意排除在外：Steadfast 的水是动态表面，法线来自它自己的波浪模型，而资源包里的水材质描述的是比当前绘制的表面更薄、更光滑的东西。\n\n关掉它可以看到资源包原本的冰雪外观。
+
+option.PBR_HAND_ITEMS=手持物品的 PBR
+option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质。\n\n手持方块取自方块图集，因此它携带的材质数据与放在地上的同一方块完全一致——开启后，手里的石头就不会在旁边的墙有材质表现时显得平淡。手持的非方块物品同样按该方式从资源包读取材质。\n\n默认开启，让世界保持一致：手持方块与放在地上的同一方块材质表现相同。
+
+option.PBR_ENTITIES=实体的 PBR
+option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。\n\n这一项是实验性质，开启它本身就是验证方式：只有方块图集被 Iris 与 OptiFine 构建法线／高光贴图，因此实体也可能被套上某个方块的材质数据，而不是它自己的。\n\n验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」。如果是一片均匀的画面，说明该实体没有绑定材质数据，应当把这一项关回去；如果画面里有随生物贴图变化的细节、能与它的贴图对上，说明可行。\n\n默认开启：如果资源包没有为实体提供材质贴图，这一项也读不到任何东西。如果按上面的方法验证后发现它取到的是别的方块的材质，就把它关掉。
+
+option.PBR_DEBUG=材质调试视图 [build 15]
+value.PBR_DEBUG.PBR_DEBUG_NONE=关闭
+value.PBR_DEBUG.PBR_DEBUG_HEIGHT=高度通道
+value.PBR_DEBUG.PBR_DEBUG_SMOOTHNESS=光滑度
+value.PBR_DEBUG.PBR_DEBUG_F0=反射率（F0）
+value.PBR_DEBUG.PBR_DEBUG_NORMAL=法线
+value.PBR_DEBUG.PBR_DEBUG_MIP=材质细节上限
+value.PBR_DEBUG.PBR_DEBUG_TANGENT_NORMAL=切线空间法线
+value.PBR_DEBUG.PBR_DEBUG_MATERIAL_AO=遮蔽通道
+value.PBR_DEBUG.PBR_DEBUG_SUBSURFACE=孔隙度／散射通道
+value.PBR_DEBUG.PBR_DEBUG_EMISSION=发射光
+option.PBR_DEBUG.comment=用材质数据的可视化替换画面，这是判断资源包到底提供了哪些数据最快的方法。\n\n选“高度通道”后看一个方块：如果它是均匀的灰色，说明该资源包对这个方块没有高度数据，再怎么调视差参数也不会有位移。\n\n“切线空间法线”显示的是资源包原始的法线贴图内容，尚未套用方块朝向：平坦法线呈浅蓝色，纯黑则说明取到了精灵之外的texel——那会解码成强烈的倾斜而不是平坦。把它和“法线”对照，就能区分问题出在采样还是在切线坐标系上。\n\n「遮蔽通道」就是「材质环境光遮蔽」所读取的数据：如果某个方块显示为均匀的白色，说明该资源包没有为它提供遮蔽数据，这项功能在那个方块上无事可做。\n\n「孔隙度／散射通道」是它在高光贴图上的对应项：纯黑表示资源包没有在该通道存放数据，暗色是孔隙度，更亮的颜色则表示材质透光。
+
+option.TAA=时间抗锯齿（TAA）
+value.TAA.TAA_OFF=关闭
+value.TAA.TAA_ON=开启
+option.TAA.comment=默认关闭，因为它是在画面稳定性和平滑度之间做取舍的一项效果。\n\n开启后每帧用略微偏移的亚像素位置渲染，再把连续多帧平均起来，使每个像素在多个位置上被采样而不是只采一次。这样能用远低于提高分辨率的代价，消除单帧无法解决的边缘锯齿。\n\nSteadfast 没有运动矢量，因此自身会移动的东西——实体、水面、粒子、手持物品——无法被正确重投影，只能通过丢弃与当前帧不符的历史来处理。\n\n如果贴图看起来发糊或发涂抹：把「历史钳制范围」调低、把「锐化」调高，或把「抗锯齿强度」降到 0.75。\n\nVoxy 地形不在覆盖范围内，因为它的顶点端由 Voxy 模组提供，而不是这些顶点着色器。
+
+option.TAA_STRENGTH=抗锯齿强度
+option.TAA_STRENGTH.comment=每帧保留多少已累积的历史。\n\n数值越高细节保留越多、噪点越少，代价是运动物体后面的拖影更明显。
+
+option.TAA_JITTER=抖动半径
+option.TAA_JITTER.comment=亚像素偏移的半径，单位为像素。\n\n1 像素表示每帧的采样点可以落在像素内的任意位置，这是抗锯齿滤波应有的取值。设为 0 则关闭偏移，此时该通道仍在运行，但没有可平均的内容。
+
+option.TAA_CLAMP=历史钳制范围
+option.TAA_CLAMP.comment=允许历史像素超出当前帧邻域多少个标准差。\n\n这是防止运动物体把旧画面拖在身后的关键，也是防止贴图被慢慢平均成一片涂抹的关键。画面闪烁就调高，表面发糊或发涂抹就调低。
+
+option.TAA_SHARPEN=锐化
+option.TAA_SHARPEN.comment=对合成后的画面做多少锐化，以补偿多帧平均带来的软化。\n\n少量即可，过多会把抗锯齿本要消除的锯齿重新带回来。
+
+option.PBR_EMISSION=发射光
+option.PBR_EMISSION.comment=是否把高光贴图 alpha 通道中的发射强度叠加到表面颜色上。\n\n发光方块会以自身颜色自发光，不受周围光照影响，同时仍会随距离被雾正确衰减。
+
+option.PBR_EMISSION_STRENGTH=发射强度
+option.PBR_EMISSION_STRENGTH.comment=资源包提供的发射光有多亮。\n\nLabPBR 把它存成表面颜色的一个比例，这个值本身通常不足以让人看出“自发光”，因为色调映射会立刻把它压回去。
+
+option.BLOCK_EMISSION=方块自发光
+option.BLOCK_EMISSION.comment=光源方块是否以自身颜色发光：萤石、海晶灯、岩浆、火把等。\n\n与上面那项不同，这一项不需要资源包提供任何数据——它用的是 Iris 和 OptiFine 写在光照贴图里的“可发光面”标记。\n\n它点亮的是方块本身，而不是周围环境；它投到邻近方块上的光已经属于方块光照的一部分了。
+
+option.BLOCK_EMISSION_STRENGTH=自发光强度
+option.BLOCK_EMISSION_STRENGTH.comment=方块自发光的亮度。\n\n高于 1.0 会把表面推到色调映射的白点之上，这正是光源应有的样子。
+
+option.BLOCKLIGHT_STRENGTH=方块光强度
+option.BLOCKLIGHT_STRENGTH.comment=方块光在满亮度（光照等级 15）时有多亮。\n\n方块光的**颜色**现在取自光照贴图本身——那是资源包表达“我的光是什么颜色”的方式，光影照抄即可，不再自己挑一个。但光照贴图里烘焙着它自己的衰减曲线，而这个光影用的是自己那套，所以亮度仍然由这里决定。\n\n调高会让火把照亮的区域更亮，调低更暗；它不影响光的颜色。
+
+option.LIGHT_TINT_STRENGTH=光色染色强度
+option.LIGHT_TINT_STRENGTH.comment=表面在多大程度上“变成”附近光源的颜色，而不只是额外叠一层光。\n\n只靠叠光没法把一面被橙色照亮的墙变成蓝色：墙本身已经有一层很浓的橙色，往上倒蓝色只会得到更淡的橙色。这一项同时把表面自身的颜色朝着附近光的颜色拉过去——这才是被蓝光照亮的表面真正会做的事：它反射的主要是蓝色。\n\n作用范围会随距离自动衰减，因为它是被“附近有多少光源”驱动的。调高颜色更浓，调低更接近原来的样子。
+
+option.MIN_AMBIENT_BRIGHTNESS=最低环境光亮度
+option.MIN_AMBIENT_BRIGHTNESS.comment=环境光的亮度下限：无论有没有光源照到，每个表面至少会被照亮的程度。\n\nSteadfast 的环境光由天光驱动，因此任何没有自身光源的地方——洞穴内部、下界，以及完全没有天光的末地——亮度都接近全黑。\n\n这里的数值是线性光，所以看着很小：默认的 0.01 已经是原本下限的好几倍。调到暗处能看清为止；调回 0.0 就是光影原本的样子。
+
+option.COLORED_LIGHTS=彩色光源
+option.COLORED_LIGHTS.comment=光源方块是否使用它真正发出的光的颜色——灵魂灯笼的蓝、红石火把的红——而不是光影为所有方块光统一使用的暖橙色。\n\nMinecraft 只告诉着色器某个位置收到了多少光，不会告诉它光是什么颜色、来自哪个方块，所以这件事分成两部分做：正在发光的方块本身取自己光的颜色，这是唯一能确定光源身份的地方；它周围表面则由一个屏幕空间的光色扩散来染色，把画面上光源的颜色洒到附近表面上。\n\n关闭此项会同时去掉这两部分，并完全跳过错扩散通道，因此这也是最省性能的档位。
+
+option.COLORED_LIGHTS_STRENGTH=光源自身配色
+option.COLORED_LIGHTS_STRENGTH.comment=光源方块自身的表面在多大程度上取自己光的颜色，而不是它贴图的颜色。\n\n1.0 表示完全用光的颜色照亮；无论如何都会保留贴图的明暗变化，所以火把看起来仍然是火把，而不是一个纯色方块。如果资源包在发光部位的贴图上有你想保留的细节，就调低这一项。
+
+option.LIGHT_BLEED_STRENGTH=光色扩散强度
+option.LIGHT_BLEED_STRENGTH.comment=画面上的光源把光洒到周围表面上的强度。\n\n这就是让灵魂灯笼把旁边的墙染蓝、让岩浆把周围石头染橙的那一项。它是“加光”而不是“改色”，因此已经被方块光照得很橙的表面底色仍然是橙的——调到颜色能看出来为止；如果光源附近的表面发白就调低。
+
+option.LIGHT_BLEED_RADIUS=光色扩散半径
+option.LIGHT_BLEED_RADIUS.comment=颜色扩散的距离，单位为 1080p 下的像素，会按你的分辨率缩放。\n\n这一项不额外消耗性能，采样次数是固定的。数值过大会把光源的颜色铺满大半个屏幕，那时它就不再像是从这个光源发出的光了。
+
+option.LIGHT_BLEED_DEPTH=光色扩散深度容差
+option.LIGHT_BLEED_DEPTH.comment=两个像素的深度相差多少之内，光还可以在它们之间扩散。\n\n没有这一项，光源会直接穿过墙壁照到墙前的东西上。如果颜色在物体边缘断得太生硬就调高；如果光看起来穿透了它背后的墙就调低。
+
+option.END_SKY=末地天空
+value.END_SKY.END_SKY_AUTO=仅末地
+value.END_SKY.END_SKY_ALWAYS=所有维度
+value.END_SKY.END_SKY_OFF=关闭
+option.END_SKY.comment=末地是否拥有自己的天空：一片开阔的太空，带星场和一颗属于它自己的天体，而不是主世界的空气散射模型——那套模型有太阳和地平线，而末地并没有这些东西。\n\n“仅末地”按维度选择，是你想要的档位。“所有维度”是测试档：它会在主世界和下界也画出同一片天空，如果你在末地看不到效果，这是确认天空本身是否正常最快的方法。\n\n末地完全没有天光，所以它的岛屿只靠上面那项“最低环境光亮度”照明；在末地里看不清路就把它调高。
+
+option.END_STAR_DENSITY=星点密度
+option.END_STAR_DENSITY.comment=末地星空的密集程度。0.0 是空白的天空，默认值之上每调高一档，星点数量大致翻倍。
+
+option.END_STAR_BRIGHTNESS=星点亮度
+option.END_STAR_BRIGHTNESS.comment=星点有多亮。\n\n它们是末地里唯一比被照亮的方块表面更亮的东西，因此这一项决定了天空在画面中的主导程度。
+
+option.END_BODY=末地的天体
+value.END_BODY.END_BODY_OFF=关闭
+value.END_BODY.END_BODY_STAR=恒星
+value.END_BODY.END_BODY_BLACK_HOLE=黑洞
+option.END_BODY.comment=在末地天空那个被照亮的位置上放什么。\n\n末地没有天光，所以照亮它岛屿的唯一光源是这个光影的直接光，而在末地这道光来自一个固定的方向——太阳停在正午的位置不动，再被光影的“太阳轨迹旋转”倾斜。那是末地天空里唯一有理由放东西的地方，因此无论选哪一种，天体都画在光真正来的方向上，和它投下的光一致。\n\n恒星：一颗带沸腾表面和日冕的星，是这三档里最贴合光照的——光就是从它来的。\n\n黑洞：黑色阴影、边缘一圈光子环，以及一面多普勒效应下一边亮一边暗的吸积盘，盘面随时间差速旋转而被剪切。它周围的天区也会被弯折，看起来是绕着它淌过去而不是被盖住。作为光源它当然说不通，但看起来最好。\n\n关闭：只留星点。
+
+option.END_AMBIENT=末地光照
+option.END_AMBIENT.comment=末地自身有多少光。\n\n其他维度都由天光照亮，而末地完全没有天光，所以没有这一项时，它的岛屿只靠上面那项“最低环境光亮度”照明——也就是几乎不亮。这一项代替的正是末地天空本该给它的那份光。\n\n**默认已关闭。** 它在编写它的环境里被反馈为“完全没有效果”，原因最终没有查明。已知两点：末地的天空盒与雾色在那台机器上是生效的（说明维度判断没问题），而调试视图里那一版光（比这里亮十倍、且不受这个数值影响）是看得见的。所以代码路径本身是通的，问题出在数值到达地形之前——这更像是“地形不是由这个光影绘制的”：如果地形由 Voxy 之类的模组绘制，那条着色器路径拿不到生物群系信息，会把自己当成主世界。\n\n想要试的话，把这一项往上调即可；0.35 左右是一个可以看清但依然很暗的末地。
+
+option.END_VOID_GLOW=虚空辉光
+option.END_VOID_GLOW.comment=末地岛屿下方的虚空向上发出多少光。\n\n它照亮所有物体的底面，这是让岛屿不至于看起来像剪影的关键；在其他维度完全不消耗。\n\n**默认已关闭**，原因同上。
+
+option.END_FOG=末地雾色
+option.END_FOG.comment=末地的雾在多大程度上取它天空的颜色。\n\n末地没有天光，所以雾会把它当成一个巨大的洞穴、用洞穴的颜色来雾化。这一项改为用天空的颜色，这样岛屿是淡入太空，而不是淡入一堵灰墙。\n\n设为 0.0 就是和以前完全一样的末地雾。
+
+option.END_DEBUG=末地检测调试视图
+option.END_DEBUG.comment=把天空换成“末地判断究竟返回了什么”的报告。\n\n“这是不是末地”有两种问法，而不同版本对这两种的支持并不一样，并且从这里无法分辨：模组不提供的 uniform 读出来就是 0，和“不是末地”长得一模一样。这一项把答案变成颜色，画在天空这个最容易看到的地方：\n\n红 = dimension 说这是末地\n绿 = 生物群系类别说是末地\n蓝 = 光影最终认为这是末地\n\n所以在末地打开它：白色表示两种方式都有效，品红或青色表示只有一种有效，黑色表示两种都无效（这时把“末地天空”切到“所有维度”可以强制生效）。在主世界，红和绿应当是黑的、天空正常。\n\n它还会在末地把各个程序画的东西涂成纯色，用来定位末地闪光究竟由哪个程序绘制：\n\n红 = 地形（也就是末地自己的光照照到了它）\n绿 = 发光部件（眼睛）\n蓝 = 附魔光效\n白 = 信标光柱\n黑 = 线框与方块选中框\n品红 = 天气 / 实体\n橙 = 方块实体\n青绿 = 水与半透明\n紫 = 半透明实体\n黄 = 手持物品\n灰 = 方块破坏裂纹\n\n如果天空里那块方块贴图变成了上述某个颜色，就说明它由那个程序绘制。如果地形变成了红色，说明末地光照的代码路径是通的，光照菜单里那几项滑块确实在起作用。\n\n这是一个诊断工具，平时关着。
+
+option.HIDE_END_FLASH=隐藏末地闪光
+option.HIDE_END_FLASH.comment=是否屏蔽 Minecraft 1.21.9 及以上版本画在末地天空里的“末地闪光”。\n\n它无法在光影下正常工作：它是一个带贴图的四边形，而光影模组没有为它绑定贴图，于是它采样到上一个还绑着的贴图——方块图集——表现为天空里挂着一块随机方块的贴图。从光影这边没有别的办法处理它：它不是这个包的天空，也无法被照亮，所以直接丢弃。\n\n在没有这个闪光的版本上它什么都不做（这一点是检测出来的，不是假设的）。如果你想留着闪光，关掉这一项即可。
+
+option.GODRAYS=体积光
+
+option.NIGHT_DESATURATION_EFFECT=夜间去饱和效果
+option.SATURATED_TONEMAP=饱和色调映射
+option.GLASS_REFLECTIONS= 玻璃反射
+option.GLASS_REFLECTIONS.comment=玻璃与染色玻璃是否像水与冰那样产生反射。\n\n玻璃正面反射约 4% 的入射光，掠射时几乎全反射——这正是窗户的样子：多数时候你透过它看，从侧面看它变成镜子。关闭后玻璃完全没有高光响应，玻璃板就只是一个带颜色的洞。\n\n反射使用与水、冰相同的代码，因此包含屏幕空间追踪、能反射世界而不只是天空；并且与其他半透明反射一样随天空光衰减——地下与室内的玻璃不会反光。\n\n水与冰不受此项影响，它们一直都会反射。
+option.FANCY_TRANSLUCENTS= 精致半透明渲染
+option.VANILLA_ISH_WATER= 原版风格水体
+option.SCREENSPACE_REFLECTIONS= 屏幕空间反射
+option.SCREENSPACE_REFRACTION= 屏幕空间折射
+option.WATER_PARALLAX= 水体视差贴图
+option.WATER_PARALLAX_DISTANCE= 水体视差渲染距离
+option.WATER_AA= 水体抗锯齿
+option.NUM_CRESTS= 焦散纹理数量
+option.NUM_RIPPLES= 水面波纹数量
+option.NUM_CAUSTICS= 水底焦散光线数量
+option.WATER_SURFACE= 水面纹理样式
+option.WATER_CAUSTICS= 开启水底焦散光影
+option.WATER_CHARACTER= 水体色调风格
+
+value.WATER_AA.BALANCED=平衡
+value.WATER_AA.HIGH=高
+value.WATER_AA.OFF=关
+value.WATER_AA.LOW=低
+
+value.WATER_SURFACE.BASIC=基础
+value.WATER_SURFACE.NOISE=噪点纹理
+
+value.WATER_CHARACTER.BALANCED=平衡
+value.WATER_CHARACTER.TROPICAL=经典热带
+value.WATER_CHARACTER.COLD=冷色调水体
+
+option.DAY_ATMOSPHERE= 白昼大气氛围预设
+option.HARDER_HORIZON_DAY= 白昼地平线锐化
+option.BORDER_FOG= 边缘远景雾
+option.PLANAR_CLOUD_LAYERS= 平面云层图层
+option.NIGHT_ATMOSPHERE= 夜晚大气氛围预设
+option.HARDER_HORIZON_NIGHT= 夜晚地平线锐化
+option.ATMOSPHERE_FOG_STRENGTH_NOON= 正午大气雾浓度
+
+value.DAY_ATMOSPHERE.RETRO=复古风格
+value.DAY_ATMOSPHERE.FANTASY=奇幻风格
+value.DAY_ATMOSPHERE.SEMI_NATURAL=半写实
+value.NIGHT_ATMOSPHERE.FANTASY=奇幻夜景
+value.NIGHT_ATMOSPHERE.SEMI_NATURAL=半写实夜景
+value.NIGHT_ATMOSPHERE.RETRO=复古夜景
+
+option.DAY_SKY_LIGHTING= 白昼天空光照模式
+option.ORANGER_BLOCKLIGHT= 方块光源橙色调强化
+option.SHADOW_SOFTNESS= 阴影柔和度
+option.SHADOW_DISTORT_FACTOR= 阴影形变系数
+option.DIRECTIONAL_SKYLIGHT_SHADING= 定向天光着色
+option.NIGHT_SKY_LIGHTING= 夜晚天空光照模式
+option.HELD_BLOCK_LIGHTING= 手持方块光源光照
+option.SOFTER_SHADOWS= 柔化阴影
+option.shadowMapResolution= 阴影贴图分辨率
+option.REAL_TIME_SHADOWS= 实时光影开关
+
+value.DAY_SKY_LIGHTING.SEMI_NATURAL=半写实
+value.DAY_SKY_LIGHTING.RETRO=复古
+value.DAY_SKY_LIGHTING.FANTASY=奇幻
+value.NIGHT_SKY_LIGHTING.FANTASY=奇幻
+value.NIGHT_SKY_LIGHTING.RETRO=复古
+value.NIGHT_SKY_LIGHTING.SEMI_NATURAL=半写实
+
+option.DEBUG= 调试模式
+option.VANILLA_CLOUDS= 原版云朵
+option.REAL_TIME_ENTITY_SHADOWS= 实体实时阴影
+option.SKY_DITHER_DEBUG= 天空色阶抖动调试
+option.DARK_UNDERWATER= 深水暗化效果
+option.Steadfast Shaders= 稳态光影总开关
+option.ATMOSPHERE_MODEL= 大气渲染模型
+option.FREEZE_ANIMATION_TIMER= 冻结动画计时器
+option.CLIP_WATER_TO_COVER_SCREEN= 全屏水体裁切
+option.WAVING_FOLIAGE= 植被晃动
+option.CAUSTICS_FADE_METHOD_GATHER= 焦散光线渐变采样模式
+option.TONEMAP= 色调映射
+option.WATER_ABSORPTION_METHOD= 水体光线吸收算法
+option.PREFER_FDM_GRADIENT= 优先梯度雾效
+option.REAL_TIME_BLOCK_ENTITY_SHADOWS= 方块实体实时阴影
+option.DEBUG_FOG_OPTIMIZATION= 雾效优化调试
+option.MINISHITA_LIGHTING= 物理光照模型
+option.WATER_CAUSTICS_DISTANCE= 水体焦散渲染距离
+option.SKY_DITHER= 天空色彩抖动（消除色带）
+
+value.DEBUG.DEBUG_NONE= 关闭调试
+value.DEBUG.DEBUG_GODRAYS_NOISY= 噪点体积光调试
+value.DEBUG.DEBUG_GODRAYS_SMOOTH= 平滑体积光调试
+value.DEBUG.DEBUG_SKYLIGHT= 天光可视化调试
+
+value.ATMOSPHERE_MODEL.GRADIENT=梯度大气
+value.ATMOSPHERE_MODEL.MINISHITA=物理大气
+
+value.TONEMAP.TONEMAP_UCHIMURA=内村调色
+value.TONEMAP.TONEMAP_UNCHARTED2=神秘海域2电影调色
+
+value.WATER_ABSORPTION_METHOD.NO_ABSORPTION=无光线吸收
+value.WATER_ABSORPTION_METHOD.REFRACTION_ASSISTED=折射辅助吸收
