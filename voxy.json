@@ -1,0 +1,61 @@
+{
+	"version": 1,
+	"opaqueDrawBuffers": [
+		0,
+		2,
+		4
+	],
+	"translucentDrawBuffers": [0, 2],
+	"blending": {
+		"0": "ONE ONE_MINUS_SRC_ALPHA ZERO ONE"
+	},
+	"uniforms": [
+		"frameTimeCounter",
+		"cameraPosition",
+		"minAmbient",
+		"skyAmbient",
+		"blocklightSuppression",
+		"desaturationIntensity",
+		"directLightSurface",
+		"directLightUnderwater",
+		"worldLightVector",
+		"nightVision",
+		"desaturationColor",
+		"windowToNdc",
+		"gbufferModelView",
+		"gbufferModelViewInverse",
+		"viewOffsetPixelX",
+		"viewOffsetPixelY",
+		"vxProj",
+		"vxProjInv",
+		"rayleighStrengthSun",
+		"mieStrengthSun",
+		"rayleighStrengthMoon",
+		"mieStrengthMoon",
+		"daySkyOverridePremultiplied",
+		"nightSkyOverridePremultiplied",
+		"ambientSkyColor",
+		"worldSunVector",
+		"caveFogColor",
+		"eyeSkylight",
+		"isEyeInWater",
+		"isEyeInWaterFog",
+		"borderFogDistance",
+		"underwaterFogColor",
+		"atmosphereFogCoefficient",
+		"blindness",
+		"sunrise",
+		"skyZenithDay",
+		"skyHorizonDay",
+		"skyLightDay",
+		"moonrise",
+		"skyZenithNight",
+		"skyHorizonNight",
+		"skyLightNight"
+	],
+	"samplers": [
+		"vxDepthTexOpaque",
+		"colortex4",
+		"noisetex"
+	]
+}
