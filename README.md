@@ -1,17 +1,18 @@
-# Firmament - v0.1 (edit of coderbot's Steadfast)
+# Firmament - v0.2 (edit of coderbot's Steadfast)
 
 Steadfast is free and open-source software developed by coderbot, and can be downloaded from https://modrinth.com/shader/steadfast-shaders (Modrinth), https://www.curseforge.com/minecraft/shaders/steadfast (CurseForge), or https://github.com/coderbot16/Steadfast (GitHub). Anyone can modify and distribute it under the terms of the GNU General Public License, version 3.
 
 **Firmament** is an edit of **Steadfast 0.8.0**. It keeps Steadfast's look,
-structure and performance tiers, and adds material (PBR) support and support for
-the End. It is version 0.1 - an early, unfinished edit, not an official
-Steadfast release, and not supported by coderbot.
+structure and performance tiers, and adds material (PBR) support, support for
+the End, and a few effects of its own. It is version 0.2 - a personal edit that
+is still unfinished, not an official Steadfast release, and not supported by
+coderbot.
 
 > **On the name:** Steadfast's additional licence terms require the name of a
 > modified version to end with `(edit of coderbot's Steadfast)`, and forbid the
 > name "Steadfast" anywhere else in it. So this edit is called
-> `Firmament - v0.1 (edit of coderbot's Steadfast)`, and the file it is
-> distributed as is named `Firmament-v0.1-edit-of-coderbot-Steadfast.zip`. That
+> `Firmament - v0.2 (edit of coderbot's Steadfast)`, and the file it is
+> distributed as is named `Firmament-v0.2-edit-of-coderbot-Steadfast.zip`. That
 > parenthesis is not decoration - it is the licence, and it has to stay on the
 > end of the name on every page or download that conveys this pack. See
 > `NOTICE.md`.
@@ -32,8 +33,8 @@ Steadfast release, and not supported by coderbot.
 * **What that means for you:** the code added here has been checked for the
   things that can be checked offline, and every option is documented in its
   tooltip, but it has **not** been through the kind of review a hand-written
-  shader gets. If something looks wrong, treat that as expected for v0.1 rather
-  than as surprising.
+  shader gets. If something looks wrong, treat that as expected for an edit at
+  this stage rather than as surprising.
 
 ## What this edit adds over Steadfast 0.8.0
 
@@ -69,8 +70,15 @@ so it works with any PBR resource pack that follows it:
 * **Screen-space reflections** (on by default) that let that reflection contain
   the world and not just the sky. They are traced through the depth buffer in
   the deferred pass, so they can only reflect what is on screen and only from
-  the previous frame; a ray that misses falls back to the sky.
+  the previous frame; a ray that misses falls back to the sky. That previous
+  frame is read where *it* had the point the ray hit, not where this frame has
+  it, so a reflection does not slide about as the view bobs while walking.
 * Stained glass and glass panes get specular reflections as well.
+* The sun and moon are treated as **lights with a real size** rather than as
+  points, so the highlight a polished or metallic block catches is the disc of
+  the sun (about half a degree across) and not a single bright pixel. `Sun and
+  moon size` in the material options scales it, from 0.0 for a point light to
+  several times the real size.
 
 ### The End
 
@@ -81,6 +89,53 @@ Steadfast has no real support for the End; this edit gives it some:
 * **End haze**, so islands fade into space rather than into a grey cave wall.
 * A debug view for the checks that decide whether the current dimension is the
   End, since not every Iris version provides every uniform.
+
+### Clouds (blocky volumetric)
+
+* A cloud layer made of **cube-shaped cells** (12 blocks on a side by default)
+  that replaces Minecraft's flat cloud boxes, which are switched off while it is
+  on.
+* It is marched along the view ray in the deferred pass, so the terrain hides
+  the clouds behind it. Cloud cells have a top and a bottom, their undersides
+  are darker than their tops, and a cloud standing between you and the sun has a
+  bright rim.
+* It does **not** cast a shadow on the ground. An earlier build had it do that,
+  and it was removed: the shadow could only fall on terrain this pack draws, not
+  on the level-of-detail terrain Distant Horizons/ Voxy draws, and getting it to
+  hold still while walking was not worth the cost for a shadow with a hole at the
+  horizon. The lighting *inside* the layer (a cell lit only by the light that
+  reaches it past its neighbours) is still what makes the layer read as volume.
+* It follows the pack's own weather, **slowly**: it thickens from the wetness the
+  game tracks rather than from the rain itself, so rain takes about a minute to
+  work through the clouds and the same to clear out again. It drifts with the
+  same wind the planar clouds use.
+* Overworld only - the End and the Nether are left alone.
+* Cost and tuning are both in `Atmosphere & clouds`: cloud size, coverage,
+  height, thickness, speed and step count. Lower the step count first if it is
+  too expensive; raise the cloud size for fewer, bigger clouds, which is also
+  cheaper. Nothing here is paid for by the terrain.
+
+### Motion blur (new in v0.2)
+
+* The camera's own movement blurs the image along it: walking, running, falling,
+  riding a boat and being knocked back all trail.
+* It is worked out **per pixel** - each pixel's position is recovered, the
+  camera's travel over the last frame says where that point was a frame ago, and
+  the blur runs between the two screen positions. Walking therefore makes the
+  ground at your feet rush past while the horizon barely moves, which is what a
+  camera does and what one screen-wide offset cannot do.
+* **The walk bob is deliberately not blurred.** It is a rotation of the view,
+  and it shares the camera's matrix with the turning, so it cannot be filtered
+  out by name - only by size. A turn is blurred once it is moving the picture
+  more than a few pixels a frame; the bob moves it one or two, and a slow
+  deliberate turn does not blur either.
+* Nothing with its own motion inside the world is blurred: Steadfast has no
+  motion vectors, so a mob, a river or a falling block keeps its detail. So does
+  the hand, which hangs in front of the camera and is standing still on screen.
+* **Off by default.** Turn it on under `Effects & post-processing → Camera
+  effects`, with a blur amount and a sample count next to it.
+* `Fun: the blur lens` on the same page is a bug that was in the first release
+  of this effect, kept as a curiosity. See `RELEASE_NOTES-v0.2.md`.
 
 ### One correctness fix
 
@@ -101,6 +156,59 @@ copied across and none of Mellow's assets, logo or branding used anywhere.
 Mellow's MIT licence is included as `LICENSE-MELLOW-MIT.txt`, and the credit is
 also shown in the settings menu.
 
+## How the versions are counted
+
+* **v0.1** is the material work: materials (PBR), reflections, the End, and the
+  tangent frame fix. That is what `RELEASE_NOTES-v0.1.md` describes.
+* **v0.2** is everything from the **cloud layer onward**. The clouds are the
+  first thing v0.2 added, and the motion blur, the menu work and every fix made
+  after them belong to it too. That is what `RELEASE_NOTES-v0.2.md` describes.
+
+## What v0.2 added
+
+* **A cloud layer made of cube-shaped cells**, drawn in place of Minecraft's
+  flat cloud boxes: marched along the view ray in the deferred pass, so the
+  terrain hides the clouds behind it; cell-shaped, so a cloud has a top and a
+  bottom, a darker underside and a bright rim when it stands between you and the
+  sun. It follows the pack's weather slowly and drifts with the same wind the
+  planar clouds use. Overworld only. See "Clouds" below.
+* **Motion blur**, driven by the camera's own travel - walking, running,
+  falling, boats and knockback all trail the way they do in a camera, and the
+  walk bob is deliberately left out of it. Off by default. See "Motion blur"
+  below.
+* **Sun and moon size** - the highlight a polished or metallic surface catches
+  is the sun's actual disc rather than a single bright pixel.
+* **The effects menu was split into sub-pages** - light, camera, colour and
+  temporal anti-aliasing each have their own page, and the unfinished TAA is
+  marked experimental on all of them.
+
+## What v0.2 fixed since the clouds landed
+
+* **The cloud layer stays out of the Nether** (a missing `dimension` uniform
+  reads as the Overworld, so the biome category is checked as well), and **its
+  own shading is hard-edged again**, the way it was before the removed ground
+  shadow softened it out to a cell's width. **It no longer casts a shadow on the
+  ground** at all: that was tried, could only ever fall on terrain this pack
+  draws, and was taken back out.
+* **Reflections on glass and calm water stop shivering with the walk bob**, by
+  reading the previous frame where *it* had the point the ray hit rather than
+  where this frame has it.
+* **A held item no longer shows the world through itself.** The hand is not part
+  of the world a reflection is built from - a traced ray from it lands on
+  whatever stands behind the item, and a sky reflection lands on the sky behind
+  the player - so it is left out of the environment reflection entirely. It
+  keeps its normal, roughness, ambient response and sun highlight.
+* **The sun's highlight was being widened in the wrong units** and so barely
+  changed at all; it now spreads the way half a degree of sunlight should.
+
+## Kept on purpose
+
+* `Fun: the blur lens` - a bug the motion blur used to have, kept as a toggle
+  because it turned out to be interesting to look at. It turns with the camera
+  at twice the angle: looking north it sits where you are looking and does
+  nothing, and a quarter turn of the view carries it half a turn round. See
+  `RELEASE_NOTES-v0.2.md`.
+
 ## Performance: this costs noticeably more than Steadfast
 
 Steadfast is built to be cheap: it is a forward renderer with a small number of
@@ -119,6 +227,10 @@ things cause that:
 
 If you need the frames back, in this order:
 
+0. Lower **Cloud march steps** (12 → 8) in `Atmosphere & clouds`. The cloud
+   layer walks the sky pixel by pixel and the step count is the whole cost of
+   it. Turning the layer off entirely (`Blocky volumetric clouds`) returns you to
+   Minecraft's own cloud boxes.
 1. Turn off **Screen-space reflections** (`PBR_SSR`). Biggest single win; sky
    reflections remain.
 2. Turn off **Sky reflections** (`PBR_REFLECTIONS`) entirely. Materials still
@@ -134,22 +246,27 @@ else; see "Upstream notes" below.
 
 ## Known limitations and rough edges
 
-This is v0.1. These are the parts that are known to be incomplete:
+These are the parts that are known to be incomplete:
 
-* **TAA is unfinished and is off.** Steadfast ships a temporal anti-aliasing
-  path whose options exist in the menu, but this edit leaves it off exactly as
-  upstream does. It has no motion vectors, so anything that moves relative to
-  the world (mobs, water, particles, the held item) cannot be reprojected and
-  has to be handled by rejecting history instead of tracking it. Its four
-  options do nothing until TAA itself is switched on, and it should be treated
-  as experimental.
+* **TAA is unfinished and is off**, and the menu now says so: the temporal
+  anti-aliasing page and every option on it are marked **[experimental]**. It
+  has no motion vectors, so anything that moves relative to the world (mobs,
+  water, particles, the held item) cannot be reprojected and has to be handled
+  by rejecting history instead of tracking it. Its four options do nothing until
+  TAA itself is switched on.
+* **Motion blur only knows about the camera.** A mob that walks past, flowing
+  water, a falling block - none of them blur, because nothing in this pack
+  records where they were a frame ago. And because the walk bob cannot be told
+  apart from a real turn, a very slow turn is not blurred either.
 * **Parallax occlusion mapping is unfinished, and off by default.** It works,
   but it has not been tuned against enough resource packs, and at distance it
   can shimmer. The depth, step count and maximum offset are all exposed if you
   want to experiment.
 * **Reflections are screen-space only.** They cannot see behind you, they use
   the previous frame's colours, and a rough surface gets a single sample rather
-  than a blur, so very rough reflective materials can look grainy.
+  than a blur, so very rough reflective materials can look grainy. The sample is
+  reprojected into the previous frame's camera, which is what keeps a mirror
+  (glass, or water with the waves off) from shivering as you walk.
 * **Reflections can appear where sky light reaches but sky cannot be seen.**
   Minecraft spreads sky light sideways under overhangs and through glass, so
   "this pixel is brightly sky-lit" does not mean "this pixel can see the sky".
@@ -160,6 +277,13 @@ This is v0.1. These are the parts that are known to be incomplete:
   shaded with an arbitrary block's material. `PBR_ENTITIES` is on by default
   because that is how to find out; the tooltip explains how to check and what to
   do if it looks wrong.
+* **The clouds are not in reflections.** A sky reflection is the pack's sky
+  model, which has no cloud layer in it, so water and glass do not reflect the
+  clouds - screen-space reflections do, since those read the previous frame. The
+  layer is also Overworld-only and does not appear in the Nether or the End.
+* **The cloud layer's shape is procedural.** It does not follow Minecraft's own
+  cloud texture, so it will not line up with a resource pack that redraws the
+  vanilla clouds; coverage, height and thickness are what to adjust instead.
 * **Nothing here is exhaustively tested.** The edit was developed without the
   ability to run the game in the development environment, so verification was
   done in game by one person on one machine. There are no benchmarks for other
@@ -171,7 +295,7 @@ This is v0.1. These are the parts that are known to be incomplete:
 
 ## Installation
 
-1. Put `Firmament-v0.1-edit-of-coderbot-Steadfast.zip` into
+1. Put `Firmament-v0.2-edit-of-coderbot-Steadfast.zip` into
    `.minecraft/shaderpacks/`.
    * Do not repack the folder yourself with a tool that writes backslash entry
      names - Java looks for `shaders/...` and the pack will fail to load.
@@ -184,11 +308,15 @@ This is v0.1. These are the parts that are known to be incomplete:
 
 ## Settings menu: what is where
 
-* `✎ EDIT默认 style` (profile) - the configuration this edit ships with: Steadfast's
-  own look, with the material options at their tuned values. Selecting it after
-  trying one of Steadfast's styles puts the original look back.
+* `✎ EDIT默认 style` (profile) - the configuration this edit ships with: the look
+  the pack was tuned to, with the material options at their tuned values.
+  Selecting it after trying one of Steadfast's styles puts that look back.
 * **Materials (PBR)** - format switch, debug view, and three sub-pages:
   material maps and detail, surface response and reflections, coverage.
+* **Effects & post-processing** - four sub-pages: `Light effects` (godrays,
+  night desaturation), `Camera effects` (motion blur and its two controls, plus
+  the blur lens), `Colour and tonemapping`, and `[experimental] Temporal
+  anti-aliasing` (TAA and its four options).
 * **Credits & licence** - who wrote what, with the licence text in the tooltips.
 * Everything else is Steadfast's own menu, unchanged.
 
@@ -277,13 +405,34 @@ was built in and is not shipped inside the pack.)
 
 * **材质（PBR）**：按 labPBR 1.3 规范解码法线、高光/金属、材质环境光遮蔽、次表面散射、孔隙度/潮湿、自发光，并有一个可以逐通道查看的材质调试视图。普通 PBR 资源包即可生效。
 * **反射**：每个材质的天空反射（按粗糙度把反射方向朝法线偏折），以及屏幕空间反射（SSR）——让反射里出现世界而不只是天空；染色玻璃与玻璃板也有镜面反射。
+* **日月光源大小**：太阳与月亮被当成**有实际大小的光源**而不是点光源，所以抛光面与金属面上接到的高光是太阳真实的圆盘（约 0.53° 视角），而不是一个亮像素。材质选项里的「日月光源大小」可调：0.0 = 点光源、1.0 = 真实大小（默认）、再往上是夸张化。
 * **末地维度**：末地自身的光照、虚空辉光、末地雾，以及一个判断维度的调试视图。
+* **方块状体积云**：用一个个立方体云格（默认边长 12 格）组成云层，替代 Minecraft 那种扁平方块云（开启时原版云会自动关闭）。云在 deferred 趟沿视线步进，所以地形能挡住它后面的云；云格有顶有底、底面比顶面暗，挡在太阳前面会有亮边。它会跟着本包自己的天气走（下雨自动加厚），并随风漂移。只出现在主世界。云层**不向地面投影**（早先做过，已移除：它只能落在本包自己画的区块上、落不到 Distant Horizons / Voxy 的 LOD 上，而且走路时固定不下来）。
+* **动态模糊（v0.2 新增）**：按**相机在世界里的移动**把画面沿运动方向糊开——走路、奔跑、下落、坐船、被击飞都有拖影。位移是**逐像素**算的，所以走路时脚下飞快掠过、地平线几乎不动。「**视角摇晃刻意不参与**」：它本质是旋转，且与转头共用同一个矩阵，只能按幅度区分——转头推动画面超过几个像素/帧才计入，而摇晃每帧只推一两像素，因此**手搭在鼠标上的慢速转头也不会糊**。世界内部会自己动的东西（实体、水流、掉落物）以及手持物品都不参与。**默认关闭**，菜单里可调模糊量与采样率。
 * **切线基修复**：材质切线改用几何体自带的切线（`at_tangent`），修掉了此前"特定距离法线翻转"的问题。
 
-**性能：比原版更吃配置。** 两个原因：每个受光表面要多写两张材质缓冲（约每像素 12 字节带宽）；SSR 要在每个通过粗糙度上限的像素上走最多 12 步。掉帧时按这个顺序关：**屏幕空间反射 → 天空反射 → 把 SSR 步数降到 8 / 把粗糙度上限收到 0.1 → 关视差 → 降档位、降阴影分辨率与距离**。
+**版本是怎么算的。** **v0.1** = 材质（PBR）、反射、末地、切线基修复这一批（见 `RELEASE_NOTES-v0.1.md`）。**v0.2 = 从体积云开始往后的全部内容** —— 体积云是 v0.2 加的第一样东西，之后做的动态模糊、菜单整理和所有修复都算在 v0.2 里（见 `RELEASE_NOTES-v0.2.md`）。
 
-**还不完善的地方（v0.1）。** TAA **未完成、默认关闭**（没有运动矢量，菜单里那四项要等你手动打开 TAA 才生效）；视差 **未完成、默认关闭**；反射只能反射屏幕内的东西、只取上一帧、粗糙面没有模糊；屋檐下与玻璃窗附近可能出现奇怪的天空反射（天光会横向渗透，这是"能看见天空"与"天光很亮"不等价导致的）；实体材质是实验项；只在单机单人环境下验证过，没有做不同显卡的测试。需要 **Iris 1.5+ / MC 1.18.2+**，**不支持 OptiFine**。
+**v0.2 新增。**
 
-**怎么用。** 把 `Firmament-v0.1-edit-of-coderbot-Steadfast.zip` 放进 `.minecraft/shaderpacks/`，在 Iris 里选中并 Apply。菜单里 `✎ EDIT默认 style` 是出厂配置（点它即可从其它风格一键回到原样），`材质（PBR）` 分三个子页放全部材质选项，`制作与许可` 页有制作人、原作者与材质来源的署名。
+* **方块状体积云**（v0.2 的第一项，见上）。
+* **动态模糊**（默认关闭，见上）。
+* **日月光源大小**：太阳与月亮按真实视角大小参与高光计算。
+* **特效菜单二级分类**：光照特效 / 镜头效果 / 色彩与色调 /【实验性】时间抗锯齿（TAA），**TAA 相关的五项统一标注【实验性】**。
 
-**关于许可（重要）。** 本包按 **GNU GPLv3 + Steadfast 附加条款**分发。附加条款要求：任何传播本包的页面都必须**在下载链接之前**给出 coderbot 的声明原文；**名称必须以 `(edit of coderbot's Steadfast)` 结尾**，且 "Steadfast" 不得出现在该括号之外；文件名要带等价后缀。所以本修改版叫 `Firmament - v0.1 (edit of coderbot's Steadfast)`，别改成别的写法。材质部分**借鉴了 Mellow Shader v3.4（TheCMK，MIT 许可）**的做法，用到的都是公开规范里的数学（GGX、Smith、Schlick、Henyey-Greenstein、labPBR），代码在 Steadfast 的风格下重写，未逐字搬运，也未使用其名称/素材。完整说明见 `NOTICE.md`。
+**v0.2 之后修的。**
+
+* **云**：下界不再出云（`dimension` 缺失时会读成主世界，现在同时看生物群系类别）；云的自身明暗恢复"硬切"；**不再向地面投影**（做过，只能落本包自己画的区块上、落不到 DH/Voxy 的 LOD 上，已整体移除）。
+* **反射**：玻璃与平静水面的反射不再随走路摇晃抖动（取样点按上一帧的相机重投影）。
+* **手持物品不再"透视"**：手不在世界里，环境反射的两半在它这里都拿不到正确输入，现已整块排除；材质法线、粗糙度、材质 AO、环境光与日月高光全部保留。
+* **日/月高光的加宽量纲修正**：此前把角度加进了会被平方的粗糙度，实际效果小了约四个数量级，等于没生效。
+
+**保留的趣味项**：`趣味：模糊透镜（原来的 bug）` —— 动态模糊早期那个"跟着镜头转、角度是两倍"的 bug（面朝正北与视线重合、什么都不做；视角转 90°，它跑到正南），按你的要求原样保留成一个默认关闭的开关，成因与行为都写在它的说明里。
+
+**性能：比原版更吃配置。** 三个原因：每个受光表面要多写两张材质缓冲（约每像素 12 字节带宽）；SSR 要在每个通过粗糙度上限的像素上走最多 12 步；云层要对每个天空像素做最多 12 次噪声取样（云自身受光再多几次，地面不受影响）。开启动态模糊后还要按采样率给整屏加一次取样（默认关，关着时零开销）。掉帧时按这个顺序关：**动态模糊 → 云层步进次数（12→8）→ 屏幕空间反射 → 天空反射 → 把 SSR 步数降到 8 / 把粗糙度上限收到 0.1 → 关视差 → 降档位、降阴影分辨率与距离**。
+
+**还不完善的地方（v0.2）。** 云层**不会出现在反射里**（天空反射用的是本包的天空模型，里面没有云；屏幕空间反射会带到云，因为读的是上一帧）；云层的形状是程序化生成的，不会与重画过原版云贴图的资源包对齐；云层只在主世界出现。**TAA 未完成、默认关闭，菜单里已统一标注【实验性】**（没有运动矢量，所以会自己动的东西只能靠丢弃历史来处理；那四项参数要等你手动打开 TAA 才生效）；**动态模糊只知道相机**——世界里会自己动的实体/水流/掉落物都不糊，而且因为摇晃与转头无法区分，极慢的转头也不糊；视差 **未完成、默认关闭**；反射只能反射屏幕内的东西、只取上一帧（取样点按上一帧的相机重投影过，所以走路时不会随视角摇晃滑动）、粗糙面没有模糊；屋檐下与玻璃窗附近可能出现奇怪的天空反射（天光会横向渗透，这是"能看见天空"与"天光很亮"不等价导致的）；实体材质是实验项；只在单机单人环境下验证过，没有做不同显卡的测试。需要 **Iris 1.5+ / MC 1.18.2+**，**不支持 OptiFine**。
+
+**怎么用。** 把 `Firmament-v0.2-edit-of-coderbot-Steadfast.zip` 放进 `.minecraft/shaderpacks/`，在 Iris 里选中并 Apply。菜单里 `✎ EDIT默认 style` 是出厂配置（点它即可从其它风格一键回到原样）；`材质（PBR）` 分三个子页放全部材质选项；`特效与后期处理` 分四个子页（光照特效 / 镜头效果 / 色彩与色调 / 【实验性】时间抗锯齿）；`制作与许可` 页有制作人、原作者与材质来源的署名。
+
+**关于许可（重要）。** 本包按 **GNU GPLv3 + Steadfast 附加条款**分发。附加条款要求：任何传播本包的页面都必须**在下载链接之前**给出 coderbot 的声明原文；**名称必须以 `(edit of coderbot's Steadfast)` 结尾**，且 "Steadfast" 不得出现在该括号之外；文件名要带等价后缀。所以本修改版叫 `Firmament - v0.2 (edit of coderbot's Steadfast)`，别改成别的写法。材质部分**借鉴了 Mellow Shader v3.4（TheCMK，MIT 许可）**的做法，用到的都是公开规范里的数学（GGX、Smith、Schlick、Henyey-Greenstein、labPBR），代码在 Steadfast 的风格下重写，未逐字搬运，也未使用其名称/素材。完整说明见 `NOTICE.md`。

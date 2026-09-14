@@ -1,6 +1,6 @@
 # Notices and licensing
 
-**Firmament - v0.1 (edit of coderbot's Steadfast)**, for Minecraft: Java Edition.
+**Firmament - v0.2 (edit of coderbot's Steadfast)**, for Minecraft: Java Edition.
 
 This file is the short version of where this pack comes from and what its
 licences allow. Read it before redistributing the pack or anything built from
@@ -11,8 +11,11 @@ it. The full licence texts are in the files listed at the bottom.
 ## 1. Steadfast, by coderbot (the original work)
 
 This pack is a **modified version** of Steadfast 0.8.0. The modifications were
-made by Remiiil1a and are dated 2026-09-13; what they consist of is listed in
-section 4 and documented in `PBR_PORTING.md` in the project this was built in.
+made by Remiiil1a, dated 2026-09-13 and 2026-09-14; what they consist of is
+listed in section 4 and documented in `PBR_PORTING.md` in the project this was
+built in. The per-file notices in the source name the version each file was
+**first** modified for - further changes to those files are recorded in
+`RELEASE_NOTES-v0.2.md` rather than being written back into the notices.
 
 Steadfast's additional terms (permitted by section 7 of the GPLv3) require the
 following notice to appear prominently, and as early as possible, on any page or
@@ -24,14 +27,14 @@ link:
 Those same terms also require, for any modified version:
 
 * that its **human readable name end with `(edit of coderbot's Steadfast)`** -
-  hence `Firmament - v0.1 (edit of coderbot's Steadfast)`, and hence the
+  hence `Firmament - v0.2 (edit of coderbot's Steadfast)`, and hence the
   `(edit of coderbot's Steadfast)` in the string `FIRMAMENT` in
   `shaders/lang/*.lang` and `shaders/environment/lighting/diffuse.glsl`. Do not
   shorten it: the name "Steadfast" may not appear in the name or branding of a
   modified version anywhere else;
 * that the **file name include the same thing**, for which the terms suggest the
   suffix `-edit-of-coderbot-Steadfast` - hence
-  `Firmament-v0.1-edit-of-coderbot-Steadfast.zip`;
+  `Firmament-v0.2-edit-of-coderbot-Steadfast.zip`;
 * that the GPL and those terms are kept, and that nothing suggests this is an
   official Steadfast release. **It is not.** coderbot does not support it, and
   bug reports about it do not belong in Steadfast's issue tracker.
@@ -74,6 +77,12 @@ and screenshots not be reused for another project - so:
 
 ## 4. What this edit changes, relative to Steadfast 0.8.0
 
+Versions are counted as: **v0.1** is the material work, **v0.2** is everything
+from the cloud layer onward. See `RELEASE_NOTES-v0.1.md` and
+`RELEASE_NOTES-v0.2.md`.
+
+**Added in v0.1**
+
 * labPBR 1.3 material support: normal maps, specular/metal maps, material
   ambient occlusion, subsurface scattering, porosity/wetness, and emissive
   maps, with a debug view for each channel.
@@ -83,6 +92,31 @@ and screenshots not be reused for another project - so:
   that detect the dimension.
 * Tangent frames taken from the geometry's own tangents (`at_tangent`) rather
   than reconstructed from depth, which fixes normal maps flipping at distance.
+
+**Added in v0.2**
+
+* A cloud layer of cube-shaped cells, drawn in place of Minecraft's flat cloud
+  boxes, following the pack's weather slowly and drifting with the same wind the
+  planar clouds use. Overworld only; it does not cast a shadow on the ground.
+* Motion blur along the camera's own travel, with the walk bob left out of it on
+  purpose and a blur amount and sample count to tune. Off by default.
+* Sun and moon size: their highlights carry the sun's real angular size rather
+  than being a single pixel.
+* The settings menu's effects page split into sub-pages, with the unfinished
+  temporal anti-aliasing marked as experimental.
+
+**Fixed in v0.2**
+
+* The cloud layer stays out of the Nether, and a cloud's own shading is
+  hard-edged again.
+* Reflections on glass and calm water no longer shiver with the walk bob.
+* A held item no longer shows the world through itself, because the hand is no
+  longer given an environment reflection at all.
+* The sun's highlight was widened in the wrong units and barely changed; it now
+  spreads the way half a degree of sunlight should.
+
+**Other**
+
 * GNU/Linux, macOS and Windows are unaffected; the shader still requires Iris.
 
 ## 5. Files

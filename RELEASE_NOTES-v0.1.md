@@ -31,6 +31,7 @@ Get the zip from **Assets** - the auto-generated "Source code" archives are not 
 | **材质（PBR）**：按 labPBR 1.3 解码法线、高光/金属、材质环境光遮蔽、次表面散射、孔隙度/潮湿、自发光，并带逐通道的材质调试视图 | **Materials (PBR)**: labPBR 1.3 normal, specular/metal, material ambient occlusion, subsurface scattering, porosity/wetness and emissive maps, with a per-channel debug view |
 | **反射**：每个材质的天空反射，加上屏幕空间反射（SSR）让反射里出现世界；染色玻璃与玻璃板也有镜面反射 | **Reflections**: a sky reflection term per material, plus screen-space reflections so the world appears in them; specular reflections on stained glass and panes |
 | **末地**：末地自身的光照、虚空辉光、末地雾，以及判断维度的调试视图 | **The End**: its own light, a void glow, End haze, and a debug view for the dimension checks |
+| **方块状体积云**：立方体云格组成的云层（默认边长 12 格），替代原版的扁平方块云；地形能遮挡它，云自身有顶有底、底面比顶面暗，随天气与风变化，只出现在主世界 | **Blocky volumetric clouds**: a layer of cube-shaped cloud cells replacing Minecraft's flat cloud boxes - occluded by terrain, with a lit top and a darker underside, following the weather and the wind, Overworld only |
 | **切线基修复**：材质切线改用几何体自带的 `at_tangent`，修掉"特定距离法线翻转" | **Tangent frame fix**: material tangents now come from the geometry's own `at_tangent`, fixing normal maps flipping at distance |
 
 出厂默认就是你看到的那套配置；菜单里的 `✎ EDIT默认 style` 可以在试过 Steadfast 自带风格之后一键回到原样，`材质（PBR）` 页下分三个子页放全部材质选项，`制作与许可` 页有署名。
@@ -56,6 +57,8 @@ Get the zip from **Assets** - the auto-generated "Source code" archives are not 
   *Entity materials are an experiment; the tooltip explains how to check and what to do if it looks wrong.*
 * **只在单机单人环境下验证过**，没有做不同显卡的测试。
   *Verified in game by one person on one machine; no testing across GPU vendors.*
+* **云不在反射里**：天空反射用的是本包的天空模型（里面没有云），屏幕空间反射会读到云。云层只在主世界出现，形状是程序化的，不会与重画过原版云贴图的资源包对齐。
+  *The clouds are not in sky reflections (that is the pack's sky model) - screen-space reflections do include them. The layer is Overworld-only and procedural, so it will not line up with a resource pack that redraws the vanilla cloud texture.*
 
 ## 性能 / Performance
 
