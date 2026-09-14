@@ -41,4 +41,25 @@
 	#define PBR_ATLAS
 #endif
 
+// Whether a held *item* - as opposed to a held block - gets the resource pack's
+// material too.
+//
+// On, and it is what makes a held item look like the material it is made of: a
+// blade catches the sun, a polished tool mirrors the sky.
+//
+// It exists as an option because of where the material comes from. The material
+// maps are generated for the block atlas, sprite for sprite, and an item model
+// is drawn from the item atlas, where the sprites sit elsewhere - a resource
+// pack that ships no LabPBR maps for its items leaves those coordinates reading
+// another sprite's material, or none. Turn this off for such a pack and items
+// keep the plain colour the pack gave them.
+//
+// This is not the option to reach for if a held item looks see-through. That was
+// the environment reflection being computed for the hand at all, which is fixed
+// in lit.fsh - see PBR_PORTING.md §21.
+#define PBR_HAND_ITEM_MATERIALS
+#ifdef PBR_HAND_ITEM_MATERIALS
+	// The switch itself is in lit.fsh, where the material is decided.
+#endif
+
 #include "/program/world/lit.fsh"

@@ -90,7 +90,27 @@ const float GLASS_F0 = 0.04;
 
 	// We need to use the view matrix to convert between world-space and
 	// view-space.
-	uniform mat4 gbufferModelView;
+	//
+	// Stands back if it has already been declared - the cloud layer's programs do
+	// that, and a repeated uniform declaration is an error. See the note in
+	// /environment/clouds/volumetric.glsl.
+	#if !defined(GBUFFER_MODEL_VIEW_DECLARED)
+		#define GBUFFER_MODEL_VIEW_DECLARED
+		uniform mat4 gbufferModelView;
+	#endif
+
+	// Where the camera was when the colour buffer above was drawn, and the
+	// matrices it was drawn with. The reflection below reads that buffer, so it
+	// has to read it where the previous frame had the point the ray hit rather
+	// than where this frame has it - see the comment in TranslucentLighting.
+	//
+	// A program that is handed its uniforms by something else is given no
+	// previous frame at all (Voxy's terrain - see voxy.json), which is why all
+	// three of these and the reprojection that uses them sit behind the same
+	// test as the buffer itself.
+	uniform vec3 previousCameraPosition;
+	uniform mat4 gbufferPreviousModelView;
+	uniform mat4 gbufferPreviousProjection;
 #endif
 
 #if !defined(DH_TERRAIN)
@@ -538,9 +558,71 @@ vec4 TranslucentLighting(
 				float viewNormalZ = dot(gbufferModelView[2].xyz, worldNormal);
 				visibility = mix(1.0, visibility, clamp(viewNormalZ, 0.0, 1.0));
 
-				vec3 terrainReflection = texture(colortex4, hitPos).rgb;
-				vec3 cameraRelativePosW = 
-					(gbufferModelViewInverse * vec4(hitViewPos, 1.0)).xyz;
+				// What the ray hit, in the world axes of this frame, and where the
+				// colour buffer it is read from has that point.
+				//
+				// colortex4 holds the frame before this one, drawn with the camera
+				// where it was then. Reading it at this frame's screen position -
+				// which is what the pack did until now - therefore reads the colour
+				// of whatever stood a small distance away from the point that was
+				// actually hit. Standing still, that distance is nothing; walking,
+				// the view bobs back and forth several times a second, and the
+				// reflection slides with it. That is why a glass pane or a calm
+				// water surface shivers as the player walks, why it does it in time
+				// with the step, and why flying - which has no bob - is free of it.
+				//
+				// The cure is the one every temporal effect uses: put the hit point
+				// back where the previous frame had it. Its position in this frame
+				// is exact (the ray is traced against this frame's depth buffer),
+				// so moving it into the previous frame's screen is a matter of
+				// taking the camera's own movement back out of it and projecting it
+				// with the matrices that frame was drawn with.
+				vec3 cameraRelativePosW;
+				vec2 reflectionPos;
+
+				#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
+					// The hit's position in world axes, read out against the axes of
+					// the matrix the geometry was drawn with, for the reason given in
+					// program/world/lit.fsh: gbufferModelViewInverse is not quite the
+					// inverse of that matrix while the view is bobbing.
+					mat3 viewAxes = mat3(gbufferModelView);
+					cameraRelativePosW = vec3(
+						dot(hitViewPos, viewAxes * vec3(1.0, 0.0, 0.0)),
+						dot(hitViewPos, viewAxes * vec3(0.0, 1.0, 0.0)),
+						dot(hitViewPos, viewAxes * vec3(0.0, 0.0, 1.0)));
+
+					// World position = camera position + that, so the position
+					// relative to where the camera was a frame ago is this plus how
+					// far the camera has moved since.
+					vec3 previousRelativePos = cameraRelativePosW
+						+ cameraPosition - previousCameraPosition;
+					vec4 previousClipPos = gbufferPreviousProjection
+						* (gbufferPreviousModelView * vec4(previousRelativePos, 1.0));
+					vec2 previousPos = previousClipPos.xy
+						/ previousClipPos.w * 0.5 + 0.5;
+
+					// A point the previous frame did not have on screen has no
+					// colour to offer, and its projection is not to be trusted
+					// either: those pixels keep this frame's position, which is
+					// wrong in the way above but not wrong in a new way. They are
+					// mostly the ones at the edge of the screen, where the fade
+					// below is taking the reflection out anyway.
+					bool previousOnScreen = previousClipPos.w > 0.0
+						&& previousPos.x > 0.0 && previousPos.x < 1.0
+						&& previousPos.y > 0.0 && previousPos.y < 1.0;
+
+					reflectionPos = previousOnScreen ? previousPos : hitPos;
+				#else
+					// A program with externally supplied uniforms has no previous
+					// frame to read (see voxy.json), so it keeps reading this
+					// frame's position and with it the wobble this fix removes.
+					cameraRelativePosW = (gbufferModelViewInverse
+						* vec4(hitViewPos, 1.0)).xyz;
+					reflectionPos = hitPos;
+				#endif
+
+				vec3 terrainReflection = texture(colortex4, reflectionPos).rgb;
+
 				float fragDistanceW = max(
 					abs(cameraRelativePosW.y),
 					length(cameraRelativePosW.xz)

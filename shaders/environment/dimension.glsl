@@ -64,6 +64,13 @@
 // mushroom, nether, making the End the ninth.
 #define END_BIOME_CATEGORY 8
 
+// The Nether's, from the same enum, where it is the seventeenth and last.
+//
+// Nothing the pack does is decided by this except that the cloud layer keeps out
+// of the Nether - see CloudDimension in /environment/clouds/volumetric.glsl for
+// why the dimension uniform alone is not enough to ask.
+#define NETHER_BIOME_CATEGORY 16
+
 // Whether this is the End, as the shader mod reports it.
 //
 // Everything the pack does for the End is decided by this and nothing else. In

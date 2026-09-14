@@ -3,7 +3,7 @@ option.STEADFAST.comment=由coderbot16制作, Iris 的原始开发者.
 	这是一个封闭测试版 - §c§l请不要公开分发！
 value.STEADFAST.BY_CODERBOT=by coderbot16
 
-option.FIRMAMENT=Firmament - v0.1 (edit of coderbot's Steadfast)
+option.FIRMAMENT=Firmament - v0.2 (edit of coderbot's Steadfast)
 option.FIRMAMENT.comment=由 Remiiil1a 制作的 Steadfast 修改版。加入了 labPBR 材质支持（法线、高光、视差、次表面散射、自发光贴图，以及材质反射）与末地维度支持。\n\n\
 	原光影为 coderbot 开发的 Steadfast，可从 https://modrinth.com/shader/steadfast-shaders（Modrinth）、https://www.curseforge.com/minecraft/shaders/steadfast（CurseForge）或 https://github.com/coderbot16/Steadfast（GitHub）下载。任何人都可以按 GNU 通用公共许可证第 3 版的条款修改和分发它。Steadfast 的附加条款要求修改版的名称以“(edit of coderbot's Steadfast)”结尾，本修改版因此这样命名。\n\n\
 	材质部分参考了 TheCMK 的 Mellow Shader v3.4，其许可要求保留署名。这里用到的都是公开的 BRDF 与 labPBR 规范中的数学，而不是他们的代码，也没有使用他们的任何素材或标志。\n\n\
@@ -52,6 +52,10 @@ profile.comment=\
 	§2✎ EDIT默认 style§r: 本修改版自带的配置。是 Steadfast 原本的外观，加上按调校值开启的材质选项。色彩、大气模型、色调映射与天空都沿用 Steadfast 的默认值，因此试过其它风格之后，也可以用这一项回到原来的样子。
 
 screen.EFFECTS=特效与后期处理
+screen.EFFECTS_LIGHT=光照特效
+screen.EFFECTS_CAMERA=镜头效果
+screen.EFFECTS_COLOR=色彩与色调
+screen.EFFECTS_TAA=【实验性】时间抗锯齿（TAA）
 screen.WATER=水体与彩色玻璃
 screen.ATMOSPHERE_CLOUDS=大气与云层
 screen.LIGHTING=光照与阴影
@@ -147,6 +151,9 @@ option.PBR_SPECULAR.comment=是否用高光贴图中的光滑度与反射率（F
 option.PBR_SPECULAR_STRENGTH=高光强度
 option.PBR_SPECULAR_STRENGTH.comment=镜面反射的强度。\n\n1.0 是物理正确的取值，但真实的电介质只反射约 4% 的入射光，而 Steadfast 的色调映射又会进一步压缩高光，因此物理正确值远没有大多数人期待的“反光”那么明显。\n\n如果表面看起来仍然发闷，调高这一项；如果一切都显得湿滑或像塑料，就往 1.0 回调。\n\n开启「能量守恒」后，1.0 才是使光照收支平衡的取值，高于它的部分都属于刻意的过反射。
 
+option.PBR_LIGHT_SIZE=日月光源大小
+option.PBR_LIGHT_SIZE.comment=太阳与月亮在材质高光里"有多大"。\n\n原来它们被当成点光源，所以抛光方块上的高光只有一个像素大，而不是镜子里本该看到的那一轮日面。太阳在天空里约占半度视角，这一项就是把这半度加进高光里：镜面会把高光摊成太阳真实的圆盘大小。\n\n1.0 = 太阳真实的视角大小（推荐）；0.0 = 原来的点光源，用来做对比；再往上就是把圆盘夸张化，像摄影师镜头里的星芒。\n\n它做的事是让镜子不那么"完美"：原本小到比太阳还小的那个高光点，现在铺成太阳的圆盘。粗糙表面的高光本来就比太阳宽得多，所以只会略微变大（普通粗糙度下几个百分点）。天空里画出来的太阳和月亮是另一套东西，不随这一项变大变小。
+
 option.PBR_ENERGY_CONSERVATION=能量守恒
 option.PBR_ENERGY_CONSERVATION.comment=是否用“表面没有反射掉的那部分光”来加权漫反射，使漫反射与高光相加不会超过入射的总光量。\n\n菲涅耳决定这个分配：表面会反射一部分入射光，其余透入材质内部，而透入的那部分才是漫反射响应的来源。不做这个分配而直接把两者相加，正是光滑表面能亮过入射光的原因，也是金属——它反射掉了大部分光，本应几乎没有漫反射——仍然保留一半漫反射响应、看起来像亮塑料的原因。\n\n默认关闭，因为它会一次性改变所有带高光贴图的材质亮度。建议配合把「高光强度」设为 1.0 使用，那是收支平衡的取值；2.0 原本只是为了对抗色调映射的压缩。\n\n注意：明亮的金属（金、银、铝）在洞穴与夜间会明显变暗。这在物理上是正确的，但视觉变化很大，值得先试再决定。\n\n「天空反射」是它的天然搭档：当金属的漫反射响应被去掉之后，它反射的东西正是让金属看起来像金属、而不是像地上一个洞的原因。
 
@@ -195,13 +202,16 @@ option.PBR_POROSITY_WETNESS.comment=资源包标记为多孔的材质在潮湿�
 option.PBR_TRANSLUCENT=冰与玻璃的 PBR
 option.PBR_TRANSLUCENT.comment=冰与玻璃等半透明固体是否从资源包读取反射率与法线。\n\n冰由半透明通道绘制，而该通道给水 0.1 的反射率、给其它一切 0——所以无论资源包为冰写了什么，冰面目前除了掠射角之外几乎不反射任何东西。开启这一项后，冰会像普通方块一样被解码，它本来就有的那套反射也就变成了该材质的反射。\n\n水被有意排除在外：Steadfast 的水是动态表面，法线来自它自己的波浪模型，而资源包里的水材质描述的是比当前绘制的表面更薄、更光滑的东西。\n\n关掉它可以看到资源包原本的冰雪外观。
 
+option.PBR_HAND_ITEM_MATERIALS=非方块手持物品也使用材质
+option.PBR_HAND_ITEM_MATERIALS.comment=手持的**物品**（不是方块）是否也去读资源包的 PBR 材质。\n\n默认开启，这才是让手里的物品体现它该有的材质：刀剑能接到日光、抛光工具能映出天空。\n\n它之所以是个选项，是因为材质从哪来：材质图集是按**方块图集**生成的，一张精灵对一张精灵；而物品模型取自**物品图集**，精灵位置不同。若你的资源包**没有给物品做 LabPBR 材质**，那些坐标就会读到别的精灵的材质、或者什么都没有——这时关掉这一项，物品会保持资源包原本的纯色。\n\n注意：物品看起来"半透明／能看见后面的地形"**不是**这一项造成的。那是"给手部算了环境反射"导致的——手是挂在摄像机前的面片，不在世界里，屏幕空间追踪会追到物品背后的世界、天空反射会照到玩家背后的天空，两者叠上去都像透视。现在手部整块不参与环境反射，所以不需要为了那个问题关掉这一项。
+
 option.PBR_HAND_ITEMS=手持物品的 PBR
-option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质。\n\n手持方块取自方块图集，因此它携带的材质数据与放在地上的同一方块完全一致——开启后，手里的石头就不会在旁边的墙有材质表现时显得平淡。手持的非方块物品同样按该方式从资源包读取材质。\n\n默认开启，让世界保持一致：手持方块与放在地上的同一方块材质表现相同。
+option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质。\n\n手持方块取自方块图集，因此它携带的材质数据与放在地上的同一方块完全一致——开启后，手里的石头就不会在旁边的墙有材质表现时显得平淡。\n\n默认开启，让世界保持一致：手持方块与放在地上的同一方块材质表现相同。非方块的手持物品同样从物品图集读取材质——见上一项。
 
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。\n\n这一项是实验性质，开启它本身就是验证方式：只有方块图集被 Iris 与 OptiFine 构建法线／高光贴图，因此实体也可能被套上某个方块的材质数据，而不是它自己的。\n\n验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」。如果是一片均匀的画面，说明该实体没有绑定材质数据，应当把这一项关回去；如果画面里有随生物贴图变化的细节、能与它的贴图对上，说明可行。\n\n默认开启：如果资源包没有为实体提供材质贴图，这一项也读不到任何东西。如果按上面的方法验证后发现它取到的是别的方块的材质，就把它关掉。
 
-option.PBR_DEBUG=材质调试视图 [build 15]
+option.PBR_DEBUG=材质调试视图 [build 41]
 value.PBR_DEBUG.PBR_DEBUG_NONE=关闭
 value.PBR_DEBUG.PBR_DEBUG_HEIGHT=高度通道
 value.PBR_DEBUG.PBR_DEBUG_SMOOTHNESS=光滑度
@@ -214,21 +224,31 @@ value.PBR_DEBUG.PBR_DEBUG_SUBSURFACE=孔隙度／散射通道
 value.PBR_DEBUG.PBR_DEBUG_EMISSION=发射光
 option.PBR_DEBUG.comment=用材质数据的可视化替换画面，这是判断资源包到底提供了哪些数据最快的方法。\n\n选“高度通道”后看一个方块：如果它是均匀的灰色，说明该资源包对这个方块没有高度数据，再怎么调视差参数也不会有位移。\n\n“切线空间法线”显示的是资源包原始的法线贴图内容，尚未套用方块朝向：平坦法线呈浅蓝色，纯黑则说明取到了精灵之外的texel——那会解码成强烈的倾斜而不是平坦。把它和“法线”对照，就能区分问题出在采样还是在切线坐标系上。\n\n「遮蔽通道」就是「材质环境光遮蔽」所读取的数据：如果某个方块显示为均匀的白色，说明该资源包没有为它提供遮蔽数据，这项功能在那个方块上无事可做。\n\n「孔隙度／散射通道」是它在高光贴图上的对应项：纯黑表示资源包没有在该通道存放数据，暗色是孔隙度，更亮的颜色则表示材质透光。
 
-option.TAA=时间抗锯齿（TAA）
+option.MOTION_BLUR=动态模糊
+option.MOTION_BLUR.comment=按**相机在世界里的位移**把画面沿运动方向糊开：走路、奔跑、下落、坐船、被击飞时画面都会有真实的拖影。\n\n做法是逐像素还原这块像素的位置，再按"相机这一帧走了多远"算出上一帧它在哪里，两个屏幕位置之间就是它这一帧移动了多远，然后沿这段距离取平均。位移是逐像素算的，所以走路时脚下的地面飞快掠过、远处的地平线几乎不动——这正是相机该有的样子，一个全屏统一的偏移做不到这一点。\n\n**位移和转头都算，只有走路的摇晃不算**：走路时视角的上下颠、左右晃本身也是一种旋转，而且和转头共用同一个矩阵，没法直接挑出来——所以按**大小**区分：走路时摇晃每帧只推动画面一两像素，而值得模糊的转头每帧推几十像素。因此**转头要超过几个像素/帧才计入模糊**，手轻搭在鼠标上的慢速转动不会糊。跑、掉、坐船、被打飞都是位移，全都算。\n\n**只模糊相机**：Steadfast 没有运动矢量，会自己动的实体、水流、掉落物都拿不到"上一帧在哪"的记录，所以它们保持清晰。手持物品整块不参与（它挂在相机前，屏幕上是静止的）。\n\n在最后一遍里、色调映射之前执行，所以混合的是线性光，光柱（体积光）也不会被糊掉。
+
+option.MOTION_BLUR_AMOUNT=模糊量
+option.MOTION_BLUR_AMOUNT.comment=模糊的长度，是这块像素实际位移的多少倍。\n\n1.0 是如实的长度；调低只是给运动一点暗示，调高则比真正的位移跑得更远，看着更"快"但也更假。\n\n「动态模糊」关闭时无效。
+
+option.MOTION_BLUR_SAMPLES=采样率
+option.MOTION_BLUR_SAMPLES.comment=沿这段位移取多少个采样点，决定模糊有多顺滑。\n\n每个采样点都是全屏每个像素的一次纹理取样，这就是这项功能的开销：2 会看成一实一虚两层影子，8 在多数场景下已经顺滑，再往上提升很小。\n\n「动态模糊」关闭时无效。
+
+option.MOTION_BLUR_LENS=趣味：模糊透镜（原来的 bug）
+option.MOTION_BLUR_LENS.comment=把动态模糊里曾经的一个 bug **原样保留**下来，因为它看起来像某种东西。默认关闭。\n\n那个 bug 出在"转头"这一半：判断转头要把这块像素的方向放到上一帧的视图里去看，而方向必须先转到世界轴向。当时漏了这一步、直接把**视图空间**的方向交给了上一帧的矩阵，于是**相机自己的旋转被算了两次**。结果是一块"错误的位移"盘：它跟着镜头转，但转的角度是**两倍** —— 面朝正北时正好与视线重合、什么也不做；把视角转 90°（正东），它就跑到正南。\n\n「动态模糊」关闭时无效。开这一项会把正确的转头模糊**换成**那块透镜，不是叠加。
 value.TAA.TAA_OFF=关闭
 value.TAA.TAA_ON=开启
-option.TAA.comment=默认关闭，因为它是在画面稳定性和平滑度之间做取舍的一项效果。\n\n开启后每帧用略微偏移的亚像素位置渲染，再把连续多帧平均起来，使每个像素在多个位置上被采样而不是只采一次。这样能用远低于提高分辨率的代价，消除单帧无法解决的边缘锯齿。\n\nSteadfast 没有运动矢量，因此自身会移动的东西——实体、水面、粒子、手持物品——无法被正确重投影，只能通过丢弃与当前帧不符的历史来处理。\n\n如果贴图看起来发糊或发涂抹：把「历史钳制范围」调低、把「锐化」调高，或把「抗锯齿强度」降到 0.75。\n\nVoxy 地形不在覆盖范围内，因为它的顶点端由 Voxy 模组提供，而不是这些顶点着色器。
+option.TAA.comment=**【实验性功能】**还没做完，所以默认关闭，而且它有已知的副作用（见下）。想要就开，不想要就关——这一组里的其它几项也都在同一个实验性分组下。\n\n它是在画面稳定性和平滑度之间做取舍的一项效果。\n\n开启后每帧用略微偏移的亚像素位置渲染，再把连续多帧平均起来，使每个像素在多个位置上被采样而不是只采一次。这样能用远低于提高分辨率的代价，消除单帧无法解决的边缘锯齿。\n\nSteadfast 没有运动矢量，因此自身会移动的东西——实体、水面、粒子、手持物品——无法被正确重投影，只能通过丢弃与当前帧不符的历史来处理。\n\n如果贴图看起来发糊或发涂抹：把「历史钳制范围」调低、把「锐化」调高，或把「抗锯齿强度」降到 0.75。\n\nVoxy 地形不在覆盖范围内，因为它的顶点端由 Voxy 模组提供，而不是这些顶点着色器。
 
-option.TAA_STRENGTH=抗锯齿强度
+option.TAA_STRENGTH=【实验性】抗锯齿强度
 option.TAA_STRENGTH.comment=每帧保留多少已累积的历史。\n\n数值越高细节保留越多、噪点越少，代价是运动物体后面的拖影更明显。
 
-option.TAA_JITTER=抖动半径
+option.TAA_JITTER=【实验性】抖动半径
 option.TAA_JITTER.comment=亚像素偏移的半径，单位为像素。\n\n1 像素表示每帧的采样点可以落在像素内的任意位置，这是抗锯齿滤波应有的取值。设为 0 则关闭偏移，此时该通道仍在运行，但没有可平均的内容。
 
-option.TAA_CLAMP=历史钳制范围
+option.TAA_CLAMP=【实验性】历史钳制范围
 option.TAA_CLAMP.comment=允许历史像素超出当前帧邻域多少个标准差。\n\n这是防止运动物体把旧画面拖在身后的关键，也是防止贴图被慢慢平均成一片涂抹的关键。画面闪烁就调高，表面发糊或发涂抹就调低。
 
-option.TAA_SHARPEN=锐化
+option.TAA_SHARPEN=【实验性】锐化
 option.TAA_SHARPEN.comment=对合成后的画面做多少锐化，以补偿多帧平均带来的软化。\n\n少量即可，过多会把抗锯齿本要消除的锯齿重新带回来。
 
 option.PBR_EMISSION=发射光
@@ -336,6 +356,25 @@ option.DAY_ATMOSPHERE= 白昼大气氛围预设
 option.HARDER_HORIZON_DAY= 白昼地平线锐化
 option.BORDER_FOG= 边缘远景雾
 option.PLANAR_CLOUD_LAYERS= 平面云层图层
+
+option.VOLUMETRIC_CLOUDS=方块状体积云
+option.VOLUMETRIC_CLOUDS.comment=用本包自己的云层替代 Minecraft 那种扁平方块云，并把它关上：云层由一个个边长 12 格的立方体云格组成。\n\n云层是在 deferred 趟沿视线步进的，那是深度缓冲第一次完整的地方——正因如此，地形才能挡住它后面的云，而不是被云盖住。每个云格都是实打实的方块，所以云层有顶有底：底面比顶面暗，挡在太阳前面的云会有亮边。\n\n代价是每个天空像素都要为视线穿过的每个云格取一次噪声（最多就是下面的「步进次数」），云本身受光还要再多取几次。这是本包天空里最贵的东西，第一个该降的就是步进次数。云层不投影到地面，所以地面不为此付出任何代价。
+
+option.VOLUMETRIC_CLOUD_COVERAGE=云量
+option.VOLUMETRIC_CLOUD_COVERAGE.comment=云层遮住多少天空：拉到最低近乎空天，拉到最高是一片阴天。0.5 是调校时使用的取值。\n\n天气会自己加厚云层，与这一项无关；而且它加厚得很慢——云跟的是游戏追踪的"潮湿程度"而不是雨本身，所以雨天变晴要过大约一分钟才会慢慢散去，而不是雨一停就立刻变。\n\n调低天空会散开成零星的云、云与云之间露出大片蓝天；调高会压成一片阴天。
+
+option.VOLUMETRIC_CLOUD_HEIGHT=云层高度
+option.VOLUMETRIC_CLOUD_HEIGHT.comment=云层底面的高度（单位：格）。192 是 Minecraft 1.18 以后自带云所在的高度，所以把原版云开回来时它们会落在同一处。\n\n调高会让云层更靠向地平线、遮住的天空更少；调低会把它压进地形里，在山上可能就钻到云底甚至云里了。
+
+option.VOLUMETRIC_CLOUD_THICKNESS=云层厚度
+option.VOLUMETRIC_CLOUD_THICKNESS.comment=云层有多厚（单位：格）。\n\n视线在云里穿过的就是这段厚度，所以它决定了云的实心程度：薄的像霾，厚的像实体。云的受光也是按顶底之间的这段高差算的，因此层太薄时无论怎么调光照都会显得扁。
+
+option.VOLUMETRIC_CLOUD_SPEED=云层速度
+option.VOLUMETRIC_CLOUD_SPEED.comment=云层漂移的快慢，作为平面云所用同一股风的倍数。0.0 就完全静止，方便盯着一团形状看。
+
+option.VOLUMETRIC_CLOUD_STEPS=步进次数
+option.VOLUMETRIC_CLOUD_STEPS.comment=视线最多可以跨过多少个云格，超过就放弃。\n\n空天空是一格一格走过去的，所以这是每个天空像素都要付的代价（有没有云都一样），它也是限制「贴着地平线的浅角度视线能看多远」的唯一因素。云层太贵就先降它；远处的云断得很突然就调高。
+
 option.NIGHT_ATMOSPHERE= 夜晚大气氛围预设
 option.HARDER_HORIZON_NIGHT= 夜晚地平线锐化
 option.ATMOSPHERE_FOG_STRENGTH_NOON= 正午大气雾浓度
@@ -366,7 +405,9 @@ value.NIGHT_SKY_LIGHTING.RETRO=复古
 value.NIGHT_SKY_LIGHTING.SEMI_NATURAL=半写实
 
 option.DEBUG= 调试模式
-option.VANILLA_CLOUDS= 原版云朵
+option.VOLUMETRIC_CLOUD_CELL_SIZE= 云的大小
+option.VOLUMETRIC_CLOUD_CELL_SIZE.comment=单个云格的边长（单位：格），同时也是噪声图案被拉伸到的尺度——它同时决定云块的粗细和它们拼成的云团有多大。\n\n调小云会碎成一块块小方块、间隙变多；调大就是大块大团的云。越大越省性能（视线穿过云层时要跨过的格子更少）。
+
 option.REAL_TIME_ENTITY_SHADOWS= 实体实时阴影
 option.SKY_DITHER_DEBUG= 天空色阶抖动调试
 option.DARK_UNDERWATER= 深水暗化效果

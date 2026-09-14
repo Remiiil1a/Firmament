@@ -30,7 +30,7 @@
 #include "/environment/lighting/end_lighting.glsl"
 
 // Whether to use the new direct lighting model with atmospheric scattering.
-//#define MINISHITA_LIGHTING
+#define MINISHITA_LIGHTING
 #ifdef MINISHITA_LIGHTING
 	// Actual effect is in shaders.properties
 #endif
@@ -57,7 +57,7 @@
 #define RETRO 2
 
 // The style of direct and ambient sky lighting to use during the day.
-#define DAY_SKY_LIGHTING SEMI_NATURAL // [FANTASY SEMI_NATURAL RETRO]
+#define DAY_SKY_LIGHTING RETRO // [FANTASY SEMI_NATURAL RETRO]
 
 // The style of direct and ambient sky lighting to use at night.
 #define NIGHT_SKY_LIGHTING FANTASY // [FANTASY SEMI_NATURAL RETRO]

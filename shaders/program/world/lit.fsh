@@ -57,6 +57,17 @@ const int colortex8Format = RGBA8;
 // Used to covert viewPos to worldPos.
 uniform vec3 cameraPosition;
 
+// The forward half of the camera's matrix pair - world to view - which is the
+// one the geometry here was drawn with.
+//
+// Declared up here, ahead of the includes, because the cloud layer needs it and
+// that is pulled in further down; a shader has to see a declaration before the
+// code that uses it. The macro tells other files that want the same uniform -
+// /environment/lighting/translucent.glsl - that it has already been declared,
+// because a repeated declaration is an error.
+#define GBUFFER_MODEL_VIEW_DECLARED
+uniform mat4 gbufferModelView;
+
 // Water waves and caustics scrolling.
 //
 // Declared behind a guard because more than one file in a program wants this
@@ -299,7 +310,26 @@ void main() {
 	vec3 ndcPos = gl_FragCoord.xyz * vec3(windowToNdc, 2.0) - 1.0;
 	vec4 viewPosH = inverseProjectionMatrix * vec4(ndcPos, 1.0);
 	vec3 viewPos = viewPosH.xyz / viewPosH.w;
-	vec3 cameraRelativePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+	// The fragment's position relative to the camera, in world axes.
+	//
+	// Read out of the view-space position against the world's axes taken from
+	// gbufferModelView, rather than by putting the view position through
+	// gbufferModelViewInverse.
+	//
+	// The two should be the same rotation of each other, and the second is what
+	// the pack has always done, but they are not quite the same while the view is
+	// bobbing: that inverse is not quite the inverse of the matrix the vertices
+	// went through, and the small error it carries is what made the reflections
+	// shiver as the player walked - the screen-space reflection stopped doing it
+	// once its direction came from the view position instead (see the note in
+	// /program/post/copy_and_fog.fsh). Dotting the view position against the
+	// world's axes is the transpose of that matrix, which for a rotation is its
+	// inverse, and it cannot disagree with the geometry by construction.
+	mat3 viewRotation = mat3(gbufferModelView);
+	vec3 cameraRelativePos = vec3(
+		dot(viewPos, viewRotation * vec3(1.0, 0.0, 0.0)),
+		dot(viewPos, viewRotation * vec3(0.0, 1.0, 0.0)),
+		dot(viewPos, viewRotation * vec3(0.0, 0.0, 1.0)));
 
 	uint materialID = DecodePerFaceMaterialID(perFace);
 	vec3 worldNormal = DecodePerFaceWorldNormal(perFace);
@@ -383,6 +413,18 @@ void main() {
 
 		#if !defined(PBR_TRANSLUCENT)
 			pbrMaterial = pbrMaterial && materialID != ICE;
+		#endif
+
+		#if defined(PBR_HAND_ITEMS) && !defined(PBR_HAND_ITEM_MATERIALS)
+			// A held item is not a block, and the material maps are generated for
+			// the block atlas: its coordinates would land on another sprite's
+			// material and turn the item into a mirror of whatever is behind it.
+			// Only geometry the world gave a material to - which is to say a block,
+			// as mc_Entity reports it - is read from that atlas.
+			//
+			// A held block answers to a material ID and an item does not, so that
+			// is the test. See the option in gbuffers_hand.fsh for the whole of it.
+			pbrMaterial = pbrMaterial && materialID != GENERIC;
 		#endif
 
 		// This branch is safe even though it contains texture samples because
@@ -741,6 +783,35 @@ void main() {
 			// the sky. Leaving them with no material here is what keeps the same
 			// environment from being reflected twice, from two different places.
 			#if defined(TRANSLUCENT)
+				reflectionRoughness = 1.0;
+				reflectionF0 = vec3(0.0);
+			#endif
+
+			// The hand is left out of the environment reflection for a reason of its
+			// own: it is not part of the world that reflection is built from.
+			//
+			// The hand is a quad hanging in front of the camera, a foot from the eye,
+			// with nothing behind it that the reflection pass can see. Both halves of
+			// that pass therefore produce something that is not a reflection:
+			//
+			//   - The traced ray marches the world's depth buffer, which at these
+			//     pixels holds the hand itself and at the pixels around them holds
+			//     the world. It finds the world standing behind the item and paints
+			//     that onto the item.
+			//   - The sky reflection needs no depth at all. The item faces the
+			//     camera, so its mirror direction points back past the eye, and the
+			//     sky that lands on it is the sky behind the player.
+			//
+			// Either one leaves a held item showing the scene through itself - which
+			// is what a material on a held item looked like it was doing - and turning
+			// both off is the only configuration that reads correctly, so both are
+			// off here.
+			//
+			// Nothing else is given up: the material still has its normal, its
+			// roughness, its ambient response and the highlight the sun puts on it.
+			// What is dropped is the part of the environment a fragment that sits
+			// outside the world cannot reflect.
+			#if defined(PBR_HAND_ITEMS)
 				reflectionRoughness = 1.0;
 				reflectionF0 = vec3(0.0);
 			#endif

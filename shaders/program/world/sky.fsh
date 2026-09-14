@@ -22,11 +22,6 @@
 #include "/environment/sky.glsl"
 #include "/environment/clouds/cirrus.glsl"
 
-#define VANILLA_CLOUDS
-#ifdef VANILLA_CLOUDS
-	// Actual effect in shaders.properties
-#endif
-
 uniform mat4 gbufferModelViewInverse;
 uniform mat4 gbufferProjectionInverse;
 uniform vec2 windowToNdc;

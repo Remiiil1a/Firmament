@@ -3,7 +3,7 @@ option.STEADFAST.comment=Made by coderbot16, the original developer of Iris. \
 	This is a closed alpha release - §c§lplease do not redistribute in public!
 value.STEADFAST.BY_CODERBOT=by coderbot16
 
-option.FIRMAMENT=Firmament - v0.1 (edit of coderbot's Steadfast)
+option.FIRMAMENT=Firmament - v0.2 (edit of coderbot's Steadfast)
 option.FIRMAMENT.comment=An edit of Steadfast made by Remiiil1a. It adds labPBR \
 	material support (normal, specular, parallax, subsurface and emissive maps, \
 	plus reflections) and support for the End.\n\n\
@@ -86,6 +86,10 @@ profile.comment=\
 	them after trying one of the styles above..
 
 screen.EFFECTS=Effects & post-processing
+screen.EFFECTS_LIGHT=Light effects
+screen.EFFECTS_CAMERA=Camera effects
+screen.EFFECTS_COLOR=Colour and tonemapping
+screen.EFFECTS_TAA=[experimental] Temporal anti-aliasing
 screen.WATER=Water & stained glass
 screen.ATMOSPHERE_CLOUDS=Atmosphere & clouds
 screen.LIGHTING=Lighting & shadows
@@ -312,6 +316,22 @@ option.PBR_SPECULAR_STRENGTH.comment=How strong the specular reflection is.\n\n\
 	With Energy conservation on, 1.0 is the value that keeps the light budget \
 	balanced and anything above it is deliberate over-reflection.
 
+option.PBR_LIGHT_SIZE=Sun and moon size
+option.PBR_LIGHT_SIZE.comment=How big the sun and the moon are, as far as the \
+	highlight they make on a surface is concerned.\n\n\
+	Both are treated as points, which is why a polished block shows a highlight \
+	the size of a single pixel instead of the disc a mirror really shows. The sun \
+	covers about half a degree of sky, and this is that angle: it widens the \
+	highlight to the sun's real size.\n\n\
+	1.0 is the sun's actual angular size. 0.0 is the point light this used to be, \
+	which is the setting to compare against; larger values exaggerate the disc \
+	for the look of it, the way a photographer's starburst does.\n\n\
+	What this does is make a mirror a little less perfect: a surface smooth \
+	enough to show a highlight smaller than the sun now shows the sun's disc. A \
+	rough surface's highlight is already far wider than the sun, so it gains only \
+	a small amount - a few percent at ordinary roughness. The sun and moon drawn \
+	in the sky have a disc of their own and do not change with this.
+
 option.PBR_ENERGY_CONSERVATION=Energy conservation
 option.PBR_ENERGY_CONSERVATION.comment=Whether to weight the diffuse light by \
 	the part of it that the surface did not reflect, so that diffuse and \
@@ -500,16 +520,34 @@ option.PBR_TRANSLUCENT.comment=Whether ice and other translucent solids take \
 	describes a thinner and much smoother surface than the one being drawn.\n\n\
 	Turn it off to see an icy biome the way the resource pack left it.
 
+option.PBR_HAND_ITEM_MATERIALS=PBR on held items (not blocks)
+option.PBR_HAND_ITEM_MATERIALS.comment=Whether a held **item** - not a held \
+	block - reads the resource pack's PBR materials as well.\n\n\
+	On, and it is what makes a held item look like the material it is made of: a \
+	blade catches the sun, a polished tool mirrors the sky.\n\n\
+	It is an option because of where that material comes from. The material maps \
+	are generated for the block atlas, sprite for sprite, while an item model is \
+	drawn from the item atlas, where the sprites sit elsewhere. A resource pack \
+	that ships no LabPBR maps for its items leaves those coordinates reading \
+	another sprite's material, or none at all - turn this off for such a pack and \
+	items keep the plain colour it gave them.\n\n\
+	It is not the option to reach for if a held item looks see-through. That was \
+	the environment reflection being computed for the hand at all - the hand hangs \
+	in front of the camera rather than standing in the world, so the traced ray \
+	lands on the world behind the item and the sky reflection lands on the sky \
+	behind the player. The hand is now left out of that reflection entirely, so \
+	leave this on.
+
 option.PBR_HAND_ITEMS=PBR on held items
 option.PBR_HAND_ITEMS.comment=Whether the item or block in your hand gets PBR \
 	materials as well.\n\n\
 	A held block is drawn from the block atlas, so it carries exactly the same \
 	material data as the same block placed in the world: turning this on is what \
 	stops a held stone from looking flat while the stone in the wall beside it \
-	does not. A held item reads its materials from the resource pack the same \
-	way.\n\n\
+	does not.\n\n\
 	On by default, so that the world is consistent: a held block carries the same \
-	materials as the one placed next to it.
+	materials as the one placed next to it. A held item that is not a block reads \
+	its material from the item atlas as well - see the option above.
 
 option.PBR_ENTITIES=PBR on entities
 option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials.\n\n\
@@ -525,7 +563,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials.\n
 	is nothing for it to read. Turn it off if the check above shows it picking up \
 	materials that are not the entity's own.
 
-option.PBR_DEBUG=Material debug view [build 15]
+option.PBR_DEBUG=Material debug view [build 41]
 value.PBR_DEBUG.PBR_DEBUG_NONE=Off
 value.PBR_DEBUG.PBR_DEBUG_HEIGHT=Height channel
 value.PBR_DEBUG.PBR_DEBUG_SMOOTHNESS=Smoothness
@@ -567,11 +605,65 @@ option.GLASS_REFLECTIONS.comment=Whether glass and stained glass reflect the way
 	underground and deep indoors stays unreflective.\n\n\
 	Water and ice are not affected: they always reflected.
 
-option.TAA=Temporal anti-aliasing
+option.MOTION_BLUR=Motion blur
+option.MOTION_BLUR.comment=Smears the image along the distance the camera has \
+	travelled through the world, so that walking, running, falling, riding a boat \
+	and being thrown all leave a trail the way they do in a camera.\n\n\
+	It works per pixel: each pixel's position is recovered, the camera's travel \
+	over the last frame says where that point was a frame ago, and the distance \
+	between the two screen positions is how far this pixel moved. The image is then \
+	averaged along that distance. Because the movement is recovered for every pixel \
+	rather than once for the screen, walking makes the ground at your feet rush \
+	past while the horizon barely moves - which is what a camera does and what one \
+	screen-wide offset cannot.\n\n\
+	Travel and turning are both used; the walk bob is not. The bob is a rotation \
+	too, and it shares the camera's matrix with the turning, so the two cannot be \
+	told apart by anything but their size: at a walk the bob moves the picture one \
+	or two pixels a frame, while a turn worth blurring moves it dozens. So a turn \
+	is only blurred past a few pixels a frame, and a slow one - a hand resting on \
+	the mouse - is not. Running, falling, boats and knockback are travel, and travel \
+	always blurs.\n\n\
+	Only the camera is blurred: Steadfast has no motion vectors, so a mob, a river \
+	or a falling block carries no record of where it was and stays sharp. The hand \
+	is left out entirely - it is held in front of the camera, so on screen it is \
+	the one thing that is standing still.\n\n\
+	Runs in the final pass before the tonemap, so the blur mixes linear light and \
+	the godrays stay crisp.
+
+option.MOTION_BLUR_AMOUNT=Blur amount
+option.MOTION_BLUR_AMOUNT.comment=How long the blur is, as a multiple of the \
+	distance the pixel actually moved.\n\n\
+	1.0 is the honest length. Lower is a hint of movement; higher runs longer than \
+	the movement that caused it, which reads as faster and less true.\n\n\
+	Has no effect while Motion blur is off.
+
+option.MOTION_BLUR_SAMPLES=Samples
+option.MOTION_BLUR_SAMPLES.comment=How many samples are taken along that \
+	movement, and so how smooth the blur is.\n\n\
+	Each one is a texture fetch on every pixel of the screen, which is what this \
+	feature costs: 2 shows as a visible double image, 8 is smooth in most scenes, \
+	and past that the difference is small.\n\n\
+	Has no effect while Motion blur is off.
+
+option.MOTION_BLUR_LENS=Fun: the blur lens (an old bug)
+option.MOTION_BLUR_LENS.comment=Keeps a bug this effect used to have, exactly as \
+	it was, because it looks like something. Off by default.\n\n\
+	The bug was in the turning half. Measuring a turn means taking this pixel's \
+	direction and putting it through the view the previous frame was drawn with, \
+	and the direction has to be turned into world axes first. That step was left \
+	out, so the view-space direction went straight into the previous view's matrix \
+	and the camera's own rotation was applied twice. What that draws is a disc of \
+	movement nobody made, turning with the camera at twice the angle: looking north \
+	it sits where you are looking and does nothing, and a quarter turn of the view \
+	carries it half a turn round.\n\n\
+	Has no effect while Motion blur is off. Turning this on replaces the turning \
+	blur with the lens rather than adding to it.
 value.TAA.TAA_OFF=Off
 value.TAA.TAA_ON=On
-option.TAA.comment=Off by default, as it is the one effect here that trades \
-	image stability for smoothness.\n\n\
+option.TAA.comment=**[experimental]** This one is not finished, which is why it \
+	is off by default and why it has the side effects described below. Turn it on \
+	to use it; everything else on its page is part of the same experimental group.\n\n\
+	It is the one effect here that trades image stability for smoothness.\n\n\
 	Renders each frame with a small sub-pixel offset and \
 	averages several frames together, so that each pixel is sampled from \
 	several positions instead of one. This smooths out edges that no single \
@@ -583,26 +675,26 @@ option.TAA.comment=Off by default, as it is the one effect here that trades \
 	Voxy terrain is not covered, as its geometry is emitted by the Voxy mod \
 	rather than by these vertex shaders.
 
-option.TAA_STRENGTH=Anti-aliasing strength
+option.TAA_STRENGTH=[experimental] Anti-aliasing strength
 option.TAA_STRENGTH.comment=How much of the accumulated history each frame \
 	keeps.\n\n\
 	Higher resolves more detail and leaves less noise, at the cost of more \
 	ghosting behind moving objects.
 
-option.TAA_JITTER=Jitter radius
+option.TAA_JITTER=[experimental] Jitter radius
 option.TAA_JITTER.comment=The radius of the sub-pixel offset, in pixels.\n\n\
 	One pixel places each frame's sample anywhere within the pixel, which is \
 	what an anti-aliasing filter wants. 0 turns the offset off, which leaves \
 	the pass running but with nothing to average.
 
-option.TAA_CLAMP=History clamp
+option.TAA_CLAMP=[experimental] History clamp
 option.TAA_CLAMP.comment=How many standard deviations of the current frame's \
 	neighbourhood the history is allowed to fall outside of.\n\n\
 	This is what stops a moving object from dragging its old positions along \
 	behind it, and what keeps textures from being averaged into a smudge. Raise \
 	it if the image flickers, lower it if surfaces look soft or smeared.
 
-option.TAA_SHARPEN=Sharpening
+option.TAA_SHARPEN=[experimental] Sharpening
 option.TAA_SHARPEN.comment=How much to sharpen the resolved image, to counter \
 	the softening that averaging frames together introduces.\n\n\
 	A little goes a long way - too much brings back the aliasing the effect \
@@ -1079,6 +1171,69 @@ option.PLANAR_CLOUD_LAYERS.comment=Draws the clouds as flat layers of a \
 	This is a different kind of cloud rather than a prettier version of the same \
 	one: it lets them be thicker and softer, lit by the sun, and lit from \
 	underneath at sunset.
+
+option.VOLUMETRIC_CLOUDS=Blocky volumetric clouds
+option.VOLUMETRIC_CLOUDS.comment=Draws this pack's own cloud layer - a deck of \
+	cube-shaped cloud cells, twelve blocks on a side - in place of Minecraft's \
+	flat cloud boxes, and switches those off while it is on.\n\n\
+	The layer is marched along the view ray in the deferred pass, which is the \
+	first point at which the depth buffer is complete. That is what lets the \
+	terrain hide the clouds behind it rather than the clouds drawing over it. A \
+	cell is a real box, so the layer has a top and a bottom, its underside is \
+	darker than its top, and a cloud standing between you and the sun has a \
+	bright rim.\n\n\
+	The cost is one noise fetch per cloud cell the view ray crosses, up to the \
+	step count below, on every pixel of sky - and a few more on the clouds \
+	themselves, for the light that reaches them. This is the most expensive \
+	thing in the pack's sky, and the step count is what to lower first. The \
+	layer costs nothing on the ground: it does not cast a shadow.
+
+option.VOLUMETRIC_CLOUD_CELL_SIZE=Cloud size
+option.VOLUMETRIC_CLOUD_CELL_SIZE.comment=How big one cloud is, in blocks: the \
+	size of a cell, and the size the noise pattern is stretched to, so it sets \
+	both how chunky the cubes are and how large the masses they form are.\n\n\
+	Smaller values break the layer up into many small cubes with more sky \
+	between them; larger values give fewer, bigger clouds. Larger is also \
+	cheaper, since the view ray crosses fewer cells on its way through.
+
+option.VOLUMETRIC_CLOUD_COVERAGE=Cloud coverage
+option.VOLUMETRIC_CLOUD_COVERAGE.comment=How much of the sky the layer covers, \
+	from a nearly empty sky at the bottom to an overcast one at the top. 0.5 is \
+	the value it was tuned at.\n\n\
+	The weather thickens the layer on its own whatever this is set to, and it \
+	does so slowly: the clouds follow the wetness the game tracks rather than \
+	the rain itself, so they fill in and clear out over the course of a minute \
+	instead of changing the moment it starts or stops raining.
+
+option.VOLUMETRIC_CLOUD_HEIGHT=Cloud height
+option.VOLUMETRIC_CLOUD_HEIGHT.comment=The height of the underside of the layer, \
+	in blocks. 192 is where Minecraft's own clouds are in 1.18 and up, so that \
+	turning the vanilla clouds back on puts them in the same place.\n\n\
+	Raising it sends the layer further towards the horizon and covers less of the \
+	sky; lowering it brings it down into the terrain, where on a mountain you can \
+	end up under it or inside it.
+
+option.VOLUMETRIC_CLOUD_THICKNESS=Cloud thickness
+option.VOLUMETRIC_CLOUD_THICKNESS.comment=How deep the layer is, in blocks.\n\n\
+	This is what a sight line travels through inside a cloud, so it scales how \
+	opaque the clouds are: thin ones read as haze, thick ones as solid. The gap \
+	between the top and the bottom of the layer is also what the lighting is \
+	worked out from, so a layer that is too thin looks flat no matter what the \
+	lighting is set to.
+
+option.VOLUMETRIC_CLOUD_SPEED=Cloud speed
+option.VOLUMETRIC_CLOUD_SPEED.comment=How fast the layer drifts, as a multiple \
+	of the same wind the planar clouds move with. 0.0 stops it, which is useful \
+	for looking at one shape without it moving.
+
+option.VOLUMETRIC_CLOUD_STEPS=Cloud march steps
+option.VOLUMETRIC_CLOUD_STEPS.comment=How many cloud cells the view ray may \
+	cross before the march gives up.\n\n\
+	Empty sky is walked a cell at a time, so this is a cost paid by every pixel \
+	of sky whether or not there is a cloud in it, and it is also the only thing \
+	that limits how far along the layer a shallow ray can see towards the \
+	horizon. Lower it first if the layer costs too much; raise it if the distant \
+	clouds end abruptly.
 
 option.DEBUG=Debug view
 option.DEBUG.comment=Replaces the image with one of the buffers the pack works \

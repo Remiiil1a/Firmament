@@ -121,6 +121,25 @@
 // "reflective" material. Raise this if materials still look flat.
 #define PBR_SPECULAR_STRENGTH 2.0 // [1.0 1.25 1.5 2.0 2.5 3.0 4.0 6.0]
 
+// How big the sun and the moon are, as far as the highlight they make on a
+// surface is concerned.
+//
+// Both are treated as points, which is why a polished block shows a highlight
+// the size of a single pixel instead of the disc a mirror really shows: the sun
+// covers about half a degree of sky, and that angle is what should spread the
+// highlight out. This widens the specular lobe by that angle, so a mirror shows
+// a disc of the sun's true size and a rough surface - whose lobe is far wider
+// already - is left as it was.
+//
+// 1.0 is the sun's real angular size and is what the option is for. 0.0 is the
+// point light this used to be, for comparing the two; larger values exaggerate
+// the disc for the look of it, like a photographer's starburst. The moon is
+// close enough to the sun in size to share the setting.
+//
+// Only the highlight is affected. The sun and moon drawn in the sky are a disc
+// of their own and do not change size with this.
+#define PBR_LIGHT_SIZE 1.0 // [0.0 1.0 2.0 3.0 4.0 6.0 8.0]
+
 // Whether to weight the diffuse light by the part of it that the surface did
 // not reflect, which is what keeps diffuse and specular from adding up to more
 // light than arrived.
@@ -739,6 +758,10 @@ uniform sampler2D specular;
 	// anything being declared in the pack's properties, so this is only a
 	// declaration and not a request. Declared inside the feature's own guard so
 	// that it is not paid for in programs that never compile the code below.
+	//
+	// The cloud layer wants the same value - it uses it for how thick the clouds
+	// are - so the macro tells it that this has already been declared.
+	#define WETNESS_DECLARED
 	uniform float wetness;
 #endif
 
@@ -1717,6 +1740,12 @@ vec3 PbrDebugColor(
 #endif
 
 #ifdef PBR_SPECULAR
+	// Half the angle the sun covers seen from the ground, in radians: its disc is
+	// about 0.53 degrees across, so its radius is a little under a quarter of a
+	// degree. This is the size a light that is not a point has in the lobe below,
+	// scaled by PBR_LIGHT_SIZE.
+	const float PBR_SUN_ANGULAR_RADIUS = 0.0046;
+
 	// The GGX / Trowbridge-Reitz normal distribution function, which controls
 	// the size and shape of the specular lobe.
 	float D_GGX(float NdotH, float roughness) {
@@ -1826,8 +1855,33 @@ vec3 PbrDebugColor(
 		// as a mirror on a polished block.
 		float roughness = max(pbr.roughness, 2.0e-3);
 
-		float D = D_GGX(NdotH, roughness);
-		float visibility = V_SmithGGXCorrelated(NdotL, NdotV, roughness);
+		// The light is not a point, and this is where that shows: the sun's own
+		// angular size widens the lobe, which is what turns the highlight on a
+		// polished block from a single bright pixel into the disc the sun really
+		// is.
+		//
+		// The angle is added to alpha itself and not to the roughness, because
+		// alpha is the number the lobe's width is measured in: a distribution of
+		// width alpha spreads the reflected light over about that angle. D_GGX
+		// takes its square root, so the square root is what is passed in.
+		//
+		// Adding the angle to the roughness instead is the mistake this file made
+		// first: alpha is the square of that, so half a degree would arrive as four
+		// millionths of a radian - a change far too small to see on any surface,
+		// which is exactly how it looked.
+		//
+		// With PBR_LIGHT_SIZE at 0.0 this is exactly the point light it used to
+		// be, which is the setting to compare against.
+		float alpha = roughness * roughness
+			+ PBR_SUN_ANGULAR_RADIUS * PBR_LIGHT_SIZE;
+
+		// A distribution is only meaningful up to a width of about a radian, so an
+		// exaggerated light size is capped there rather than being left to describe
+		// a lobe wider than the maths can.
+		float lobe = min(sqrt(alpha), 1.0);
+
+		float D = D_GGX(NdotH, lobe);
+		float visibility = V_SmithGGXCorrelated(NdotL, NdotV, lobe);
 		vec3 fresnel = F_Schlick(pbr.f0, VdotH);
 
 		return PBR_SPECULAR_STRENGTH * D * visibility * fresnel * lightTerm;

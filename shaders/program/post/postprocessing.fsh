@@ -110,12 +110,21 @@ float SmoothGodrays(vec2 texCoord, vec2 ScreenLightPos) {
 #elif DEBUG == DEBUG_SKYLIGHT
 	uniform sampler2D colortex5;
 #else
+	#define SCENE_TEXTURE_DECLARED
 	uniform sampler2D colortex0;
 #endif
 
 #include "/environment/tonemap_settings.glsl"
 
 uniform vec2 windowToScreen;
+
+// MotionBlur(...), the blur the camera's own movement draws across the frame.
+// See that file for what it is and why the hand is left out of it.
+//
+// Included after the declarations above because the scene texture it samples is
+// one of them: a shader has to see a uniform's declaration before the code that
+// uses it, even when the two end up in the same file once the includes are done.
+#include "/environment/effects/motion_blur.glsl"
 
 layout(location = 0) out vec3 finalColor;
 
@@ -139,6 +148,13 @@ void main() {
 		finalColor = vec3(texture(colortex5, screenCoord).r);
 	#else
 		vec3 color = texture(colortex0, screenCoord).rgb;
+
+		// Blurred before the godrays are added and before the tonemap, so the
+		// blur mixes linear light rather than the tonemapped image, and so the
+		// shafts of light stay crisp while the world they shine through does not.
+		#ifdef MOTION_BLUR
+			color = MotionBlur(screenCoord);
+		#endif
 
 		#ifdef GODRAYS
 		if (godraysExposure > 0.0) {

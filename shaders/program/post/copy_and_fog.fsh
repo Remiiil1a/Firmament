@@ -62,6 +62,27 @@ uniform mat4 gbufferProjection;
 uniform mat4 gbufferProjectionInverse;
 uniform vec2 windowToNdc;
 
+// Where the camera is in the world. The cloud layer is a place rather than a
+// direction - it sits at a height, and the camera has to be located against it -
+// and this is the pass that draws it.
+uniform vec3 cameraPosition;
+
+// The direction of the light that casts shadows, straight from the shader mod
+// and already in view space. A sky pixel has no surface program behind it to
+// have read this, so it is read here, and the cloud layer turns it into world
+// axes itself - for the reason given in /environment/clouds/volumetric.glsl.
+uniform vec3 shadowLightPosition;
+
+// BlockyClouds(...), the pack's own cloud layer. See that file for what it is,
+// why it is drawn here rather than with the sky, and what it costs.
+//
+// Included here rather than with the includes above, because the layer reads the
+// camera's position, the camera's matrix and the light direction, and those are
+// declared in between: a shader has to see a uniform's declaration before the
+// code that uses it, even when the two end up in the same file once the includes
+// are done.
+#include "/environment/clouds/volumetric.glsl"
+
 uniform sampler2D colortex2;
 uniform sampler2D colortex0;
 uniform sampler2D depthtex1;
@@ -101,7 +122,14 @@ vec3 ApplyFog(
 ) {
 	// Project back to view space from the fragment coordinates
 	vec3 viewPos = ViewPosFromDepth(inverseProjection, fragCoord.z);
-	vec3 cameraRelativePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+
+	// Into world axes through the matrix the geometry was drawn with, for the
+	// reason given where the cloud layer's ray is turned the same way, below.
+	mat3 viewRotation = mat3(gbufferModelView);
+	vec3 cameraRelativePos = vec3(
+		dot(viewPos, viewRotation * vec3(1.0, 0.0, 0.0)),
+		dot(viewPos, viewRotation * vec3(0.0, 1.0, 0.0)),
+		dot(viewPos, viewRotation * vec3(0.0, 0.0, 1.0)));
 
 	vec3 worldSpaceVector = normalize(cameraRelativePos);
 	vec3 sky = SkyDither(fragCoord.xy, SkyColor(worldSpaceVector));
@@ -129,7 +157,6 @@ vec3 ApplyFog(
 // pass later, it is.
 vec3 EnvironmentReflection(
 	vec3 viewPos,
-	vec3 cameraRelativePos,
 	float skyLight
 ) {
 	#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
@@ -144,9 +171,25 @@ vec3 EnvironmentReflection(
 			return vec3(0.0);
 		}
 
-		// The camera sits at the origin of camera-relative space, so the view
-		// direction is simply the direction back towards the origin.
-		vec3 viewDirection = normalize(-cameraRelativePos);
+		// The camera sits at the origin of view space, so the view direction is
+		// simply the direction back towards the origin.
+		//
+		// Taken from the view-space position, which is exact, rather than from the
+		// camera-relative one, which is that same position built through the
+		// inverse of the camera's matrix: that inverse carries a small error while
+		// the view is bobbing, and a mirror turns a small error in the view
+		// direction into a reflection that shivers as you walk. See the note in
+		// /environment/clouds/volumetric.glsl.
+		//
+		// The reflection itself is worked out in the world, beside the surface
+		// normal, so the direction is turned back into world axes by dotting it
+		// against them - the transpose of the matrix the geometry was drawn with,
+		// which for a rotation is that matrix's inverse.
+		mat3 view = mat3(gbufferModelView);
+		vec3 viewDirection = normalize(vec3(
+			dot(-viewPos, view * vec3(1.0, 0.0, 0.0)),
+			dot(-viewPos, view * vec3(0.0, 1.0, 0.0)),
+			dot(-viewPos, view * vec3(0.0, 0.0, 1.0))));
 		float NdotV = max(dot(worldNormal, viewDirection), 1.0e-4);
 
 		vec3 worldReflected = PbrReflectionDirection(
@@ -243,20 +286,58 @@ void main() {
 	// already has reflections baked into it would be feeding itself.
 	gl_FragData[0] = vec4(background, 1.0);
 
-#if WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED || defined(VOXY)
 	float skylight = texelFetch(colortex2, ivec2(gl_FragCoord), 0).r;
 	float depth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
 
 	vec3 scene = background;
 
+	#if defined(VOLUMETRIC_CLOUDS) && defined(CLOUD_MARCH_AVAILABLE)
+		// The cloud layer belongs to the sky and to nothing else, and a pixel the
+		// depth buffer says has nothing in front of it is exactly a sky pixel.
+		//
+		// This is the only place it can be drawn: it needs a direction and a
+		// camera position rather than a surface, and it needs the depth buffer to
+		// be finished, so that it can both be occluded by the terrain and shadow
+		// the terrain - the surface programs do the second half of that from
+		// BlockyCloudTransmittance.
+		bool skyPixel = depth >= 1.0;
+
+		#ifdef DISTANT_HORIZONS
+			// Distant terrain is drawn into this buffer but writes its depth to a
+			// texture of its own, so the test above does not see it: without this
+			// the layer would be drawn over terrain that is in front of it.
+			float dhDepth = texelFetch(dhDepthTex0, ivec2(gl_FragCoord), 0).r;
+			skyPixel = skyPixel && dhDepth >= 1.0;
+		#endif
+
+		if (skyPixel) {
+			// The ray, turned from view space into world axes the same way the
+			// surface programs turn their positions: by dotting it against the
+			// world's axes taken from the matrix the geometry was drawn with,
+			// rather than through that matrix's inverse. The two agree except for
+			// the inverse's own error while the view is bobbing, and that error is
+			// enough to make a cloud layer visibly shift - subtly in the sky, and
+			// plainly in the hard-edged shadow it casts on the ground.
+			vec3 cloudViewRay = normalize(
+				ViewPosFromDepth(gbufferProjectionInverse, 1.0));
+			mat3 viewRotation = mat3(gbufferModelView);
+			vec3 cloudRay = vec3(
+				dot(cloudViewRay, viewRotation * vec3(1.0, 0.0, 0.0)),
+				dot(cloudViewRay, viewRotation * vec3(0.0, 1.0, 0.0)),
+				dot(cloudViewRay, viewRotation * vec3(0.0, 0.0, 1.0)));
+
+			vec4 cloud = BlockyClouds(cloudRay, cameraPosition, shadowLightPosition);
+			scene = mix(scene, cloud.rgb, cloud.a);
+		}
+	#endif
+
+#if WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED || defined(VOXY)
 	if (depth < 1.0) {
 		vec3 viewPos = ViewPosFromDepth(gbufferProjectionInverse, depth);
-		vec3 cameraRelativePos =
-			(gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
 
 		// The reflection goes on before the fog, so that a reflection far away
 		// fades into the distance exactly as the surface it is on does.
-		scene += EnvironmentReflection(viewPos, cameraRelativePos, skylight);
+		scene += EnvironmentReflection(viewPos, skylight);
 
 		scene = ApplyFog(
 			gbufferProjectionInverse,
@@ -298,17 +379,10 @@ void main() {
 	// programs themselves, which means the reflection added here is not fogged
 	// with it. That is the price of adding it after the fact in this
 	// configuration; the refraction-assisted one above gets it right.
-	float skylight = texelFetch(colortex2, ivec2(gl_FragCoord), 0).r;
-	float depth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
-
-	vec3 scene = background;
-
 	if (depth < 1.0) {
 		vec3 viewPos = ViewPosFromDepth(gbufferProjectionInverse, depth);
-		vec3 cameraRelativePos =
-			(gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
 
-		scene += EnvironmentReflection(viewPos, cameraRelativePos, skylight);
+		scene += EnvironmentReflection(viewPos, skylight);
 	}
 
 	gl_FragData[1] = vec4(scene, 1.0);
