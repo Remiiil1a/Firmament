@@ -46,11 +46,16 @@
 // so do not shorten it away.
 #define FIRMAMENT BY_REMIIIL1A // Authorship attribution. [BY_REMIIIL1A]
 
-// Where the material (PBR) support comes from: Mellow Shader v3.4 by TheCMK.
-// The maths follows the published BRDF/LabPBR specifications rather than being
-// copied - see NOTICE.md - but the approach is theirs, and their licence asks
-// for the credit.
-#define MELLOW_PBR BY_THECMK // Authorship attribution. [BY_THECMK]
+// The other shaders this one references or quotes code from - one credit each,
+// rather than one credit per feature, and rather than one entry with all of
+// them in it. They are listed on a Special thanks page of their own under
+// "Credits & licence"; see NOTICE.md for the licence terms that go with them.
+//
+// Steadfast itself has its own entry above rather than one here, because
+// Steadfast's additional terms require their notice to appear on its own,
+// before any download link.
+#define THANKS_MELLOW BY_THECMK // Authorship attribution. [BY_THECMK]
+#define THANKS_SUNDIAL BY_GEFORCELEGEND // Authorship attribution. [BY_GEFORCELEGEND]
 
 #define FANTASY 0
 #define SEMI_NATURAL 1

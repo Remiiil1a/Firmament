@@ -204,8 +204,8 @@ uniform vec2 windowToNdc;
 
 	#ifdef PBR_ATLAS
 		// xy: the centre of this face's sprite in the block atlas, zw: half of
-		// its size. Parallax mapping uses this to keep its displaced samples
-		// inside the sprite they belong to; see PbrClampToSprite.
+		// its size. Parallax mapping uses this to keep its samples inside the
+		// sprite they belong to; see PbrClampSample.
 		in vec4 spriteBounds;
 
 		// The tangent this geometry actually carries, from lit.vsh, with the
@@ -400,6 +400,10 @@ void main() {
 		vec3 pbrNormal = worldNormal;
 		vec2 pbrTexCoord = texcoord;
 
+		// How far the parallax ray was displaced, in texture coordinates. Only
+		// PBR_DEBUG_PARALLAX reads it; see the note on that option.
+		float pbrParallaxOffset = 0.0;
+
 		// Water has its own reflection model in TranslucentLighting, which
 		// relies on the unperturbed face normal to decide whether a face can
 		// reflect at all. Leave it to that rather than fighting over the same
@@ -436,7 +440,8 @@ void main() {
 				cameraRelativePos,
 				texcoord,
 				pbrGradients,
-				spriteBounds);
+				spriteBounds,
+				pbrParallaxOffset);
 
 			pbr = PbrDecode(pbrTexCoord, pbrGradients);
 			pbrNormal = PbrNormal(pbrFrame, pbrTexCoord, pbrGradients);
@@ -553,10 +558,14 @@ void main() {
 		//   not really impactful and not particularly worth our time, so we can
 		//   skip it.
 		//
-		// TODO: Bring back fancy flowing / sideways water
-		if (materialID == WATER && worldNormal.y <= 0.9999) {
-			materialID = GENERIC;
-		}
+		// Water that is not lying flat - the side of a waterfall, or water
+		// running down a slope - used to be demoted to a generic material here,
+		// which left it with nothing but the vanilla water texture: every branch
+		// downstream asks for water by material, so the surface style, the water
+		// colour and the reflections were all skipped. The demotion was there
+		// because the wave normal on those faces used to come out pointing at the
+		// sky - see parallaxWaterNormal - so everything built on it was wrong.
+		// They have a normal of their own now, so the faces are left as water.
 
 		// Fade out reflections to zero as the skylight goes away, needed to
 		// avoid water being reflective underground which looks bad.
@@ -597,6 +606,15 @@ void main() {
 						skyAmbient,
 						reflectionStrength);
 					surfaceColor.a = 0.25 * (1.0 - reflectionStrength);
+
+					// The alpha test further down throws away anything with an
+					// alpha below 1/10000, and at full sky light this expression
+					// lands on exactly zero - so the brightest water, which is the
+					// water most worth drawing, was the water that disappeared.
+					// Everything the surface actually shows is added afterwards by
+					// TranslucentLighting; this is only a floor to keep the
+					// fragment alive long enough to get there.
+					surfaceColor.a = max(surfaceColor.a, 1.0 / 1024.0);
 				#else
 					surfaceColor *= texture(gtexture, surfaceTexCoord);
 
@@ -1012,6 +1030,62 @@ void main() {
 			pbr,
 			pbrGradients,
 			emissive);
+
+		#if PBR_DEBUG == PBR_DEBUG_PARALLAX && defined(PBR_PARALLAX)
+			// A diagnostic rather than a material view; see the option. It draws
+			// the three quantities that decide whether a surface gets parallax at
+			// all, so that a face where the effect is missing can be told apart
+			// from one where it is merely subtle:
+			//
+			//   red   - the offset the ray starts with (before the march);
+			//   green - the displacement the march returned;
+			//   blue  - the distance fade, which is how much of the effect this
+			//           fragment is allowed in the first place.
+			//
+			// Both distances are shown as a fraction of the sprite the fragment
+			// belongs to, not in raw texture coordinates, so that the reading means
+			// the same thing whatever resolution the pack's atlas has. A fixed
+			// scale cannot do that: the same displacement is a large number of
+			// texture coordinate units in a 256-wide atlas and a tiny one in a
+			// 4096-wide atlas, which on a big atlas leaves both channels so dim
+			// that the view looks like it is not reporting anything at all.
+			//
+			// The caps hold the offset to half a sprite, so half a sprite is a full
+			// red. The square root stretches the low end: a tenth of a sprite is a
+			// third of the channel rather than a tenth of it, which is what makes a
+			// small offset readable next to a large one.
+			vec2 parallaxDisplacement = abs(pbrTexCoord - texcoord);
+			float parallaxScale = 256.0;
+
+			#ifdef PBR_ATLAS
+				if (all(greaterThan(spriteBounds.zw, vec2(0.0)))) {
+					parallaxScale =
+						1.0 / max(spriteBounds.zw.x, spriteBounds.zw.y);
+				}
+			#endif
+
+			float parallaxOffsetDebug = sqrt(clamp(
+				pbrParallaxOffset * parallaxScale, 0.0, 1.0));
+			float parallaxResultDebug = sqrt(clamp(
+				max(parallaxDisplacement.x, parallaxDisplacement.y)
+					* parallaxScale,
+				0.0,
+				1.0));
+			float parallaxReachDebug = clamp(
+				PbrParallaxStrength(cameraRelativePos), 0.0, 1.0);
+
+			pbrDebugColor = vec3(
+				parallaxOffsetDebug,
+				parallaxResultDebug,
+				parallaxReachDebug);
+		#elif PBR_DEBUG == PBR_DEBUG_PARALLAX
+			// Parallax mapping is off, so there is nothing to measure and all
+			// three channels of the diagnostic would read zero. A solid magenta
+			// says that instead of saying "no displacement", which is the
+			// difference between a setting that was never turned on and a
+			// surface that genuinely gets none.
+			pbrDebugColor = vec3(1.0, 0.0, 1.0);
+		#endif
 
 		fragmentColor = vec4(pbrDebugColor, 1.0);
 		emitterColor = vec3(0.0);

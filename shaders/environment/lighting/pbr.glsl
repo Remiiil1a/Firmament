@@ -255,19 +255,31 @@ const float PBR_DEFAULT_F0 = 0.04;
 // texture then visibly snaps between a handful of positions - it stacks up in
 // steps rather than following the surface.
 //
-// Each step is one more texture sample. Setting this to 0 disables refinement
-// and gets the stepping back.
-#define PBR_PARALLAX_REFINE 4 // [0 2 4 6]
+// Each step is one more texture sample. This is a bisection, so its accuracy
+// doubles per step: the range below is set where the result stops changing
+// visibly rather than where it stops changing at all. The original value here
+// was 4, which is low enough that the layers were plainly visible; 32 is the
+// point where they are not.
+#define PBR_PARALLAX_REFINE 32 // [8 12 16 24 32 48 64]
 
 // How far a sample is allowed to be displaced, in blocks.
 //
-// Grazing angles divide the displacement by the view direction's slope, which
-// would otherwise drag samples clean across into the neighbouring sprites of
-// the block atlas - the material data read there belongs to a different block,
-// which shows up as a visible boundary partway across the ground. This caps the
-// displacement at well under one block, which is also all the geometry has to
-// give.
-#define PBR_PARALLAX_MAX_OFFSET 0.25 // [0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.5 0.6]
+// Grazing angles divide the displacement by the view direction's slope, so
+// without a limit a shallow view would drag the sample whole blocks away and
+// exaggerate the depth. This is that limit.
+//
+// It has to be at least as large as PBR_PARALLAX_DEPTH, or the depth setting
+// stops having any effect partway up its own range: the displacement is the
+// depth scaled by the view angle's slope, so a cap below the depth silently
+// clips it and turning the depth up past the cap changes nothing. That is what
+// the 0.25 this used to be did - on a view 50 degrees or so off the surface
+// normal the slope is already past 1, so every depth setting above about 0.25
+// produced the same picture.
+//
+// The displacement is also held inside the sprite in texture coordinates - see
+// the note in PbrParallaxUV - so this is a limit on how far a sample may be
+// dragged, not on whether it stays in its own block.
+#define PBR_PARALLAX_MAX_OFFSET 0.5 // [0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.5 0.6]
 
 // Distance in meters at which parallax mapping fades out. Past a certain
 // distance a single screen pixel covers more than the whole height range, so
@@ -572,7 +584,20 @@ const float PBR_WETNESS_DARKENING = 0.66;
 #define PBR_DEBUG_MATERIAL_AO 7
 #define PBR_DEBUG_SUBSURFACE 8
 #define PBR_DEBUG_EMISSION 9
-#define PBR_DEBUG PBR_DEBUG_NONE // [PBR_DEBUG_NONE PBR_DEBUG_HEIGHT PBR_DEBUG_SMOOTHNESS PBR_DEBUG_F0 PBR_DEBUG_NORMAL PBR_DEBUG_MIP PBR_DEBUG_TANGENT_NORMAL PBR_DEBUG_MATERIAL_AO PBR_DEBUG_SUBSURFACE PBR_DEBUG_EMISSION]
+
+// A diagnostic rather than a material view: it draws the values the parallax ray
+// march works with, so that a surface where the effect is missing can be told
+// apart from a surface where it is merely subtle.
+//
+//   red   - how far the ray is displaced, in texture coordinates, before the
+//           march runs. Black here means the offset itself is (near) zero,
+//           which is the frame, the view angle or one of the two caps.
+//   green - the displacement the march actually returned. Black with red lit
+//           means the offset was fine and the march failed to find a crossing.
+//   blue  - how much of the effect this distance is allowed, ie, the distance
+//           fade. Black blue means the surface is simply too far away.
+#define PBR_DEBUG_PARALLAX 10
+#define PBR_DEBUG PBR_DEBUG_NONE // [PBR_DEBUG_NONE PBR_DEBUG_HEIGHT PBR_DEBUG_SMOOTHNESS PBR_DEBUG_F0 PBR_DEBUG_NORMAL PBR_DEBUG_MIP PBR_DEBUG_TANGENT_NORMAL PBR_DEBUG_MATERIAL_AO PBR_DEBUG_SUBSURFACE PBR_DEBUG_EMISSION PBR_DEBUG_PARALLAX]
 
 // How much of its diffuse response a metal loses. Physically, metals have no
 // diffuse component at all, but Steadfast has no image-based lighting or
@@ -992,6 +1017,21 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 		dPdv = (gradients.ddxTexCoord.x * gradients.ddyPosition
 			- gradients.ddyTexCoord.x * gradients.ddxPosition) / determinant;
 
+		// A determinant that is not zero is not enough on its own. A mapping can
+		// flatten one axis almost to nothing while keeping the other, which leaves
+		// the determinant perfectly finite and the vectors above enormous - and the
+		// only thing that divides by them again is PbrWorldOffsetToTexCoord, which
+		// squares them. The projected offset then comes out massive, the march runs
+		// far past the crossing it should have found, and the surface reads as one
+		// layer too deep or simply as broken. Which faces this happens on depends on
+		// how their texture happens to be laid out, so it shows up as particular
+		// sides of a block misbehaving rather than as a general fault.
+		if (dot(dPdu, dPdu) < 1.0e-10 || dot(dPdv, dPdv) < 1.0e-10) {
+			dPdu = vec3(0.0);
+			dPdv = vec3(0.0);
+			return false;
+		}
+
 		return true;
 	}
 
@@ -999,14 +1039,17 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 	//
 	// Projecting rather than dividing by a length keeps the direction correct
 	// for mirrored or skewed UV mappings, where dividing would flip it.
+	//
+	// The two divisions are what PbrTexCoordAxes guards against above: they square
+	// the axis they divide by, so an axis that is short but not zero turns into a
+	// displacement far larger than the one that was asked for.
 	vec2 PbrWorldOffsetToTexCoord(vec3 worldOffset, vec3 dPdu, vec3 dPdv) {
 		return vec2(
 			dot(worldOffset, dPdu) / dot(dPdu, dPdu),
 			dot(worldOffset, dPdv) / dot(dPdv, dPdv));
 	}
 
-	// Clamps a displacement so that it cannot leave the sprite the fragment
-	// started in.
+	// Keeps a sample inside the sprite the fragment started in.
 	//
 	// This is the difference between parallax mapping and a visible boundary at
 	// a fixed distance from the player. The offset is a distance in blocks and a
@@ -1019,27 +1062,34 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 	// from an empty margin is worse: a black texel decodes to a tangent-space
 	// direction of (-1, -1) with no Z at all, ie, a strong fixed tilt rather
 	// than a flat normal, and the surface looks like its normal map has
-	// inverted. Since the offset grows with how shallow the view angle is, and
-	// on flat ground the view angle maps to distance, that shows up as a line
-	// across the ground at whatever distance the offset first gets that large.
+	// inverted.
+	//
+	// The clamp is on the *sample*, not on the displacement the ray is traced
+	// along. Clamping the displacement instead - which is what this used to do -
+	// shrinks the offset as the fragment gets nearer the edge of its sprite, so
+	// the outermost part of every block face stopped moving altogether: a face
+	// read as having parallax in its middle and none around its border. Keeping
+	// the ray at its full length and stopping only the sample means the geometry
+	// of the trace is unaffected, and the edge texel is simply repeated for the
+	// small band of fragments whose ray would have left the sprite - the same
+	// thing the texture unit would do with a clamp-to-edge sampler.
 	//
 	// spriteBounds is xy: the centre of the sprite, zw: half of its size, both
 	// in the same texture coordinate space as texCoord. Geometry that provides
-	// nothing usable is left to the global displacement limit alone.
-	vec2 PbrClampToSprite(vec2 offset, vec2 texCoord, vec4 spriteBounds) {
+	// nothing usable is left alone, which is what leaves the hand and entities
+	// unaffected.
+	vec2 PbrClampSample(vec2 texCoord, vec4 spriteBounds) {
 		vec2 halfSize = spriteBounds.zw;
 
 		if (any(lessThanEqual(halfSize, vec2(0.0)))
 			|| any(greaterThan(halfSize, vec2(0.5)))) {
-			return offset;
+			return texCoord;
 		}
 
-		// How far this fragment can move before it leaves the sprite, with a
-		// margin left over for texture filtering at the edge.
-		vec2 room = max(halfSize - abs(texCoord - spriteBounds.xy), vec2(0.0))
-			* 0.9;
-
-		return clamp(offset, -room, room);
+		return clamp(
+			texCoord,
+			spriteBounds.xy - halfSize,
+			spriteBounds.xy + halfSize);
 	}
 #endif
 
@@ -1061,11 +1111,40 @@ vec2 PbrParallaxUV(
 	vec2 texCoord,
 	PbrGradients gradients,
 	// xy: the centre of this face's sprite, zw: half of its size.
-	vec4 spriteBounds
+	vec4 spriteBounds,
+	// How far the ray was displaced before the march ran, in texture
+	// coordinates. Nothing reads this outside PBR_DEBUG_PARALLAX; it exists so
+	// that the diagnostic can show the offset and the displacement separately,
+	// which is what tells a zero offset apart from a march that found nothing.
+	out float offsetLength
 ) {
+	offsetLength = 0.0;
+
 	#ifndef PBR_PARALLAX
 		return texCoord;
 	#else
+		#ifdef PBR_HAND_ITEMS
+			// The hand traces badly and is left out of this one thing.
+			//
+			// PBR_HAND_ITEMS is only ever defined by gbuffers_hand's own two
+			// shaders, so this is the hand and nothing else - no new option, and
+			// nothing to keep in sync between stages.
+			//
+			// The reason is that a held block answers to neither of the two things
+			// the trace needs: its view ray comes from a projection the mod scales
+			// by MC_HAND_DEPTH rather than the world projection the rest of this
+			// file assumes, and mc_midTexCoord - the attribute that says where a
+			// face's sprite is - is terrain only, so the bounds below are not a
+			// sprite's bounds at all. What came out was a smear laid diagonally
+			// across the surface. See PBR_PORTING.md §54.
+			//
+			// Only the displacement is skipped. The material decode, the normal
+			// map and the height field's self shadow are all left alone, so a held
+			// block still reads as the material it is made of - it simply has no
+			// parallax depth of its own.
+			return texCoord;
+		#endif
+
 		// The view direction, expressed in the tangent space of this fragment.
 		vec3 viewDirection = normalize(-cameraRelativePos);
 		vec3 viewTangent = vec3(
@@ -1073,9 +1152,18 @@ vec2 PbrParallaxUV(
 			dot(viewDirection, frame[1]),
 			dot(viewDirection, frame[2]));
 
-		// The surface is being viewed edge-on or from behind, so there is no
-		// sensible ray to trace through the height field.
-		if (viewTangent.z < 1.0e-3) {
+		// The surface faces away from the eye, so there is no sensible ray to
+		// trace through the height field.
+		//
+		// The test is against zero rather than against a small positive number,
+		// which is what it used to be, and it is the same mistake the height field
+		// shadow carried (see PbrParallaxShadow). A surface being viewed at a
+		// shallow angle is precisely where parallax mapping has the most to show -
+		// the ray runs a long way across the field - and a threshold above zero
+		// switched the effect off entirely there instead of letting it fall off
+		// with the angle. The rate below has a floor, so nothing divides by zero
+		// and the offset stays bounded.
+		if (viewTangent.z <= 0.0) {
 			return texCoord;
 		}
 
@@ -1120,20 +1208,39 @@ vec2 PbrParallaxUV(
 		// material data read from a neighbouring sprite describes a different
 		// block, and the boundary where that starts happening is visible as a
 		// line across the ground at a fixed distance from the player.
-		float offsetLength = length(worldOffset);
+		float worldOffsetLength = length(worldOffset);
 
-		if (offsetLength > PBR_PARALLAX_MAX_OFFSET) {
-			worldOffset *= PBR_PARALLAX_MAX_OFFSET / offsetLength;
+		if (worldOffsetLength > PBR_PARALLAX_MAX_OFFSET) {
+			worldOffset *= PBR_PARALLAX_MAX_OFFSET / worldOffsetLength;
 		}
 
 		vec2 fullOffset = PbrWorldOffsetToTexCoord(worldOffset, dPdu, dPdv);
 
-		// Never sample outside the sprite this fragment belongs to.
-		fullOffset = PbrClampToSprite(fullOffset, texCoord, spriteBounds);
+		// The displacement is capped in texture coordinates as well, at half a
+		// sprite. That is as far as a sample can travel and still be inside the
+		// material it started in, and expressing it here rather than only in
+		// blocks makes the cap follow the sprite: a large texture, or a face
+		// whose sprite covers more than one block, gets proportionally more room.
+		vec2 spriteHalfSize = spriteBounds.zw;
+
+		if (all(greaterThan(spriteHalfSize, vec2(0.0)))
+			&& all(lessThanEqual(spriteHalfSize, vec2(0.5)))) {
+			fullOffset = clamp(fullOffset, -spriteHalfSize, spriteHalfSize);
+		}
+
+		// What the diagnostic reports: the offset as it stands once both caps
+		// have had their say, in the same units as the displacement the march
+		// returns. Nothing reads it outside PBR_DEBUG_PARALLAX.
+		offsetLength = length(fullOffset);
 
 		// Walk along the ray in layers until it passes below the surface it is
 		// tracing. Each layer moves the sample further from the eye and deeper
 		// into the height field, which is why the offset is added.
+		//
+		// The offset is *not* shortened near the edge of the sprite: the ray
+		// keeps its full length and only the height it reads is held inside the
+		// sprite - see PbrClampSample, which is what keeps the border of a block
+		// face from going flat.
 		//
 		// LabPBR stores 1.0 for "not displaced", so it is the *depth* of the
 		// surface (1 - height) that the ray is compared against. That also means
@@ -1144,7 +1251,8 @@ vec2 PbrParallaxUV(
 
 		vec2 currentTexCoord = texCoord;
 		float currentLayer = 0.0;
-		float currentDepth = 1.0 - PbrHeight(currentTexCoord, gradients);
+		float currentDepth = 1.0 - PbrHeight(
+			PbrClampSample(currentTexCoord, spriteBounds), gradients);
 
 		vec2 previousTexCoord = currentTexCoord;
 		float previousLayer = 0.0;
@@ -1159,7 +1267,8 @@ vec2 PbrParallaxUV(
 
 			currentTexCoord += stepOffset;
 			currentLayer += layerStep;
-			currentDepth = 1.0 - PbrHeight(currentTexCoord, gradients);
+			currentDepth = 1.0 - PbrHeight(
+				PbrClampSample(currentTexCoord, spriteBounds), gradients);
 		}
 
 		// How far above or below the surface the ray is at each of the two
@@ -1169,11 +1278,12 @@ vec2 PbrParallaxUV(
 		// march simply ran out of layers, there is no crossing to refine and the
 		// last sample is the best answer available.
 		float afterDepth = currentDepth - currentLayer;
-		float beforeDepth =
-			(1.0 - PbrHeight(previousTexCoord, gradients)) - previousLayer;
+		float beforeDepth = (1.0 - PbrHeight(
+			PbrClampSample(previousTexCoord, spriteBounds), gradients))
+			- previousLayer;
 
 		if (afterDepth > 0.0 || beforeDepth <= 0.0) {
-			return currentTexCoord;
+			return PbrClampSample(currentTexCoord, spriteBounds);
 		}
 
 		#if PBR_PARALLAX_REFINE > 0
@@ -1197,7 +1307,9 @@ vec2 PbrParallaxUV(
 				vec2 midTexCoord = 0.5 * (lowTexCoord + highTexCoord);
 				float midLayer = 0.5 * (lowLayer + highLayer);
 
-				if ((1.0 - PbrHeight(midTexCoord, gradients)) > midLayer) {
+				if ((1.0 - PbrHeight(
+						PbrClampSample(midTexCoord, spriteBounds), gradients))
+					> midLayer) {
 					// The ray is still above the surface here, so the crossing
 					// is further along the ray.
 					lowTexCoord = midTexCoord;
@@ -1208,7 +1320,8 @@ vec2 PbrParallaxUV(
 				}
 			}
 
-			return 0.5 * (lowTexCoord + highTexCoord);
+			return PbrClampSample(
+				0.5 * (lowTexCoord + highTexCoord), spriteBounds);
 		#else
 			// Without refinement, at least interpolate between the two layers.
 			float weight = clamp(
@@ -1216,7 +1329,8 @@ vec2 PbrParallaxUV(
 				0.0,
 				1.0);
 
-			return mix(currentTexCoord, previousTexCoord, weight);
+			return PbrClampSample(
+				mix(currentTexCoord, previousTexCoord, weight), spriteBounds);
 		#endif
 	#endif
 }
@@ -1262,9 +1376,17 @@ vec2 PbrParallaxUV(
 			dot(lightDirection, frame[1]),
 			dot(lightDirection, frame[2]));
 
-		// The light is at or below the horizon of this surface, so the surface
-		// is unlit anyway and there is nothing to shadow.
-		if (lightTangent.z <= 1.0e-3) {
+		// The light is behind this surface, so the surface is unlit anyway and
+		// there is nothing to shadow.
+		//
+		// The test is against zero rather than against a small positive number,
+		// which is what it used to be. A surface the light rakes across at a very
+		// shallow angle is exactly the one whose height field casts the longest
+		// shadows - the side of a bump and the wall behind it both live in the
+		// light's plane - and a threshold above zero threw all of that away. The
+		// march is safe there: the rate below has a floor, so the ray length stays
+		// bounded.
+		if (lightTangent.z <= 0.0) {
 			return 1.0;
 		}
 
@@ -1294,10 +1416,18 @@ vec2 PbrParallaxUV(
 
 		vec2 fullOffset = PbrWorldOffsetToTexCoord(worldOffset, dPdu, dPdv);
 
-		// The shadow ray has to respect the sprite bounds too: it samples the
-		// height channel just as the view ray samples the normals.
-		fullOffset = PbrClampToSprite(fullOffset, texCoord, spriteBounds);
+		// Capped the same way the view ray's displacement is, and for the same
+		// reason - see PbrParallaxUV.
+		vec2 spriteHalfSize = spriteBounds.zw;
 
+		if (all(greaterThan(spriteHalfSize, vec2(0.0)))
+			&& all(lessThanEqual(spriteHalfSize, vec2(0.5)))) {
+			fullOffset = clamp(fullOffset, -spriteHalfSize, spriteHalfSize);
+		}
+
+		// The shadow ray is held inside the sprite the same way the view ray is:
+		// the offset is left at its full length and it is the samples that are
+		// clamped - see PbrClampSample.
 		vec2 stepOffset = fullOffset / float(PBR_PARALLAX_STEPS);
 
 		// The height range that this ray actually travels through. A resource
@@ -1305,7 +1435,8 @@ vec2 PbrParallaxUV(
 		// measuring the occlusion against the full range would leave subtle
 		// height maps casting no shadow at all - which is exactly what happened
 		// before this was measured locally.
-		float farHeight = PbrHeight(texCoord + fullOffset, gradients);
+		float farHeight = PbrHeight(
+			PbrClampSample(texCoord + fullOffset, spriteBounds), gradients);
 		float variation = max(surfaceHeight, farHeight)
 			- min(surfaceHeight, farHeight);
 		float variationScale = 1.0 / max(variation, 0.05);
@@ -1326,7 +1457,9 @@ vec2 PbrParallaxUV(
 
 			deepest = max(
 				deepest,
-				PbrHeight(currentTexCoord, gradients) - rayHeight);
+				PbrHeight(
+					PbrClampSample(currentTexCoord, spriteBounds), gradients)
+					- rayHeight);
 		}
 
 		float occlusion = clamp(deepest * variationScale, 0.0, 1.0);

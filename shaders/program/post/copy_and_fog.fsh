@@ -87,6 +87,38 @@ uniform sampler2D colortex2;
 uniform sampler2D colortex0;
 uniform sampler2D depthtex1;
 
+// How far the shadow map reaches: the point past which the screen-space shadows
+// below take over. Derived in shaders.properties from the Shadow Distance
+// setting, because this pass does not get that setting's own uniform - it reads
+// as zero here.
+uniform float sssShadowDistance;
+
+// The far plane, in blocks - which is the vanilla render distance: Minecraft
+// sets it from the View Distance setting.
+//
+// It is the other half of where the handover belongs. The shadow map can only
+// contain terrain that was actually rendered into it, and that is the vanilla
+// chunks the game loaded, so the map reaches
+//
+//     min(Shadow Distance, view distance in blocks)
+//
+// rather than the Shadow Distance setting on its own. With the setting at 160
+// and the view distance at 8 chunks, the map ends at 128, and the terrain from
+// 128 to 160 - LOD terrain, since that is past the vanilla render distance -
+// would be left with neither the shadow map nor the screen-space shadows: a
+// ring of ground in full sun with a hill standing between it and the sun.
+//
+// The pack already treats `far` as this edge: it is what the stipple in
+// /program/world/lit.fsh fades distant terrain against, for the same reason.
+uniform float far;
+
+// ScreenSpaceShadow(...), for terrain the shadow map does not reach.
+//
+// Included here, below the uniforms it uses, for the same reason the cloud layer
+// below is: a shader has to see a uniform's declaration before the code that
+// uses it.
+#include "/lib/sss.glsl"
+
 // The previous frame, resolved. The screen-space reflection traces against the
 // depth buffer below and reads the colour it finds here: this frame's own
 // colortex0 is being written by this very pass, so it cannot be sampled at
@@ -278,6 +310,48 @@ void main() {
 	// > lower-left-most pixel in the window.
 	vec3 background = texelFetch(colortex0, ivec2(gl_FragCoord), 0).rgb;
 
+	#ifdef SCREENSPACE_SHADOWS
+		// Shadows for terrain past the shadow map's reach, cast by whatever the
+		// depth buffer says is in the way. See lib/sss.glsl.
+		//
+		// It is faded in over the shadow distance rather than applied everywhere:
+		// inside that distance the shadow map has already done this, more
+		// accurately, and doing it twice would darken the same shadow twice.
+		float sssDepth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
+
+		if (sssDepth < 1.0) {
+			vec3 sssNdcPos = vec3(
+				gl_FragCoord.xy * windowToNdc - 1.0, sssDepth * 2.0 - 1.0);
+			vec4 sssViewH = gbufferProjectionInverse * vec4(sssNdcPos, 1.0);
+			vec3 sssViewPos = sssViewH.xyz / sssViewH.w;
+			float sssDistance = length(sssViewPos);
+
+			// Where the shadow map stops and this takes over: the smaller of what
+			// the map is set to reach and how far the terrain it could contain
+			// actually goes. See the notes on the two uniforms above.
+			//
+			// The floor keeps the fade window from collapsing to nothing when
+			// either of them is small - a window a few blocks wide would read as a
+			// line rather than as a transition - and it also covers the shadow
+			// distance reading as zero, which is what the post passes get for it.
+			float sssReach = max(min(sssShadowDistance, far), 32.0);
+
+			float sssWeight = SSS_STRENGTH * smoothstep(
+				sssReach * 0.85, sssReach * 1.15, sssDistance);
+
+			if (sssWeight > 0.0) {
+				float lit = ScreenSpaceShadow(
+					depthtex1,
+					gbufferProjection,
+					gbufferProjectionInverse,
+					sssViewPos,
+					normalize(shadowLightPosition));
+
+				background *= mix(1.0, lit, sssWeight);
+			}
+		}
+	#endif
+
 	// colortex4 is a copy of the image for reflection and refraction, and does
 	// not apply fog.
 	//
@@ -310,22 +384,45 @@ void main() {
 			skyPixel = skyPixel && dhDepth >= 1.0;
 		#endif
 
-		if (skyPixel) {
-			// The ray, turned from view space into world axes the same way the
-			// surface programs turn their positions: by dotting it against the
-			// world's axes taken from the matrix the geometry was drawn with,
-			// rather than through that matrix's inverse. The two agree except for
-			// the inverse's own error while the view is bobbing, and that error is
-			// enough to make a cloud layer visibly shift - subtly in the sky, and
-			// plainly in the hard-edged shadow it casts on the ground.
-			vec3 cloudViewRay = normalize(
-				ViewPosFromDepth(gbufferProjectionInverse, 1.0));
-			mat3 viewRotation = mat3(gbufferModelView);
-			vec3 cloudRay = vec3(
-				dot(cloudViewRay, viewRotation * vec3(1.0, 0.0, 0.0)),
-				dot(cloudViewRay, viewRotation * vec3(0.0, 1.0, 0.0)),
-				dot(cloudViewRay, viewRotation * vec3(0.0, 0.0, 1.0)));
+		// The ray, turned from view space into world axes the same way the
+		// surface programs turn their positions: by dotting it against the
+		// world's axes taken from the matrix the geometry was drawn with,
+		// rather than through that matrix's inverse. The two agree except for
+		// the inverse's own error while the view is bobbing, and that error is
+		// enough to make a cloud layer visibly shift - subtly in the sky, and
+		// plainly in the hard-edged shadow it casts on the ground.
+		vec3 cloudViewRay = normalize(
+			ViewPosFromDepth(gbufferProjectionInverse, 1.0));
+		mat3 viewRotation = mat3(gbufferModelView);
+		vec3 cloudRay = vec3(
+			dot(cloudViewRay, viewRotation * vec3(1.0, 0.0, 0.0)),
+			dot(cloudViewRay, viewRotation * vec3(0.0, 1.0, 0.0)),
+			dot(cloudViewRay, viewRotation * vec3(0.0, 0.0, 1.0)));
 
+		// Whether the layer is in front of whatever this pixel holds, which is
+		// not the same question as whether this pixel is sky.
+		//
+		// Flown above the clouds, every pixel the layer covers has terrain behind
+		// it and there is no sky left to draw the layer on, which is why the
+		// clouds used to disappear up there. The layer is measured against the
+		// scene instead: how far along this ray it sits, against how far away the
+		// scene at this pixel is. Both directions are the same expression - a ray
+		// going up and a ray going down reach the layer at a positive distance,
+		// because the sign of the height difference and the sign of the ray's
+		// vertical component are the same.
+		bool cloudInFront = skyPixel;
+
+		if (!cloudInFront && abs(cloudRay.y) > 1.0e-4) {
+			float layerDistance =
+				(CLOUD_LAYER_BOTTOM - cameraPosition.y) / cloudRay.y;
+			float sceneDistance = length(
+				ViewPosFromDepth(gbufferProjectionInverse, depth));
+
+			cloudInFront = layerDistance > 0.0
+				&& layerDistance < sceneDistance;
+		}
+
+		if (cloudInFront) {
 			vec4 cloud = BlockyClouds(cloudRay, cameraPosition, shadowLightPosition);
 			scene = mix(scene, cloud.rgb, cloud.a);
 		}

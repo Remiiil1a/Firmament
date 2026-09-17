@@ -78,6 +78,66 @@ uniform float blindness;
 // since nothing reads it in that case.
 /* DRAWBUFFERS:03 */
 
+// The previous frame's resolved image at the given screen position, read with a
+// Catmull-Rom filter rather than with the bilinear one that a plain texture()
+// would use.
+//
+// Wherever the reprojected coordinate lands between texels - which is everywhere
+// the camera is moving - a bilinear fetch blends the four neighbours around it,
+// and the result is what gets accumulated and blended again next frame, and
+// again the frame after that. The history is therefore low-pass filtered once
+// per frame, and a moving camera slowly softens the picture it is accumulating.
+// Catmull-Rom interpolates rather than approximates and carries small negative
+// lobes, so detail that falls between texels passes through instead of being
+// averaged away. This is how Mellow Shader's temporal filter fetches its history
+// (texture_catmullrom_fast in global/post/taa.glsl, and its TAA_MODE 3); the
+// neighbourhood clamp in main() is what keeps the overshoot at an edge from
+// ringing.
+//
+// The two axes are resolved separately and only five of the sixteen taps that
+// would take are kept, which is what makes it affordable.
+vec3 HistorySample(vec2 coord) {
+	vec2 size = vec2(viewWidth, viewHeight);
+	vec2 position = coord * size;
+
+	// The texel the coordinate sits in, and the offset within it.
+	vec2 center = floor(position - 0.5) + 0.5;
+	vec2 f = position - center;
+	vec2 f2 = f * f;
+	vec2 f3 = f2 * f;
+
+	// The tension: 0.65 is Mellow's value, between the 0.5 of a Catmull-Rom
+	// spline and the 1.0 of a linear one.
+	float c = 0.65;
+	vec2 w0 = -c * f3 + 2.0 * c * f2 - c * f;
+	vec2 w1 = (2.0 - c) * f3 - (3.0 - c) * f2 + 1.0;
+	vec2 w2 = -(2.0 - c) * f3 + (3.0 - 2.0 * c) * f2 + c * f;
+	vec2 w3 = c * f3 - c * f2;
+
+	vec2 w12 = w1 + w2;
+	vec2 invSize = 1.0 / size;
+
+	// Clamped, because the taps reach a texel or two past the coordinate and the
+	// history is not to be read from outside itself.
+	vec2 middle = clamp((center + w2 / w12) * invSize, 0.0, 1.0);
+	vec2 low = clamp((center - 1.0) * invSize, 0.0, 1.0);
+	vec2 high = clamp((center + 2.0) * invSize, 0.0, 1.0);
+
+	vec3 color = texture(colortex3, vec2(middle.x, middle.y)).rgb * (w12.x * w12.y)
+		+ texture(colortex3, vec2(middle.x, low.y)).rgb * (w12.x * w0.y)
+		+ texture(colortex3, vec2(low.x, middle.y)).rgb * (w0.x * w12.y)
+		+ texture(colortex3, vec2(high.x, middle.y)).rgb * (w3.x * w12.y)
+		+ texture(colortex3, vec2(middle.x, high.y)).rgb * (w12.x * w3.y);
+
+	// The taps left out have weight too, so the result is normalised by the sum
+	// of the ones that were kept rather than trusting them to add up to one.
+	float total = w12.x * w12.y
+		+ w12.x * w0.y + w0.x * w12.y
+		+ w3.x * w12.y + w12.x * w3.y;
+
+	return color / max(total, 1.0e-4);
+}
+
 void main() {
 	ivec2 pixel = ivec2(gl_FragCoord.xy);
 	vec2 screenCoord = gl_FragCoord.xy * windowToScreen;
@@ -156,7 +216,7 @@ void main() {
 		vec3(0.0));
 	vec3 deviation = sqrt(variance);
 
-	vec3 history = texture(colortex3, previousScreenCoord).rgb;
+	vec3 history = HistorySample(previousScreenCoord);
 
 	if (frameCounter < 2 || offScreen || behindCamera) {
 		// Nothing trustworthy has been accumulated yet, or the pixel was not on
@@ -169,7 +229,29 @@ void main() {
 		neighborhoodMean - TAA_CLAMP * deviation,
 		neighborhoodMean + TAA_CLAMP * deviation);
 
-	resolved = mix(current, history, TAA_STRENGTH);
+	// How far this pixel moved since the previous frame, in pixels.
+	vec2 velocity = (screenCoord - previousScreenCoord) * vec2(viewWidth, viewHeight);
+
+	// How much of the history is kept is decided by how much the pixel moved, the
+	// way Mellow Shader's temporal filter does it (global/post/taa.glsl: its blend
+	// factor runs from exp(-|velocity|^2) scaled between two limits).
+	//
+	// This is what makes a long history usable. A long history is the only way to
+	// average the noise out of an image - the dither in the screen-space shadows
+	// moves every frame precisely so that this can - but a long history is also
+	// what smears anything that moves on its own, and there are no motion vectors
+	// here to reproject those with. Splitting the two by motion gives the noise
+	// reduction where the picture is holding still and drops back to a short
+	// history where it is not.
+	//
+	// So TAA_STRENGTH is now the weight for a pixel that did not move at all, and
+	// a pixel that moved at walking speed keeps seven tenths of it. That is what
+	// lets the option default high: raising it buys noise reduction while standing
+	// still without buying ghosting while moving.
+	float stillness = exp(-dot(velocity, velocity));
+	float historyWeight = TAA_STRENGTH * mix(0.7, 1.0, stillness);
+
+	resolved = mix(current, history, historyWeight);
 
 	// Averaging frames together softens the image, which is the price of the
 	// anti-aliasing; a little sharpening puts the edge definition back without

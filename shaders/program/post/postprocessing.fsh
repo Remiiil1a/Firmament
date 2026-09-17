@@ -103,7 +103,8 @@ float SmoothGodrays(vec2 texCoord, vec2 ScreenLightPos) {
 #define DEBUG_GODRAYS_NOISY 1
 #define DEBUG_GODRAYS_SMOOTH 2
 #define DEBUG_SKYLIGHT 3
-#define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_SKYLIGHT]
+#define DEBUG_DEPTH 4
+#define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_SKYLIGHT DEBUG_DEPTH]
 
 #if DEBUG == DEBUG_GODRAYS_NOISY || DEBUG == DEBUG_GODRAYS_SMOOTH
 	//uniform sampler2D colortex1;
@@ -117,6 +118,12 @@ float SmoothGodrays(vec2 texCoord, vec2 ScreenLightPos) {
 #include "/environment/tonemap_settings.glsl"
 
 uniform vec2 windowToScreen;
+
+// The opaque depth of the world, for the depth view below. Declared here rather
+// than pulled in with one of the includes because that view is the only thing in
+// this pass that wants the opaque depth: the motion blur next door uses the one
+// with translucents in it.
+uniform sampler2D depthtex1;
 
 // MotionBlur(...), the blur the camera's own movement draws across the frame.
 // See that file for what it is and why the hand is left out of it.
@@ -134,6 +141,30 @@ void main() {
 	// Determine the position of this fragment on the screen in screen
 	// coordinates (0.0 to 1.0).
 	vec2 screenCoord = gl_FragCoord.xy * windowToScreen;
+
+	#if DEBUG == DEBUG_DEPTH
+		// What the scene actually has in the opaque depth buffer here.
+		//
+		// This exists to answer one question that decides whether a screen-space
+		// effect can reach terrain this pack does not draw itself - the level of
+		// detail terrain of a mod like Voxy. Such an effect works from the depth
+		// buffer; if that terrain never writes into this one, it is invisible to
+		// the effect and no amount of tuning will reach it.
+		//
+		// White is a depth of exactly 1.0: nothing was drawn here at all, which is
+		// the sky and also what terrain looks like if its depth goes somewhere
+		// this pass cannot see. Green is anything that did write depth. The red
+		// channel climbs as the value approaches 1.0, so terrain sitting right at
+		// the end of the range - which is where distant terrain lives - shows as
+		// yellow-green rather than as a green too dark to judge.
+		float depthHere = texelFetch(depthtex1, ivec2(gl_FragCoord.xy), 0).r;
+
+		finalColor = depthHere >= 1.0
+			? vec3(1.0)
+			: vec3(clamp((depthHere - 0.99) * 100.0, 0.0, 1.0), 1.0, 0.0);
+
+		return;
+	#endif
 
 	#if DEBUG == DEBUG_GODRAYS_NOISY
 		finalColor = vec3(texture(colortex1, screenCoord).r);

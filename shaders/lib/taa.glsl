@@ -40,19 +40,27 @@
 
 // Whether to anti-alias the image over time.
 //
-// Off by default: it is the only effect here that trades image stability for
-// smoothness, and what it does to a scene is a matter of taste. Turn it on and
-// tune the options below to see what it does.
+// On by default. It is the only effect here that trades image stability for
+// smoothness, so turning it off is a reasonable choice if the ghosting behind
+// moving things reads worse than the aliasing it removes - but the smoothness
+// it buys is the cheapest image quality this pack has, and the options below
+// are what tune it.
 #define TAA_OFF 0
 #define TAA_ON 1
-#define TAA TAA_OFF // [TAA_OFF TAA_ON]
+#define TAA TAA_ON // [TAA_OFF TAA_ON]
 
-// How much of the accumulated history each frame keeps.
+// How much of the accumulated history each frame keeps, for a pixel that did not
+// move since the previous frame.
 //
-// Higher values resolve more detail and leave less noise, at the cost of
-// ghosting behind anything that moves on its own, since there are no motion
-// vectors to reproject those with.
-#define TAA_STRENGTH 0.5 // [0.5 0.65 0.75 0.85 0.9 0.95]
+// This is the option that decides how much of the noise in the image averages
+// away: the dither of the screen-space shadows in the distance, and the sky's
+// own. Raising it leaves less noise and resolves more detail, because a longer
+// history is the only thing that can average a per-frame sample out at all.
+//
+// It is no longer also the weight for a pixel that *did* move: composite1 keeps
+// less of the history where the pixel moved, so raising this does not buy
+// ghosting behind anything that moves on its own.
+#define TAA_STRENGTH 0.75 // [0.5 0.65 0.75 0.85 0.9 0.95]
 
 // The radius of the sub-pixel jitter, in pixels.
 //

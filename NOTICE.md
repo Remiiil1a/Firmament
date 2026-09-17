@@ -1,6 +1,6 @@
 # Notices and licensing
 
-**Firmament - v0.2 (edit of coderbot's Steadfast)**, for Minecraft: Java Edition.
+**Firmament (edit of coderbot's Steadfast)**, for Minecraft: Java Edition.
 
 This file is the short version of where this pack comes from and what its
 licences allow. Read it before redistributing the pack or anything built from
@@ -15,7 +15,7 @@ made by Remiiil1a, dated 2026-09-13 and 2026-09-14; what they consist of is
 listed in section 4 and documented in `PBR_PORTING.md` in the project this was
 built in. The per-file notices in the source name the version each file was
 **first** modified for - further changes to those files are recorded in
-`RELEASE_NOTES-v0.2.md` rather than being written back into the notices.
+`RELEASE_NOTES-v0.3.md` rather than being written back into the notices.
 
 Steadfast's additional terms (permitted by section 7 of the GPLv3) require the
 following notice to appear prominently, and as early as possible, on any page or
@@ -27,14 +27,14 @@ link:
 Those same terms also require, for any modified version:
 
 * that its **human readable name end with `(edit of coderbot's Steadfast)`** -
-  hence `Firmament - v0.2 (edit of coderbot's Steadfast)`, and hence the
+  hence `Firmament (edit of coderbot's Steadfast)`, and hence the
   `(edit of coderbot's Steadfast)` in the string `FIRMAMENT` in
   `shaders/lang/*.lang` and `shaders/environment/lighting/diffuse.glsl`. Do not
   shorten it: the name "Steadfast" may not appear in the name or branding of a
   modified version anywhere else;
 * that the **file name include the same thing**, for which the terms suggest the
   suffix `-edit-of-coderbot-Steadfast` - hence
-  `Firmament-v0.2-edit-of-coderbot-Steadfast.zip`;
+  `Firmament-v0.3-edit-of-coderbot-Steadfast.zip`;
 * that the GPL and those terms are kept, and that nothing suggests this is an
   official Steadfast release. **It is not.** coderbot does not support it, and
   bug reports about it do not belong in Steadfast's issue tracker.
@@ -43,34 +43,45 @@ Steadfast itself is Copyright (C) 2026 coderbot, licensed under the GNU General
 Public License version 3 or later, with the additional terms above. There is
 **no warranty**, as set out in the GPL.
 
-## 2. Mellow Shader, by TheCMK (where the material work follows from)
+## 2. Other shaders this pack references
 
-The material (PBR) support this edit adds follows **Mellow Shader v3.4**, by
-TheCMK. Their licence asks that the credit be kept, and that their name, logo
-and screenshots not be reused for another project - so:
+Besides Steadfast, two projects are referenced or quoted from in the code. Both
+are credited in the pack's own menu, on a **Special thanks** page under
+`Credits & licence` (the `SPECIAL_THANKS` page in `shaders/lang/*.lang`, one
+entry per project). That credit is deliberately
+**not split up by feature**: it states plainly that this pack references or
+quotes code from the projects named in it.
 
-* **No Mellow code was copied.** Everything taken from that shader is
-  mathematics from published specifications or the labPBR standard: the GGX
-  normal distribution, the Smith correlated visibility term, Schlick Fresnel,
-  the Henyey-Greenstein phase function, and the labPBR 1.3 channel layout
-  (see the shaderLABS LabPBR Material Standard). It was reimplemented in
-  Steadfast's own style and naming.
-* **No Mellow assets are used.** No textures, no logo, no screenshots, and the
-  name "Mellow" appears only in this credit and in the `MELLOW_PBR` credit line
-  in the settings menu - not as part of this pack's name.
-* Mellow Shader is Copyright (c) 2026 TheCMK, licensed under the MIT License.
-  A verbatim copy of that licence is included as `LICENSE-MELLOW-MIT.txt`
-  because the design of the material code follows theirs. `LICENSE-APACHE` from
-  that pack is included verbatim as well, as its own files ask for the whole
-  licence set to be kept together.
+* **Mellow Shader v3.4, by TheCMK** - the temporal antialiasing follows that
+  pack's implementation, both its weighting of the history by how far the pixel
+  moved and its Catmull-Rom fetch of the history, and the material model follows
+  its approach. The material mathematics is from published specifications - the
+  GGX distribution, the Smith correlated visibility term, Schlick Fresnel, the
+  Henyey-Greenstein phase function, and the labPBR 1.3 channel layout (see the
+  shaderLABS LabPBR Material Standard) - but the approach is theirs. Mellow
+  Shader is Copyright (c) 2026 TheCMK, licensed under the **MIT License**; a
+  verbatim copy is included as `LICENSE-MELLOW-MIT.txt`, and
+  `LICENSE-MELLOW-APACHE.txt` from that pack is included as well, because its
+  own files ask for the whole licence set to be kept together.
+* **Sundial Lite, by geforcelegend** - the screen-space shadows used past the
+  shadow map's reach follow that pack's implementation: stepping a fixed
+  fraction of the distance to the receiver rather than a fixed number of blocks,
+  dithering the ray's first sample both per pixel and per frame, and accepting
+  an occlusion only when it falls within a thickness window of the ray. Sundial
+  Lite is licensed under the **GNU General Public License, version 3** - the
+  same licence as this pack, whose copy is `LICENSE.md` - so no separate licence
+  file is included for it.
+* **No assets are reused from either.** No textures, no logos, no screenshots,
+  and neither project's name is part of this pack's name or branding.
 
 ## 3. What this means in practice
 
 * You may modify and redistribute this pack under the **GPLv3**, as long as you
   keep the notices, keep the required name ending, and do not present it as an
   official Steadfast release.
-* If you build on the material code, the Mellow credit (section 2) is expected
-  to travel with it.
+* If you build on any of this, the credits have to travel with it: the Steadfast
+  notice quoted in section 1, and the **Special thanks** entries described in
+  section 2.
 * If you convey this pack anywhere public - a page, a download, a video with a
   download link - the paragraph quoted in section 1 has to appear early on that
   page, before the download link.
@@ -78,8 +89,8 @@ and screenshots not be reused for another project - so:
 ## 4. What this edit changes, relative to Steadfast 0.8.0
 
 Versions are counted as: **v0.1** is the material work, **v0.2** is everything
-from the cloud layer onward. See `RELEASE_NOTES-v0.1.md` and
-`RELEASE_NOTES-v0.2.md`.
+from the cloud layer onward, and **v0.3** is the distant-terrain, temporal
+antialiasing and water work after it. See the `RELEASE_NOTES-*.md` files.
 
 **Added in v0.1**
 
@@ -115,9 +126,16 @@ from the cloud layer onward. See `RELEASE_NOTES-v0.1.md` and
 * The sun's highlight was widened in the wrong units and barely changed; it now
   spreads the way half a degree of sunlight should.
 
-**Other**
+**Added in v0.3**
 
-* GNU/Linux, macOS and Windows are unaffected; the shader still requires Iris.
+* Screen-space shadows for terrain past the shadow map's reach, handed over at
+  the smaller of the shadow distance and the view distance.
+* Temporal antialiasing on by default, its history weighted by motion and
+  filtered with Catmull-Rom; the pack's own noise moves every frame so that
+  there is something for it to average.
+* Water that is not lying flat - the sides of waterfalls - drawn as water, with
+  its own surface, colour and roughness-filtered reflection.
+* The Voxy shader patch fixed: `voxy.json` was written in an older format.
 
 ## 5. Files
 
@@ -128,6 +146,8 @@ from the cloud layer onward. See `RELEASE_NOTES-v0.1.md` and
 | `LICENSE-MELLOW-MIT.txt` | MIT License, Copyright (c) 2026 TheCMK - verbatim copy from Mellow Shader v3.4 |
 | `LICENSE-MELLOW-APACHE.txt` | Apache License 2.0 - verbatim copy from Mellow Shader v3.4 |
 | `README.md` | What the pack is, what it adds, what it costs |
+| `README.zh-CN.md` | The same, in Simplified Chinese |
+| `RELEASE_NOTES-v0.3.md` | What changed in this release |
 | `PBR_PORTING.md` | Working notes for the material port: options, verification checklist, known limits (in the project this pack was built in) |
 
 If a distributor removes any of the files in this list, the result is not

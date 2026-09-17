@@ -159,6 +159,14 @@ const float CLOUD_EDGE_SOFTNESS = 0.22;
 const float CLOUD_COVERAGE_RANGE = 0.55;
 
 // The bottom and top of the layer, in world Y.
+//
+// Fixed to the world, not to the camera. A layer that rides along with the
+// camera keeps the same apparent distance, which is what makes it impossible to
+// climb above - that is how Mellow Shader's clouds work (100 blocks above the
+// camera at all times, get_clouds_blocky_volumetric) - but it also means the
+// whole layer slides up and down the sky as the player changes altitude, which
+// reads as the clouds moving with them. The layer stays where it is instead, and
+// being able to see it from above is solved where the layer is drawn.
 const float CLOUD_LAYER_BOTTOM = float(VOLUMETRIC_CLOUD_HEIGHT);
 const float CLOUD_LAYER_TOP = CLOUD_LAYER_BOTTOM + float(VOLUMETRIC_CLOUD_THICKNESS);
 
@@ -424,10 +432,18 @@ vec4 BlockyClouds(vec3 worldDir, vec3 cameraWorldPos, vec3 lightView) {
 		dot(lightDir, view * vec3(0.0, 1.0, 0.0)),
 		dot(lightDir, view * vec3(0.0, 0.0, 1.0)));
 
-	// The layer is above the camera in the cases this is built for, and a ray
-	// that is not going up cannot reach it from below. Below the horizon there
-	// is nothing but the distance, which the sky already draws.
-	if (worldDir.y <= 0.0) {
+	// The layer is entered from below by a ray going up and from above by one
+	// going down, so both are marched - the entry and exit below already work
+	// either way round, and the grid traversal does not care about the sign of
+	// the direction.
+	//
+	// This used to reject every ray below the horizon, on the grounds that a ray
+	// that is not going up cannot reach the layer from below. True, but it is
+	// not the only way in: flown above the clouds, every ray points downwards,
+	// so the whole layer was rejected up there and the sky below was empty. Only
+	// a ray parallel to the layer never reaches it, and that is all this needs
+	// to turn away.
+	if (abs(worldDir.y) < 1.0e-6) {
 		return vec4(0.0);
 	}
 

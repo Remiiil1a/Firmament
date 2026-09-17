@@ -53,9 +53,9 @@
 		"skyHorizonNight",
 		"skyLightNight"
 	],
-	"samplers": [
-		"vxDepthTexOpaque",
-		"colortex4",
-		"noisetex"
-	]
+	"samplers": {
+		"vxDepthTexOpaque": "sampler2D",
+		"colortex4": "sampler2D",
+		"noisetex": "sampler2D"
+	}
 }

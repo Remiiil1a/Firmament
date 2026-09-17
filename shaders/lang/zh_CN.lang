@@ -3,17 +3,26 @@ option.STEADFAST.comment=由coderbot16制作, Iris 的原始开发者.
 	这是一个封闭测试版 - §c§l请不要公开分发！
 value.STEADFAST.BY_CODERBOT=by coderbot16
 
-option.FIRMAMENT=Firmament - v0.2 (edit of coderbot's Steadfast)
+option.FIRMAMENT=Firmament (edit of coderbot's Steadfast)
 option.FIRMAMENT.comment=由 Remiiil1a 制作的 Steadfast 修改版。加入了 labPBR 材质支持（法线、高光、视差、次表面散射、自发光贴图，以及材质反射）与末地维度支持。\n\n\
 	原光影为 coderbot 开发的 Steadfast，可从 https://modrinth.com/shader/steadfast-shaders（Modrinth）、https://www.curseforge.com/minecraft/shaders/steadfast（CurseForge）或 https://github.com/coderbot16/Steadfast（GitHub）下载。任何人都可以按 GNU 通用公共许可证第 3 版的条款修改和分发它。Steadfast 的附加条款要求修改版的名称以“(edit of coderbot's Steadfast)”结尾，本修改版因此这样命名。\n\n\
-	材质部分参考了 TheCMK 的 Mellow Shader v3.4，其许可要求保留署名。这里用到的都是公开的 BRDF 与 labPBR 规范中的数学，而不是他们的代码，也没有使用他们的任何素材或标志。\n\n\
+	包内还引用或参考了 Mellow Shader v3.4 与 Sundial Lite 的代码，署名分别写在下面的「特别鸣谢」页里。\n\n\
 	本包不是 Steadfast 的官方发行版，coderbot 不为它提供支持。完整许可摘要见 NOTICE.md 与 README.md。
 value.FIRMAMENT.BY_REMIIIL1A=由 Remiiil1a 修改
 
-option.MELLOW_PBR=材质支持
-option.MELLOW_PBR.comment=本包的材质（PBR）支持参考了 TheCMK 的 Mellow Shader v3.4。其许可要求保留署名，并要求不要把他们的名称、标志与截图用在其它项目上——因此这里的数学是照着 Steadfast 的风格重写的，而不是直接搬运。GGX 分布、Smith 可见项、Schlick 菲涅耳、Henyey-Greenstein 相位函数与 labPBR 1.3 的通道布局都是公开规范。\n\n\
-	Mellow 包中没有任何内容被直接引入：材质解码、反射与屏幕空间追踪都是 Steadfast 自己的代码。Mellow 的 MIT 许可文本收录为 LICENSE-MELLOW-MIT.txt。
-value.MELLOW_PBR.BY_THECMK=Mellow Shader v3.4, by TheCMK
+screen.SPECIAL_THANKS=特别鸣谢
+
+option.THANKS_MELLOW=Mellow Shader v3.4
+option.THANKS_MELLOW.comment=本包在实现中引用或参考了 TheCMK 的 Mellow Shader v3.4 的代码，特此致谢。\n\n\
+	按其许可使用：本包没有使用它的任何素材、标志或截图，它的名字也没有用在本包的名称里。\n\n\
+	完整许可文本见包内的 NOTICE.md 与 LICENSE-MELLOW-MIT.txt。这一项本身不影响画面。
+value.THANKS_MELLOW.BY_THECMK=by TheCMK
+
+option.THANKS_SUNDIAL=Sundial Lite
+option.THANKS_SUNDIAL.comment=本包在实现中引用或参考了 geforcelegend 的 Sundial Lite 的代码，特此致谢。\n\n\
+	按其许可（GNU 通用公共许可证第 3 版，与本包同一份许可，见包内 LICENSE.md）使用：本包没有使用它的任何素材、标志或截图，它的名字也没有用在本包的名称里。\n\n\
+	完整许可文本见包内的 NOTICE.md。这一项本身不影响画面。
+value.THANKS_SUNDIAL.BY_GEFORCELEGEND=by geforcelegend
 
 profile.EDIT_DEFAULT=§2✎ EDIT默认 style§r
 profile.MINISHITA_HIGH=§a物理(WIP)§r style - §b🔥 高§r
@@ -55,7 +64,7 @@ screen.EFFECTS=特效与后期处理
 screen.EFFECTS_LIGHT=光照特效
 screen.EFFECTS_CAMERA=镜头效果
 screen.EFFECTS_COLOR=色彩与色调
-screen.EFFECTS_TAA=【实验性】时间抗锯齿（TAA）
+screen.EFFECTS_TAA=时间抗锯齿（TAA）
 screen.WATER=水体与彩色玻璃
 screen.ATMOSPHERE_CLOUDS=大气与云层
 screen.LIGHTING=光照与阴影
@@ -101,19 +110,19 @@ value.PBR_FORMAT.LAB_PBR=LabPBR
 option.PBR_FORMAT.comment=是否读取 PBR 资源包提供的法线贴图（_n）与高光贴图（_s），遵循 shaderLABS 的 LabPBR 1.3 标准。下面每一项材质效果都可以在此之上单独关闭。\n\n只影响方块图集，也就是地形以及放置和手持的方块。实体、手持物品与 Distant Horizons 远景地形的光照与之前完全一致。\n\n在没有 PBR 资源包时，如果不想承担读取材质贴图的开销，可以设为“关闭”。没有法线或高光贴图的资源包会被解码为平坦法线、无反射、无发射，所以保持开启同样是安全的。.
 
 option.PBR_PARALLAX=视差映射
-option.PBR_PARALLAX.comment=用法线贴图 alpha 通道中的高度数据位移表面，让贴图中较深的部分看起来更靠后，表面因此产生真实的凹凸纵深。\n\n这是最耗性能的一项材质效果：它会沿视线逐层追踪表面，开销由下面的层数决定。\n\n效果会随距离淡出；高度通道为平坦的资源包几乎不产生开销。
+option.PBR_PARALLAX.comment=用法线贴图 alpha 通道中的高度数据位移表面，让贴图中较深的部分看起来更靠后，表面因此产生真实的凹凸纵深。\n\n这是最耗性能的一项材质效果：它会沿视线逐层追踪表面，开销由下面的层数决定。\n\n手持方块不参与位移追踪（它的投影与方块图集范围都和地形不同，追踪结果是斜铺在表面上的位移）：手里的方块仍然有完整的材质、法线与自阴影，只是自身没有视差纵深。\n\n效果会随距离淡出；高度通道为平坦的资源包几乎不产生开销。
 
 option.PBR_PARALLAX_STEPS=视差层数
 option.PBR_PARALLAX_STEPS.comment=视差光线追踪的层数。每层需要一次贴图采样，层数越多，在接近平视的角度下对高度场的还原越准确。\n\n层数太少会在掠射视角下出现条带；太多则纯属浪费采样。
 
 option.PBR_PARALLAX_REFINE=视差细化步数
-option.PBR_PARALLAX_REFINE.comment=用多少步二分搜索来精确定位视线与高度场的交点。\n\n分层行进只能落在层边界上，而高度通道通常只占其取值范围的一小部分，真正落在起伏范围内的层很少。不做细化时，贴图会在几个离散位置之间跳变，而不是连续贴合表面。\n\n每步多一次贴图采样；设为 0 即关闭细化。
+option.PBR_PARALLAX_REFINE.comment=用多少步二分搜索来精确定位视线与高度场的交点。\n\n分层行进只能落在层边界上，而高度通道通常只占其取值范围的一小部分，真正落在起伏范围内的层很少。细化不足时，贴图会在几个离散位置之间跳变，而不是连续贴合表面——这一项原本默认只有 4，层带明显，调到 32 左右就看不出来了，默认值因此设在这里。\n\n二分搜索的精度每一步翻一倍，所以 32 步早已远超肉眼可辨的程度；调低可以省采样。
 
 option.PBR_PARALLAX_DEPTH=视差深度
-option.PBR_PARALLAX_DEPTH.comment=高度场最深处的深度，单位为方块。\n\nLabPBR 要求资源包把该值控制在大约四分之一个方块以内，因此明显超过 0.25 的取值在多数资源包上都会显得失真。
+option.PBR_PARALLAX_DEPTH.comment=高度场最深处的深度，单位为方块。\n\n实际位移 = 这一项乘以视线倾角的正切（正对着表面看时为正切 0，位移为 0——这是视差映射本身的几何性质，不是被谁关掉了）。\n\n它还会被"最大位移"封顶：这一项超过"最大位移"之后就不会再有变化了——需要更大的深度时，两者要一起往上调。\n\nLabPBR 要求资源包把该值控制在大约四分之一个方块以内，因此明显超过 0.25 的取值在多数资源包上都会显得失真。
 
 option.PBR_PARALLAX_MAX_OFFSET=最大位移
-option.PBR_PARALLAX_MAX_OFFSET.comment=单个采样点最多被位移多少方块。\n\n掠射视角会把位移除以视线倾角，若不限制就会把采样拖进方块图集中相邻的 sprite，读到的材质数据属于别的方块——表现为地面上距玩家固定距离处出现一条明显的分界线。\n\n如果看到这种分界线，调低这一项；代价是掠射角下的纵深感会减弱。
+option.PBR_PARALLAX_MAX_OFFSET.comment=单个采样点最多被位移多少方块，用来防止掠射角把纵深感拉到夸张的程度。\n\n掠射视角会把位移除以视线倾角，视角越平位移越大。\n\n这一项必须不小于"视差深度"，否则"视差深度"调到超过它之后就不再有任何变化（两者原本一个 0.25、一个可调到 0.5，正是这个问题）。默认值已按此设为 0.5。\n\n位移同时还会被限制在半张 sprite 以内（也就是半个方块面），所以采样不会读到隔壁方块；如果看到分界线，那是取样范围失效的几何（例如手持物品）。
 
 option.PBR_PARALLAX_DISTANCE=视差距离
 option.PBR_PARALLAX_DISTANCE.comment=视差映射开始淡出、直至完全停止的距离（米）。\n\n超过一定距离后，一个屏幕像素覆盖的范围已经超过整个高度范围，此时光线追踪只会白白付出采样开销并产生闪烁。
@@ -211,7 +220,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。\n\n这一项是实验性质，开启它本身就是验证方式：只有方块图集被 Iris 与 OptiFine 构建法线／高光贴图，因此实体也可能被套上某个方块的材质数据，而不是它自己的。\n\n验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」。如果是一片均匀的画面，说明该实体没有绑定材质数据，应当把这一项关回去；如果画面里有随生物贴图变化的细节、能与它的贴图对上，说明可行。\n\n默认开启：如果资源包没有为实体提供材质贴图，这一项也读不到任何东西。如果按上面的方法验证后发现它取到的是别的方块的材质，就把它关掉。
 
-option.PBR_DEBUG=材质调试视图 [build 41]
+option.PBR_DEBUG=材质调试视图 [build 108]
 value.PBR_DEBUG.PBR_DEBUG_NONE=关闭
 value.PBR_DEBUG.PBR_DEBUG_HEIGHT=高度通道
 value.PBR_DEBUG.PBR_DEBUG_SMOOTHNESS=光滑度
@@ -222,7 +231,8 @@ value.PBR_DEBUG.PBR_DEBUG_TANGENT_NORMAL=切线空间法线
 value.PBR_DEBUG.PBR_DEBUG_MATERIAL_AO=遮蔽通道
 value.PBR_DEBUG.PBR_DEBUG_SUBSURFACE=孔隙度／散射通道
 value.PBR_DEBUG.PBR_DEBUG_EMISSION=发射光
-option.PBR_DEBUG.comment=用材质数据的可视化替换画面，这是判断资源包到底提供了哪些数据最快的方法。\n\n选“高度通道”后看一个方块：如果它是均匀的灰色，说明该资源包对这个方块没有高度数据，再怎么调视差参数也不会有位移。\n\n“切线空间法线”显示的是资源包原始的法线贴图内容，尚未套用方块朝向：平坦法线呈浅蓝色，纯黑则说明取到了精灵之外的texel——那会解码成强烈的倾斜而不是平坦。把它和“法线”对照，就能区分问题出在采样还是在切线坐标系上。\n\n「遮蔽通道」就是「材质环境光遮蔽」所读取的数据：如果某个方块显示为均匀的白色，说明该资源包没有为它提供遮蔽数据，这项功能在那个方块上无事可做。\n\n「孔隙度／散射通道」是它在高光贴图上的对应项：纯黑表示资源包没有在该通道存放数据，暗色是孔隙度，更亮的颜色则表示材质透光。
+value.PBR_DEBUG.PBR_DEBUG_PARALLAX=视差位移（诊断）
+option.PBR_DEBUG.comment=用材质数据的可视化替换画面，这是判断资源包到底提供了哪些数据最快的方法。\n\n选“高度通道”后看一个方块：如果它是均匀的灰色，说明该资源包对这个方块没有高度数据，再怎么调视差参数也不会有位移。\n\n“切线空间法线”显示的是资源包原始的法线贴图内容，尚未套用方块朝向：平坦法线呈浅蓝色，纯黑则说明取到了精灵之外的texel——那会解码成强烈的倾斜而不是平坦。把它和“法线”对照，就能区分问题出在采样还是在切线坐标系上。\n\n「遮蔽通道」就是「材质环境光遮蔽」所读取的数据：如果某个方块显示为均匀的白色，说明该资源包没有为它提供遮蔽数据，这项功能在那个方块上无事可做。\n\n「孔隙度／散射通道」是它在高光贴图上的对应项：纯黑表示资源包没有在该通道存放数据，暗色是孔隙度，更亮的颜色则表示材质透光。\n\n「视差位移（诊断）」不是材质视图，而是把视差追踪用到的三个量画成颜色。画面是**纯洋红（紫红）**表示「视差映射」没开——诊断的三个通道只有在视差打开时才有意义。打开「视差映射」后：\n红色 = 射线起步时的位移量（行进之前）。**红色是黑的**说明位移本身接近 0 —— 原因在切线基、视角，或两道位移上限；\n绿色 = 行进之后真正返回的位移。**红色亮、绿色黑**说明位移没问题，是行进没找到交点；\n蓝色 = 距离淡出（这个片元被允许有多少效果）。**蓝色是黑的**说明只是距离太远。\n红绿两色**按 sprite（也就是方块面）的大小取标尺**：位移达到半个方块面即为满值——所以无论资源包的图集是 256 还是 4096，读数都一个意思。两色还做过开方拉伸，小位移也不会暗到看不见。
 
 option.MOTION_BLUR=动态模糊
 option.MOTION_BLUR.comment=按**相机在世界里的位移**把画面沿运动方向糊开：走路、奔跑、下落、坐船、被击飞时画面都会有真实的拖影。\n\n做法是逐像素还原这块像素的位置，再按"相机这一帧走了多远"算出上一帧它在哪里，两个屏幕位置之间就是它这一帧移动了多远，然后沿这段距离取平均。位移是逐像素算的，所以走路时脚下的地面飞快掠过、远处的地平线几乎不动——这正是相机该有的样子，一个全屏统一的偏移做不到这一点。\n\n**位移和转头都算，只有走路的摇晃不算**：走路时视角的上下颠、左右晃本身也是一种旋转，而且和转头共用同一个矩阵，没法直接挑出来——所以按**大小**区分：走路时摇晃每帧只推动画面一两像素，而值得模糊的转头每帧推几十像素。因此**转头要超过几个像素/帧才计入模糊**，手轻搭在鼠标上的慢速转动不会糊。跑、掉、坐船、被打飞都是位移，全都算。\n\n**只模糊相机**：Steadfast 没有运动矢量，会自己动的实体、水流、掉落物都拿不到"上一帧在哪"的记录，所以它们保持清晰。手持物品整块不参与（它挂在相机前，屏幕上是静止的）。\n\n在最后一遍里、色调映射之前执行，所以混合的是线性光，光柱（体积光）也不会被糊掉。
@@ -237,18 +247,18 @@ option.MOTION_BLUR_LENS=趣味：模糊透镜（原来的 bug）
 option.MOTION_BLUR_LENS.comment=把动态模糊里曾经的一个 bug **原样保留**下来，因为它看起来像某种东西。默认关闭。\n\n那个 bug 出在"转头"这一半：判断转头要把这块像素的方向放到上一帧的视图里去看，而方向必须先转到世界轴向。当时漏了这一步、直接把**视图空间**的方向交给了上一帧的矩阵，于是**相机自己的旋转被算了两次**。结果是一块"错误的位移"盘：它跟着镜头转，但转的角度是**两倍** —— 面朝正北时正好与视线重合、什么也不做；把视角转 90°（正东），它就跑到正南。\n\n「动态模糊」关闭时无效。开这一项会把正确的转头模糊**换成**那块透镜，不是叠加。
 value.TAA.TAA_OFF=关闭
 value.TAA.TAA_ON=开启
-option.TAA.comment=**【实验性功能】**还没做完，所以默认关闭，而且它有已知的副作用（见下）。想要就开，不想要就关——这一组里的其它几项也都在同一个实验性分组下。\n\n它是在画面稳定性和平滑度之间做取舍的一项效果。\n\n开启后每帧用略微偏移的亚像素位置渲染，再把连续多帧平均起来，使每个像素在多个位置上被采样而不是只采一次。这样能用远低于提高分辨率的代价，消除单帧无法解决的边缘锯齿。\n\nSteadfast 没有运动矢量，因此自身会移动的东西——实体、水面、粒子、手持物品——无法被正确重投影，只能通过丢弃与当前帧不符的历史来处理。\n\n如果贴图看起来发糊或发涂抹：把「历史钳制范围」调低、把「锐化」调高，或把「抗锯齿强度」降到 0.75。\n\nVoxy 地形不在覆盖范围内，因为它的顶点端由 Voxy 模组提供，而不是这些顶点着色器。
+option.TAA.comment=**默认开启**。开启后每帧用略微偏移的亚像素位置渲染，再把连续多帧平均起来，使每个像素在多个位置上被采样而不是只采一次——这样能用远低于提高分辨率的代价，消除单帧无法解决的边缘锯齿。\n\nSteadfast 没有运动矢量，因此自身会移动的东西——实体、水面、粒子、手持物品——无法被正确重投影，只能通过丢弃与当前帧不符的历史来处理。如果运动物体身后的拖影比锯齿更碍眼，就把它关掉。\n\n如果贴图看起来发糊或发涂抹：把「历史钳制范围」调低、把「锐化」调高，或把「抗锯齿强度」降到 0.65。\n\nVoxy 地形不在覆盖范围内，因为它的顶点端由 Voxy 模组提供，而不是这些顶点着色器。
 
-option.TAA_STRENGTH=【实验性】抗锯齿强度
-option.TAA_STRENGTH.comment=每帧保留多少已累积的历史。\n\n数值越高细节保留越多、噪点越少，代价是运动物体后面的拖影更明显。
+option.TAA_STRENGTH=抗锯齿强度
+option.TAA_STRENGTH.comment=每帧保留多少已累积的历史——**这一项只作用于没有移动的像素**。\n\n这是决定"噪点能否靠时间抹平"的那一项：远处屏幕空间阴影的抖动、天空自身的抖动，都只能靠多帧平均来抹掉，历史越长，噪点越少、细节保留越多。\n\n移动中的像素只保留这一项的七成，所以调高它不会再换来"运动物体后面的拖影"。
 
-option.TAA_JITTER=【实验性】抖动半径
+option.TAA_JITTER=抖动半径
 option.TAA_JITTER.comment=亚像素偏移的半径，单位为像素。\n\n1 像素表示每帧的采样点可以落在像素内的任意位置，这是抗锯齿滤波应有的取值。设为 0 则关闭偏移，此时该通道仍在运行，但没有可平均的内容。
 
-option.TAA_CLAMP=【实验性】历史钳制范围
+option.TAA_CLAMP=历史钳制范围
 option.TAA_CLAMP.comment=允许历史像素超出当前帧邻域多少个标准差。\n\n这是防止运动物体把旧画面拖在身后的关键，也是防止贴图被慢慢平均成一片涂抹的关键。画面闪烁就调高，表面发糊或发涂抹就调低。
 
-option.TAA_SHARPEN=【实验性】锐化
+option.TAA_SHARPEN=锐化
 option.TAA_SHARPEN.comment=对合成后的画面做多少锐化，以补偿多帧平均带来的软化。\n\n少量即可，过多会把抗锯齿本要消除的锯齿重新带回来。
 
 option.PBR_EMISSION=发射光
@@ -430,6 +440,19 @@ value.DEBUG.DEBUG_NONE= 关闭调试
 value.DEBUG.DEBUG_GODRAYS_NOISY= 噪点体积光调试
 value.DEBUG.DEBUG_GODRAYS_SMOOTH= 平滑体积光调试
 value.DEBUG.DEBUG_SKYLIGHT= 天光可视化调试
+value.DEBUG.DEBUG_DEPTH= 深度缓冲调试（远处有没有深度）
+
+option.SCREENSPACE_SHADOWS=屏幕空间阴影（远景）
+option.SCREENSPACE_SHADOWS.comment=给阴影贴图够不到的远景补上阴影：沿太阳方向在**深度缓冲**里走一条射线，射线上被挡住的地方就判为阴影。\n\n为什么需要它：阴影贴图只能覆盖玩家周围固定的一段距离，之外的地形（Voxy、Distant Horizons 的远景）全都在阳光下、也不投影——丘陵地形上这最扎眼，山谷明明有山挡着却一片亮。按深度来做，则凡是写入深度的几何都能互相遮挡，模组画出来的远景也不例外。\n\n**只用在那段距离之外**：贴图范围内仍由阴影贴图负责（它更准、而且已经付过代价），两者用距离平滑过渡，不会把同一处阴影压暗两次。\n\n**改不掉的三条边界**：射线只走到屏幕里已有的几何为止（背对镜头的东西投不出阴影）；屏幕外的几何不参与；薄物体（草、栅栏）容易漏。\n\n若远处出现细密噪点：把「射线步数」调高、「射线长度」调短。若整体发灰：把「阴影强度」调低。
+
+option.SSS_STRENGTH=阴影强度
+option.SSS_STRENGTH.comment=远景阴影压暗多少。这一项是乘在**整个颜色**上的，不是只乘阳光那部分——这个包到这一步时阳光与天光已经加在一起了，所以接近 1.0 的取值会连天光一起压掉一些。
+
+option.SSS_STEPS=射线步数
+option.SSS_STEPS.comment=射线走多少步。步数越多，在同样的长度下步子越细，越不容易**从两块地形之间漏过去**（漏了就会出现一道道亮线或噪点）；代价是每步多一次深度采样。
+
+option.SSS_LENGTH=射线长度
+option.SSS_LENGTH.comment=射线射多远，单位为方块。山谷底往往在一道山脊下方好几十格外，所以这一项要够长才能接住最主要的那层阴影。
 
 value.ATMOSPHERE_MODEL.GRADIENT=梯度大气
 value.ATMOSPHERE_MODEL.MINISHITA=物理大气

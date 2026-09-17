@@ -136,9 +136,28 @@ vec3 parallaxWaterNormal(
 ) {
 	vec2 waterWorldPos = cameraRelativePos.xz + cameraPosition.xz;
 
+	// Whether this face is standing up rather than lying flat - the side of a
+	// waterfall, or the face of water flowing down a slope.
+	bool sideways = abs(worldNormal.y) < 0.99;
+
 	// If the normal vector is facing down instead of up, we need to flip the
 	// results of our non-TBN calculations.
 	float facing = worldNormal.y >= 0.0 ? 1.0 : -1.0;
+
+	// Across a face that is not horizontal, x and z do not change: they are the
+	// same for every fragment of it, and the wave field is a function of exactly
+	// those two coordinates. It therefore comes out constant over the whole face
+	// and the water reads as flat, whatever the surface style is set to. Folding
+	// the height into the coordinate as well makes the same two-dimensional field
+	// vary down the face, which is what gives falling water a surface.
+	//
+	// Sundial's water surface does the same thing for the same reason: its sample
+	// coordinate is position.xz + vec2(position.y). Absolute height, not the
+	// camera-relative one, so that the pattern does not slide when the camera
+	// itself moves up or down.
+	if (sideways) {
+		waterWorldPos += vec2(cameraRelativePos.y + cameraPosition.y);
+	}
 
 	// TODO: Limit WATER_PARALLAX_DISTANCE by vanilla terrain render distance
 	//       to ensure smooth transition to DH water.
@@ -173,16 +192,28 @@ vec3 parallaxWaterNormal(
 		ddyWorldPos,
 		timeSeconds);
 
-	// Hardcoded for the common case where normal vectors are pointing
-	// upwards in world-space.
-	//
-	// The swizzle is XZY because in tangent space 
-	//
-	// TODO: This breaks when looking at the side towards slanted water normals.
-	//       It mostly breaks reflection, but refraction doesn't like it either.
-	//       Any way we can do an approximation? Maybe just skip the parallax,
-	//       or can we "slant" by the normal facing? Or is that just TBN with
-	//       more steps?
+	// A face that is not horizontal needs a frame of its own. WaterNormal returns
+	// the normal in tangent space, where Z points out of the surface and X and Y
+	// point along it - and for water lying flat on the ground those two happen to
+	// be east and north, which is why the swizzle below is written the way it is.
+	// On a vertical face they are instead up the face and across it. Without
+	// them the waves are applied as if the surface were flat on the ground: the
+	// normal comes out pointing at the sky, so the side of a waterfall is shaded
+	// and reflects exactly as if it were the top of a lake.
+	if (sideways) {
+		vec3 faceNormal = normalize(worldNormal);
+		vec3 faceUp = vec3(0.0, 1.0, 0.0);
+		vec3 faceRight = normalize(cross(faceUp, faceNormal));
+
+		return normalize(
+			faceRight * waterNormal.x
+				+ faceUp * waterNormal.y
+				+ faceNormal * waterNormal.z);
+	}
+
+	// Water lying flat on the ground, which is the common case: the face is
+	// already known to point along the world's up axis apart from the sign, so
+	// the frame above is the world's own axes and the swizzle can be written out.
 	return facing * waterNormal.xzy;
 }
 
@@ -621,7 +652,48 @@ vec4 TranslucentLighting(
 					reflectionPos = hitPos;
 				#endif
 
-				vec3 terrainReflection = texture(colortex4, reflectionPos).rgb;
+				// Water that stands up is rough, and a rough surface does not show
+				// a mirror: it shows a wide, soft average of whatever it faces.
+				// Both packs this one follows filter a water reflection by
+				// roughness for exactly that reason - Mellow blurs the reflected
+				// image by a radius that grows with the distance to whatever was
+				// hit (blur_variable, global/water.glsl), and Sundial stores
+				// water's smoothness in its gbuffer and filters the reflection
+				// with it (Composite5.frag). This pack had one unfiltered fetch,
+				// which is why the sides of flowing water read as a sharp picture
+				// of something they are not facing.
+				//
+				// The radius is in pixels and grows with the distance to the hit,
+				// because the same roughness covers more of the screen the further
+				// away the thing being reflected is - the rule Mellow's blur uses.
+				// Water lying flat keeps the single fetch: its reflection is the
+				// one the pack is known for, and it is not this batch's business.
+				vec3 terrainReflection;
+
+				if (materialID == WATER && !verticalNormal) {
+					// Pixel size, taken from a uniform the Voxy patch also gets
+					// rather than from windowToScreen, which it does not.
+					vec2 pixelSize = windowToNdc * 0.5;
+					float blurRadius = clamp(0.06 * length(hitViewPos), 2.0, 24.0);
+
+					// Two rings of four taps, at half and full radius: cheaper to
+					// write than a disc and even enough that the ring itself does
+					// not show in the result.
+					vec3 blurred = vec3(0.0);
+					for (int i = 0; i < 8; i++) {
+						float angle = float(i) * 0.7853982;
+						float ringScale = i < 4 ? 0.5 : 1.0;
+						vec2 offset = vec2(cos(angle), sin(angle))
+							* (blurRadius * ringScale);
+						blurred += texture(
+							colortex4,
+							reflectionPos + offset * pixelSize).rgb;
+					}
+
+					terrainReflection = blurred * 0.125;
+				} else {
+					terrainReflection = texture(colortex4, reflectionPos).rgb;
+				}
 
 				float fragDistanceW = max(
 					abs(cameraRelativePosW.y),
@@ -670,7 +742,18 @@ vec4 TranslucentLighting(
 		//
 		// TODO: Permit sideways water to refract, or make it just opaque.
 		//       Just do something.
-		if (materialID == WATER && verticalNormal) {
+		//
+		// Water that stands up is taken here too. Its refraction direction comes
+		// out as little more than the incident vector - the difference between
+		// the wave normal and the face normal is what drives the offset, and on a
+		// face that stands up they are nearly the same - so it warps the
+		// background by a hair and, more to the point, it reaches the background
+		// and the absorption below at all. Without this the sides of flowing
+		// water had neither colour nor background: their own alpha is zero in
+		// daylight, since it is the absorption that gives a water surface its
+		// colour, so they came out as glass and were then thrown away by the
+		// alpha test.
+		if (materialID == WATER) {
 			// Screen-space refraction implementation. We are working within the
 			// following constraints:
 			//

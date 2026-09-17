@@ -3,7 +3,7 @@ option.STEADFAST.comment=Made by coderbot16, the original developer of Iris. \
 	This is a closed alpha release - §c§lplease do not redistribute in public!
 value.STEADFAST.BY_CODERBOT=by coderbot16
 
-option.FIRMAMENT=Firmament - v0.2 (edit of coderbot's Steadfast)
+option.FIRMAMENT=Firmament (edit of coderbot's Steadfast)
 option.FIRMAMENT.comment=An edit of Steadfast made by Remiiil1a. It adds labPBR \
 	material support (normal, specular, parallax, subsurface and emissive maps, \
 	plus reflections) and support for the End.\n\n\
@@ -14,26 +14,33 @@ option.FIRMAMENT.comment=An edit of Steadfast made by Remiiil1a. It adds labPBR 
 	distribute it under the terms of the GNU General Public License, version 3. \
 	Steadfast's additional terms require the name of a modified version to end \
 	with "(edit of coderbot's Steadfast)", which is why this one does.\n\n\
-	The material support follows Mellow Shader v3.4 by TheCMK, whose licence \
-	asks for the credit. Everything from that shader here is mathematics taken \
-	from the published BRDF and labPBR specifications rather than their code, \
-	and none of their assets or branding are used.\n\n\
+	Code from Mellow Shader v3.4 and Sundial Lite is referenced or quoted here \
+	as well; each is credited on the Special thanks page below.\n\n\
 	This is not an official Steadfast release and is not supported by coderbot. \
 	See NOTICE.md and README.md for the full licence summary.
 value.FIRMAMENT.BY_REMIIIL1A=edited by Remiiil1a
 
-option.MELLOW_PBR=Material support
-option.MELLOW_PBR.comment=The material (PBR) support in this pack follows \
-	Mellow Shader v3.4, by TheCMK. Their licence asks that the credit be kept, \
-	and that their name, logo and screenshots not be reused for another \
-	project - so the mathematics was rewritten in Steadfast's own style rather \
-	than copied across. The GGX distribution, the Smith visibility term, \
-	Schlick Fresnel, the Henyey-Greenstein phase function and the labPBR 1.3 \
-	channel layout are all published specifications.\n\n\
-	Nothing from Mellow's pack ships here: the material decode, the reflections \
-	and the screen-space ray march are Steadfast's own code. Mellow's MIT \
-	licence is included as LICENSE-MELLOW-MIT.txt.
-value.MELLOW_PBR.BY_THECMK=Mellow Shader v3.4, by TheCMK
+screen.SPECIAL_THANKS=Special thanks
+
+option.THANKS_MELLOW=Mellow Shader v3.4
+option.THANKS_MELLOW.comment=This pack references or quotes code from Mellow \
+	Shader v3.4, by TheCMK, and thanks them for it.\n\n\
+	It is used under its own licence: none of its assets, logos or screenshots \
+	are used here, and its name is not part of this pack's name.\n\n\
+	The full licence text is in NOTICE.md and LICENSE-MELLOW-MIT.txt in the \
+	pack. This entry changes nothing about how the pack looks.
+value.THANKS_MELLOW.BY_THECMK=by TheCMK
+
+option.THANKS_SUNDIAL=Sundial Lite
+option.THANKS_SUNDIAL.comment=This pack references or quotes code from Sundial \
+	Lite, by geforcelegend, and thanks them for it.\n\n\
+	It is used under its own licence - the GNU General Public License, version \
+	3, the same licence as this pack, whose copy is LICENSE.md: none of its \
+	assets, logos or screenshots are used here, and its name is not part of \
+	this pack's name.\n\n\
+	The full licence text is in NOTICE.md. This entry changes nothing about how \
+	the pack looks.
+value.THANKS_SUNDIAL.BY_GEFORCELEGEND=by geforcelegend
 
 profile.EDIT_DEFAULT=§2✎ EDIT默认 style§r
 profile.MINISHITA_HIGH=§aMinishita (WIP)§r style - §b🔥 High§r
@@ -89,7 +96,7 @@ screen.EFFECTS=Effects & post-processing
 screen.EFFECTS_LIGHT=Light effects
 screen.EFFECTS_CAMERA=Camera effects
 screen.EFFECTS_COLOR=Colour and tonemapping
-screen.EFFECTS_TAA=[experimental] Temporal anti-aliasing
+screen.EFFECTS_TAA=Temporal anti-aliasing
 screen.WATER=Water & stained glass
 screen.ATMOSPHERE_CLOUDS=Atmosphere & clouds
 screen.LIGHTING=Lighting & shadows
@@ -155,6 +162,10 @@ option.PBR_PARALLAX.comment=Makes the height stored in the alpha channel of \
 	This is the most expensive material feature. It traces the surface along \
 	the view ray, one layer at a time, so its cost is set by the number of \
 	layers below.\n\n\
+	A held block is left out of the trace: its view ray and its block atlas \
+	bounds are not the ones the trace is written against, and what came out was \
+	a smear laid across the surface. It keeps its material, its normal map and \
+	its height field self shadow - it simply has no parallax depth of its own.\n\n\
 	It fades out with distance, and a resource pack with a flat height channel \
 	is effectively free.
 
@@ -170,25 +181,38 @@ option.PBR_PARALLAX_REFINE.comment=How many binary search steps are used to \
 	pin down where the view ray crosses the height field.\n\n\
 	The layer march can only land on a layer boundary, and a height channel \
 	usually covers only a fraction of its range, so few layers fall inside the \
-	real variation. Without refinement the texture visibly snaps between a \
-	handful of positions instead of following the surface.\n\n\
-	Each step is one more texture sample; 0 turns refinement off.
+	real variation. With too little refinement the texture visibly snaps \
+	between a handful of positions instead of following the surface. This \
+	option used to default to 4, which left those layers plainly visible; 32 \
+	does not, and is where the default is set.\n\n\
+	Each step is one more texture sample. This is a bisection, so its accuracy \
+	doubles per step and 32 is already far past what the eye can tell apart; \
+	lower it to save samples.
 
 option.PBR_PARALLAX_DEPTH=Parallax depth
 option.PBR_PARALLAX_DEPTH.comment=How deep the height field is, in blocks, at \
 	its deepest point.\n\n\
+	The displacement you actually see is this multiplied by the slope of the \
+	view angle - 0 when looking straight at the surface, which is the geometry \
+	of parallax mapping rather than the effect being switched off.\n\n\
+	It is also capped by Maximum displacement, and stops changing once it goes \
+	past it: raise both together when you want more depth.\n\n\
 	LabPBR asks resource packs to keep this within a quarter of a block, so \
 	values much above 0.25 will likely look wrong on most packs.
 
 option.PBR_PARALLAX_MAX_OFFSET=Maximum displacement
 option.PBR_PARALLAX_MAX_OFFSET.comment=How far a sample is allowed to be \
-	displaced, in blocks.\n\n\
-	Shallow view angles divide the displacement by the view direction's slope, \
-	which would otherwise drag samples into the neighbouring sprites of the \
-	block atlas. The material data read there belongs to a different block, \
-	which shows up as a visible line across the ground at a fixed distance from \
-	the player.\n\n\
-	Lower this if you see such a line; it costs some depth at glancing angles.
+	displaced, in blocks. It is what keeps a glancing view angle from \
+	exaggerating the depth, since the displacement is divided by the slope of \
+	that angle.\n\n\
+	Keep it at least as large as Parallax depth. Below that, turning the depth \
+	up stops doing anything once it passes this value - which is what the old \
+	default of 0.25 did to a depth setting that goes up to 0.5. This is why it \
+	defaults to 0.5.\n\n\
+	The displacement is also held within half a sprite, ie, half a block face, \
+	so a sample never reads material data from a neighbouring block. If you do \
+	see a line across a surface, it is geometry whose sprite bounds are not \
+	usable, such as held items.
 
 option.PBR_PARALLAX_DISTANCE=Parallax distance
 option.PBR_PARALLAX_DISTANCE.comment=Distance in meters at which parallax \
@@ -563,7 +587,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials.\n
 	is nothing for it to read. Turn it off if the check above shows it picking up \
 	materials that are not the entity's own.
 
-option.PBR_DEBUG=Material debug view [build 41]
+option.PBR_DEBUG=Material debug view [build 108]
 value.PBR_DEBUG.PBR_DEBUG_NONE=Off
 value.PBR_DEBUG.PBR_DEBUG_HEIGHT=Height channel
 value.PBR_DEBUG.PBR_DEBUG_SMOOTHNESS=Smoothness
@@ -574,6 +598,7 @@ value.PBR_DEBUG.PBR_DEBUG_TANGENT_NORMAL=Tangent-space normal
 value.PBR_DEBUG.PBR_DEBUG_MATERIAL_AO=Occlusion channel
 value.PBR_DEBUG.PBR_DEBUG_SUBSURFACE=Porosity / scattering channel
 value.PBR_DEBUG.PBR_DEBUG_EMISSION=Emission
+value.PBR_DEBUG.PBR_DEBUG_PARALLAX=Parallax displacement (diagnostic)
 option.PBR_DEBUG.comment=Replaces the image with a visualisation of the material \
 	data, which is the quickest way to find out whether a resource pack actually \
 	provides what an effect needs.\n\n\
@@ -590,7 +615,23 @@ option.PBR_DEBUG.comment=Replaces the image with a visualisation of the material
 	for the feature to apply there.\n\n\
 	Porosity / scattering channel is the counterpart for the specular map: black \
 	means the pack stores nothing in that channel, dark colours are porosity, and \
-	anything brighter is the material letting light through.
+	anything brighter is the material letting light through.\n\n\
+	Parallax displacement is a diagnostic rather than a material view: it draws \
+	the three values the parallax ray march works with, as colours. Magenta \
+	means Parallax mapping is off, since the three channels only mean anything \
+	while it is on. With it on:\n\n\
+	Red is how far the ray is displaced before the march runs. Black red means \
+	the offset itself is near zero, which is the tangent frame, the view angle, \
+	or one of the two displacement limits.\n\n\
+	Green is the displacement the march actually returned. Red lit with green \
+	black means the offset was fine and the march failed to find a crossing.\n\n\
+	Blue is the distance fade, ie, how much of the effect this fragment is \
+	allowed. Black blue means the surface is simply too far away.\n\n\
+	Red and green share a scale, and that scale is the sprite itself: an offset of \
+	half a block face is a full channel. That way the reading means the same \
+	thing whether the pack's atlas is 256 wide or 4096 - a fixed scale leaves \
+	both channels too dim to see on a large atlas. Both are square rooted as \
+	well, so a small offset is still readable next to a large one.
 
 option.GLASS_REFLECTIONS=Glass reflections
 option.GLASS_REFLECTIONS.comment=Whether glass and stained glass reflect the way \
@@ -660,41 +701,46 @@ option.MOTION_BLUR_LENS.comment=Keeps a bug this effect used to have, exactly as
 	blur with the lens rather than adding to it.
 value.TAA.TAA_OFF=Off
 value.TAA.TAA_ON=On
-option.TAA.comment=**[experimental]** This one is not finished, which is why it \
-	is off by default and why it has the side effects described below. Turn it on \
-	to use it; everything else on its page is part of the same experimental group.\n\n\
-	It is the one effect here that trades image stability for smoothness.\n\n\
-	Renders each frame with a small sub-pixel offset and \
+option.TAA.comment=**On by default.** It is the one effect here that trades image \
+	stability for smoothness, and the trade is worth it at these settings: it \
+	renders each frame with a small sub-pixel offset and \
 	averages several frames together, so that each pixel is sampled from \
 	several positions instead of one. This smooths out edges that no single \
 	frame can resolve, for far less than rendering at a higher resolution.\n\n\
 	Steadfast has no motion vectors, so things that move on their own - \
 	entities, water, particles, the held item - cannot be reprojected correctly \
 	and are handled by throwing away history that does not match the current \
-	frame instead. Lower the strength if you see anything smearing.\n\n\
+	frame instead. Lower the strength - or turn this off entirely - if the \
+	ghosting behind moving things reads worse than the aliasing it removes.\n\n\
 	Voxy terrain is not covered, as its geometry is emitted by the Voxy mod \
 	rather than by these vertex shaders.
 
-option.TAA_STRENGTH=[experimental] Anti-aliasing strength
+option.TAA_STRENGTH=Anti-aliasing strength
 option.TAA_STRENGTH.comment=How much of the accumulated history each frame \
-	keeps.\n\n\
-	Higher resolves more detail and leaves less noise, at the cost of more \
-	ghosting behind moving objects.
+	keeps, for a pixel that did not move.\n\n\
+	This is the option that decides how much of the noise in the image averages \
+	away - the dither of the screen-space shadows in the distance, and the sky's \
+	own. A longer history leaves less of both and resolves more detail, because \
+	averaging consecutive frames is the only thing that can remove a per-frame \
+	sample at all.\n\n\
+	A pixel that did move keeps seven tenths of this, which is what lets the \
+	default sit high: raising it buys noise reduction while standing still \
+	without buying ghosting behind moving objects.
 
-option.TAA_JITTER=[experimental] Jitter radius
+option.TAA_JITTER=Jitter radius
 option.TAA_JITTER.comment=The radius of the sub-pixel offset, in pixels.\n\n\
 	One pixel places each frame's sample anywhere within the pixel, which is \
 	what an anti-aliasing filter wants. 0 turns the offset off, which leaves \
 	the pass running but with nothing to average.
 
-option.TAA_CLAMP=[experimental] History clamp
+option.TAA_CLAMP=History clamp
 option.TAA_CLAMP.comment=How many standard deviations of the current frame's \
 	neighbourhood the history is allowed to fall outside of.\n\n\
 	This is what stops a moving object from dragging its old positions along \
 	behind it, and what keeps textures from being averaged into a smudge. Raise \
 	it if the image flickers, lower it if surfaces look soft or smeared.
 
-option.TAA_SHARPEN=[experimental] Sharpening
+option.TAA_SHARPEN=Sharpening
 option.TAA_SHARPEN.comment=How much to sharpen the resolved image, to counter \
 	the softening that averaging frames together introduces.\n\n\
 	A little goes a long way - too much brings back the aliasing the effect \
@@ -1270,6 +1316,45 @@ value.DEBUG.DEBUG_NONE=None
 value.DEBUG.DEBUG_GODRAYS_NOISY=Noisy godrays
 value.DEBUG.DEBUG_GODRAYS_SMOOTH=Smooth godrays
 value.DEBUG.DEBUG_SKYLIGHT=Sky light
+value.DEBUG.DEBUG_DEPTH=Depth buffer (is distant terrain in it)
+
+option.SCREENSPACE_SHADOWS=Screen-space shadows (distance)
+option.SCREENSPACE_SHADOWS.comment=Shadows for terrain the shadow map does not \
+	reach: a ray is walked from the fragment towards the sun through the depth \
+	buffer, and wherever the buffer says something is in the way, that fragment is \
+	shadowed.\n\n\
+	The shadow map only covers a fixed distance around the player. Past it, \
+	terrain - Voxy's, Distant Horizons', any of it - is lit by the sun and casts \
+	none of its own, which on hilly ground is the most conspicuous thing about the \
+	distance: a valley sits in full sun no matter what stands between it and the \
+	sun. Working from depth instead, everything that writes depth occludes \
+	everything else, terrain drawn by another mod included.\n\n\
+	It is only used past that distance. Inside it the shadow map is both more \
+	accurate and already paid for, so this fades in over the shadow distance \
+	rather than being applied everywhere, and the same shadow is never darkened \
+	twice.\n\n\
+	Three limits are inherent: the ray only reaches geometry that is on screen, \
+	geometry off screen takes no part, and thin things - grass, fences - are easy \
+	to miss.\n\n\
+	Fine noise in the distance: raise the step count, shorten the ray. A grey \
+	look overall: lower the strength.
+
+option.SSS_STRENGTH=Shadow strength
+option.SSS_STRENGTH.comment=How much the distance shadows darken. It is applied \
+	to the whole colour rather than to the sunlight alone, because by the time \
+	this runs the two have already been added together - so a value near 1.0 takes \
+	some sky light with it as well.
+
+option.SSS_STEPS=Ray steps
+option.SSS_STEPS.comment=How many steps the ray takes. More steps means finer \
+	ones over the same length, which is what keeps it from slipping between two \
+	pieces of terrain and leaving streaks of light behind; each step costs one \
+	depth sample.
+
+option.SSS_LENGTH=Ray length
+option.SSS_LENGTH.comment=How far the ray reaches, in blocks. A valley floor \
+	often sits several dozen blocks below the ridge that shadows it, so this has \
+	to be generous to catch the shadow that matters most.
 
 value.ATMOSPHERE_MODEL.GRADIENT=Gradient
 value.ATMOSPHERE_MODEL.MINISHITA=Physical
