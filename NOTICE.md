@@ -92,9 +92,8 @@ quotes code from the projects named in it.
 
 Versions are counted as: **v0.1** is the material work, **v0.2** is everything
 from the cloud layer onward, and **v0.3** is the distant-terrain, temporal
-antialiasing and water work after it. **v0.4**, which is still in development,
-is the work after that: it begins with the frame the water surface is drawn in,
-taken from the geometry rather than assumed. See the `RELEASE_NOTES-*.md` files.
+antialiasing and water work after it, and **v0.4** is the sky, the reflected sun
+and moon, and the settings work after that. See the `RELEASE_NOTES-*.md` files.
 
 **Added in v0.1**
 
@@ -189,8 +188,12 @@ taken from the geometry rather than assumed. See the `RELEASE_NOTES-*.md` files.
 | `README.md` | What the pack is, what it adds, what it costs |
 | `README.zh-CN.md` | The same, in Simplified Chinese |
 | `RELEASE_NOTES-v0.3.md` | What changed in the v0.3 release |
-| `RELEASE_NOTES-v0.4.md` | What has changed in v0.4 so far (still in development) |
-| `PBR_PORTING.md` | Working notes for the material port: options, verification checklist, known limits (in the project this pack was built in) |
+| `RELEASE_NOTES-v0.4.md` | What changed in the v0.4 release |
+One further document is **not shipped inside the pack**: `PBR_PORTING.md`, the
+working notes behind every change this edit makes - options, verification
+checklist, known limits, and the changes that were tried and then reverted,
+with the reason. It is kept with the project the pack is built in. The comments
+in the shaders that point at one of its sections are pointing at that copy.
 
 If a distributor removes any of the files in this list, the result is not
 distributable.

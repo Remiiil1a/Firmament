@@ -220,7 +220,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。\n\n这一项是实验性质，开启它本身就是验证方式：只有方块图集被 Iris 与 OptiFine 构建法线／高光贴图，因此实体也可能被套上某个方块的材质数据，而不是它自己的。\n\n验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」。如果是一片均匀的画面，说明该实体没有绑定材质数据，应当把这一项关回去；如果画面里有随生物贴图变化的细节、能与它的贴图对上，说明可行。\n\n默认开启：如果资源包没有为实体提供材质贴图，这一项也读不到任何东西。如果按上面的方法验证后发现它取到的是别的方块的材质，就把它关掉。
 
-option.PBR_DEBUG=材质调试视图 [build 173]
+option.PBR_DEBUG=材质调试视图 [build 175]
 option.SSS_GAIN= 屏幕空间阴影深度增益
 screen.END= 末地
 screen.ATMOSPHERE_SKY= 天空、日月

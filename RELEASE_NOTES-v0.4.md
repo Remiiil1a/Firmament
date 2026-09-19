@@ -1,4 +1,4 @@
-# Release notes - v0.4（开发中 / in development）
+# Release notes - v0.4
 
 > Steadfast is free and open-source software developed by coderbot, and can be
 > downloaded from https://modrinth.com/shader/steadfast-shaders (Modrinth),
@@ -8,9 +8,6 @@
 
 **Firmament 不是 Steadfast 的官方发行版，coderbot 不为它提供支持。**
 许可、署名与来源的完整摘要见 `NOTICE.md`。
-
-**这一版还在开发中。** 下面写的是目前已经落进 v0.4 的内容；正式发行时这里会补全，
-和 `RELEASE_NOTES-v0.3.md` 的体例一致。
 
 ---
 

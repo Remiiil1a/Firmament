@@ -587,7 +587,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials.\n
 	is nothing for it to read. Turn it off if the check above shows it picking up \
 	materials that are not the entity's own.
 
-option.PBR_DEBUG=Material debug view [build 173]
+option.PBR_DEBUG=Material debug view [build 175]
 option.SSS_GAIN=Sky shadow depth gain
 screen.END=The End
 screen.ATMOSPHERE_SKY=Sky, sun and moon
