@@ -85,4 +85,5 @@ The two referenced packs have their own entries in the settings menu, under
 * Sundial Lite is Copyright (c) geforcelegend, **GPLv3** - the same licence as
   this pack, whose copy is `LICENSE.md`.
 * There is no warranty. The full summary is in **`NOTICE.md`**, and what changed
-  in each release is in the **`RELEASE_NOTES-*.md`** files.
+  in each release is in the **`RELEASE_NOTES-*.md`** files, which are kept with
+  the project rather than shipped inside the pack.

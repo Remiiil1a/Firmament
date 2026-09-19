@@ -77,4 +77,4 @@ Steadfast 的附加条款要求修改版的名称以 `(edit of coderbot's Steadf
 * Sundial Lite 版权归 geforcelegend 所有，**GPLv3**——与本包同一份许可，
   副本即 `LICENSE.md`。
 * 本包不提供任何担保。完整摘要见 **`NOTICE.md`**，
-  每个版本改了什么见 **`RELEASE_NOTES-*.md`**（当前有 `-v0.3` 与 `-v0.4`）。
+  每个版本改了什么见 **`RELEASE_NOTES-*.md`**（一版一份）—— 它们**保存在项目里，不随包发行**。

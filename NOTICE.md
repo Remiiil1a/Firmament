@@ -187,13 +187,16 @@ and moon, and the settings work after that. See the `RELEASE_NOTES-*.md` files.
 | `LICENSE-MELLOW-APACHE.txt` | Apache License 2.0 - verbatim copy from Mellow Shader v3.4 |
 | `README.md` | What the pack is, what it adds, what it costs |
 | `README.zh-CN.md` | The same, in Simplified Chinese |
-| `RELEASE_NOTES-v0.3.md` | What changed in the v0.3 release |
-| `RELEASE_NOTES-v0.4.md` | What changed in the v0.4 release |
-One further document is **not shipped inside the pack**: `PBR_PORTING.md`, the
-working notes behind every change this edit makes - options, verification
-checklist, known limits, and the changes that were tried and then reverted,
-with the reason. It is kept with the project the pack is built in. The comments
-in the shaders that point at one of its sections are pointing at that copy.
+Two further things are **not shipped inside the pack**. They are kept with the
+project the pack is built in:
+
+* `RELEASE_NOTES-*.md` - what changed in each release, one file per version.
+* `PBR_PORTING.md` - the working notes behind every change this edit makes:
+  options, verification checklist, known limits, and the changes that were tried
+  and then reverted, with the reason.
+
+The comments in the shaders that point at one of `PBR_PORTING.md`'s sections are
+pointing at that copy.
 
 If a distributor removes any of the files in this list, the result is not
 distributable.
