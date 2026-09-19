@@ -10,15 +10,19 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+// Modified 2026-09-19 by Remiiil1a for Firmament - v0.4 (edit of coderbot's Steadfast).
+
 // Common encoding of per-face data that does not vary with each vertex.
 //
-// The following data is currently packed into a single 32-bit unsigned integer:
+// The following data is packed into a single 32-bit unsigned integer:
 //
 // * The face normal in world space
+// * The tangent of the face, and which way its bitangent points, so that the
+//   whole world space TBN matrix can be rebuilt in the fragment shader
 // * The material ID
 //
 // The face normal is first encoded with octahedral unit vector encoding, giving
@@ -27,12 +31,20 @@
 // 1.0 and 0.0 are NOT equivalent (the values do not wrap around), unlike angle
 // measurements.
 //
-// The current encoding is: Octahedral X (9 bits), Octahedral Y (9 bits),
-// and material ID (4 bits).
+// The encoding is: Octahedral X (9 bits), Octahedral Y (9 bits), material ID
+// (4 bits), a diamond-encoded tangent (9 bits), and the handedness of the
+// bitangent (1 bit). That fills all 32 bits with nothing to spare.
 //
-// This leaves 10 bits available for a diamond-encoded tangent vector and
-// corresponding bitangent handedness bit, so we could store the material ID and
-// data to reconstruct the TBN matrix in 32 bits. Neat!
+// The tangent is not encoded as a direction in three dimensions, which would
+// not fit. It is orthogonal to the normal by definition, so once the normal is
+// known it lives in a plane, and two numbers are enough to place it in one -
+// and since the basis vectors used for that plane, and the tangent itself, are
+// all unit length, those two numbers form a two-dimensional unit vector, which
+// a single number can carry. See the diamond encoding below.
+//
+// Upstream Steadfast writes this out and then leaves it behind a switch it has
+// not turned on yet. This pack always stores the tangent, because the water
+// surface wants the frame the face actually has rather than an assumed one.
 //
 // There is a fixed amount of buffer space available on graphics hardware for
 // transferring data from the vertex shader to the fragment shader, and this is
@@ -63,7 +75,7 @@ vec2 fold(vec2 octahedral) {
 	// the sign values.
 	//
 	// Excuse the stretching from the limitations of ASCII art:
-	// 
+	//
 	// |----/|\----|
 	// |   / | \M  |
 	// |  /  |  \ R|
@@ -135,10 +147,133 @@ vec3 DecodeUnitVector(vec2 octahedral) {
 	return normalize(vec3(octahedral, z));
 }
 
+// The same as above, minus the final normalize.
+//
+// The encoder needs to know the sign of the Z component that the decoder will
+// see, and only that sign - so it can skip both the square root of the
+// normalization and everything downstream of it, provided it can ask for the
+// unnormalized vector.
+vec3 DecodeCodirectionalVector(vec2 octahedral) {
+	// Scale to the -1 to 1 range
+	octahedral = octahedral * 2.0 - 1.0;
+
+	// Reconstruct the Z value using the 1-norm. Conveniently, our fold function
+	// gives the same Z value but negative if we are outside the inner diamond.
+	float z = 1.0 - abs(octahedral.x) - abs(octahedral.y);
+
+	// Applying the fold function again reverses it.
+	if (z < 0.0) {
+		octahedral = fold(octahedral);
+	}
+
+	// Normalized at the 1-norm; the caller normalizes with the 2-norm if it
+	// wants a unit vector.
+	return vec3(octahedral, z);
+}
+
+// "Building an Orthonormal Basis, Revisited"
+// https://jcgt.org/published/0006/01/01/
+//
+// Returns two unit vectors that, together with the given normal, form a basis.
+// They are what the tangent is expressed in: it lies in the plane both of them
+// cover, so two coefficients against them place it exactly.
+//
+// signZ must be 1.0 when normal.z is positive and -1.0 when it is negative.
+// For a value very close to zero either may be chosen, but the encoder and the
+// decoder must choose the same one - which is why the encoder below works out
+// what the decoder will see rather than using the normal it was handed.
+mat2x3 OrthonormalBasisOf(vec3 normal, float signZ) {
+	float sign = signZ;
+	float a = -1.0 / (sign + normal.z);
+	float b = normal.x * normal.y * a;
+
+	return mat2x3(
+		vec3(1.0 + sign * normal.x * normal.x * a, sign * b, -sign * normal.x),
+		vec3(b, sign + normal.y * normal.y * a, -normal.y)
+	);
+}
+
+// We encode 2D unit vectors using "diamond encoding", the two-dimensional
+// analogue of the octahedral encoding above:
+//
+// www.jeremyong.com/graphics/2023/01/09/tangent-spaces-and-diamond-encoding
+//
+// While we could use transcendental functions to store it as an angle, those
+// functions are more costly than diamond encoding.
+float EncodeUnitVector(vec2 v) {
+	// Project to the unit diamond (1-norm)
+	float x = v.x / (abs(v.x) + abs(v.y));
+
+	// Contract the x coordinate by a factor of 4 to represent all 4 quadrants
+	// in the unit range and remap.
+	//
+	// * 0° to 90° are mapped between 0.0 and 0.25
+	// * 90° to 180° are mapped between 0.25 and 0.5
+	// * 180° to 270° are mapped between 0.5 and 0.75
+	// * 270° to 360° (0°) are mapped between 0.75 and 1.0 (0.0)
+	//
+	// Importantly, the mapping is continuous like an angle, which is what lets
+	// the fixed-point conversion below wrap 1.0 around to 0.0 and pick up one
+	// extra step of precision from doing it.
+	float quarter = v.y >= 0.0 ? -0.25 : 0.25;
+
+	// Written explicitly like a fused multiply-add
+	return x * quarter + (0.5 - quarter);
+}
+
+// Given the diamond encoding of a unit vector with each component in the 0
+// to 1 range, returns a vector codirectional to that unit vector.
+//
+// If you desire the same unit vector, use normalize() on the result.
+vec2 DecodeCodirectionalVector(float diamond) {
+	// To decode the above mapping, we have two cases.
+	//
+	// When diamond <= 0.5 (y >= 0):
+	//
+	// x = 4 * diamond - 1
+	// y = 1 - |x|
+	//
+	// When diamond > 0.5 (y < 0):
+	//
+	// x = 3 - 4 * diamond
+	// y = -(1 - |x|)
+	//
+	// The below is a branchless translation of this piecewise function.
+	float sign = diamond >= 0.5 ? 1.0 : -1.0;
+	float x = (-4.0 * sign) * diamond + (2.0 * sign + 1.0);
+
+	// We now have a vector normalized at the 1-norm.
+	// The caller calls normalize to normalize it with the 2-norm.
+	return vec2(
+		x,
+		sign * (1.0 - abs(x))
+	);
+}
+
 // Bits used for each of the two fixed-point encoded octahedral coordinates
 const uint OCT_BITS = 9u;
 
-uint EncodePerFace(vec3 worldNormal, uint materialID) {
+// Bits used for the single diamond-encoded tangent
+const uint TANGENT_BITS = 9u;
+
+// Where the tangent sits: above the material ID and the two octahedral
+// coordinates.
+const uint TANGENT_SHIFT = 4u + OCT_BITS + OCT_BITS;
+
+// The handedness of the bitangent is the top bit, so the tangent's field ends
+// one bit below it.
+const uint HANDEDNESS_SHIFT = TANGENT_SHIFT + TANGENT_BITS;
+
+// The worldTangent must be unit length and must not be a zero vector: it is
+// normalized below, and normalizing a zero vector is undefined. A vertex shader
+// with geometry that carries no tangent - Minecraft's entity format, some mods
+// - has to substitute a tangent of its own before calling this; see lit.vsh.
+uint EncodePerFace(
+	vec3 worldNormal,
+	vec3 worldTangent,
+	bool handedness,
+	uint materialID
+) {
 	// Pack the floating point normal using fixed-point octahedral encoding
 	vec2 worldNormalOct = EncodeUnitVector(worldNormal);
 	uint octFixedX = uint(worldNormalOct.x * float((1u << OCT_BITS) - 1u));
@@ -148,7 +283,54 @@ uint EncodePerFace(vec3 worldNormal, uint materialID) {
 	// Truncate the material ID if needed
 	uint materialBits = materialID & 0xFu;
 
-	return normalBits | materialBits;
+	// Encode the tangent. The bitangent is not stored: it can be rebuilt from
+	// the normal, the tangent and the single handedness bit.
+	uint handednessBits = uint(handedness) << HANDEDNESS_SHIFT;
+
+	// To encode the tangent vector, we first identify two basis unit vectors
+	// that form an orthogonal basis when combined with the normal vector.
+	//
+	// The function that derives the basis vectors relies on splitting the unit
+	// sphere into two hemispheres, but it's important that we get the same
+	// hemisphere decision on both the encode and decode path. Specifically, we
+	// select a hemisphere based on the sign of the Z component of the normal.
+	//
+	// Since we round after converting to octahedral encoding, to predict what
+	// hemisphere the decoder would select, we need to decode the Z value to
+	// determine its sign. We can skip normalizing, and this lets the optimizer
+	// remove the rest of the decode calls not needed to derive the Z value.
+	//
+	// Without this roundtrip, the derived basis vectors during decoding would
+	// be inconsistent with what this encoding function selected.
+	float basisSign = DecodeCodirectionalVector(vec2(
+		float(octFixedX) * (1.0 / float((1u << OCT_BITS) - 1u)),
+		float(octFixedY) * (1.0 / float((1u << OCT_BITS) - 1u))
+	)).z >= 0.0 ? 1.0 : -1.0;
+
+	mat2x3 basis = OrthonormalBasisOf(worldNormal, basisSign);
+
+	// Since the tangent vector is inherently orthogonal with the normal vector,
+	// and these two basis vectors are both orthogonal with the normal vector,
+	// they form a plane that the tangent vector exists within.
+	//
+	// It follows that we can express the tangent vector as a linear combination
+	// of the two basis vectors.
+	vec2 plane = normalize(worldTangent) * basis;
+
+	// Further, since the length of the basis vectors are both 1, and the length
+	// of the tangent is 1, the length of the 2D vector used to express this
+	// linear combination is also 1! We can encode a 2D unit vector into a
+	// single value.
+	float tangentEncoded = EncodeUnitVector(plane);
+
+	// The encoded vector is continuous like an angle, so we can get a bit of
+	// extra precision by wrapping 1.0 around to 0.0. This departs from the
+	// octahedral encoding which is not continuous.
+	uint tangentFixed = uint(tangentEncoded * float(1u << TANGENT_BITS));
+	tangentFixed &= (1u << TANGENT_BITS) - 1u;
+	uint tangentBits = tangentFixed << TANGENT_SHIFT;
+
+	return normalBits | handednessBits | tangentBits | materialBits;
 }
 
 uint DecodePerFaceMaterialID(uint perFace) {
@@ -163,4 +345,43 @@ vec3 DecodePerFaceWorldNormal(uint perFace) {
 		float(octFixedX) * (1.0 / float((1u << OCT_BITS) - 1u)),
 		float(octFixedY) * (1.0 / float((1u << OCT_BITS) - 1u))
 	));
+}
+
+// Rebuilds the world space TBN matrix that EncodePerFace stored: the columns
+// are the tangent, the bitangent and the face normal, in that order.
+//
+// The worldNormal is the one DecodePerFaceWorldNormal returned for this same
+// perFace. It is passed in rather than decoded again because a fragment shader
+// has already decoded it, and because the basis below has to be chosen with the
+// normal the decoder sees - the rounded one - rather than the exact normal the
+// vertex shader encoded.
+mat3 DecodePerFaceWorldTBN(uint perFace, vec3 worldNormal) {
+	const float fromTangentFixed = 1.0 / float(1u << TANGENT_BITS);
+
+	// Determine the basis vectors the tangent was expressed with
+	float basisSign = worldNormal.z >= 0.0 ? 1.0 : -1.0;
+	mat2x3 basis = OrthonormalBasisOf(worldNormal, basisSign);
+
+	// Unpack the diamond-encoded tangent from fixed point
+	uint tangentFixed = (perFace >> TANGENT_SHIFT)
+		& ((1u << TANGENT_BITS) - 1u);
+	float tangentEncoded = float(tangentFixed) * fromTangentFixed;
+
+	// Decode the tangent as a linear combination of the two basis vectors.
+	vec2 plane = normalize(DecodeCodirectionalVector(tangentEncoded));
+	vec3 worldTangent = basis * plane;
+
+	// The bitangent is the tangent turned a quarter turn in the face's plane,
+	// with the direction the vertex stage recorded.
+	//
+	// This is written as a cross product rather than as a rotation within the
+	// basis, because it must agree with the convention the material decoding
+	// uses for the tangents that arrive as vertex attributes (see
+	// PbrAttributeFrame in pbr.glsl) - and a cross product cannot disagree with
+	// it. The two differ only in the sign convention of the basis, which is not
+	// something worth being clever about here.
+	float handedness = (perFace >> HANDEDNESS_SHIFT) > 0u ? 1.0 : -1.0;
+	vec3 worldBitangent = cross(worldNormal, worldTangent) * handedness;
+
+	return mat3(worldTangent, worldBitangent, worldNormal);
 }

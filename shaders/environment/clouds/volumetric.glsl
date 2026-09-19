@@ -196,9 +196,45 @@ const float CLOUD_DRIFT_SPEED = 7.68;
 const float CLOUD_FADE_START = 3000.0;
 const float CLOUD_FADE_END = 7000.0;
 
-// The phase function's forward-scattering parameter: how much brighter a cell is
-// when the sun is behind it than when it is beside it.
-const float CLOUD_PHASE_G = 0.55;
+// What the layer's direct light is multiplied by, in place of the phase
+// function above.
+//
+// The phase function makes a cloud brighter or darker according to the angle
+// between the direction it is being looked at from and the direction the light
+// comes from - the bright rim around a cloud's lit side. The trouble is that
+// that angle is what changes when the light hands over from the sun to the
+// moon: the two sit in different parts of the sky, so the angle does not drift
+// across the changeover, it reverses, and the phase function differed by a
+// factor of forty between the two. A flat value has no angle in it, so there is
+// nothing left there to jump.
+//
+// This is a deliberate trade rather than a fix: the layer loses the way its lit
+// side used to stand out. It is one number, so it is also the dial for how
+// bright the direct light on the clouds is at all.
+#define CLOUD_PHASE_FLAT 0.25 // [0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00 1.05 1.10 1.15 1.20 1.25 1.30 1.35 1.40 1.45 1.50 1.55 1.60 1.65 1.70 1.75 1.80 1.85 1.90 1.95 2.00]
+
+// How much light reaches the bottom of the layer, as a fraction of what reaches
+// the top. What is above a cell shades it, so the underside of a cloud deck is
+// darker than its top - the same thing Mellow's blocky clouds do, to both the
+// ambient and the direct light, from 0.3 at the bottom of the layer to 1.0 at
+// the top.
+//
+// 1.0 turns the falloff off and leaves the layer evenly lit.
+#define CLOUD_LAYER_FALLOFF_BASE 0.30 // [0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
+
+// What the layer's direct light is multiplied by, in place of how much of it
+// survives the cloud between the cell being shaded and the light.
+//
+// That fraction was the second thing that changed when the light handed over
+// from the sun to the moon, for the same reason as the phase: it is measured
+// along the line to the light, and that line points somewhere else afterwards.
+// Taken out the same way, so that nothing in the layer's direct light depends
+// on where the light is any more.
+//
+// What it costs is the difference between a thick cloud and a thin one: every
+// cell is now lit by the same amount of light regardless of what stands between
+// it and the sun. That is a flatter layer than before, deliberately.
+#define CLOUD_TRANSMITTANCE_FLAT 1.00 // [0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
 
 // Clouds are animated over time.
 //
@@ -216,6 +252,16 @@ const float CLOUD_PHASE_G = 0.55;
 // that could disagree with the vanilla clouds the profiles can still use.
 uniform vec3 cloudLightAmbient;
 uniform vec3 cloudLightDirect;
+
+// A diagnostic, on the same principle as the parallax one: paints the layer
+// with the separate quantities its lighting is built from, so that a jump at a
+// particular time of day can be attributed to one of them rather than guessed
+// at. 0 is off and costs nothing - the branch below is compile-time.
+//
+//   1 - the direct light the layer is given, after everything that shapes it
+//   2 - the fraction of that light which gets through the layer itself
+//   3 - the phase function, ie, how much of it this viewing angle sees
+#define CLOUD_DEBUG 0 // [0 1 2 3]
 
 // The rest of the pack's cloud state. Declared only if the planar clouds are off,
 // as they declare the same uniforms when they are on - nothing includes both,
@@ -301,20 +347,6 @@ float CloudCellDensity(vec2 cell) {
 	return smoothstep(edge, edge + CLOUD_EDGE_SOFTNESS, value);
 }
 
-// A Henyey-Greenstein phase function, normalised so that it is 1.0 when the
-// viewer is looking straight into the sun and falls off to the side of it. That
-// is what gives a cloud in front of the sun a bright rim and leaves the ones
-// beside it flat.
-float CloudPhase(float cosTheta) {
-	float g = CLOUD_PHASE_G;
-
-	// The normalisation constant of the standard function cancels out, leaving
-	// this: the same shape, with 1.0 as the brightest it can be.
-	return pow(
-		(1.0 - g) / sqrt(1.0 + g * g - 2.0 * g * cosTheta),
-		3.0);
-}
-
 // How much sunlight reaches `worldPos` without passing through the layer, where
 // 1.0 is unobstructed and 0.0 is right behind a cloud.
 //
@@ -354,14 +386,32 @@ float BlockyCloudTransmittance(vec3 worldPos, vec3 lightView) {
 		dot(lightDir, view * vec3(0.0, 1.0, 0.0)),
 		dot(lightDir, view * vec3(0.0, 0.0, 1.0)));
 
-	// A sun below the layer cannot be blocked by it from above, and a ray from a
-	// point to a sun that does not cross the layer is not blocked at all.
-	if (lightWorld.y <= 0.0) {
+	// A light below the layer cannot be blocked by it from above, and a ray from a
+	// point to a light that does not cross the layer is not blocked at all.
+	//
+	// Written as a fade across the horizon rather than a branch on it, because
+	// this is one of the two places the layer's lighting used to step. The branch
+	// returned before any of the geometry below ran, so a light crossing the
+	// horizon switched this whole function between "the layer blocks it" and "the
+	// layer does not" inside one frame. What makes that visible rather than
+	// academic is that the light here is whichever of the sun and the moon is
+	// higher (see shadowLightPosition at the call site), so crossing the horizon
+	// is also when that switches bodies - direction and all.
+	//
+	// The crossing itself is still computed, with the elevation held just above
+	// zero so that the divisions below stay finite; it is faded out of the result
+	// instead of being skipped, so nothing steps as the light passes through.
+	float lightAbove = smoothstep(-0.02, 0.02, lightWorld.y);
+
+	if (lightAbove <= 0.0) {
 		return 1.0;
 	}
 
-	float tBottom = (CLOUD_LAYER_BOTTOM - worldPos.y) / lightWorld.y;
-	float tTop = (CLOUD_LAYER_TOP - worldPos.y) / lightWorld.y;
+	vec3 lightCrossing = vec3(
+		lightWorld.x, max(lightWorld.y, 0.02), lightWorld.z);
+
+	float tBottom = (CLOUD_LAYER_BOTTOM - worldPos.y) / lightCrossing.y;
+	float tTop = (CLOUD_LAYER_TOP - worldPos.y) / lightCrossing.y;
 	float tEnter = min(tBottom, tTop);
 	float tExit = max(tBottom, tTop);
 
@@ -398,13 +448,14 @@ float BlockyCloudTransmittance(vec3 worldPos, vec3 lightView) {
 
 	for (int i = 0; i < CLOUD_SUN_STEPS; i++) {
 		vec3 samplePos = worldPos
-			+ lightWorld * (tEnter + (float(i) + 0.5) * sampleStep);
+			+ lightCrossing * (tEnter + (float(i) + 0.5) * sampleStep);
 		vec2 cell = floor((samplePos.xz - drift) / CLOUD_CELL_SIZE);
 
 		tau += CloudCellDensity(cell) * sampleStep;
 	}
 
-	return exp(-tau * CLOUD_EXTINCTION);
+	// Faded in over the horizon rather than switched on at it - see above.
+	return mix(1.0, exp(-tau * CLOUD_EXTINCTION), lightAbove);
 }
 
 // The cloud layer as seen along a ray, ready to be composited over the sky: .rgb
@@ -417,6 +468,7 @@ float BlockyCloudTransmittance(vec3 worldPos, vec3 lightView) {
 // the world here rather than passed that way. Zero is returned for a ray that
 // cannot see the layer at all, which is most of them.
 vec4 BlockyClouds(vec3 worldDir, vec3 cameraWorldPos, vec3 lightView) {
+
 	if (!CloudDimension()) {
 		return vec4(0.0);
 	}
@@ -532,12 +584,31 @@ vec4 BlockyClouds(vec3 worldDir, vec3 cameraWorldPos, vec3 lightView) {
 	// which is what stops a thick cloud from being lit the same as a thin one.
 	float sunTransmittance = BlockyCloudTransmittance(hitPos, lightView);
 
+	#if defined(CLOUD_DEBUG) && CLOUD_DEBUG > 0
+		// The three quantities the layer's lighting is made of, each on its own.
+		// Whichever of them changes across a jump is the one to go and fix; the
+		// other two are there so that a channel that does *not* change rules
+		// itself out.
+		if (CLOUD_DEBUG == 1) {
+			return vec4(cloudLightDirect, 1.0);
+		} else if (CLOUD_DEBUG == 2) {
+			return vec4(vec3(CLOUD_TRANSMITTANCE_FLAT), 1.0);
+		} else {
+			return vec4(vec3(CLOUD_PHASE_FLAT), 1.0);
+		}
+	#endif
+
 	// The sky's light, and the sun's, in the proportions the vanilla clouds use
 	// - see cloudColor in shaders.properties, which is the ambient term plus
 	// half the direct one.
-	vec3 lit = cloudLightAmbient * mix(0.55, 1.0, vertical)
-		+ cloudLightDirect * 0.5 * CloudPhase(dot(worldDir, lightWorld))
-			* sunTransmittance;
+	// Light falls off towards the bottom of the layer: what stands above a cell
+	// shades it, so the underside of the deck is darker than its top.
+	float layerLight = CLOUD_LAYER_FALLOFF_BASE
+		+ (1.0 - CLOUD_LAYER_FALLOFF_BASE) * vertical;
+
+	vec3 lit = layerLight * (
+		cloudLightAmbient * mix(0.55, 1.0, vertical)
+		+ cloudLightDirect * 0.5 * CLOUD_PHASE_FLAT * CLOUD_TRANSMITTANCE_FLAT);
 
 	float tau = density * slabLength * CLOUD_EXTINCTION;
 	float fade = 1.0 - smoothstep(

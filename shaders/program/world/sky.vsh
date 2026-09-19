@@ -20,8 +20,6 @@
 // Uniforms: frameCounter, viewWidth, viewHeight
 #include "/lib/taa.glsl"
 
-out float isstars;
-
 void main() {
 	gl_Position = ftransform();
 
@@ -29,10 +27,4 @@ void main() {
 	// pixel. Scaling by w keeps the offset constant in pixels rather than in
 	// world space.
 	gl_Position.xy += TaaJitter() * gl_Position.w;
-
-	// Star detection from https://github.com/shaderLABS/Base-120
-	// File: /shaders/gbuffers_skybasic.vsh
-	isstars = float(gl_Color.r == gl_Color.g
-		&& gl_Color.g == gl_Color.b
-		&& gl_Color.r > 0.0);
 }

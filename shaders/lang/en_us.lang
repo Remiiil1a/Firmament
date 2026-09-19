@@ -42,7 +42,7 @@ option.THANKS_SUNDIAL.comment=This pack references or quotes code from Sundial \
 	the pack looks.
 value.THANKS_SUNDIAL.BY_GEFORCELEGEND=by geforcelegend
 
-profile.EDIT_DEFAULT=§2✎ EDIT默认 style§r
+profile.EDIT_DEFAULT=§2✎ EDIT default style§r
 profile.MINISHITA_HIGH=§aMinishita (WIP)§r style - §b🔥 High§r
 profile.MINISHITA_HIGH=§aMinishita (WIP)§r style - §b🔥 High§r
 profile.MINISHITA_MEDIUM=§aMinishita (WIP)§r style - §a» Medium§r
@@ -86,7 +86,7 @@ profile.comment=\
 	tradeoffs between quality and performance allowing you to adapt Steadfast \
 	to your device..\n\n\
 	\
-	§2✎ EDIT默认 style§r: The configuration this edit ships with.. \
+	§2✎ EDIT default style§r: The configuration this edit ships with.. \
 	Steadfast's own look, with the material options switched on at the values \
 	they were tuned to. The colour grading, the atmosphere model, the tonemap \
 	and the sky are Steadfast's own defaults, so this is also the way back to \
@@ -587,7 +587,25 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials.\n
 	is nothing for it to read. Turn it off if the check above shows it picking up \
 	materials that are not the entity's own.
 
-option.PBR_DEBUG=Material debug view [build 108]
+option.PBR_DEBUG=Material debug view [build 173]
+option.SSS_GAIN=Sky shadow depth gain
+screen.END=The End
+screen.ATMOSPHERE_SKY=Sky, sun and moon
+screen.ATMOSPHERE_FOG=Fog
+screen.CLOUDS=Clouds
+screen.WATER_STYLE=Surface
+screen.WATER_EFFECTS=Waves, parallax and caustics
+screen.WATER_COLOUR=Colour and absorption
+screen.LIGHTING_SKY=Sky light
+screen.LIGHTING_BLOCK=Block light and bleed
+screen.SHADOWS=Shadows
+screen.DEBUG_VIEWS=Debug views
+screen.DEV_TOOLS=Developer switches
+option.TAA=Temporal anti-aliasing
+option.CLOUD_DEBUG=Cloud lighting diagnostic [0 off | 1 direct | 2 transmittance | 3 phase]
+option.CLOUD_PHASE_FLAT=Cloud direct light (flat phase value)
+option.CLOUD_TRANSMITTANCE_FLAT=Cloud direct light (flat transmittance)
+option.CLOUD_LAYER_FALLOFF_BASE=Light at the cloud layer's bottom
 value.PBR_DEBUG.PBR_DEBUG_NONE=Off
 value.PBR_DEBUG.PBR_DEBUG_HEIGHT=Height channel
 value.PBR_DEBUG.PBR_DEBUG_SMOOTHNESS=Smoothness
@@ -699,6 +717,8 @@ option.MOTION_BLUR_LENS.comment=Keeps a bug this effect used to have, exactly as
 	carries it half a turn round.\n\n\
 	Has no effect while Motion blur is off. Turning this on replaces the turning \
 	blur with the lens rather than adding to it.
+value.STARS.STARS_OFF=Off
+value.STARS.STARS_ON=On
 value.TAA.TAA_OFF=Off
 value.TAA.TAA_ON=On
 option.TAA.comment=**On by default.** It is the one effect here that trades image \
@@ -1052,6 +1072,20 @@ option.WATER_CAUSTICS.comment=The moving pattern of light that sunlit water \
 	the shadow map, so caustics fade out at that range rather than being drawn \
 	wrongly past it.
 
+option.WATER_SCATTER=Water scattering
+option.WATER_SCATTER.comment=The light the water itself scatters back out, added \
+to whatever comes through it.\n\n\
+Absorption on its own can only take colour away, so it gives water its deep \
+blue-green but cannot make a lit body of water glow. This is the other half. \
+Zero leaves the water exactly as it was, which is why that is the default: \
+raising it is a change to the water's colour, so it is a choice.
+option.WATER_SCATTER_MAGNITUDE=Water scattering magnitude
+option.WATER_SCATTER_MAGNITUDE.comment=The same effect's scale, kept apart so \
+that the slider above can stay in the range a person thinks in.
+option.WATER_SCATTER_LUMINANCE=Water scattering brightness
+option.WATER_SCATTER_LUMINANCE.comment=How bright the scattered light is at full \
+depth under a full sky. Zero leaves the effect switched off whatever the sliders \
+above say.
 option.WATER_CHARACTER=Water colour
 option.WATER_CHARACTER.comment=How quickly water takes different colours of light \
 	away with depth, which is what decides whether a body of water reads as \
@@ -1356,6 +1390,16 @@ option.SSS_LENGTH.comment=How far the ray reaches, in blocks. A valley floor \
 	often sits several dozen blocks below the ridge that shadows it, so this has \
 	to be generous to catch the shadow that matters most.
 
+option.WATER_SKY_BODIES=Sun and moon in reflections
+option.WATER_BODY_SIZE=Reflected body size
+option.WATER_BODY_BRIGHTNESS=Reflected body brightness
+value.WATER_SKY_BODIES.WATER_SKY_BODIES_ON=On
+value.WATER_SKY_BODIES.WATER_SKY_BODIES_OFF=Off
+option.STARS=Stars
+option.STAR_BRIGHTNESS=Star brightness
+option.STAR_CELLS=Star field resolution
+option.STAR_DENSITY=Star density
+option.STAR_RADIUS=Star size
 value.ATMOSPHERE_MODEL.GRADIENT=Gradient
 value.ATMOSPHERE_MODEL.MINISHITA=Physical
 

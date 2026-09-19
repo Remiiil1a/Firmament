@@ -26,7 +26,8 @@ Bug reports about it do not belong in Steadfast's issue tracker.
   reach, which is what Distant Horizons and Voxy terrain otherwise never gets.
 * **Water that is not flat on the ground** - the sides of waterfalls and of water
   running downhill are drawn as water, with the same surface, colour and
-  reflections as a still surface.
+  reflections as a still surface, laid out in the frame the face actually has
+  rather than one assumed from the world's axes.
 * **Temporal antialiasing** - on by default, with the history weighted by motion
   so that it reduces noise while standing still without smearing while walking.
 * **The End** - the dimension is supported rather than falling back to the
@@ -44,7 +45,7 @@ Bug reports about it do not belong in Steadfast's issue tracker.
 
 ## Installation
 
-1. Drop `Firmament-v0.3-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
+1. Drop `Firmament-v0.4-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
    Do not unzip it.
 2. Pick it in **Video Settings → Shader Packs**.
 3. In the shader options, `Materials (PBR) → Material format` follows the
@@ -58,7 +59,7 @@ Bug reports about it do not belong in Steadfast's issue tracker.
 * **TAA has no motion vectors** - anything that moves on its own is handled by
   rejecting history that disagrees, not by tracking it.
 * **Voxy terrain's vertices are emitted by the mod**, not by this pack, so it is
-  not covered by TAA's sub-pixel jitter and its water sides are lit as solids.
+  not covered by TAA's sub-pixel jitter.
 * Everything in `NOTICE.md` about what is and is not covered by Steadfast.
 
 ## Credits
@@ -84,4 +85,4 @@ The two referenced packs have their own entries in the settings menu, under
 * Sundial Lite is Copyright (c) geforcelegend, **GPLv3** - the same licence as
   this pack, whose copy is `LICENSE.md`.
 * There is no warranty. The full summary is in **`NOTICE.md`**, and what changed
-  in each release is in **`RELEASE_NOTES-v0.3.md`**.
+  in each release is in the **`RELEASE_NOTES-*.md`** files.

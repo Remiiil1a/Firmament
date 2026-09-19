@@ -24,7 +24,8 @@ Steadfast 的附加条款要求修改版的名称以 `(edit of coderbot's Steadf
 * **远景**：给阴影贴图够不到的远景补上屏幕空间阴影——Distant Horizons 与 Voxy
   的 LOD 地形本来一点阴影都没有。
 * **不是平铺在地面的水**：瀑布侧面、沿坡流下的水现在也按水面绘制，
-  表面样式、水色与反射都和静水一致。
+  表面样式、水色与反射都和静水一致，并按**该面自己的切线基**铺开，
+  而不是按假定的世界轴。
 * **时间抗锯齿（TAA）**：默认开启，历史权重随运动变化——静止时压噪点，
   走动时不拖影。
 * **末地**：支持末地维度，而不是退回主世界的天空。
@@ -39,7 +40,7 @@ Steadfast 的附加条款要求修改版的名称以 `(edit of coderbot's Steadf
 
 ## 安装
 
-1. 把 `Firmament-v0.3-edit-of-coderbot-Steadfast.zip` 放进 `.minecraft/shaderpacks/`，
+1. 把 `Firmament-v0.4-edit-of-coderbot-Steadfast.zip` 放进 `.minecraft/shaderpacks/`，
    **不要解压**。
 2. 在 **视频设置 → 光影** 里选中它。
 3. 光影选项里 `材质（PBR）→ 材质格式` 跟着资源包走：用资源包就保持 `LabPBR`，
@@ -51,8 +52,7 @@ Steadfast 的附加条款要求修改版的名称以 `(edit of coderbot's Steadf
   草与栅栏这类薄物体也容易漏。
 * **TAA 没有运动矢量**——自身会移动的东西靠"丢弃与当前帧不符的历史"处理，
   而不是靠跟踪。
-* **Voxy 的顶点由模组发射**，不经过本包的顶点着色器，因此不参与 TAA 的亚像素抖动，
-  那边的水面也是按实体表面着色的。
+* **Voxy 的顶点由模组发射**，不经过本包的顶点着色器，因此不参与 TAA 的亚像素抖动。
 * 其余关于"什么算在内、什么不算"的说明见 `NOTICE.md`。
 
 ## 署名
@@ -77,4 +77,4 @@ Steadfast 的附加条款要求修改版的名称以 `(edit of coderbot's Steadf
 * Sundial Lite 版权归 geforcelegend 所有，**GPLv3**——与本包同一份许可，
   副本即 `LICENSE.md`。
 * 本包不提供任何担保。完整摘要见 **`NOTICE.md`**，
-  每个版本改了什么见 **`RELEASE_NOTES-v0.3.md`**。
+  每个版本改了什么见 **`RELEASE_NOTES-*.md`**（当前有 `-v0.3` 与 `-v0.4`）。

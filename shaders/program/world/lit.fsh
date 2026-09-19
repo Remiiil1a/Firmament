@@ -54,6 +54,15 @@ const int colortex8Format = RGBA8;
 // Uniforms: none
 #include "/environment/water/absorption.glsl"
 
+// The vanilla render distance, in blocks: where the terrain the game's own
+// renderer draws ends and another renderer's - Distant Horizons, Voxy - begins.
+//
+// Declared up here, ahead of the includes, for the same reason the matrix below
+// is: the water parallax fade is limited by it, and that is pulled in further
+// down. It used to sit with the stipple that reads it, near the bottom of the
+// file, which put the parallax code above its own declaration.
+uniform float far;
+
 // Used to covert viewPos to worldPos.
 uniform vec3 cameraPosition;
 
@@ -184,7 +193,6 @@ uniform vec2 windowToNdc;
 #ifdef DISTANT_HORIZONS
 	// Needed for stippling between vanilla and distant terrain during the
 	// transition between the two near the edge of vanilla render distance.
-	uniform float far;
 	#include "/lib/bayer8.glsl"
 #endif
 
@@ -958,9 +966,24 @@ void main() {
 			translucentNormal = pbrNormal;
 		#endif
 
+		// The frame this face has, which a water surface is expressed in.
+		//
+		// Water needs the real thing rather than an assumed one: its waves are
+		// a field that lives in the plane of the face, so the frame decides
+		// which way they run across it, and on a face that is not lined up with
+		// the world's axes an assumed frame lays them out wrong. The per-face
+		// encoding is the only place a frame the geometry actually has can come
+		// from - see /lib/encoding/face.glsl.
+		//
+		// Ice and glass never build a surface of their own - they reflect the
+		// material the resource pack authored, against the face normal - so for
+		// them this is only kept because the call has one shape.
+		mat3 translucentTBN = DecodePerFaceWorldTBN(perFace, worldNormal);
+
 		fragmentColor = TranslucentLighting(
 			fragmentColor,
 			worldNormal,
+			translucentTBN,
 			cameraRelativePos,
 			viewPos,
 			reflectionStrength,

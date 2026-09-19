@@ -20,14 +20,14 @@
 
 #include "/lib/bayer8.glsl"
 #include "/environment/sky.glsl"
+// vec3 SkyStars(vec3 worldDir)
+#include "/environment/sky/stars.glsl"
 #include "/environment/clouds/cirrus.glsl"
 
 uniform mat4 gbufferModelViewInverse;
 uniform mat4 gbufferProjectionInverse;
 uniform vec2 windowToNdc;
 uniform float blindness;
-
-in float isstars;
 
 // Moves the sky dither pattern across the screen rapidly to reveal excessive
 // dithering
@@ -53,15 +53,28 @@ void main() {
 		ditherCoord += 500.0 * cos(frameTimeCounter);
 	#endif
 
-	vec3 sky;
-
-	if (isstars > 0.5) {
-		// TODO: Fade in stars gradually instead of instantly going to full
-		// brightness.
-		sky = vec3(1.0);
-	} else {
-		sky = SkyDither(ditherCoord, SkyColor(worldSpaceVector));
-	}
+	// The flat-colour sky quads - the star field, and the dark plane the game
+	// draws below the horizon - arrive here with a single colour and no texture,
+	// so there is no sky in them to draw; this pack has no star texture of its
+	// own either. They used to be filled with pure white here, which is what a
+	// star field would be if the stars were points rather than a texture, and
+	// because the test that recognizes them is "is this colour flat?", it did
+	// not only fire on them.
+	//
+	// The game's own sky-colour quad is flat too whenever all three of its
+	// channels come out equal, and a thunderstorm drives its colour to exactly
+	// that: rain desaturates the sky colour until the channels meet. For the few
+	// seconds the colour sits on that equality, the whole dome took the star
+	// branch and went solid white - with the clouds still drawn over it
+	// afterwards, and the horizon band, which is drawn as its own quad, left
+	// alone. That is the white sky that appeared at moonrise and at sunrise in
+	// rain.
+	//
+	// So the sky colour is drawn for these quads as well. When the test does not
+	// fire - every clear night - this is the same statement it has always been.
+	vec3 sky = SkyDither(
+		ditherCoord,
+		SkyColor(worldSpaceVector) + SkyStars(worldSpaceVector));
 
 	// If clouds are enabled, blend them into the sky gradient.
 	#if defined(CLOUDS_ENABLED)

@@ -87,6 +87,13 @@ uniform sampler2D colortex2;
 uniform sampler2D colortex0;
 uniform sampler2D depthtex1;
 
+// The depth of the surface each pixel actually shows, which is depthtex1
+// wherever nothing translucent is in front and the translucent's own depth
+// where something is. The screen-space shadows below shadow the surface this
+// names, while sampling their occluders from depthtex1 - so this is the one
+// that has to be the surface, not the opaque pass.
+uniform sampler2D depthtex0;
+
 // How far the shadow map reaches: the point past which the screen-space shadows
 // below take over. Derived in shaders.properties from the Shadow Distance
 // setting, because this pass does not get that setting's own uniform - it reads
@@ -317,7 +324,23 @@ void main() {
 		// It is faded in over the shadow distance rather than applied everywhere:
 		// inside that distance the shadow map has already done this, more
 		// accurately, and doing it twice would darken the same shadow twice.
-		float sssDepth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
+		// The surface this pixel shows, taken from the depth buffer that has the
+		// translucent pass in it rather than from the opaque one.
+		//
+		// The two are identical wherever nothing translucent is in front, which
+		// is every pixel of land, so this changes nothing about how terrain is
+		// shadowed. They differ wherever a water or ice surface is the thing
+		// being looked at, and there the opaque depth is not this pixel's
+		// surface at all - it is whatever stands behind the water. Shadowing
+		// from that position meant a distant water surface was darkened by the
+		// screen-space shadow of its own bottom, which only happens past the
+		// shadow map's reach and so read as water on LOD terrain being darker
+		// than the same water nearby.
+		//
+		// The marching below still reads depthtex1 for what is in the way: a
+		// shadow on a water surface is cast by the opaque world, and the water
+		// itself is not part of it.
+		float sssDepth = texelFetch(depthtex0, ivec2(gl_FragCoord), 0).r;
 
 		if (sssDepth < 1.0) {
 			vec3 sssNdcPos = vec3(
@@ -336,15 +359,84 @@ void main() {
 			// distance reading as zero, which is what the post passes get for it.
 			float sssReach = max(min(sssShadowDistance, far), 32.0);
 
-			float sssWeight = SSS_STRENGTH * smoothstep(
+			// Whether the surface this pixel is looking at is translucent - water,
+			// ice, glass, and the water drawn on LOD terrain.
+			//
+			// The two depth buffers answer that between them: only one of them has
+			// the translucent pass in it, so they differ exactly where something
+			// translucent is in front. That is the whole of the test.
+			//
+			// Such a pixel is left out of the screen-space shadows. What is seen of
+			// water is the sky and the world reflected in it plus the light that
+			// came through it, and none of those is something a shadow should be
+			// multiplying. It matters most at a distance, where a water surface is
+			// seen at a grazing angle and the ray finds occluders far more often:
+			// that is why water on LOD terrain came out darker than the same water
+			// in the near world, and why this is where that difference is settled.
+			float sssSurfaceDepth = texelFetch(depthtex0, ivec2(gl_FragCoord), 0).r;
+			float sssOpaqueDepth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
+			bool sssTranslucent = sssSurfaceDepth + 1.0e-6 < sssOpaqueDepth;
+
+			// Painted magenta wherever the test above says "translucent", so that
+			// it can be checked against what is on screen - in both the near world
+			// and on LOD terrain - rather than being trusted.
+			//
+			// Hung on the depth debug view rather than on DEBUG as a whole: DEBUG
+			// is an enum whose name is defined whatever it is set to, so an
+			// #ifdef on it is true in every mode and would paint over the image
+			// permanently. See the values in lang/zh_CN.lang.
+			#if DEBUG == DEBUG_DEPTH
+				if (sssTranslucent) {
+					background = mix(background, vec3(1.0, 0.0, 1.0), 0.5);
+				}
+			#endif
+
+			// Faded out while the light is low, and that is the whole of it.
+			//
+			// The light here is whichever of the sun and the moon is higher, so
+			// its height is at its *smallest* at exactly the moment the two
+			// change places: the sun has come down to meet the rising moon, they
+			// are level, and from there they trade. Fading out below a threshold
+			// on that height therefore covers the changeover without having to
+			// know when it happens, or which of the two is which.
+			//
+			// It covers the other thing a low light is bad for at the same time:
+			// a ray that runs almost parallel to the ground, where the samples
+			// are furthest apart and the shadow comes out as stripes.
+			//
+			// The band is two degrees wide and sits on the horizon, so it runs from
+			// 0 to 1 degree of the light's height - 0 to 0.01745 as a direction's
+			// y, which is the sine of one degree. At or below the horizon the
+			// effect is off entirely, above the band it is at full strength, and it
+			// crosses over in between.
+			//
+			// The horizon, because that is where the two bodies meet: one is coming
+			// up as the other goes down, so they are level at the crossing point.
+			// One number, and one place.
+			//
+			// Measured in world axes rather than view ones: in view space the
+			// light's height would change as the player looks up and down, which
+			// has nothing to do with where the sun is. shadowLightPosition is a
+			// view-space direction, and the transpose of the view matrix is its
+			// inverse for a rotation.
+			vec3 sssLightWorld = transpose(mat3(gbufferModelView))
+				* normalize(shadowLightPosition);
+
+			float sssSunFade = smoothstep(0.0, 0.01745, abs(sssLightWorld.y));
+
+			float sssWeight = SSS_STRENGTH * sssSunFade * smoothstep(
 				sssReach * 0.85, sssReach * 1.15, sssDistance);
 
-			if (sssWeight > 0.0) {
+			if (sssWeight > 0.0 && !sssTranslucent) {
 				float lit = ScreenSpaceShadow(
 					depthtex1,
 					gbufferProjection,
 					gbufferProjectionInverse,
 					sssViewPos,
+					// Whichever body is lighting the world, which is what this
+					// whole effect has to follow to work at night as well as by
+					// day. It reverses when the two change places, and the fade
+					// below is what covers that moment.
 					normalize(shadowLightPosition));
 
 				background *= mix(1.0, lit, sssWeight);

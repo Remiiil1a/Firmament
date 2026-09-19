@@ -77,11 +77,43 @@ const float GLASS_F0 = 0.04;
 	// Integration between water absorption and refraction
 	#include "/environment/water/absorption_refraction.glsl"
 
+	// Scattering settings, and how much light the water scatters back out. Zero
+	// at the shipped defaults, so this changes nothing until it is asked to.
+	#include "/environment/water/scattering_settings.glsl"
+
 	// Sky light buffer for aiding refractive-based water absorption
 	// TODO: This will prevent water absorption from working perfectly with
 	//       Voxy. This is not an immediate issue at the moment since it is
 	//       rarely visible, but it should be fixed...
 	uniform sampler2D colortex5;
+
+	#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
+		// How bright the sky's ambient light is, for scaling the scattered light
+		// to the day: scattering is light that came from the sky, so a dim sky
+		// scatters less of it.
+		uniform float skyAmbientLuminance;
+
+		// The light the water scatters back out at the given depth, which is the
+		// counterpart of the absorption the background already went through.
+		//
+		// Bounded by the depth on one side and by the sky on the other: it
+		// approaches its maximum as the water gets deeper, and it is faded out
+		// altogether once there is almost no sky light to scatter, which is what
+		// keeps a dim cave pool from glowing.
+		//
+		// Programs whose uniforms come from somewhere other than this pack - ie,
+		// Voxy's terrain, see voxy.json - are left without it entirely rather
+		// than being handed a uniform they were never given. Their water keeps
+		// the absorption it had, and water scattering does not reach past the
+		// near world.
+		vec3 WaterScattering(float skyLight, float waterDepth) {
+			float scatter = 1.0 - exp(WATER_SCATTER_BY_DEPTH * waterDepth);
+			scatter *= max(0.0, skyLight * 1.25 - 0.25);
+			scatter *= skyAmbientLuminance;
+
+			return waterScattering * scatter;
+		}
+	#endif
 #endif
 
 #if !defined(EXTERNALLY_DEFINED_UNIFORMS)
@@ -132,7 +164,9 @@ vec3 parallaxWaterNormal(
 	vec2 ddxWorldPos,
 	vec2 ddyWorldPos,
 	bool verticalNormal,
-	vec3 worldNormal
+	vec3 worldNormal,
+	// The frame the face has: tangent, bitangent, normal - see face.glsl.
+	mat3 worldTBN
 ) {
 	vec2 waterWorldPos = cameraRelativePos.xz + cameraPosition.xz;
 
@@ -159,9 +193,25 @@ vec3 parallaxWaterNormal(
 		waterWorldPos += vec2(cameraRelativePos.y + cameraPosition.y);
 	}
 
-	// TODO: Limit WATER_PARALLAX_DISTANCE by vanilla terrain render distance
-	//       to ensure smooth transition to DH water.
 	#if defined(WATER_PARALLAX) && !defined(DH_TERRAIN)
+		// Parallax mapping stops at the edge of the vanilla render distance.
+		//
+		// Past that boundary the terrain belongs to another renderer, and its
+		// water has no parallax of its own - so a surface that was still
+		// displacing right up to the boundary would step visibly where the two
+		// meet. `far` is exactly that boundary, and it is the same quantity the
+		// screenspace shadows hand over at.
+		//
+		// The cost is that a short vanilla render distance also shortens the
+		// parallax, since the parallax may then no longer reach past it.
+		float parallaxDistance = float(WATER_PARALLAX_DISTANCE);
+
+		#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
+			// Not on the patch's path: far is a standard uniform, but that
+			// program declares its own set and this is not in it.
+			parallaxDistance = min(parallaxDistance, far);
+		#endif
+
 		// Fade out parallax mapping on faraway surfaces to avoid wasting
 		// performance applying parallax mapping where the effect is not visible
 		//
@@ -169,8 +219,8 @@ vec3 parallaxWaterNormal(
 		// because that does not really make sense with our 2D-only formulation
 		// of water height.
 		float parallaxStrength = clamp(
-			(WATER_PARALLAX_DISTANCE - length(cameraRelativePos))
-				/ (WATER_PARALLAX_DISTANCE * (1.5 - 1.0)),
+			(parallaxDistance - length(cameraRelativePos))
+				/ (parallaxDistance * (1.5 - 1.0)),
 			0.0,
 			float(verticalNormal));
 
@@ -200,20 +250,29 @@ vec3 parallaxWaterNormal(
 	// them the waves are applied as if the surface were flat on the ground: the
 	// normal comes out pointing at the sky, so the side of a waterfall is shaded
 	// and reflects exactly as if it were the top of a lake.
+	//
+	// The frame used here is the one the geometry itself carries rather than one
+	// rebuilt from the world's up axis. On a block face lined up with the world
+	// the two are the same frame up to the sign of each axis, which is most of
+	// what water is ever drawn on; anywhere else - a mod's slope, a face at an
+	// angle - they do not agree, and what the difference looks like is which way
+	// across the face the waves run and how the field is stretched over it.
 	if (sideways) {
-		vec3 faceNormal = normalize(worldNormal);
-		vec3 faceUp = vec3(0.0, 1.0, 0.0);
-		vec3 faceRight = normalize(cross(faceUp, faceNormal));
-
 		return normalize(
-			faceRight * waterNormal.x
-				+ faceUp * waterNormal.y
-				+ faceNormal * waterNormal.z);
+			worldTBN[0] * waterNormal.x
+				+ worldTBN[1] * waterNormal.y
+				+ worldTBN[2] * waterNormal.z);
 	}
 
 	// Water lying flat on the ground, which is the common case: the face is
-	// already known to point along the world's up axis apart from the sign, so
-	// the frame above is the world's own axes and the swizzle can be written out.
+	// already known to point along the world's up axis apart from the sign, and
+	// the field the waves come from was laid out over world x and z (see
+	// waterWorldPos above), so the swizzle into world axes is exact here and
+	// needs no frame at all.
+	//
+	// The same reasoning covers the view direction the parallax mapping is given
+	// further up - it is written in the field's axes for the same reason, not
+	// because the face frame is assumed to be the world's.
 	return facing * waterNormal.xzy;
 }
 
@@ -343,6 +402,10 @@ void dWorldPosdxdy(
 vec4 TranslucentLighting(
 	vec4 fragmentColor,
 	vec3 worldNormal,
+	// The frame the face has: tangent, bitangent, normal - see face.glsl. Only
+	// the water surface below uses it, but it is passed to everything so that
+	// the call has one shape.
+	mat3 worldTBN,
 	vec3 cameraRelativePos,
 	vec3 viewPos,
 	float reflectionStrength,
@@ -370,16 +433,18 @@ vec4 TranslucentLighting(
 	// from our view is necessarily the direction of the fragment in view space!
 	vec3 incident = normalize(cameraRelativePos);
 
-	// TODO: We are assuming that the normal vector of this plane is pointing
-	// upwards in world-space, which is true for current water surfaces, but
-	// we should probably just use the actual tangent and binormal vectors
-	// instead of assuming.
+	// The frame of this face, which the world-space derivatives below are taken
+	// in.
 	//
-	// This is currently not an issue since we restrict fancy water effects to
-	// water faces where the normal vector points up, but once we pass full TBN
-	// data to the fragment shader, we should remove the hardcoding.
-	vec3 worldTangent  = vec3(1.0, 0.0, 0.0);
-	vec3 worldBinormal = vec3(0.0, 0.0, 1.0);
+	// These two vectors have to be unit length, and orthogonal with each other
+	// and with the normal, or the intersection the derivative code performs
+	// stops describing the plane this fragment came from - and only a face's own
+	// tangent and bitangent are that on every face. They used to be hardcoded to
+	// the world's east and north, on the grounds that a water face pointing up
+	// has those as its own axes; that is true of the water the pack used to
+	// draw, and of nothing else, and every translucent comes through here.
+	vec3 worldTangent  = worldTBN[0];
+	vec3 worldBinormal = worldTBN[1];
 
 	// Compute ddxWorldPos = dFdx(worldPos) and ddyWorldPos = dFdy(worldPos)
 	// without actually requiring the screen-space partial derivative functions
@@ -408,7 +473,8 @@ vec4 TranslucentLighting(
 				ddxWorldPos.xz,
 				ddyWorldPos.xz,
 				verticalNormal,
-				worldNormal);
+				worldNormal,
+				worldTBN);
 		}
 	#endif
 
@@ -465,7 +531,8 @@ vec4 TranslucentLighting(
 					ddxWorldPos.xz,
 					ddyWorldPos.xz,
 					verticalNormal,
-					worldNormal);
+					worldNormal,
+					worldTBN);
 			}
 		#endif
 
@@ -508,7 +575,43 @@ vec4 TranslucentLighting(
 		// Very basic reflections using the sky gradient. There is no need to
 		// apply fog to the sky reflection, as we apply fog at the very end for
 		// the overall fragment (reflection + refraction + its own color.)
+		//
 		vec3 skyReflection = SkyDither(gl_FragCoord.xy, SkyColor(reflected));
+
+		#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
+			// The sun and the moon are added on top, on water only. The sky model
+			// is atmosphere only, so without them the water reflected the air
+			// with nothing standing in it, and a clear night had no moonlight on
+			// it at all - see environment/sky/bodies.glsl.
+			//
+			// Glass and ice are left with the sky reflection and their own
+			// Fresnel term. A disc of sunlight on a window reads as a hole in it
+			// rather than as a reflection, because a window is being seen
+			// through as much as reflected in, and the disc does not dim with
+			// the part that is being seen through.
+			//
+			// Both directions are turned into view space here, where the game
+			// holds the sun for the sky it draws - see SkyBodies.
+			if (materialID == WATER) {
+				skyReflection += SkyBodies(
+					(gbufferModelView * vec4(reflected, 0.0)).xyz,
+					normalize(sunPosition));
+			}
+		#else
+			// The patch's own program. It has neither the view matrix the
+			// geometry here was drawn with nor the game's own sun position, so
+			// both directions are taken from the world ones instead.
+			//
+			// They are converted by the same code, so the two of them agree with
+			// each other, and that is all the comparison needs to put a disc on
+			// the water. What is given up is only the agreement with the sun the
+			// game draws in the sky - and that is the far terrain's water, where
+			// the sky above it is small in the view and the disc does not sit
+			// next to the real sun on screen.
+			if (materialID == WATER) {
+				skyReflection += SkyBodies(reflected, worldSunVector);
+			}
+		#endif
 		vec3 reflectedColor = skyReflection;
 
 		// Allows water and ice to reflect the world in addition to the sky.
@@ -854,11 +957,25 @@ vec4 TranslucentLighting(
 				// TODO: This leads to inaccurate results during nausea
 				vec3 upVector = gbufferModelView[1].xyz;
 
+				// How deep this fragment sits in the water, which both the
+				// absorption below and the scattering after it are measured in.
+				float waterDepth;
+
 				dstColor = RefractionBasedWaterAbsorption(
 					refractedScreenPos, viewPosRefracted, upVector,
 					viewPos, verticalNormal,
-					dstColor, colortex5
+					dstColor, colortex5,
+					skyLight,
+					waterDepth
 				);
+
+				#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
+					// The light scattered back out of the water itself, added to
+					// what came through it. See scattering_settings.glsl for why
+					// it is off until it is asked for, and for the note on
+					// programs that are given their own uniforms.
+					dstColor += WaterScattering(skyLight, waterDepth);
+				#endif
 			#endif
 
 			// To apply the refraction, sample the background texture at the

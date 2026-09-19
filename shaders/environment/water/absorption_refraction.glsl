@@ -22,9 +22,21 @@ vec3 RefractionBasedWaterAbsorption(
 	vec3 viewPos,
 	bool verticalNormal,
 	vec3 background,
-	sampler2D skylightBuffer
+	sampler2D skylightBuffer,
+	// The sky light on this fragment's own surface, used instead of the buffer
+	// above by programs that are not given one. See where it is read below.
+	float surfaceSkyLight,
+	// How deep into the water this fragment is, from 0.0 at the surface to 1.0
+	// at the depth where skylight has been fully attenuated. Handed back rather
+	// than kept here because the scattering below needs the same number, and it
+	// has to be the one this function actually arrived at rather than a second
+	// estimate of it.
+	out float waterDepth
 ) {
-	float waterDepth = 1.0;
+	// Every path below overwrites this, but it is set here as well so that the
+	// caller cannot be handed an uninitialised value if one ever stops doing
+	// that.
+	waterDepth = 1.0;
 
 	if (refractedScreenPos.z < 1.0) {
 		// The incident vector only gives a reasonable indication of the water
@@ -85,11 +97,30 @@ vec3 RefractionBasedWaterAbsorption(
 			//
 			// This final form is in the format of a fused multiply-add, which
 			// is a single instruction.
-			float skylight = RefractionSafeSample(
-				skylightBuffer,
-				refractedScreenPos.xy
-			).r;
-			waterDepth = (-15.0 / 16.0) * skylight + 1.0;
+			#if defined(EXTERNALLY_DEFINED_UNIFORMS)
+				// This program was not given this pack's sky light buffer: Voxy
+				// hands its shaders their own set of uniforms and textures, and
+				// this one is not among them (see voxy.json). Sampling it anyway
+				// returned nothing, which reads as a sky light of zero - and a
+				// sky light of zero is the deepest water this heuristic can
+				// describe, so distant Voxy water came out at full absorption
+				// while the same water inside the render distance, which reads
+				// the real buffer, came out shallow. That is what made water on
+				// LOD terrain darker than the water next to it.
+				//
+				// The sky light on this fragment's own surface is what stands in
+				// for it. The buffer is read for the sky light of the background
+				// - the lake bed - and over open water the two agree closely,
+				// which is also why the underwater absorption in
+				// environment/lighting/diffuse.glsl makes the same substitution.
+				waterDepth = (-15.0 / 16.0) * surfaceSkyLight + 1.0;
+			#else
+				float skylight = RefractionSafeSample(
+					skylightBuffer,
+					refractedScreenPos.xy
+				).r;
+				waterDepth = (-15.0 / 16.0) * skylight + 1.0;
+			#endif
 		}
 
 		// TODO: Based on the render distance, fade away to the background to

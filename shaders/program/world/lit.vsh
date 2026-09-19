@@ -45,6 +45,22 @@
 	in vec3 at_midBlock;
 #endif
 
+// The tangent this vertex's geometry actually has, with the handedness that
+// fixes which way the bitangent points carried in w.
+//
+// It arrives in the same space as the normal, and is brought to world space the
+// same way FetchWorldNormal brings that there, further down this file. The two
+// attributes come from the same place, so whatever reasoning applies to one
+// applies to the other.
+//
+// Minecraft's entity format carries no tangent at all, and some mods leave it
+// at zero, so neither stage that uses this may assume it is there: the per-face
+// encoding below replaces a degenerate tangent with one derived from the face,
+// because the encoder normalizes what it is handed, and the material decoding
+// falls back to a frame built from screen-space derivatives - see
+// PbrAttributeFrame in pbr.glsl.
+in vec4 at_tangent;
+
 #ifdef PBR_ATLAS
 	// The centre of this face's sprite in the block atlas. This is what
 	// parallax mapping uses to keep its displaced samples inside the sprite
@@ -56,17 +72,13 @@
 	// sprite's size.
 	out vec4 spriteBounds;
 
-	// The tangent this vertex's geometry actually has, in world space, with the
-	// handedness that fixes which way the bitangent points carried in w.
+	// The tangent on its way to the material decoding, in world space and with
+	// the handedness in w.
 	//
-	// This is the frame the material decoding prefers, because unlike one
+	// That frame is the one the material decoding prefers, because unlike one
 	// rebuilt from screen-space derivatives it does not depend on how far away
-	// the fragment is. See PbrAttributeFrame in pbr.glsl.
-	//
-	// Minecraft's entity format carries no tangent at all, and some mods leave
-	// it at zero, so the fragment stage has to check for that and fall back -
-	// which is the only reason this is passed on rather than assumed.
-	in vec4 at_tangent;
+	// the fragment is. The fragment stage still has to check for the degenerate
+	// case, which is the only reason this is passed on rather than assumed.
 	out vec4 pbrTangent;
 #endif
 
@@ -332,7 +344,43 @@ void main() {
 	// I wonder if this could be done with manual interpolation in the fragment
 	// shader / barycentrics instead of just giving up and passing in the full
 	// normal or even TBN matrix through varyings.
-	perFace = EncodePerFace(worldNormal, materialID);
+
+	// The frame this face has, for the fragment stage to rebuild: its tangent,
+	// the way its bitangent points, and its normal.
+	//
+	// The tangent is only meaningful against the normal of the face it lies in,
+	// which is the face normal this is paired with - not the interpolated one a
+	// smooth surface would have.
+	//
+	// Geometry that carries no tangent at all - Minecraft's entity format, some
+	// mods - is given one derived from the face normal instead. It has to be
+	// given something: the encoder normalizes what it hands over, and
+	// normalizing a zero vector is undefined. Any tangent in the face's plane
+	// is as good as any other for geometry that did not author one, so the one
+	// both stages can arrive at on their own is the one to use, which is what
+	// OrthonormalBasisOf returns.
+	// Named apart from the worldTangent inside the PBR_ATLAS block above: that
+	// block's own variable is in this same scope whenever the option is on, and
+	// a second declaration of the same name would not compile.
+	vec3 tangentAttribute = at_tangent.xyz;
+	bool tangentHandedness = at_tangent.w > 0.0;
+	vec3 faceTangent;
+
+	if (dot(tangentAttribute, tangentAttribute) < 1.0e-8) {
+		faceTangent = OrthonormalBasisOf(
+			worldNormal,
+			worldNormal.z >= 0.0 ? 1.0 : -1.0)[0];
+	} else {
+		#if defined(NORMALS_ARE_IN_WORLD_SPACE)
+			faceTangent = tangentAttribute;
+		#else
+			faceTangent = (gbufferModelViewInverse
+				* vec4(gl_NormalMatrix * tangentAttribute, 0.0)).xyz;
+		#endif
+	}
+
+	perFace = EncodePerFace(
+		worldNormal, faceTangent, tangentHandedness, materialID);
 
 	#if !defined(NEVER_RECEIVES_SHADOWS)
 		shadowPos = ShadowMapPosition(cameraRelativePos, worldNormal);

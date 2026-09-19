@@ -35,6 +35,11 @@
 	#include "sky/minishita.glsl"
 #endif
 
+// The sun and the moon as discs in the sky, for the reflections to use. The
+// model above is atmosphere only and has neither of them in it, so this reads
+// its sun direction and has to come after it.
+#include "sky/bodies.glsl"
+
 // The End's own sky, which is not an atmosphere at all.
 #include "sky/end.glsl"
 

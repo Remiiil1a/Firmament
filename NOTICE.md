@@ -34,7 +34,7 @@ Those same terms also require, for any modified version:
   modified version anywhere else;
 * that the **file name include the same thing**, for which the terms suggest the
   suffix `-edit-of-coderbot-Steadfast` - hence
-  `Firmament-v0.3-edit-of-coderbot-Steadfast.zip`;
+  `Firmament-v0.4-edit-of-coderbot-Steadfast.zip`;
 * that the GPL and those terms are kept, and that nothing suggests this is an
   official Steadfast release. **It is not.** coderbot does not support it, and
   bug reports about it do not belong in Steadfast's issue tracker.
@@ -64,13 +64,15 @@ quotes code from the projects named in it.
   `LICENSE-MELLOW-APACHE.txt` from that pack is included as well, because its
   own files ask for the whole licence set to be kept together.
 * **Sundial Lite, by geforcelegend** - the screen-space shadows used past the
-  shadow map's reach follow that pack's implementation: stepping a fixed
-  fraction of the distance to the receiver rather than a fixed number of blocks,
-  dithering the ray's first sample both per pixel and per frame, and accepting
-  an occlusion only when it falls within a thickness window of the ray. Sundial
-  Lite is licensed under the **GNU General Public License, version 3** - the
-  same licence as this pack, whose copy is `LICENSE.md` - so no separate licence
-  file is included for it.
+  shadow map's reach follow that pack's implementation: the ray is walked in
+  **screen space**, projected from its start and its end and stepped evenly
+  between those two positions rather than a fixed number of blocks in view
+  space, its first sample is dithered both per pixel and per frame, and an
+  occlusion only counts when it falls within a thickness window of the ray -
+  which is itself measured as a fraction of the distance, in the depth buffer's
+  own units, as Sundial measures it. Sundial Lite is licensed under the **GNU
+  General Public License, version 3** - the same licence as this pack, whose copy
+  is `LICENSE.md` - so no separate licence file is included for it.
 * **No assets are reused from either.** No textures, no logos, no screenshots,
   and neither project's name is part of this pack's name or branding.
 
@@ -90,7 +92,9 @@ quotes code from the projects named in it.
 
 Versions are counted as: **v0.1** is the material work, **v0.2** is everything
 from the cloud layer onward, and **v0.3** is the distant-terrain, temporal
-antialiasing and water work after it. See the `RELEASE_NOTES-*.md` files.
+antialiasing and water work after it. **v0.4**, which is still in development,
+is the work after that: it begins with the frame the water surface is drawn in,
+taken from the geometry rather than assumed. See the `RELEASE_NOTES-*.md` files.
 
 **Added in v0.1**
 
@@ -137,6 +141,43 @@ antialiasing and water work after it. See the `RELEASE_NOTES-*.md` files.
   its own surface, colour and roughness-filtered reflection.
 * The Voxy shader patch fixed: `voxy.json` was written in an older format.
 
+**Added in v0.4**
+
+* The water surface is laid out in the frame the face actually has, taken from
+  the geometry's own tangent, instead of one assumed from the world's axes.
+  Nothing about the water's colour, absorption, scattering or reflection
+  changed; on faces lined up with the world there is no visible difference, and
+  the difference is on the ones that are not.
+* Water scattering, as three options on the water page. All off by default.
+* A star field the pack generates for itself, with its brightness, resolution,
+  density and star size to set. It fades in with the night and is covered by
+  rain. The game's own star field is still drawn and is unchanged.
+* The sun and the moon reflected in water: sized to match the game's own, the
+  moon worth a fiftieth of the sun, and water only - glass and ice keep the sky
+  reflection and their own Fresnel term.
+* Screen-space shadow strength, and a handover between the sun and the moon that
+  fades over two degrees either side of the horizon rather than switching.
+* The cloud layer's phase, transmittance and height falloff as options.
+* A settings menu reorganised into two levels, with every option reachable and
+  the shipped profile named the same in both languages.
+
+**Fixed in v0.4**
+
+* A sky that turned solid white for a few seconds in a thunderstorm. The test
+  that recognizes the game's star quads also matched the game's own sky colour
+  quad whenever all three of its channels came out equal, which is what rain
+  drives the sky colour to.
+* Screen-space shadows counted a surface behind the ray as an occluder, which is
+  the opposite of a shadow; they also changed with the step count.
+* Parallax mapping on water now stops at the edge of the vanilla render
+  distance, so it no longer steps where this pack's water meets a distant
+  terrain renderer's.
+* The cloud layer no longer jumps when the sun and the moon change hands, which
+  it used to do through the phase and the transmittance.
+* The shipped profile no longer shows Chinese in an English menu.
+* Options that had several values but rendered as click-to-cycle are sliders
+  again.
+
 ## 5. Files
 
 | File | What it is |
@@ -147,7 +188,8 @@ antialiasing and water work after it. See the `RELEASE_NOTES-*.md` files.
 | `LICENSE-MELLOW-APACHE.txt` | Apache License 2.0 - verbatim copy from Mellow Shader v3.4 |
 | `README.md` | What the pack is, what it adds, what it costs |
 | `README.zh-CN.md` | The same, in Simplified Chinese |
-| `RELEASE_NOTES-v0.3.md` | What changed in this release |
+| `RELEASE_NOTES-v0.3.md` | What changed in the v0.3 release |
+| `RELEASE_NOTES-v0.4.md` | What has changed in v0.4 so far (still in development) |
 | `PBR_PORTING.md` | Working notes for the material port: options, verification checklist, known limits (in the project this pack was built in) |
 
 If a distributor removes any of the files in this list, the result is not

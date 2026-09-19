@@ -58,6 +58,11 @@ layout(location = 1) out float out1;
 	#include "/environment/fog.glsl"
 	#include "/environment/sky.glsl"
 
+	// The TBN reconstruction below is the same one the per-face encoding
+	// decodes from, so that a water face drawn here and the same face drawn by
+	// the terrain programs get the same frame.
+	#include "/lib/encoding/face.glsl"
+
 	#include "/environment/lighting/translucent.glsl"
 #elif defined(FANCY_TRANSLUCENTS)
 	layout(location = 2) out vec4 out2;
@@ -123,12 +128,24 @@ void voxy_emitFragment(VoxyFragmentParameters parameters) {
 
 		float reflectionStrength = materialID == WATER ? 1.0 : 0.0;
 
+		// Voxy's vertices are not put through this pack's vertex shaders, so
+		// there is no per-face encoding to read a frame out of. The faces it
+		// does emit are all lined up with the world's axes, so a frame derived
+		// from the face normal is as good as the geometry's own would be - and
+		// it is derived the same way the vertex stage falls back for geometry
+		// that carries no tangent (see lit.vsh), which keeps the two paths
+		// agreeing on the same face.
+		mat2x3 voxyBasis = OrthonormalBasisOf(
+			worldNormal, worldNormal.z >= 0.0 ? 1.0 : -1.0);
+		mat3 voxyTBN = mat3(voxyBasis[0], voxyBasis[1], worldNormal);
+
 		// Voxy terrain has no material data of its own, so it passes the neutral
 		// material and the face normal, which leaves water and ice here exactly
 		// as they were.
 		fragmentColor = TranslucentLighting(
 			fragmentColor,
 			worldNormal,
+			voxyTBN,
 			cameraRelativePos,
 			viewPos,
 			reflectionStrength,

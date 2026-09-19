@@ -563,7 +563,17 @@ vec3 SkyColorModel(vec3 worldDir) {
 	// Cost: 12 FLOPs (4x3 fma)
 	vec3 sky = day * daySkyOverridePremultiplied.a + ambientSkyColor;
 	sky += night * nightSkyOverridePremultiplied.a;
-	sky += luminanceDay * daySkyOverridePremultiplied.rgb;
+	// The rain recolour is scaled by the brighter of the two skies rather than by
+	// the day one alone.
+	//
+	// It used to ride on luminanceDay, and that is what made a rainy sky flash
+	// white when the moon came up: the white was tied to the sun's contribution,
+	// so as the sun set and the moon rose the thing carrying it collapsed while
+	// the other grew, and the two crossed over at a particular moon height. With
+	// the brighter of the two carrying it, the daytime value is the same as it
+	// always was - the sun's sky is the brighter one then - and at night the rain
+	// now whitens the moon's sky, which is what it should have done all along.
+	sky += max(luminanceDay, luminanceNight) * daySkyOverridePremultiplied.rgb;
 	sky += luminanceNight * nightSkyOverridePremultiplied.rgb;
 
 	return sky;

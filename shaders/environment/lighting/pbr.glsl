@@ -100,6 +100,11 @@
 // On by default, since it is a correctness fix rather than a look. Turning it
 // off restores the derivative frame, which is worth doing only to compare the
 // two on the same scene.
+//
+// This option is about the material frame only. The frame the water surface is
+// drawn in comes from the same per-face encoding and is not affected by it: the
+// water surface has no resource pack to fall back on, so it always uses the
+// frame the face has, and the option would otherwise have to mean two things.
 #define PBR_TANGENT_ATTRIBUTE
 #ifdef PBR_TANGENT_ATTRIBUTE
 	// See the note on PBR_PARALLAX_SHADOW above: the #ifdef is what makes Iris
@@ -987,6 +992,11 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 			1.0);
 	}
 
+	// An axis whose length squared is below this is one the screen-space
+	// derivatives could not resolve: what comes out of the Jacobian for it is
+	// then not a short direction but noise, so it is dropped rather than used.
+	const float MIN_AXIS_SQUARED = 1.0e-10;
+
 	// Inverts the texture coordinate Jacobian to get the world-space direction
 	// and size of one unit of texture coordinate along each axis.
 	//
@@ -995,8 +1005,8 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 	// atlas, so a displacement expressed directly in texture coordinates would
 	// depend on the atlas resolution and on how large the sprite happens to be.
 	//
-	// Returns false when the mapping is degenerate (a zero-area triangle, or a
-	// fragment where the derivative was lost).
+	// Returns false only when both axes are dropped, ie, when there is no
+	// direction left to trace along at all. See the note inside the function.
 	bool PbrTexCoordAxes(
 		PbrGradients gradients,
 		out vec3 dPdu,
@@ -1023,16 +1033,34 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 		// only thing that divides by them again is PbrWorldOffsetToTexCoord, which
 		// squares them. The projected offset then comes out massive, the march runs
 		// far past the crossing it should have found, and the surface reads as one
-		// layer too deep or simply as broken. Which faces this happens on depends on
-		// how their texture happens to be laid out, so it shows up as particular
-		// sides of a block misbehaving rather than as a general fault.
-		if (dot(dPdu, dPdu) < 1.0e-10 || dot(dPdv, dPdv) < 1.0e-10) {
+		// layer too deep or simply as broken - which is what "part of the face is
+		// missing" turned out to be when it was looked at closely: the depth was
+		// not absent, it had been walked past. Which faces this happens on depends
+		// on how their texture happens to be laid out, so it shows up as
+		// particular sides of a block misbehaving rather than as a general fault.
+		//
+		// What this used to do about it was give up on the whole face: both axes
+		// were zeroed and the caller returned the coordinate it started with. That
+		// does remove the overshoot, but it throws the face's depth away with it,
+		// and it leaves nothing to tell a face whose resource pack has no height
+		// data from one whose mapping simply could not be read.
+		//
+		// So the axes are dropped one at a time instead. The ones that could be
+		// resolved still describe the surface - they are the same vectors they
+		// always were, so a face with both axes intact is untouched by this - and
+		// one that could not is dropped whole rather than used as a short
+		// direction that points nowhere in particular. It then contributes
+		// nothing to the offset, which is the other half of this and lives in
+		// PbrWorldOffsetToTexCoord below.
+		if (dot(dPdu, dPdu) < MIN_AXIS_SQUARED) {
 			dPdu = vec3(0.0);
-			dPdv = vec3(0.0);
-			return false;
 		}
 
-		return true;
+		if (dot(dPdv, dPdv) < MIN_AXIS_SQUARED) {
+			dPdv = vec3(0.0);
+		}
+
+		return dot(dPdu, dPdu) + dot(dPdv, dPdv) > 0.0;
 	}
 
 	// Projects a displacement in world space onto the texture coordinate axes.
@@ -1043,10 +1071,18 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 	// The two divisions are what PbrTexCoordAxes guards against above: they square
 	// the axis they divide by, so an axis that is short but not zero turns into a
 	// displacement far larger than the one that was asked for.
+	//
+	// The floor underneath each of them is the other half of that guard. An axis
+	// PbrTexCoordAxes dropped is exactly zero, and so is the numerator that goes
+	// with it, so what this returns for that axis is zero - a surface with no
+	// depth in that direction rather than an enormous depth in a direction the
+	// derivatives could not describe. Without the floor it would be a division
+	// by zero instead, and an infinite offset is not something the march below
+	// can recover from.
 	vec2 PbrWorldOffsetToTexCoord(vec3 worldOffset, vec3 dPdu, vec3 dPdv) {
 		return vec2(
-			dot(worldOffset, dPdu) / dot(dPdu, dPdu),
-			dot(worldOffset, dPdv) / dot(dPdv, dPdv));
+			dot(worldOffset, dPdu) / max(dot(dPdu, dPdu), MIN_AXIS_SQUARED),
+			dot(worldOffset, dPdv) / max(dot(dPdv, dPdv), MIN_AXIS_SQUARED));
 	}
 
 	// Keeps a sample inside the sprite the fragment started in.
