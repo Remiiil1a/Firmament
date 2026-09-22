@@ -25,6 +25,19 @@ const int R8 = 0;
 // first colortex buffer number that gbuffers shaders can sample. colortex0-3
 // are not bound in gbuffers shaders.
 const int colortex4Format = R11F_G11F_B10F;
+
+// Not cleared between frames, for the one reader that runs before this pass
+// writes it: the hand's reflection, in lit.fsh, is taken from this buffer
+// during the gbuffers stage - which is a frame earlier than everything else
+// that reads it. What it finds there is the last finished frame, which is what
+// Mellow Shader's reflection for a held item reads as well (see gaux1Clear in
+// its global/configurations.glsl), and it is the only picture of the world that
+// exists at that point in the frame.
+//
+// Everything that reads this buffer later in the frame is unaffected: the pass
+// below writes all of it, every frame, so what they see is the current frame's
+// copy whether or not the loader wiped it first.
+const bool colortex4Clear = false;
 const int colortex2Format = R8;
 const int colortex5Format = R8;
 
@@ -183,120 +196,6 @@ vec3 ApplyFog(
 	return background * fog.a + fog.rgb;
 }
 
-// The environment this fragment reflects, in linear RGB.
-//
-// Zero wherever there is nothing to reflect anything - see
-// PbrReflectionPossible - which is most of the screen: only surfaces with a
-// reflectance and a roughness to speak of, under an open sky, are covered.
-//
-// This is the only place the environment reflection exists. It used to be added
-// where each surface was drawn, which meant the reflection could not include the
-// world: a surface is drawn while the frame it belongs to is still being filled,
-// so the depth buffer it would have to trace against is not finished. Here, one
-// pass later, it is.
-vec3 EnvironmentReflection(
-	vec3 viewPos,
-	float skyLight
-) {
-	#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
-		// Read the material the surface programs left for this pixel. Both
-		// fetches are of this same pixel, which is why they can be exact.
-		vec4 material = texelFetch(colortex7, ivec2(gl_FragCoord), 0);
-		vec3 worldNormal = material.xyz;
-		float roughness = material.w;
-		vec3 f0 = texelFetch(colortex8, ivec2(gl_FragCoord), 0).rgb;
-
-		if (!PbrReflectionPossible(worldNormal, roughness, f0)) {
-			return vec3(0.0);
-		}
-
-		// The camera sits at the origin of view space, so the view direction is
-		// simply the direction back towards the origin.
-		//
-		// Taken from the view-space position, which is exact, rather than from the
-		// camera-relative one, which is that same position built through the
-		// inverse of the camera's matrix: that inverse carries a small error while
-		// the view is bobbing, and a mirror turns a small error in the view
-		// direction into a reflection that shivers as you walk. See the note in
-		// /environment/clouds/volumetric.glsl.
-		//
-		// The reflection itself is worked out in the world, beside the surface
-		// normal, so the direction is turned back into world axes by dotting it
-		// against them - the transpose of the matrix the geometry was drawn with,
-		// which for a rotation is that matrix's inverse.
-		mat3 view = mat3(gbufferModelView);
-		vec3 viewDirection = normalize(vec3(
-			dot(-viewPos, view * vec3(1.0, 0.0, 0.0)),
-			dot(-viewPos, view * vec3(0.0, 1.0, 0.0)),
-			dot(-viewPos, view * vec3(0.0, 0.0, 1.0))));
-		float NdotV = max(dot(worldNormal, viewDirection), 1.0e-4);
-
-		vec3 worldReflected = PbrReflectionDirection(
-			worldNormal,
-			viewDirection,
-			roughness);
-
-		// The sky, which is what an environment reflection is made of on its own,
-		// and which is also where a trace that finds nothing ends up.
-		//
-		// Faded out by how much of the sky this fragment can actually see, so
-		// that a cave floor or an interior does not reflect a sky that is not
-		// visible from it.
-		vec3 environment = SkyDither(
-			gl_FragCoord.xy,
-			SkyColor(worldReflected)) * PbrSkyExposure(skyLight);
-
-		#if defined(PBR_SSR)
-			// Only the smooth surfaces are traced. See PBR_SSR_ROUGHNESS: a rough
-			// surface would be shown a mirror image it should not have, and since
-			// the trace costs the same whether or not it finds anything, skipping
-			// the rough ones is most of the cost of it in a scene that is mostly
-			// made of rough things.
-			if (roughness < PBR_SSR_ROUGHNESS) {
-				vec2 hitPos;
-				vec3 hitViewPos;
-
-				// Tracing the reflected ray through the depth buffer finds
-				// whatever is on screen along it. The thickness control is the
-				// tolerance for accepting a hit: a surface as smooth as this one
-				// shows every artefact of a stretched reflection, so it is kept
-				// tight.
-				if (Raytrace(
-					depthtex1,
-					gbufferProjection,
-					gbufferProjectionInverse,
-					viewPos,
-					mat3(gbufferModelView) * worldReflected,
-					vec2(0.5, 1.0),
-					hitPos,
-					hitViewPos
-				)) {
-					// What the ray found, which is the previous frame: the frame
-					// this one is being drawn from is complete in depth but not in
-					// colour at this point in the pipeline.
-					vec3 hitColor = texture(colortex3, hitPos).rgb;
-
-					// Fade the result out near the edge of the screen, where the
-					// ray is about to leave the buffer and there is nothing more
-					// to find. Without this the reflection would stop at a hard
-					// line.
-					vec2 hitPosAbs = abs(hitPos * 2.0 - 1.0);
-					float edgeFade = min(
-						1.0,
-						(1.0 - max(hitPosAbs.x, hitPosAbs.y)) / 0.10);
-
-					environment = mix(environment, hitColor, edgeFade);
-				}
-			}
-		#endif
-
-		return PBR_REFLECTIONS_STRENGTH
-			* PbrReflectionFresnel(f0, NdotV, roughness)
-			* environment;
-	#else
-		return vec3(0.0);
-	#endif
-}
 
 void main() {
 	// texelFetch & gl_FragCoord used like this are a perfect way to copy a
@@ -385,7 +284,16 @@ void main() {
 			// is an enum whose name is defined whatever it is set to, so an
 			// #ifdef on it is true in every mode and would paint over the image
 			// permanently. See the values in lang/zh_CN.lang.
-			#if DEBUG == DEBUG_DEPTH
+			//
+			// The guard around the test is not decoration. DEBUG and DEBUG_DEPTH
+			// are declared in postprocessing.fsh, which is a different program,
+			// and an option is a macro - so this pass cannot see either of them,
+			// and a test on two names the preprocessor has never heard of is a
+			// test of 0 against 0. Written plainly, this painted every translucent
+			// surface in the frame half magenta in every mode. Written with the
+			// guard, the marking appears in the depth debug view and nowhere else,
+			// which is what it was for.
+			#if defined(DEBUG) && DEBUG == DEBUG_DEPTH
 				if (sssTranslucent) {
 					background = mix(background, vec3(1.0, 0.0, 1.0), 0.5);
 				}
@@ -526,7 +434,6 @@ void main() {
 
 		// The reflection goes on before the fog, so that a reflection far away
 		// fades into the distance exactly as the surface it is on does.
-		scene += EnvironmentReflection(viewPos, skylight);
 
 		scene = ApplyFog(
 			gbufferProjectionInverse,
@@ -571,7 +478,6 @@ void main() {
 	if (depth < 1.0) {
 		vec3 viewPos = ViewPosFromDepth(gbufferProjectionInverse, depth);
 
-		scene += EnvironmentReflection(viewPos, skylight);
 	}
 
 	gl_FragData[1] = vec4(scene, 1.0);

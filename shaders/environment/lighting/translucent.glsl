@@ -77,43 +77,12 @@ const float GLASS_F0 = 0.04;
 	// Integration between water absorption and refraction
 	#include "/environment/water/absorption_refraction.glsl"
 
-	// Scattering settings, and how much light the water scatters back out. Zero
-	// at the shipped defaults, so this changes nothing until it is asked to.
-	#include "/environment/water/scattering_settings.glsl"
-
 	// Sky light buffer for aiding refractive-based water absorption
 	// TODO: This will prevent water absorption from working perfectly with
 	//       Voxy. This is not an immediate issue at the moment since it is
 	//       rarely visible, but it should be fixed...
 	uniform sampler2D colortex5;
 
-	#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
-		// How bright the sky's ambient light is, for scaling the scattered light
-		// to the day: scattering is light that came from the sky, so a dim sky
-		// scatters less of it.
-		uniform float skyAmbientLuminance;
-
-		// The light the water scatters back out at the given depth, which is the
-		// counterpart of the absorption the background already went through.
-		//
-		// Bounded by the depth on one side and by the sky on the other: it
-		// approaches its maximum as the water gets deeper, and it is faded out
-		// altogether once there is almost no sky light to scatter, which is what
-		// keeps a dim cave pool from glowing.
-		//
-		// Programs whose uniforms come from somewhere other than this pack - ie,
-		// Voxy's terrain, see voxy.json - are left without it entirely rather
-		// than being handed a uniform they were never given. Their water keeps
-		// the absorption it had, and water scattering does not reach past the
-		// near world.
-		vec3 WaterScattering(float skyLight, float waterDepth) {
-			float scatter = 1.0 - exp(WATER_SCATTER_BY_DEPTH * waterDepth);
-			scatter *= max(0.0, skyLight * 1.25 - 0.25);
-			scatter *= skyAmbientLuminance;
-
-			return waterScattering * scatter;
-		}
-	#endif
 #endif
 
 #if !defined(EXTERNALLY_DEFINED_UNIFORMS)
@@ -576,7 +545,16 @@ vec4 TranslucentLighting(
 		// apply fog to the sky reflection, as we apply fog at the very end for
 		// the overall fragment (reflection + refraction + its own color.)
 		//
-		vec3 skyReflection = SkyDither(gl_FragCoord.xy, SkyColor(reflected));
+		// The stars come with the sky, in the reflection of every surface that
+		// has one - water and glass alike. They are part of the sky rather than
+		// a decoration on the water, and a reflected sky without them is a sky
+		// that has been emptied of the one thing left in it at night.
+		//
+		// The sun and the moon below are the exception and are water only; the
+		// note there says why.
+		vec3 skyReflection = SkyDither(
+			gl_FragCoord.xy,
+			SkyColor(reflected) + SkyStars(reflected));
 
 		#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
 			// The sun and the moon are added on top, on water only. The sky model
@@ -957,8 +935,8 @@ vec4 TranslucentLighting(
 				// TODO: This leads to inaccurate results during nausea
 				vec3 upVector = gbufferModelView[1].xyz;
 
-				// How deep this fragment sits in the water, which both the
-				// absorption below and the scattering after it are measured in.
+				// How deep this fragment sits in the water, which the absorption
+				// below is measured in.
 				float waterDepth;
 
 				dstColor = RefractionBasedWaterAbsorption(
@@ -968,14 +946,6 @@ vec4 TranslucentLighting(
 					skyLight,
 					waterDepth
 				);
-
-				#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
-					// The light scattered back out of the water itself, added to
-					// what came through it. See scattering_settings.glsl for why
-					// it is off until it is asked for, and for the note on
-					// programs that are given their own uniforms.
-					dstColor += WaterScattering(skyLight, waterDepth);
-				#endif
 			#endif
 
 			// To apply the refraction, sample the background texture at the

@@ -196,6 +196,61 @@ const float CLOUD_DRIFT_SPEED = 7.68;
 const float CLOUD_FADE_START = 3000.0;
 const float CLOUD_FADE_END = 7000.0;
 
+// Light that bounces inside a cloud instead of passing straight through it.
+//
+// One pass of the light through the layer is what the transmittance of a cloud
+// is: the fraction of the sun that reaches it without touching anything. The
+// light that does touch something does not vanish, though - it scatters, and
+// some of it comes out the far side, and out of the sides. Each further bounce
+// has to cross less of the cloud than the last and carries less of the light
+// than the last, so adding a few of them back is what keeps a thick cloud lit
+// rather than letting it go black, while changing a thin one hardly at all.
+//
+// The octaves below are powers of the transmittance, which is the same thing as
+// reducing the extinction: the light that crossed half as much cloud as the
+// first pass is the square root of it. No exponentials, two multiplies each.
+//
+// It is deliberately not a phase function. What varies here is how much cloud
+// the light is crossing, not which way it is going - and the direction is
+// exactly what had to come out of this layer's lighting, see the note on
+// CLOUD_PHASE_FLAT. Nothing here may put it back.
+// The three settings come first, and they have to: a macro is expanded where it
+// is written, so the function below cannot be written above the bounds it counts
+// to. (Same rule as the includes elsewhere in the pack - the preprocessor reads
+// the file in order and nothing more.)
+//
+// How much of the bounces are used, against the flat transmittance the layer
+// applies on its own. At zero this is the layer as it was.
+#define CLOUD_MULTIPLE_SCATTER 0.5 // [0.0 0.25 0.5 0.75 1.0]
+
+// How many bounces to add up.
+#define CLOUD_MULTIPLE_SCATTER_OCTAVES 2 // [1 2 3]
+
+// What each bounce keeps of the one before it: how much of the light there is
+// left, and how much of the cloud it has to cross. Halving both is what makes
+// each octave the square root of the last.
+#define CLOUD_MULTIPLE_SCATTER_FALLOFF 0.5 // [0.25 0.4 0.5 0.6 0.75]
+
+float CloudMultipleScatter(float transmittance) {
+	float total = 0.0;
+	float weight = 1.0;
+	float exponent = 1.0;
+	float weightSum = 0.0;
+
+	for (int i = 0; i < CLOUD_MULTIPLE_SCATTER_OCTAVES; i++) {
+		total += weight * pow(transmittance, exponent);
+		weightSum += weight;
+
+		weight *= CLOUD_MULTIPLE_SCATTER_FALLOFF;
+		exponent *= 0.5;
+	}
+
+	// Normalised, so that a cloud the light crosses freely still comes out at
+	// the same brightness it always did: only what is being held back by the
+	// cloud changes.
+	return total / weightSum;
+}
+
 // What the layer's direct light is multiplied by, in place of the phase
 // function above.
 //
@@ -606,9 +661,20 @@ vec4 BlockyClouds(vec3 worldDir, vec3 cameraWorldPos, vec3 lightView) {
 	float layerLight = CLOUD_LAYER_FALLOFF_BASE
 		+ (1.0 - CLOUD_LAYER_FALLOFF_BASE) * vertical;
 
+	// The sun's share now knows how much cloud it had to cross. `sunTransmittance`
+	// above is the one pass, and the octaves are the light that bounced inside
+	// instead - so a cloud the light has to fight through stays lit by its own
+	// scattering, and one the light crosses freely is unchanged.
+	//
+	// This is what CloudMultipleScatter is for, and it is the last thing the
+	// layer's lighting was missing: the transmittance it uses below is a flat
+	// value, which is what a thick cloud and a thin one used to be lit alike by.
+	float scattered = CloudMultipleScatter(sunTransmittance);
+
 	vec3 lit = layerLight * (
 		cloudLightAmbient * mix(0.55, 1.0, vertical)
-		+ cloudLightDirect * 0.5 * CLOUD_PHASE_FLAT * CLOUD_TRANSMITTANCE_FLAT);
+		+ cloudLightDirect * 0.5 * CLOUD_PHASE_FLAT
+			* mix(CLOUD_TRANSMITTANCE_FLAT, scattered, CLOUD_MULTIPLE_SCATTER));
 
 	float tau = density * slabLength * CLOUD_EXTINCTION;
 	float fade = 1.0 - smoothstep(

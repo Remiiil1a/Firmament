@@ -70,6 +70,35 @@ uniform float blindness;
 // Uniforms: dimension, biome_category, the atmosphere's own
 #include "/environment/sky.glsl"
 
+// The material model, for the option switches the environment reflection is
+// built on, and the reflection helpers it calls.
+#include "/environment/lighting/pbr.glsl"
+#include "/environment/lighting/reflections.glsl"
+
+// The trace's step budget, which is an option rather than the water reflections'
+// constant. Has to be set before the include below, which only falls back to its
+// own default if nobody has chosen one.
+#define RAYMARCH_STEPS PBR_SSR_STEPS
+
+#include "/lib/raytrace.glsl"
+
+// EnvironmentReflection(...), which this pass applies.
+//
+// It used to be applied by copy_and_fog. That pass writes the buffer a
+// reflection has to read - see the note in the file itself - so it could only
+// read the temporal history, and the history has the reflections of the frame
+// before in it. That makes the reflection a loop rather than a lookup: stable
+// while it is faint and sharp, and divergent into a black stain that spreads
+// outward from every reflective surface as soon as it is neither.
+//
+// This pass runs after copy_and_fog has finished writing that buffer, which is
+// what makes reading it legal here rather than merely probable.
+#include "/environment/lighting/environment_reflection.glsl"
+
+// The sky light the reflection is faded out by, written by the surface programs
+// and not touched since.
+uniform sampler2D colortex2;
+
 // Declared once, unconditionally and outside the conditional below: Iris reads
 // this directive from the raw source text, so having one in each branch of an
 // #if would leave it unclear which one applies.
@@ -285,6 +314,77 @@ void main() {
 
 			resolved = SkyDither(gl_FragCoord.xy, SkyColor(worldDir))
 				* max(0.0, 1.0 - 10.0 * blindness);
+		}
+	#endif
+
+	#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
+		// The environment reflection of every material surface on screen, added
+		// here rather than where the surface was drawn - see the include above.
+		//
+		// It goes on after the temporal resolve, so the reflection is not itself
+		// accumulated and may shimmer a little where it is noisy or aliased. That
+		// is the price of not feeding it back into the buffer it reads, and it is
+		// the cheap side of the trade: a reflection that flickers is a small
+		// annoyance, and a reflection that compounds itself every frame is a
+		// black screen.
+		//
+		// The view position is rebuilt here rather than reused from the branch
+		// above, because that one only runs when anti-aliasing is on.
+		//
+		// depthtex1 rather than depthtex0: the tracer marches the opaque depth
+		// buffer, so the ray has to start on the surface that buffer describes.
+		// depthtex0 has the translucents in it, and at any pixel where a water or
+		// glass surface is in front the two are different surfaces - so the ray
+		// would set out from the glass and immediately meet the block behind it,
+		// which is a reflection of the wrong thing from the wrong place.
+		//
+		// The uniform itself is declared in environment_reflection.glsl, which is
+		// included above. Nothing needs adding here for this, and adding it here
+		// would be the same declaration twice in one program, which does not
+		// compile.
+		float reflectionDepth = texelFetch(depthtex1, pixel, 0).r;
+
+		if (reflectionDepth < 1.0) {
+			vec3 reflectionNdc = vec3(
+				gl_FragCoord.xy * windowToNdc,
+				reflectionDepth * 2.0) - 1.0;
+			vec4 reflectionViewPosH =
+				gbufferProjectionInverse * vec4(reflectionNdc, 1.0);
+			vec3 reflectionViewPos =
+				reflectionViewPosH.xyz / reflectionViewPosH.w;
+
+			// Whether this pixel is being looked at through something
+			// translucent, which the reflection declines to be computed for -
+			// see the note on the parameter in environment_reflection.glsl.
+			//
+			// The two depth buffers answer it between them: only one of them has
+			// the translucent pass in it, so the one with the translucents in it
+			// being the nearer of the two means there is a water, ice or glass
+			// surface in front of whatever is drawn at this pixel.
+			bool seenThrough = texelFetch(depthtex0, pixel, 0).r
+				< texelFetch(depthtex1, pixel, 0).r;
+
+			vec3 environmentReflection = EnvironmentReflection(
+				reflectionViewPos,
+				texelFetch(colortex2, pixel, 0).r,
+				seenThrough);
+
+			// The debug view, which is the reflection and nothing else: the whole
+			// frame is replaced by it, at four times its strength so that the
+			// faint reflection a well-behaved surface carries can be seen at all.
+			//
+			// It exists because the reflection is the one thing in this pack that
+			// cannot be judged from the finished picture. A normal map that is
+			// wrong looks wrong and a shadow that is wrong looks wrong, but a
+			// reflection that is being blurred wrongly and one that is being
+			// traced wrongly both come out as "a strange reflection", and no
+			// amount of looking at the picture tells them apart. See
+			// PBR_DEBUG_REFLECTION in pbr.glsl, and its entry in the lang files.
+			#if PBR_DEBUG == PBR_DEBUG_REFLECTION
+				resolved = environmentReflection * 4.0;
+			#else
+				resolved += environmentReflection;
+			#endif
 		}
 	#endif
 

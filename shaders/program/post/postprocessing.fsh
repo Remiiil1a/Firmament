@@ -38,6 +38,30 @@ const int colortex0Format = R11F_G11F_B10F;
 
 #define GODRAYS // Efficient screen-space light shafts.
 
+// How bright the shafts are, as a multiple of what the pack draws on its own.
+//
+// This is the only place the setting is applied. It scales the exposure that is
+// premultiplied into godraysColor, which is the value the pass below adds to the
+// frame, so one line covers everything the option is about.
+//
+// It is deliberately not applied where the mask is built - see
+// /program/post/noisy_godrays.fsh. That pass has an arm for the water and an arm
+// for the air, and a factor multiplied into both of them is a factor that has to
+// be kept in step in two places. Here there is one.
+//
+// 1.0 is what the pack has always drawn, exactly: the multiply is the last one
+// in the chain, so at 1.0 all it does is multiply by one.
+//
+// 0.0 makes the exposure exactly zero, and the final pass then adds nothing - it
+// does not even run the blur, because that whole branch is behind
+// godraysExposure > 0.0. That is a frame with no shafts in it, the same as with
+// the option above turned off. It is not quite the same amount of work: turning
+// that one off also skips the pass that builds the mask, while a strength of zero
+// leaves that pass running and writing zeros into a buffer nothing then reads.
+// One half-resolution full-screen pass is the price of being able to take the
+// shafts down to nothing without giving up the rest of the feature.
+#define GODRAYS_STRENGTH 2.0 // [0.0 0.25 0.5 0.75 1.0 1.5 2.0 3.0]
+
 uniform sampler2D colortex1;
 uniform vec4 screenLightVector;
 uniform float godraysExposure;
@@ -137,6 +161,27 @@ layout(location = 0) out vec3 finalColor;
 
 uniform vec3 godraysColor;
 
+// The vignette: the corners of the frame darkened, the way a lens does it.
+//
+// Applied to the linear light, before the tonemap, rather than to the finished
+// image. A vignette put on after the curve would darken the corners twice over
+// - once by the falloff, and again by the tonemap's own shoulder, which is
+// already compressing everything up there - and what that produces is corners
+// that go flat rather than corners that go dark.
+#define VIGNETTE_ON 1
+#define VIGNETTE_OFF 0
+#define VIGNETTE VIGNETTE_ON // [VIGNETTE_OFF VIGNETTE_ON]
+
+// How much of its light a corner loses. The centre of the screen is never
+// touched; this is the falloff at its very edge.
+#define VIGNETTE_STRENGTH 0.35 // [0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.5 0.6 0.75 1.0]
+
+// Where the falloff starts and where it reaches full strength, measured as a
+// squared distance from the centre of the screen: 0 at the centre, 1 at the
+// midpoint of each edge, 2 in the corners.
+#define VIGNETTE_START 0.35 // [0.0 0.1 0.2 0.3 0.35 0.4 0.5 0.6 0.75 0.9 1.0]
+#define VIGNETTE_END 1.6 // [0.8 1.0 1.2 1.4 1.6 1.8 2.0]
+
 void main() {
 	// Determine the position of this fragment on the screen in screen
 	// coordinates (0.0 to 1.0).
@@ -190,10 +235,22 @@ void main() {
 		#ifdef GODRAYS
 		if (godraysExposure > 0.0) {
 			float godrays = SmoothGodrays(screenCoord, screenLightVector.xy);
-			
+
 			// Note: godraysExposure is premultiplied into godraysColor
 			color += godraysColor * godrays;
 		}
+		#endif
+
+		#if VIGNETTE == VIGNETTE_ON
+			// Squared distance from the centre of the screen, in the -1..1 space
+			// the screen's edges are 1 away in: 0 at the centre, 1 at the middle
+			// of an edge, 2 in a corner.
+			vec2 vignetteOffset = screenCoord * 2.0 - 1.0;
+
+			color *= 1.0 - VIGNETTE_STRENGTH * smoothstep(
+				VIGNETTE_START,
+				VIGNETTE_END,
+				dot(vignetteOffset, vignetteOffset));
 		#endif
 
 		#if TONEMAP == TONEMAP_UNCHARTED2

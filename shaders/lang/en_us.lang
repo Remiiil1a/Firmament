@@ -171,10 +171,32 @@ option.PBR_PARALLAX.comment=Makes the height stored in the alpha channel of \
 
 option.PBR_PARALLAX_STEPS=Parallax layers
 option.PBR_PARALLAX_STEPS.comment=How many layers the parallax ray march \
-	takes. Each layer is one texture sample, and more layers track the height \
-	field more closely at shallow viewing angles.\n\n\
-	Too few layers show up as banding on surfaces you look at almost edge-on. \
-	Too many are simply wasted samples.
+	takes. Each layer is one texture sample for the view ray and, while Parallax \
+	self-shadowing is on, one more for the light ray - so this sets the cost of \
+	both marches. More layers track the height field more closely at shallow \
+	viewing angles.\n\n\
+	This is the option that decides how much of the height field's shape comes \
+	out, and it is the only one that does. Parallax refinement can only narrow \
+	down a crossing the layers already bracketed, so it cannot recover a surface \
+	whose height varies more than once inside one of these layers: the size of \
+	that gap is set here and nowhere else.\n\n\
+	What it cannot do is take away the fine grain or banding on an ordinary block \
+	face. More layers only cut that error finer and pack it closer together, so \
+	it reads as a few bands at a low count and as grain at a high one - the same \
+	error, shown differently. That error is the height channel being read without \
+	interpolation, which is what Smooth parallax is for; what is left for this \
+	option and for the refinement below is accuracy, not the removal of it.\n\n\
+	Too few layers show up as flat shelf-like patches where the shape should be \
+	- a crossing landing far from where it belongs on a surface that rises \
+	sharply. Too many are simply wasted samples.\n\n\
+	The default is 16, down from 32: with the height channel interpolated, this \
+	only bounds the gap the refinement searches, and raising it moves the result \
+	by less than a thousandth of a texel - so the half of the cost that was worth \
+	paying back has been. With Smooth parallax off there is no such bill to pay, \
+	as a height sample is one fetch again, and this can go straight back up. \
+	Sundial defaults to 80 layers and Mellow to 64, but both of those describe a \
+	march whose height samples are unfiltered; the top of this option's range is \
+	still set where they are.
 
 option.PBR_PARALLAX_REFINE=Parallax refinement
 option.PBR_PARALLAX_REFINE.comment=How many binary search steps are used to \
@@ -182,37 +204,83 @@ option.PBR_PARALLAX_REFINE.comment=How many binary search steps are used to \
 	The layer march can only land on a layer boundary, and a height channel \
 	usually covers only a fraction of its range, so few layers fall inside the \
 	real variation. With too little refinement the texture visibly snaps \
-	between a handful of positions instead of following the surface. This \
-	option used to default to 4, which left those layers plainly visible; 32 \
-	does not, and is where the default is set.\n\n\
-	Each step is one more texture sample. This is a bisection, so its accuracy \
-	doubles per step and 32 is already far past what the eye can tell apart; \
-	lower it to save samples.
+	between a handful of positions instead of following the surface.\n\n\
+	What it cannot do is recover shape the march did not bracket. It narrows \
+	down a crossing, it does not look for a better one - so a surface whose \
+	height varies more than once inside one pair of layers keeps whatever that \
+	pair made of it however many steps it is given. Parallax layers is the \
+	option that decides that, and the one to raise if the surface looks like it \
+	is built out of flat sheets; this one is accuracy, and only accuracy. \
+	Sundial's own settings menu draws the same line between its two knobs.\n\n\
+	It is also the cheapest accuracy in this file: a bisection doubles its \
+	accuracy per step, and 8 steps already land inside a four-thousandth of the \
+	interval the layers handed it - far below one texel of any resource pack. \
+	The old default of 32 was covering for a march short enough to need it, and \
+	with the layer count raised it is no longer doing anything; raise it and the \
+	samples are spent for nothing, lower it to save them.
+
+option.PBR_PARALLAX_SMOOTH=Smooth parallax
+option.PBR_PARALLAX_SMOOTH.comment=Interpolates the height channel between its \
+	texels, instead of reading it one texel at a time.\n\n\
+	A block atlas is sampled one texel at a time as it is magnified - that is what \
+	keeps a block's texture sharp - and a height channel drawn with a slope in it \
+	therefore reads back as a staircase from one texel to the next. This option \
+	fetches the four texels around each sample and mixes them by hand, which is \
+	what a filter would do, so the field the parallax traces is the slope the \
+	resource pack drew rather than a staircase.\n\n\
+	The difference shows on height channels with hard edges - cobblestone, \
+	bricks, anything built out of separate lumps. It turns their steps into \
+	slopes. Sundial carries the same option and ships it on, and its own menu \
+	describes it as making the parallax show a slope rather than individual \
+	cubes.\n\n\
+	Turn it off to keep the height field exactly as the resource pack drew it. It \
+	is sharper that way, and the grain and banding come back wherever the field \
+	has a hard edge - which is what this pack looked like before the option \
+	existed. It is also the cheaper of the two settings: a height sample is one \
+	fetch instead of four, so Parallax layers can go up and spend what this frees.
 
 option.PBR_PARALLAX_DEPTH=Parallax depth
-option.PBR_PARALLAX_DEPTH.comment=How deep the height field is, in blocks, at \
-	its deepest point.\n\n\
+option.PBR_PARALLAX_DEPTH.comment=How deep the height field is at its deepest \
+	point, as a fraction of the sprite the face is drawn with - 1.0 being the \
+	whole width of the texture.\n\n\
 	The displacement you actually see is this multiplied by the slope of the \
 	view angle - 0 when looking straight at the surface, which is the geometry \
 	of parallax mapping rather than the effect being switched off.\n\n\
 	It is also capped by Maximum displacement, and stops changing once it goes \
 	past it: raise both together when you want more depth.\n\n\
+	This used to be a distance in blocks, converted into texture coordinates \
+	through the surface's own UV axes. On a face whose texture is stretched or \
+	squashed in the world - a door, a thin face of a model, a texture drawn \
+	across several blocks - those axes come out skewed with it, and the depth \
+	they produced was wildly too large or too small. That is what left whole \
+	faces with no parallax at all while this setting did nothing on them. \
+	Measured against the sprite instead, the same number means the same width \
+	of texture on every face.\n\n\
+	On an ordinary block, where one sprite covers one face, the two readings \
+	are the same, so the default of 0.2 is the fifth of a block it has always \
+	been.\n\n\
 	LabPBR asks resource packs to keep this within a quarter of a block, so \
 	values much above 0.25 will likely look wrong on most packs.
 
 option.PBR_PARALLAX_MAX_OFFSET=Maximum displacement
 option.PBR_PARALLAX_MAX_OFFSET.comment=How far a sample is allowed to be \
-	displaced, in blocks. It is what keeps a glancing view angle from \
-	exaggerating the depth, since the displacement is divided by the slope of \
-	that angle.\n\n\
+	displaced, in the same units as Parallax depth: a fraction of one sprite. \
+	It is what keeps a glancing view angle from exaggerating the depth, since \
+	the displacement is divided by the slope of that angle.\n\n\
 	Keep it at least as large as Parallax depth. Below that, turning the depth \
 	up stops doing anything once it passes this value - which is what the old \
 	default of 0.25 did to a depth setting that goes up to 0.5. This is why it \
 	defaults to 0.5.\n\n\
-	The displacement is also held within half a sprite, ie, half a block face, \
-	so a sample never reads material data from a neighbouring block. If you do \
-	see a line across a surface, it is geometry whose sprite bounds are not \
-	usable, such as held items.
+	Past half a sprite a sample has left the material it came from, and it is \
+	not allowed to read there at all. A sample that would leave the sprite has \
+	its offset faded out by the room the fragment has left, and anything that \
+	still reaches the boundary is held at the sprite's edge. Neither wrapping \
+	round to the other side of the sprite nor freezing a strip at its edge is \
+	allowed to happen, and that is this pack's own rule, set on 2026-09-22 - it \
+	is where this parts company with Mellow and Sundial, both of which wrap, and \
+	what wrapping costs is that a ray reads material belonging to the far side of \
+	the face, which is how a door's window was being seen through the frame \
+	around it.
 
 option.PBR_PARALLAX_DISTANCE=Parallax distance
 option.PBR_PARALLAX_DISTANCE.comment=Distance in meters at which parallax \
@@ -426,6 +494,50 @@ option.PBR_REFLECTION_SKY_MIN.comment=How much sky a surface has to see before i
 	is already lit for where it is, so a metal in a cave reflecting the cave \
 	around it stays.
 
+option.PBR_REFLECTION_SMOOTHNESS_MIN=Smoothness needed to reflect
+option.PBR_REFLECTION_SMOOTHNESS_MIN.comment=How smooth a surface has to be before \
+	it reflects the sky at all.\n\n\
+	Below this it reflects nothing whatever. The reflectance on its own is not a \
+	gate: it falls off as a surface gets rougher but never reaches zero, and the \
+	ground is always seen at a glancing angle, where the Fresnel term rises \
+	towards 1.0 whatever the surface is. The two together put a wash of sky colour \
+	over stone and dirt and made a whole landscape look faintly frosted.\n\n\
+	At the default, anything rougher than about 0.25 in this pack's roughness \
+	reflects nothing, and the reflection comes in above that as the square root of \
+	how far past the threshold the surface is. This is the curve Sundial uses for \
+	the same job.\n\n\
+	Raise it to restrict reflections to shinier blocks, lower it to let them onto \
+	duller ones. 0.0 disables the gate.\n\n\
+	It scales the traced reflection along with the sky: a surface too rough to \
+	reflect the sky has no business showing a mirror image of the world either.
+
+option.PBR_METAL_REFLECTION_STRENGTH=Metal reflection strength
+option.PBR_METAL_REFLECTION_STRENGTH.comment=How strong a metal's environment \
+	reflection is, separately from the strength everything else uses.\n\n\
+	A metal gets its own because the general one is not describing metals at all: \
+	it holds back a wash of environment that used to land on every surface, and a \
+	metal is the case where the reflection is the material rather than a sheen \
+	over it. Held back, a metal does not read as restrained, it reads as dull. \
+	The reference packs give metals no such factor, so 1.0 is the value that \
+	matches them.\n\n\
+	Turn it down if metals are too bright in a scene; that is a judgement about \
+	the scene rather than about the physics.
+
+option.PBR_REFLECTION_BLUR=Reflection blur
+option.PBR_REFLECTION_BLUR.comment=How far the reflection of the world is spread \
+	out at a roughness of 1.0, in pixels.\n\n\
+	A rough surface does not reflect what a mirror reflects: a whole cone of \
+	directions arrives at the same pixel, and one sharp sample of that cone shows \
+	the mirror image the surface should not have. Spreading the sample over the \
+	cone is what makes a brushed or frosted metal read as brushed or frosted \
+	rather than as a mirror with its colours turned down. At 0.0 the reflection is \
+	as sharp as it is on a surface with no material data at all.\n\n\
+	The radius follows roughness and not distance, which is worth knowing before \
+	wondering why a distant reflection is not blurrier: a cone of a given angle \
+	covers about the same number of pixels whatever it lands on.\n\n\
+	Only surfaces the reflection gate lets through pay for this, which is a small \
+	part of any scene; each of those pays eight samples instead of one.
+
 option.PBR_SSR=Screen-space reflections
 option.PBR_SSR.comment=Whether a reflection may include the world and not only \
 	the sky, by tracing the reflected ray through the depth buffer.\n\n\
@@ -485,13 +597,23 @@ option.PBR_METALS.comment=Whether to use the reflectance values that LabPBR \
 	which is far closer than treating them as ordinary dielectrics.
 
 option.PBR_METAL_DIFFUSE=Metal diffuse
-option.PBR_METAL_DIFFUSE.comment=How much of its diffuse response a metal \
-	keeps.\n\n\
-	Metals have no diffuse response at all in reality, but Steadfast has no \
-	environment reflections for opaque terrain, so a fully metallic surface \
-	would be lit by its highlight alone and read as a black hole in caves.\n\n\
+option.PBR_METAL_DIFFUSE.comment=How much of its diffuse response a metal loses, \
+	over the direct light and the indirect light around it together.\n\n\
+	A metal has no diffuse response at all in reality: light either reflects off \
+	it or is absorbed, and everything that gives a metal its appearance is in the \
+	reflection. A surface that keeps some of its diffuse and gains a reflection on \
+	top does not look like a restrained metal, it looks like a metal with \
+	something smeared over it - because that is what it is: a bright, coloured, \
+	blurred film on a body that is still scattering light the way plastic does.\n\n\
+	This used to default to half, on the grounds that the pack had no environment \
+	reflection and a fully metallic surface would be left with its highlight alone \
+	and read as a black hole in a cave. That reason is long gone: the reflection \
+	has been here for a while, and a metal in a lit cave picks up the block light \
+	around it through the ambient specular. The halfway value is what the smearing \
+	was.\n\n\
 	0.0 keeps all of the diffuse response, which looks like coloured plastic. \
-	1.0 removes it entirely, which is physically correct and very dark indoors.
+	1.0 removes it entirely, which is physically correct. Lower it if metals come \
+	out too dark in the dark.
 
 option.PBR_SUBSURFACE=Subsurface scattering
 option.PBR_SUBSURFACE.comment=Whether to add the light that scatters through a \
@@ -587,7 +709,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials.\n
 	is nothing for it to read. Turn it off if the check above shows it picking up \
 	materials that are not the entity's own.
 
-option.PBR_DEBUG=Material debug view [build 176]
+option.PBR_DEBUG=Material debug view [build 261]
 option.SSS_GAIN=Sky shadow depth gain
 screen.END=The End
 screen.ATMOSPHERE_SKY=Sky, sun and moon
@@ -617,6 +739,7 @@ value.PBR_DEBUG.PBR_DEBUG_MATERIAL_AO=Occlusion channel
 value.PBR_DEBUG.PBR_DEBUG_SUBSURFACE=Porosity / scattering channel
 value.PBR_DEBUG.PBR_DEBUG_EMISSION=Emission
 value.PBR_DEBUG.PBR_DEBUG_PARALLAX=Parallax displacement (diagnostic)
+value.PBR_DEBUG.PBR_DEBUG_REFLECTION=Reflection alone (4x) (diagnostic)
 option.PBR_DEBUG.comment=Replaces the image with a visualisation of the material \
 	data, which is the quickest way to find out whether a resource pack actually \
 	provides what an effect needs.\n\n\
@@ -823,7 +946,7 @@ option.MIN_AMBIENT_BRIGHTNESS.comment=A floor under the ambient light: what \
 	Steadfast's ambient light is driven by sky light, which leaves anywhere \
 	without a light source of its own - the inside of a cave, the Nether, and \
 	the End, which has no sky light at all - very close to black.\n\n\
-	The values are linear light, so they look small: the default of 0.01 is \
+	The values are linear light, so they look small: the default of 0.1 is \
 	several times the floor the pack has without it. Raise it until dark places \
 	are readable; set it back to 0.0 for exactly the pack's original look.
 
@@ -1182,6 +1305,53 @@ option.REAL_TIME_SHADOWS.comment=Whether terrain, entities, and block entities \
 	correct for enclosed spaces, but nothing moving casts anything and the sun \
 	stops being something you can stand behind.
 
+option.COLORED_SHADOWS=Coloured shadows
+option.COLORED_SHADOWS.comment=Whether the light that has come through stained \
+	glass arrives with the glass's colour in it, so that a red pane lays a red \
+	patch of sunlight on the floor rather than a hole in it.\n\n\
+	Stained glass does not block the light in the first place - it is drawn in the \
+	translucent pass, which the shadow map leaves out - so what it casts is a \
+	colour and nothing else. The patch under a window is as bright as the ground \
+	around it; only its hue differs. That is also why nothing here makes a stained \
+	glass window's own shadow any darker or lighter than it already was.\n\n\
+	The colour is read from the glass's own texture, which is what a resource pack \
+	colours in the first place, and it is applied to sunlight and moonlight alone: \
+	the sun is what shines through a window, and the light in the room did not \
+	come through it.\n\n\
+	The buffer this travels in clears to white and is written white by everything \
+	that is not stained glass, so a scene with no stained glass in it multiplies \
+	its direct light by exactly one. Turning this off costs a little less than \
+	leaving it on, and looks precisely as the pack did before it existed.
+
+option.COLORED_SHADOWS_STRENGTH=Coloured shadow strength
+option.COLORED_SHADOWS_STRENGTH.comment=How much of the colour the light takes \
+	on, where 0.0 takes none of it and 1.0 gives the light the full colour of its \
+	source. It applies to stained glass and to the nether portal alike.\n\n\
+	At 1.0 the patch under a window is the colour the glass is, which means a pane \
+	of black stained glass puts the floor under it in the dark. That is what black \
+	glass does and it is why this is a setting rather than a constant - lower it \
+	towards 0.0 to keep the light and take only the hue, which is closer to how \
+	Mellow and Sundial read.
+
+option.COLORED_SHADOWS_PORTAL=Nether portal glow
+option.COLORED_SHADOWS_PORTAL.comment=Whether a nether portal tints the light \
+	around it, so that the ground in front of one is lit violet rather than with \
+	plain sunlight.\n\n\
+	A portal is not a filter the way a pane of stained glass is. It is a light \
+	source standing in a frame: nothing the sunlight reaches came through it, and \
+	its texture animates, so the colour is chosen here rather than read off the \
+	texture - the same way this pack decides what colour a torch or a soul lantern \
+	lights the world with, rather than taking a torch's colour from a texture that \
+	is mostly a brown stick.\n\n\
+	The colour is a violet whose brightest channel is left at full strength, so a \
+	portal never dims the ground it lights: what it does is take the green out of \
+	the sunlight and leave the rest, which reads as the portal's glow lying on the \
+	ground. It is deliberately not drawn on translucent surfaces, which is what \
+	stops a portal from colouring its own faces, and what keeps standing inside one \
+	from tinting the view.\n\n\
+	Turn this off to keep the portal exactly as it was and still have stained glass \
+	colour its light.
+
 option.DIRECTIONAL_SKYLIGHT_SHADING=Directional sky light
 option.DIRECTIONAL_SKYLIGHT_SHADING.comment=Whether the sky's ambient light \
 	depends on which way a surface faces, making an upward face brighter than a \
@@ -1195,7 +1365,86 @@ option.GODRAYS.comment=Whether light shafts are drawn radiating from the sun, \
 	from a mask of where the sky itself is visible.\n\n\
 	This is a screen-space effect built by blurring that mask outwards, so it only \
 	knows about what is on screen: something that should block a shaft but is off \
-	the edge of the view does not.
+	the edge of the view does not.\n\n\
+	Under water that mask is empty, because the surface of the water hides the sky \
+	completely when it is seen from below - see Underwater light shafts for what is \
+	done about it.
+
+option.GODRAYS_STRENGTH=Volumetric light strength
+option.GODRAYS_STRENGTH.comment=How bright the light shafts are, as a multiple of \
+	what the pack draws on its own.\n\n\
+	This one covers both sides of the waterline at once. The underwater shafts have \
+	a strength of their own as well, and the two multiply: what is drawn under water \
+	is this setting times that one, and what is drawn above it is only this one. \
+	Setting either of them to 0.0 turns off the part it covers.\n\n\
+	At 1.0 the picture is the pack's own, unchanged. The value is multiplied in \
+	last, so at 1.0 all the arithmetic does is multiply by one.\n\n\
+	At 0.0 the exposure is exactly zero and nothing is added: the final pass skips \
+	the shafts and the blur that goes with them. That is a frame with no shafts in \
+	it, the same as with Volumetric light turned off. It is not quite the same work, \
+	though - turning that option off also skips the pass that builds the mask, while \
+	a strength of zero leaves that pass running and writing zeros into a buffer that \
+	nothing then reads.
+
+option.UNDERWATER_GODRAYS=Underwater light shafts
+option.UNDERWATER_GODRAYS.comment=Whether the light shafts are drawn when the \
+	camera is in water as well as when it is in air.\n\n\
+	Above the waterline the shafts come from a mask of where the sky is visible. \
+	Under water there is no sky to be seen at all: the surface is drawn into the \
+	depth that mask is built from, and from below it is a plane covering the whole \
+	of the upper view, so the mask is empty and the shafts disappear entirely. This \
+	puts them back by asking the same question of the water instead - what the \
+	light comes through is the surface, and what gets in the way is the terrain.\n\n\
+	The shafts run along the sun's own direction down there, the same axis as above \
+	the waterline, so they meet the sun that is actually drawn in the sky. Light \
+	really does bend as it enters water and would come down steeper, but the sun \
+	here is drawn where it is without that bend: refracting the shafts on their own \
+	leaves the two pointing at different places.\n\n\
+	Needs Volumetric light to be on: with that off there are no shafts to draw on \
+	either side of the waterline. This applies only in water; nothing is drawn in \
+	lava or in powder snow.
+
+option.UNDERWATER_GODRAYS_STRENGTH=Underwater light shaft strength
+option.UNDERWATER_GODRAYS_STRENGTH.comment=How bright the shafts under water are, \
+	relative to the ones above the waterline at the same time of day.\n\n\
+	This multiplies with Volumetric light strength, which covers both sides of the \
+	waterline at once: what is drawn under water is the two of them together, and \
+	what is drawn above it is only the other one. Setting either of them to 0.0 \
+	turns off the part it covers.\n\n\
+	At 1.0 the shafts under water are as bright as the ones above it, and an \
+	above-water frame is exactly what it would have been had nothing been added \
+	under the waterline at all.
+
+option.GLINT_BRIGHTNESS=Enchant glint brightness
+option.GLINT_BRIGHTNESS.comment=How bright the moving sparkle on an enchanted \
+	item is.\n\n\
+	This is about the glint layer rather than about the item: how bright the item \
+	itself is comes from its texture and the light falling on it, and this \
+	changes the enchantment's sparkle drawn over the top of it.\n\n\
+	It applies in all three places at once, because one program draws all three: \
+	the item in your hand in first person, the item a player is holding in third \
+	person, and the armour they are wearing. The shader mod has a single glint \
+	program and no separate one for the hand, so there is no way to change one \
+	of those and leave the others alone.\n\n\
+	An item with no enchantment is not affected at all: no enchantment means \
+	that program is never called, so not a pixel of it is touched.\n\n\
+	1.0 is the glint exactly as this pack draws it without this option, and it \
+	is the first value in the list, so this can always be put back to no effect \
+	at all.\n\n\
+	It is stronger than it looks: the game blends the glint with SRC_COLOR, so \
+	the light it adds grows with the square of this number, and 2.0 adds four \
+	times what the glint adds on its own. It scales the whole layer by the same \
+	amount and leaves the pattern's own contrast alone, so what you get is a \
+	brighter sparkle rather than a flat white smear. Step down if the item's own \
+	surface washes out around the streaks, step up if it cannot be seen at all \
+	in daylight.
+
+value.GLINT_BRIGHTNESS.1.0=Off (vanilla)
+value.GLINT_BRIGHTNESS.1.5=Subtle
+value.GLINT_BRIGHTNESS.2.0=Bright (default)
+value.GLINT_BRIGHTNESS.3.0=Strong
+value.GLINT_BRIGHTNESS.4.0=Very strong
+value.GLINT_BRIGHTNESS.6.0=Extreme
 
 option.NIGHT_DESATURATION_EFFECT=Night desaturation
 option.NIGHT_DESATURATION_EFFECT.comment=Drains the colour out of surfaces as \
@@ -1390,6 +1639,15 @@ option.SSS_LENGTH.comment=How far the ray reaches, in blocks. A valley floor \
 	often sits several dozen blocks below the ridge that shadows it, so this has \
 	to be generous to catch the shadow that matters most.
 
+option.CLOUD_MULTIPLE_SCATTER=Scattering inside the cloud
+option.CLOUD_MULTIPLE_SCATTER_OCTAVES=Scattering passes
+option.CLOUD_MULTIPLE_SCATTER_FALLOFF=Scattering falloff
+option.VIGNETTE=Screen vignette
+option.VIGNETTE_STRENGTH=Vignette strength
+option.VIGNETTE_START=Vignette start
+option.VIGNETTE_END=Vignette reaches full
+value.VIGNETTE.VIGNETTE_ON=On
+value.VIGNETTE.VIGNETTE_OFF=Off
 option.WATER_SKY_BODIES=Sun and moon in reflections
 option.WATER_BODY_SIZE=Reflected body size
 option.WATER_BODY_BRIGHTNESS=Reflected body brightness

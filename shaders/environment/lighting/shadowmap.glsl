@@ -50,6 +50,20 @@ const bool shadowHardwareFiltering1 = true;
 	#define shadowWaterSampler shadowcolor0
 #endif
 
+#ifdef COLORED_SHADOWS
+	// The colour of the light that has come through stained glass, written by the
+	// shadow program at the same texel and the same depth as the shadow itself.
+	//
+	// A buffer of its own, so that nothing here has to know that the water heights
+	// the caustics read live in shadowcolor0 and this does not. Read only where
+	// the shadow map itself is read - see ShadowMapping - so that a fragment
+	// outside the shadow distance never pays for the sample.
+	//
+	// See COLORED_SHADOWS in /environment/materialIDs.glsl for what is in it and
+	// why a fragment that is not in the way is white.
+	uniform sampler2D shadowcolor1;
+#endif
+
 // Higher shadow map resolutions give sharper shadows at the expense of
 // perfomance.
 const int shadowMapResolution = 2048; // [1024 1536 2048 3072 4096]
@@ -205,8 +219,18 @@ float ShadowMapping(
 	// (light map) shadowing, and it is handed back separately from the direct
 	// light strength because the subsurface scattering term needs to know
 	// whether light arrives at this fragment, not how much of it there is.
-	out float shadowVisibility
+	out float shadowVisibility,
+	// The colour the direct light arrives in, which is white unless something
+	// coloured stood in its way - see COLORED_SHADOWS in
+	// /environment/materialIDs.glsl. Set on every path out of here, including
+	// the early one below, so that callers never multiply by an undefined value.
+	out vec3 shadowTint
 ) {
+	// White is what "nothing is in the way" is, and it is the answer everywhere
+	// except in the one branch further down. Set here rather than there so that
+	// the early outs in between cannot leave it unset.
+	shadowTint = vec3(1.0);
+
 	// The culling enabled by shadowDistanceRenderMul takes the form of an
 	// axis-aligned box centered on the camera. As a result, we evaluate the
 	// distance of a fragment as the maximum along any axis to ensure we stay
@@ -286,6 +310,68 @@ float ShadowMapping(
 				withinShadowMap,
 				shadowPos.xy,
 				cameraRelativePos);
+		}
+	#endif
+
+	#ifdef COLORED_SHADOWS
+		// Neither stained glass nor a nether portal occludes. Both are drawn in
+		// the translucent stage, and the shadow map this samples - shadowtex1, the
+		// one without translucents - leaves that stage out, so what either of them
+		// leaves on the ground is not a hole in the light but a colour in it.
+		//
+		// Looked up at the same texel the shadow itself was sampled at, which is
+		// the point: the shadow map records the nearest surface along the light
+		// ray, and so does this buffer, so a fragment that finds a colour here is
+		// one whose light really did come past whatever wrote it. The depth test is
+		// what does the work; see the write in /program/shadow/shadow.fsh.
+		//
+		// Not applied to stained glass itself. A pane is thin, the light landing
+		// on the face of one has not been through it yet, and the buffer at a
+		// pane's own texel holds the pane's own colour - so tinting it would only
+		// ever make a window darker than the light it passes, which is not the
+		// effect anyone asked for.
+		//
+		// Faded out with the shadow map rather than cut off at its edge, so that
+		// the tint hands over to the plain static-light shading at the shadow
+		// distance instead of ending in a line across the ground.
+		if (materialID != STAINED_GLASS) {
+			// One texture fetch, on the same fragments that already pay for four
+			// shadow taps and only where the shadow map reaches at all. The alpha
+			// rides along with it: see the note on tintKind in
+			// /program/shadow/shadow.fsh.
+			vec4 tintSample = texture(shadowcolor1, shadowPos.xy);
+			vec3 tint = tintSample.rgb;
+
+			#if defined(COLORED_SHADOWS_PORTAL)
+				// A portal needs an answer of its own, because in the world pass
+				// there is nothing left to recognise it by. It is drawn in the
+				// translucent pass and arrives here as GLASS - the material this
+				// pack gives an unlisted translucent - so the only handle on the
+				// portal's own faces is that they are a translucent surface at all,
+				// and a portal would otherwise light its own faces with its own
+				// glow, which would darken every green in them.
+				//
+				// So a colour that came from an emitter is faded out on translucent
+				// surfaces, and the alpha is what says a colour came from an
+				// emitter. Standing inside a portal is the same case seen from the
+				// other side, and is answered by the same line.
+				//
+				// Stained glass is deliberately not treated this way - see the
+				// branch above, and note that its colour is written with an alpha of
+				// zero, so it passes through here untouched. A pane behind a window
+				// really does receive the light that window coloured, and taking
+				// that away would be a change to how glass is lit rather than a fix
+				// to the portal.
+				if (materialID == GLASS) {
+					// Filtering across the rim of a portal blends the alpha the way
+					// it blends the colour, so the fade there is smooth rather than
+					// a choice between two kinds of source on either side of a texel.
+					tint = mix(vec3(1.0), tint, 1.0 - tintSample.a);
+				}
+			#endif
+
+			// White at the edge of the shadow map, the tint itself once inside it.
+			shadowTint = mix(vec3(1.0), tint, withinShadowMap);
 		}
 	#endif
 

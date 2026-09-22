@@ -149,9 +149,26 @@ bool Raytrace(
 
 		// Prevent thickness from getting too large as that will mean far
 		// distances have undesirable stretching.
+		//
+		// The division narrows the tolerance as the ray is refined, which is
+		// what it is for - but it has to be guarded. The first hit a ray makes
+		// has no refinement round behind it yet, and dividing by that zero does
+		// not produce a large number here, it produces an infinite one, so the
+		// cap above stops applying to exactly the hit that needs it most.
+		//
+		// What that means in practice: the thickness of an unrefined hit is the
+		// length of the step that made it, which doubles every step and is tens
+		// of metres by the fifth. A ray with a tolerance of tens of metres
+		// accepts anything whose depth it happens to pass near, the reflection
+		// is then drawn from a screen position nowhere near the point actually
+		// being reflected, and the result is the stretched, banded reflection
+		// that this whole file exists to avoid.
+		//
+		// One round rather than none, so that the cap is the cap and each
+		// refinement after it tightens from there.
 		float thicknessM = min(
 			velocityAndThickness.w,
-			MAX_THICKNESS / refinementRounds);
+			MAX_THICKNESS / float(max(refinementRounds, uint(1))));
 
 		// The range of Z values we will permit lies between where we started
 		// and where we are advancing to.

@@ -235,18 +235,86 @@ const float PBR_DEFAULT_F0 = 0.04;
 // height field along the view ray. It is the most expensive part of this file,
 // and the only one that changes where textures are sampled rather than just how
 // they are lit.
+//
+// Where samples the albedo comes from is the whole point of it, but the alpha
+// test is not allowed to follow the displacement: a ray that leaves the
+// fragment's own material lands on texels that material does not have - the
+// transparent pixels a cutout sprite keeps inside it - and reading a zero there
+// would open holes in the middle of a solid surface. The base texture sample in
+// lit.fsh carries the guard and the reasoning for it.
 //#define PBR_PARALLAX
 
 // How many layers the parallax ray march takes. Each layer is one texture
-// sample, and more layers track the height field more closely at grazing
-// angles. 32 is enough for the effect to be essentially exact; 4 is enough to
-// see that something is there.
+// sample for the view ray, and while PBR_PARALLAX_SHADOW is on it is one more
+// for the light ray - this is the layer count for both marches, so it is what
+// sets the cost of the effect as a whole. More layers track the height field
+// more closely at grazing angles. 64 is enough for the effect to be essentially
+// exact; 4 is enough to see that something is there.
+//
+// This is a quality knob and not a depth knob, which is worth stating because
+// it was not true of the version before this one. The ray always covers the
+// whole depth range no matter how many layers it takes, because the layers
+// grow from small to large as it descends (see PbrParallaxUV). Raising this
+// only makes the march finer, and what shows up as the count comes down is
+// the crossing landing further from where it belongs on a surface that rises
+// sharply - never a shallower surface.
+//
+// This is the knob that decides how much of the shape comes out, and it is the
+// only one that does: the refinement below can only pin down a crossing inside
+// the interval two layers bracketed, so a surface whose height varies more than
+// once inside such an interval keeps whatever the coarser bracketing made of it
+// however many refinement steps it is given. That is the note Sundial's own
+// settings menu carries, and it is why this default is where it is rather than
+// relying on the refinement to clean up after a short march.
+//
+// What it is not is a cure for a height channel read as a staircase, and that is
+// worth spelling out because it is what the setting looks like it should do.
+// More layers resolve a staircase *better* rather than less - the steps come out
+// finer and closer together - so what shows up as a few bands at a low count and
+// as fine grain at a high one is this setting re-arranging that error, not
+// removing it. The interpolation behind PBR_PARALLAX_SMOOTH is what removes it,
+// and that is why this default has come down: with the height channel
+// interpolated, all that is left for the layer count to do is bound the interval
+// for a height channel that crosses the ray more than once inside it. On this
+// pack's own height channels the displacement it produces moves by less than a
+// thousandth of a texel between 8 layers and 128, so 16 keeps a margin over the
+// multi-crossing case while paying back half of the height fetches that the
+// interpolation's four per sample added. With that option off there is no such
+// bill to pay - a height sample is one fetch again - and raising this is the way
+// to spend what it frees.
+//
+// The reference packs' defaults are Sundial 80 and Mellow 64, and they were set
+// against a march whose every height sample is one unfiltered fetch - Sundial's
+// SMOOTH_PARALLAX is the option that interpolates them, and it exists for the
+// same reason PbrHeightBilinear does. Their numbers describe their march with
+// that option off, so they are not this pack's; the list still reaches 64 for
+// anyone who would rather have them.
 //
 // Note: these are written as #define rather than const, which is the form the
 // rest of this pack uses for tunable values (see WATER_PARALLAX_DISTANCE).
-#define PBR_PARALLAX_STEPS 16 // [4 8 12 16 24 32]
+#define PBR_PARALLAX_STEPS 16 // [4 8 12 16 24 32 48 64]
 
-// How deep the height field is, in blocks, at its deepest point (height 0).
+// How deep the height field is at its deepest point (height 0), as a fraction
+// of the sprite the block face is drawn with.
+//
+// This used to be a distance in blocks, converted into texture coordinates
+// through the surface's own UV axes, and that conversion is what made the
+// setting do nothing at all on some faces: the axes are reconstructed from
+// screen-space derivatives, a face whose mapping those derivatives cannot
+// resolve had one of them dropped or blown up, and the depth that came out was
+// then either zero or enormous depending on which side of a block was being
+// looked at. Measuring it against the sprite instead takes the axes' *lengths*
+// off the path, which is the half of them the derivatives are unreliable for,
+// and makes the same number mean the same thing on every face and in every
+// resource pack. Their direction is still where the ray direction comes from -
+// see PbrParallaxUV - and there it is doing no harm.
+//
+// The two are the same number in the ordinary case, where one sprite covers one
+// block face: 0.2 is a fifth of the block in either reading, which is what the
+// range below was tuned for. On a face whose texture covers several blocks, or
+// several faces of a small block, the depth follows the sprite and is
+// correspondingly larger or smaller.
+//
 // LabPBR asks resource packs to stay within a quarter of a block, so values
 // much above 0.25 are likely to look wrong on most packs. A resource pack with
 // a flat height channel is unaffected by this setting.
@@ -260,14 +328,66 @@ const float PBR_DEFAULT_F0 = 0.04;
 // texture then visibly snaps between a handful of positions - it stacks up in
 // steps rather than following the surface.
 //
-// Each step is one more texture sample. This is a bisection, so its accuracy
-// doubles per step: the range below is set where the result stops changing
-// visibly rather than where it stops changing at all. The original value here
-// was 4, which is low enough that the layers were plainly visible; 32 is the
-// point where they are not.
-#define PBR_PARALLAX_REFINE 32 // [8 12 16 24 32 48 64]
+// What it cannot do is recover shape the march did not bracket. It halves the
+// interval between the two layers that straddle the crossing, so it finds that
+// crossing to any accuracy it is asked for - but a height field that dips below
+// the ray and rises again between two layers has more than one crossing in
+// there, and bisecting picks one of them and can switch to another as the view
+// moves. Layers are what narrows the interval and so what removes that; this
+// setting is accuracy and only accuracy. Sundial's settings menu says the same
+// thing about its own two knobs, which is where the split between them comes
+// from.
+//
+// Each step is one more texture sample, and a bisection doubles its accuracy
+// per step, which makes this the cheapest accuracy in the file and the last
+// thing worth turning down. 8 steps leave the answer 256 times finer than the
+// interval they were handed: at 32 layers that interval is a sixteenth of the
+// height range to begin with, so 8 steps already land inside a four-thousandth
+// of the range - far below one texel of any resource pack, and far past what
+// the eye can tell apart. Sundial stops its own list at 16. The default here
+// was 32 while the march above was short enough to need it; with the layer
+// count raised, it is 8, and raising it further buys nothing.
+#define PBR_PARALLAX_REFINE 8 // [2 4 6 8 12 16 24 32]
 
-// How far a sample is allowed to be displaced, in blocks.
+// Whether the height channel is interpolated between its texels by hand instead
+// of being read one texel at a time.
+//
+// The atlas cannot be asked to do this for us. A block atlas is sampled with a
+// nearest filter as it is magnified - that is what keeps a block's texels sharp
+// - so one fetch of the height channel is a *point* sample, and a resource pack
+// that draws a slope into it is read back as a staircase from one texel to the
+// next. The march then traces that staircase, and the coordinate it returns
+// jumps a whole texel at a time as the view moves, which is the flicker on an
+// ordinary block face. Turning this on has the four texels around each sample
+// fetched and mixed by hand, which is the arithmetic a linear filter does, with
+// each of the four corners held inside the sprite first so that no mip level and
+// no filtering across a sprite's edge is needed. See PbrHeightBilinear.
+//
+// What it changes is the shape of a hard-edged height field. Cobblestone and
+// bricks have height channels that step between one texel and the next, and a
+// step is what the march reads as a cliff and the eye reads as grain; this turns
+// those steps into slopes. Sundial carries the same option and ships it on, and
+// its menu describes it as making the parallax show a slope rather than
+// individual cubes - which is the difference in one line.
+//
+// Off keeps the height field as sharp as the resource pack drew it, at the cost
+// of the grain and banding coming back wherever the field has a hard edge. That
+// is a look rather than a bug - it is what this pack showed before the option
+// existed - and it is also the cheaper of the two: one fetch per height sample
+// instead of four, so a layer count that had to come down to pay for the
+// interpolation can go back up when it is off.
+#define PBR_PARALLAX_SMOOTH
+#ifdef PBR_PARALLAX_SMOOTH
+	// See the note on PBR_PARALLAX_SHADOW above for the rule this #ifdef follows:
+	// Iris only treats a bare #define as a boolean option if something tests it,
+	// and the test has to sit outside every other guard. The use is in PbrHeight,
+	// which is compiled only while PBR_PARALLAX is on - and parallax itself ships
+	// off, so a test inside that guard would take this option out of the menu for
+	// a player who has not turned parallax on yet.
+#endif
+
+// How far a sample is allowed to be displaced, in the same sprite-relative
+// units as PBR_PARALLAX_DEPTH above.
 //
 // Grazing angles divide the displacement by the view direction's slope, so
 // without a limit a shallow view would drag the sample whole blocks away and
@@ -281,9 +401,13 @@ const float PBR_DEFAULT_F0 = 0.04;
 // normal the slope is already past 1, so every depth setting above about 0.25
 // produced the same picture.
 //
-// The displacement is also held inside the sprite in texture coordinates - see
-// the note in PbrParallaxUV - so this is a limit on how far a sample may be
-// dragged, not on whether it stays in its own block.
+// There is a second cap behind this one, at half a sprite, which is not
+// exposed because it is not a look: past it the ray has left the material the
+// fragment started in, and whatever it found there would belong to another
+// texture rather than to a deeper part of this one. What keeps a sample out of
+// that region now is the fade in PbrParallaxUV, with PbrClampToSprite behind it;
+// what this cap still does is bound the offset that fade is asked to fit into
+// the room a fragment has.
 #define PBR_PARALLAX_MAX_OFFSET 0.5 // [0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.5 0.6]
 
 // Distance in meters at which parallax mapping fades out. Past a certain
@@ -487,9 +611,9 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // and read back there.
 //
 // Noticeably more expensive than the term it replaces: one sky model evaluation
-// per covered pixel. PBR_REFLECTIONS_STRENGTH is the control for how visible it
-// is, and this pack ships with it turned down.
-#define PBR_REFLECTIONS
+// per covered pixel. Off by default for that reason. PBR_REFLECTIONS_STRENGTH is
+// the control for how visible it is, and this pack ships with it turned down.
+//#define PBR_REFLECTIONS
 #ifdef PBR_REFLECTIONS
 	// See the note on PBR_PARALLAX_SHADOW above: the #ifdef is what makes Iris
 	// register this as a boolean option. The actual use is in copy_and_fog.fsh.
@@ -498,13 +622,40 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // How strong that reflection is. 1.0 is the value it was tuned at.
 #define PBR_REFLECTIONS_STRENGTH 0.25 // [0.25 0.5 0.75 1.0 1.5 2.0]
 
+// The same, for a metal.
+//
+// A metal gets its own because the strength above is not describing metals at
+// all. It is there to hold back a wash of environment that used to land on every
+// surface in the scene, and a metal is the case where the reflection is the
+// material rather than a sheen over it - a held-back metal does not read as a
+// restrained one, it reads as a dull one. The reference packs give metals no
+// such factor, so 1.0 is the value that matches them.
+//
+// Turn it down if metals come out too bright in a scene, which is a judgement
+// about the scene rather than about the physics.
+#define PBR_METAL_REFLECTION_STRENGTH 1.0 // [0.25 0.5 0.75 1.0 1.5 2.0]
+
 // How far a rough surface bends the reflected ray towards its own normal, as a
 // fraction of the roughness range.
 //
-// At 1.0 a fully rough surface looks straight up, which is the average of the
-// sky over it. At 0.0 roughness would not affect the direction at all, and a
-// rough surface would show the same mirror image a polished one does.
-#define PBR_REFLECTIONS_ROUGHNESS 1.0 // [0.0 0.5 0.75 1.0]
+// This defaults to 0.0, which is to say it does nothing, and it should stay
+// there. What it does is distort the reflection: a surface of roughness 0.2 has
+// its reflected ray pulled a fifth of the way towards the normal, and the
+// reflection of anything in front of it arrives shifted and misshapen even
+// though the thing reflected was in plain sight.
+//
+// It was written to stand in for roughness, on the reasoning that a rough
+// surface reflects an average of the sky over it and looking straight up is
+// that average. The problem is that it is not what roughness does. A GGX lobe
+// is centred on the mirror direction and spread around it; bending the centre
+// moves the reflection, which no amount of roughness does. The blur is what
+// spreads it, and the blur is separate - see PBR_REFLECTION_BLUR.
+//
+// With the normal map off, a block face is flat and its reflection should be a
+// plain mirror. Any remaining distortion is this, which is how it was found.
+//
+// Raise it and the distortion comes back; there is no reason to.
+#define PBR_REFLECTIONS_ROUGHNESS 0.0 // [0.0 0.5 0.75 1.0]
 
 // Whether a reflection may include the world and not only the sky, by tracing
 // the reflected ray through the depth buffer.
@@ -532,20 +683,25 @@ const float PBR_WETNESS_DARKENING = 0.66;
 	// register this as a boolean option. The actual use is in copy_and_fog.fsh.
 #endif
 
-// How rough a surface may be and still have the world traced into its
-// reflection.
+// The most the reflection may be spread out, in pixels.
 //
-// Above this the reflection is the sky term alone. A rough surface scatters the
-// reflected ray over too wide a range of directions for one sharp sample to
-// stand in for, so tracing it would show a mirror image of the world that the
-// surface should not have - and the trace costs the same whether it finds
-// anything or not, which makes this the single largest saving available in a
-// scene that is mostly made of rough things.
+// A rough surface does not reflect what a mirror reflects: a whole cone of
+// directions arrives at the same pixel, and one sharp sample of that cone shows
+// the mirror image the surface should not have. Spreading the sample over the
+// cone is what makes a brushed or frosted metal read as brushed or frosted
+// rather than as a mirror with its colours dimmed, and at 0.0 the reflection is
+// as sharp as it is with no material data at all.
 //
-// Raise it to reflect the world in rougher surfaces at a higher cost and with
-// reflections that are sharper than they should be; to blur them properly
-// instead, the trace would have to sample several points around the hit.
-#define PBR_SSR_ROUGHNESS 0.2 // [0.1 0.2 0.35 0.5 0.7 1.0]
+// The radius depends on roughness and not on distance, which is worth knowing
+// before wondering why a distant reflection is not blurrier: a cone of a given
+// angle covers about the same number of pixels whatever it lands on, because the
+// screen-space size of the cone grows exactly as fast as the thing it spreads
+// over shrinks.
+//
+// Only surfaces the reflection gate lets through pay for this, which is a small
+// part of any scene - see PbrReflectionSmoothness. Each of those pays eight
+// samples instead of one.
+#define PBR_REFLECTION_BLUR 64.0 // [0.0 16.0 32.0 48.0 64.0 96.0]
 
 // How many steps the reflection trace may take.
 //
@@ -554,7 +710,7 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // pixel of the screen are two very different propositions. More steps find more
 // hits and refine the ones they find better, and the cost is paid whether or not
 // anything is found at all.
-#define PBR_SSR_STEPS 12 // [8 12 16 24 32]
+#define PBR_SSR_STEPS 24 // [8 12 16 24 32]
 
 // How much sky a surface has to see before it reflects any of it.
 //
@@ -571,6 +727,26 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // information available here can tell the two apart. Lower this if you would
 // rather have reflections indoors and put up with them in caves.
 #define PBR_REFLECTION_SKY_MIN 0.9 // [0.0 0.5 0.75 0.85 0.9 0.95 1.0]
+
+// How smooth a surface has to be before it reflects the sky at all.
+//
+// The reflectance on its own is not a gate: it falls off as a surface gets
+// rougher but it never reaches zero, and the ground is always seen at a glancing
+// angle, where the Fresnel term rises towards 1.0 whatever the surface is. The
+// two together are what put a wash of sky colour over stone and dirt, and what
+// made a whole landscape look faintly frosted rather than dull. A surface as
+// rough as a stone has no business reflecting the sky, and nothing short of a
+// threshold that reaches zero says so.
+//
+// The curve is Sundial's, from the "diffuse weight" it gives a solid surface in
+// its Composite0, which is where the numbers come from: at 0.5 anything rougher
+// than about 0.25 in this pack's roughness reflects nothing whatever, and the
+// reflection comes in above that as the square root of how far past the
+// threshold the surface is. See PbrReflectionSmoothness.
+//
+// Raise it to restrict reflections to shinier blocks and lower it to let them
+// onto duller ones; 0.0 disables the gate and leaves the old fall-off alone.
+#define PBR_REFLECTION_SMOOTHNESS_MIN 0.5 // [0.0 0.25 0.5 0.6 0.7 0.8 0.9]
 
 
 
@@ -602,25 +778,61 @@ const float PBR_WETNESS_DARKENING = 0.66;
 //   blue  - how much of the effect this distance is allowed, ie, the distance
 //           fade. Black blue means the surface is simply too far away.
 #define PBR_DEBUG_PARALLAX 10
-#define PBR_DEBUG PBR_DEBUG_NONE // [PBR_DEBUG_NONE PBR_DEBUG_HEIGHT PBR_DEBUG_SMOOTHNESS PBR_DEBUG_F0 PBR_DEBUG_NORMAL PBR_DEBUG_MIP PBR_DEBUG_TANGENT_NORMAL PBR_DEBUG_MATERIAL_AO PBR_DEBUG_SUBSURFACE PBR_DEBUG_EMISSION PBR_DEBUG_PARALLAX]
 
-// How much of its diffuse response a metal loses. Physically, metals have no
-// diffuse component at all, but Steadfast has no image-based lighting or
-// screen-space reflections for opaque terrain, so a fully metallic surface
-// would be lit by its specular highlight alone and read as a black hole in
-// caves. Keeping half of the diffuse response keeps metals recognizable
-// without ruining dark scenes.
+// The environment reflection by itself, with the rest of the picture taken away.
+//
+// It exists because the reflection is the one thing in this pack that cannot be
+// judged by looking at the finished image. Everything else can: a normal map
+// that is wrong looks wrong, a shadow that is wrong looks wrong. A reflection
+// that is being blurred wrongly and a reflection that is being traced wrongly
+// both come out looking like a strange reflection, and there is no way to tell
+// which from the picture - which is how seven attempts at its blur were made
+// without once establishing whether the blur was running at all.
+//
+// Unlike the others this one is not read by the surface programs: it replaces
+// the finished frame in composite1, which is the pass that applies the
+// reflection. Turning it on leaves the sky and the terrain as the reflection
+// alone, so what is shown is exactly what the reflection contributed, at four
+// times its strength so that a faint one can be seen.
+#define PBR_DEBUG_REFLECTION 11
+#define PBR_DEBUG PBR_DEBUG_NONE // [PBR_DEBUG_NONE PBR_DEBUG_HEIGHT PBR_DEBUG_SMOOTHNESS PBR_DEBUG_F0 PBR_DEBUG_NORMAL PBR_DEBUG_MIP PBR_DEBUG_TANGENT_NORMAL PBR_DEBUG_MATERIAL_AO PBR_DEBUG_SUBSURFACE PBR_DEBUG_EMISSION PBR_DEBUG_PARALLAX PBR_DEBUG_REFLECTION]
+
+// How much of its diffuse response a metal loses, over both the direct light
+// and the indirect light around it.
+//
+// A metal has no diffuse response at all: light either reflects off it or it is
+// absorbed, and everything that gives a metal its appearance is in the
+// reflection. A surface that keeps some of its diffuse and gains a reflection on
+// top does not look like a restrained metal - it looks like a metal with
+// something smeared over it, because that is exactly what such a surface is: a
+// bright, coloured, blurred film sitting on a body that is still scattering
+// light the way a plastic would.
+//
+// This used to default to half, on the grounds that the pack had no environment
+// reflection and a fully metallic surface would be left with its highlight alone
+// and read as a black hole in a cave. The pack has had that reflection for a
+// while now, and a metal in a lit cave picks up the block light around it
+// through PbrAmbientSpecular, so the reason for stopping half-way is gone and
+// the halfway value is what the smearing looked like.
 //
 // 0.0 = metals keep all of their diffuse response (shiny plastic look)
 // 1.0 = metals lose their diffuse response entirely (physically correct)
-#define PBR_METAL_DIFFUSE 0.5 // [0.0 0.25 0.5 0.75 1.0]
+#define PBR_METAL_DIFFUSE 1.0 // [0.0 0.25 0.5 0.75 1.0]
 
-// The main switch. Defined only for the block atlas programs (see PBR_ATLAS in
-// the gbuffers wrappers), as the PBR atlases only cover the block atlas - the
-// texture coordinates of entities, held items, and Distant Horizons terrain do
-// not index into it. When this is not defined, every declaration below is
-// removed by the preprocessor and no PBR data is read or paid for.
-#if defined(PBR_ATLAS) && PBR_FORMAT != PBR_OFF
+// The main switch. It is defined for the block atlas programs (see PBR_ATLAS in
+// the gbuffers wrappers), whose coordinates index into the block atlas grid, and
+// for the ones that opt in through PBR_MATERIALS_ANY_TEXTURE - a program whose
+// own texture already is the material's texture, so the coordinate indexes it
+// directly without needing to know anything about an atlas. The player, its
+// armour and whatever it holds are drawn by such a program, and this is how
+// Mellow and Sundial give them materials too.
+//
+// Held items and Distant Horizons terrain deliberately do not opt in: what they
+// sample is not the texture their coordinate belongs to.
+//
+// When neither is defined, every declaration below is removed by the
+// preprocessor and no PBR data is read or paid for.
+#if (defined(PBR_ATLAS) || defined(PBR_MATERIALS_ANY_TEXTURE)) && PBR_FORMAT != PBR_OFF
 	#define PBR_SURFACE
 
 	// Height field shadowing reuses the parallax height sampling, so it needs
@@ -650,6 +862,14 @@ struct PbrSurface {
 	vec3 f0;
 	// 1.0 for hardcoded and albedo-based metals, 0.0 for dielectrics.
 	float metalness;
+	// Which metal, as the byte the specular map's green channel carried: 230-237
+	// for the hardcoded ones, 238 for the albedo-based ones, and 0 for a
+	// dielectric. metalness above says whether there is a metal here; this says
+	// which one, which is what PbrMetalF82 needs for the colour it reflects at a
+	// grazing angle. It is carried rather than recomputed because the byte it
+	// came from is gone by the time the reflection is applied - the deferred pass
+	// reads a reflectance and a roughness, and nothing else.
+	float metalID;
 	// Emission strength, 0.0 when the material does not emit.
 	float emission;
 	// 1.0 when f0 has to be taken from the surface albedo rather than from the
@@ -684,7 +904,7 @@ struct PbrSurface {
 // paths without PBR data use, and it reproduces Steadfast's original
 // appearance exactly.
 PbrSurface PbrNone() {
-	return PbrSurface(1.0, vec3(0.0), 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0);
+	return PbrSurface(1.0, vec3(0.0), 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0);
 }
 
 // The factor that the indirect lighting is scaled by for this fragment.
@@ -862,6 +1082,14 @@ PbrGradients PbrSampleGradients(vec2 texCoord, vec3 position) {
 	return gradients;
 }
 
+// The metal ID the albedo-based metals carry, since they have no byte of their
+// own to carry - LabPBR gives 238-255 all the same meaning.
+//
+// 238 rather than 255 so that it sits just past the hardcoded table, which is
+// the range it belongs to, and is a constant rather than a #define because it is
+// not a setting: nothing about it is worth offering to a user.
+const float PBR_METAL_ALBEDO = 238.0;
+
 // F0 values for the LabPBR hardcoded metals, looked up by the byte value stored
 // in the green channel of the specular map.
 //
@@ -970,17 +1198,6 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 #endif
 
 #ifdef PBR_PARALLAX
-	// Samples the height channel of the normal map. The atlas is sampled with
-	// explicit gradients because this is called from inside the ray march, where
-	// implicit derivatives are not available.
-	float PbrHeight(vec2 texCoord, PbrGradients gradients) {
-		return textureGrad(
-			normals,
-			texCoord,
-			gradients.ddxTexCoord,
-			gradients.ddyTexCoord).a;
-	}
-
 	// How far the height field is displaced, and how far the effect reaches.
 	// Shared by the view ray march and the height field shadowing so that the
 	// two cannot drift apart.
@@ -1000,13 +1217,35 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 	// Inverts the texture coordinate Jacobian to get the world-space direction
 	// and size of one unit of texture coordinate along each axis.
 	//
-	// This is what makes a displacement a distance in blocks rather than a
-	// fraction of the texture: a sprite occupies only a small part of the block
-	// atlas, so a displacement expressed directly in texture coordinates would
-	// depend on the atlas resolution and on how large the sprite happens to be.
+	// It is asked for both and only the direction is used, because the two do not
+	// stand or fall together here: a vector that came out pointing the wrong way
+	// is one whose direction is still describable, while a vector that came out
+	// the wrong length has a length that nothing can trust. That length is what
+	// the caller stopped dividing by - see the note on the offset in
+	// PbrParallaxUV - and it is measured here anyway, because an axis that is
+	// nearly zero has no direction to give either, which is what the guard below
+	// reads.
 	//
 	// Returns false only when both axes are dropped, ie, when there is no
 	// direction left to trace along at all. See the note inside the function.
+	//
+	// That is a weaker promise than it sounds, and the one caller has to read it
+	// as the weaker thing it is: one axis on its own does not say which way the
+	// other one runs, so what PbrParallaxUV needs is a *pair* of them, and it
+	// tests the two lengths itself rather than trusting this return value. A
+	// dropped axis is exactly zero, and the caller normalizes the axes - so
+	// taking this return value at face value there would put a NaN in the ray.
+	//
+	// The two are the route the depth used to take, which is why they are worth
+	// reading: a distance in blocks was turned into texture coordinates through
+	// these axes, so the axes come from screen-space derivatives, a face whose
+	// mapping those derivatives cannot resolve had an axis dropped here or left
+	// enormous, and the depth that came out was zero on some faces and far past
+	// the surface on others with no change to either parallax setting.
+	// The half of that route that did the dividing - projecting a displacement
+	// measured in blocks onto these axes - went with the depth that fed it. The
+	// axes stayed, because their direction is still what says which way the
+	// texture's u and v point, and the tangent frame does not. See PbrParallaxUV.
 	bool PbrTexCoordAxes(
 		PbrGradients gradients,
 		out vec3 dPdu,
@@ -1029,15 +1268,23 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 
 		// A determinant that is not zero is not enough on its own. A mapping can
 		// flatten one axis almost to nothing while keeping the other, which leaves
-		// the determinant perfectly finite and the vectors above enormous - and the
-		// only thing that divides by them again is PbrWorldOffsetToTexCoord, which
-		// squares them. The projected offset then comes out massive, the march runs
-		// far past the crossing it should have found, and the surface reads as one
-		// layer too deep or simply as broken - which is what "part of the face is
-		// missing" turned out to be when it was looked at closely: the depth was
-		// not absent, it had been walked past. Which faces this happens on depends
-		// on how their texture happens to be laid out, so it shows up as
-		// particular sides of a block misbehaving rather than as a general fault.
+		// the determinant perfectly finite and the vectors above enormous. What
+		// divided by them again and turned that into a displacement was the old
+		// conversion of a depth in blocks into texture coordinates, and the offset
+		// then came out massive: the march ran far past the crossing it should
+		// have found, and the surface read as one layer too deep or simply as
+		// broken - which is what "part of the face is missing" turned out to be
+		// when it was looked at closely: the depth was not absent, it had been
+		// walked past. Which faces this happens on depends on how their texture
+		// happens to be laid out, so it shows up as particular sides of a block
+		// misbehaving rather than as a general fault.
+		//
+		// That conversion is gone and nothing divides by either axis any more, so
+		// what is left of the hazard is the direction. An axis that came out
+		// enormous still points the right way; one that came out flat is a
+		// direction that points nowhere at all, and a pair of axes is what says
+		// which way the texture's own u and v run. That is what the caller tests
+		// for below.
 		//
 		// What this used to do about it was give up on the whole face: both axes
 		// were zeroed and the caller returned the coordinate it started with. That
@@ -1049,9 +1296,9 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 		// resolved still describe the surface - they are the same vectors they
 		// always were, so a face with both axes intact is untouched by this - and
 		// one that could not is dropped whole rather than used as a short
-		// direction that points nowhere in particular. It then contributes
-		// nothing to the offset, which is the other half of this and lives in
-		// PbrWorldOffsetToTexCoord below.
+		// direction that points nowhere in particular. The caller then has a zero
+		// where an axis was, which is the signal it reads as "this face's mapping
+		// could not be read" and answers with the tangent frame.
 		if (dot(dPdu, dPdu) < MIN_AXIS_SQUARED) {
 			dPdu = vec3(0.0);
 		}
@@ -1063,69 +1310,336 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 		return dot(dPdu, dPdu) + dot(dPdv, dPdv) > 0.0;
 	}
 
-	// Projects a displacement in world space onto the texture coordinate axes.
-	//
-	// Projecting rather than dividing by a length keeps the direction correct
-	// for mirrored or skewed UV mappings, where dividing would flip it.
-	//
-	// The two divisions are what PbrTexCoordAxes guards against above: they square
-	// the axis they divide by, so an axis that is short but not zero turns into a
-	// displacement far larger than the one that was asked for.
-	//
-	// The floor underneath each of them is the other half of that guard. An axis
-	// PbrTexCoordAxes dropped is exactly zero, and so is the numerator that goes
-	// with it, so what this returns for that axis is zero - a surface with no
-	// depth in that direction rather than an enormous depth in a direction the
-	// derivatives could not describe. Without the floor it would be a division
-	// by zero instead, and an infinite offset is not something the march below
-	// can recover from.
-	vec2 PbrWorldOffsetToTexCoord(vec3 worldOffset, vec3 dPdu, vec3 dPdv) {
-		return vec2(
-			dot(worldOffset, dPdu) / max(dot(dPdu, dPdu), MIN_AXIS_SQUARED),
-			dot(worldOffset, dPdv) / max(dot(dPdv, dPdv), MIN_AXIS_SQUARED));
-	}
-
-	// Keeps a sample inside the sprite the fragment started in.
-	//
-	// This is the difference between parallax mapping and a visible boundary at
-	// a fixed distance from the player. The offset is a distance in blocks and a
-	// block face is one sprite, so once it grows to a decent fraction of a block
-	// the sample crosses the edge of that sprite and lands in whatever is beside
-	// it in the atlas - the neighbouring block's texture, or the empty margin
-	// between sprites.
-	//
-	// Material data read from a neighbouring block is merely wrong. Data read
-	// from an empty margin is worse: a black texel decodes to a tangent-space
-	// direction of (-1, -1) with no Z at all, ie, a strong fixed tilt rather
-	// than a flat normal, and the surface looks like its normal map has
-	// inverted.
-	//
-	// The clamp is on the *sample*, not on the displacement the ray is traced
-	// along. Clamping the displacement instead - which is what this used to do -
-	// shrinks the offset as the fragment gets nearer the edge of its sprite, so
-	// the outermost part of every block face stopped moving altogether: a face
-	// read as having parallax in its middle and none around its border. Keeping
-	// the ray at its full length and stopping only the sample means the geometry
-	// of the trace is unaffected, and the edge texel is simply repeated for the
-	// small band of fragments whose ray would have left the sprite - the same
-	// thing the texture unit would do with a clamp-to-edge sampler.
+	// Whether a face's sprite bounds say anything usable at all.
 	//
 	// spriteBounds is xy: the centre of the sprite, zw: half of its size, both
-	// in the same texture coordinate space as texCoord. Geometry that provides
-	// nothing usable is left alone, which is what leaves the hand and entities
-	// unaffected.
-	vec2 PbrClampSample(vec2 texCoord, vec4 spriteBounds) {
+	// in the same texture coordinate space as texCoord. A half-size of zero is
+	// what the geometry that has no sprite of its own reports - the player, its
+	// armour and whatever it holds, whose texture coordinate already indexes
+	// its own texture rather than a sheet (see lit.vsh) - and a half-size above
+	// half a texture cannot describe a sprite in any atlas.
+	//
+	// The test is written once here rather than at each of the callers because
+	// both the view ray march and the height field shadowing need it, and
+	// because a face without bounds has no local box to march in - see
+	// PbrSpriteLocal. What the callers do about it is pass the coordinate
+	// through untouched, which is what leaves the hand and the entities alone.
+	bool PbrSpriteUsable(vec4 spriteBounds) {
 		vec2 halfSize = spriteBounds.zw;
 
-		if (any(lessThanEqual(halfSize, vec2(0.0)))
-			|| any(greaterThan(halfSize, vec2(0.5)))) {
-			return texCoord;
+		return all(greaterThan(halfSize, vec2(0.0)))
+			&& all(lessThanEqual(halfSize, vec2(0.5)));
+	}
+
+	// Maps a texture coordinate into the 0-1 box of the sprite it belongs to,
+	// where 0 is one edge of that sprite and 1 is the other.
+	//
+	// This is the space both of the ray marches below run in, and it is one of
+	// the two things taken from Sundial-Lite (libs/Parallax.glsl, calculateParallax,
+	// lines 168-223) - the other is the growing step in PbrParallaxUV. Sundial
+	// gets to the same place from the other side: it keeps atlas coordinates and
+	// scales them by quadSize, the reciprocal of the sprite's size, as it marches.
+	// Either way one unit of the local box is one sprite, whatever the atlas
+	// resolution or the sprite's size in pixels happens to be.
+	//
+	// What Sundial's boundary treatment does next is *not* taken from it, and this
+	// is the one place the march deliberately parts company with the reference:
+	// Sundial wraps a sample that leaves the sprite round to its far side, and
+	// this pack does not - see PbrFadeOffsetToSprite. The local box is still the
+	// space; it is what happens at the edge of it that differs.
+	//
+	// Working here rather than in atlas coordinates is what makes the rest of
+	// the march resolution-independent. A displacement measured in atlas
+	// coordinates is a different fraction of the surface in a 256-wide atlas
+	// than in a 4096-wide one, and a different fraction again for a sprite that
+	// covers two blocks rather than one; measured against the sprite, it is the
+	// same fraction of the material in every case.
+	//
+	// Callers must have checked PbrSpriteUsable first: this divides by the
+	// sprite's size.
+	vec2 PbrSpriteLocal(vec2 texCoord, vec4 spriteBounds) {
+		return (texCoord - (spriteBounds.xy - spriteBounds.zw))
+			/ (2.0 * spriteBounds.zw);
+	}
+
+	// Maps a coordinate in that local box back into the atlas, holding anything
+	// outside the box at the box's own edge.
+	//
+	// This wrapped, and the wrap was this pack's rule until 2026-09-22, when it
+	// was replaced with this by the pack's author. The reason is material the face
+	// does not have: a ray that walks off the right edge of a sprite and comes
+	// back in on the left is reading the far side of a feature that belongs where
+	// it left, and where a sprite's two edges are not the same height - a door's
+	// window in its frame, a brick's mortar line, a plank's seam - the geometry
+	// the fragment is drawing and the texel it reads disagree. That is how a
+	// doorway's window was being read through the frame beside it. Stopping at the
+	// edge is the smaller lie, because a sample that stays put never claims to be
+	// the surface somewhere it has not been.
+	//
+	// Clamping on its own is what this march used to do and what it was taken out
+	// for: every sample that leaves the sprite repeats its border texel, so the
+	// outermost strip of the face freezes there and the parallax visibly stops, as
+	// if the surface had a flat rim. The fade in PbrParallaxUV is what answers
+	// that, and it is why this is a safety net rather than the mechanism: the
+	// offset is scaled down by the room the fragment has left, so a ray arrives at
+	// this boundary with no displacement remaining and the two effects cancel at
+	// the edge instead of meeting it. Whatever the arithmetic above this does,
+	// what comes back from here is inside the fragment's own sprite.
+	//
+	// Callers must have checked PbrSpriteUsable first.
+	vec2 PbrClampToSprite(vec2 localCoord, vec4 spriteBounds) {
+		vec2 halfSize = spriteBounds.zw;
+		vec2 clamped = clamp(localCoord, vec2(0.0), vec2(1.0));
+
+		return spriteBounds.xy - halfSize + clamped * (2.0 * halfSize);
+	}
+
+	// The offset, scaled down to what this fragment has room for before its sample
+	// would leave the sprite.
+	//
+	// This is the pack's rule as of 2026-09-22, set by its author: a sample that
+	// would leave the sprite is not wrapped round to the other side of it, which
+	// is what both marches used to do. Neither is it enough to stop the sample at
+	// the edge, because a ray clamped over the last stretch of its travel freezes
+	// the whole edge strip of the face at one texel - the flat rim the wrap was
+	// brought in to get rid of, and no improvement on it. Instead the displacement
+	// is scaled down by exactly the room that is there, so it shrinks to nothing
+	// as the ray reaches the edge and the two meet at the boundary without either
+	// being visible. PbrClampToSprite is the backstop for whatever is left after
+	// this: with the offset faded, nothing should reach it, and if the arithmetic
+	// above ever does, the sample still stays inside the face's own material.
+	//
+	// The room is measured from the fragment's own local coordinate and taken per
+	// axis, and the smaller of the two axes decides, because the ray has to fit in
+	// both. The sign of each component says which of that axis's two edges the
+	// sample is heading for, which is the distance it is measured against. A
+	// fragment with no room at all - one already on the boundary of its box, which
+	// is what a face whose box collapsed to a line reports - comes out at zero and
+	// is drawn undisplaced on its own texel rather than sliding along the edge.
+	//
+	// Shared by the view ray and the height field shadow for the reason
+	// PbrParallaxStrength is: one height field, one boundary, and two rules for it
+	// would put the shadow halfway out of the face its lighting is measured on.
+	vec2 PbrFadeOffsetToSprite(vec2 localCoord, vec2 localOffset) {
+		vec2 room = localCoord;
+
+		if (localOffset.x > 0.0) {
+			room.x = 1.0 - localCoord.x;
 		}
 
-		return clamp(
-			texCoord,
-			spriteBounds.xy - halfSize,
-			spriteBounds.xy + halfSize);
+		if (localOffset.y > 0.0) {
+			room.y = 1.0 - localCoord.y;
+		}
+
+		float reach = 1.0;
+
+		if (abs(localOffset.x) > 1.0e-8) {
+			reach = min(reach, room.x / abs(localOffset.x));
+		}
+
+		if (abs(localOffset.y) > 1.0e-8) {
+			reach = min(reach, room.y / abs(localOffset.y));
+		}
+
+		// Clamped at one, so an offset that already fits is left exactly as it was:
+		// that is every fragment far enough from its box's edges, which is most of
+		// every face.
+		return localOffset * clamp(reach, 0.0, 1.0);
+	}
+
+	// One texel of the height channel, held inside the fragment's own sprite.
+	//
+	// This is the rule above applied to each of the four corners of a bilinear
+	// sample rather than once to the sample coordinate, because a bilinear sample
+	// reaches half a texel past the coordinate in every direction and it is the
+	// corners, not the coordinate, that can leave the sprite.
+	//
+	// What gets clamped is the *texel index* rather than the coordinate, and those
+	// are not the same thing: a coordinate held at the sprite's far edge sits
+	// exactly on that edge, and flooring it there lands one texel past the
+	// sprite's last - which is the neighbouring block's material, the leak this
+	// exists to prevent. Clamping the index is exact, and it is what makes the
+	// corner fetches safe with nothing leaving the sprite.
+	//
+	// Callers must have checked PbrSpriteUsable: this divides by the sprite's
+	// size, and a face with no sprite of its own has no box to hold a texel in.
+	// See the fallback in PbrHeight for what such a face gets instead.
+	float PbrHeightTexel(vec2 texCoord, vec4 spriteBounds, vec2 atlasSize) {
+		vec2 count = spriteBounds.zw * 2.0 * atlasSize;
+		vec2 first = floor((spriteBounds.xy - spriteBounds.zw) * atlasSize);
+
+		vec2 texel = clamp(
+			floor(texCoord * atlasSize), first, first + count - 1.0);
+
+		return texelFetch(normals, ivec2(texel), 0).a;
+	}
+
+	// The height channel at a coordinate, interpolated between the four texels
+	// around it by hand.
+	//
+	// This exists because the atlas cannot be relied on to interpolate it. A block
+	// atlas is sampled with a nearest filter as it is magnified - that is what
+	// keeps a block's texels sharp, and it is the same setting the material maps
+	// are built and sampled under - so one fetch of this channel is a *point*
+	// sample, and a resource pack that draws a slope into its height channel is
+	// read back as a staircase from one texel to the next rather than as the
+	// slope. The march then traces that staircase: the crossing it finds sits on a
+	// step, so as the view moves the displaced coordinate jumps by the height of
+	// that step and the fetch lands on a different texel all at once. That jump is
+	// what the flicker on an ordinary block surface is made of.
+	//
+	// Two settings look like they should already fix that, and it is worth being
+	// exact about why neither does, because the reference packs describe them as
+	// if they did:
+	//
+	//   - The layer count decides only how wide the interval handed to the
+	//     refinement is, so more layers resolve the staircase *better* - as a
+	//     denser set of finer steps. It re-arranges this error rather than
+	//     removing it, which is why the same artifact reads as a few bands at a
+	//     low count and as fine grain at a high one.
+	//   - The refinement converges on the crossing of whatever field it is given,
+	//     to a 2^-PBR_PARALLAX_REFINE fraction of the interval. Given a staircase
+	//     it therefore resolves the staircase exactly, which is as faithful a
+	//     rendering of the wrong thing as it is possible to make. It cannot
+	//     smooth a step, and no number of steps in it can.
+	//
+	// Which is why the interpolation belongs here rather than in the march.
+	// Measured on SPBR-21_2's own height channels at a 45 degree view, a single
+	// fetch leaves 0.38 texel steps in the displaced coordinate where this leaves
+	// 0.001, and the per-pixel roughness of the material sampled at that
+	// coordinate comes out four to fifteen times the undisturbed surface's with
+	// the single fetch - how much depending on how close the surface is - and
+	// level with it here.
+	//
+	// The arithmetic is the hardware's own - the two texel centres either side of
+	// the coordinate, mixed by the fraction of the coordinate between them - so on
+	// a resource pack whose atlas *is* filtered linearly this reproduces the sample
+	// the hardware would have taken, and the only thing it costs there is the
+	// work. Where the atlas is nearest it supplies the interpolation that was
+	// missing either way. It cannot be worse in either case, which is the property
+	// that makes it worth doing without knowing which of the two this pack is
+	// running against.
+	//
+	// What it deliberately does not do is ask for a deeper mip level, which is the
+	// cheaper way to the same blur. A mip level is chosen per sample, so it cannot
+	// be kept inside a sprite: a deeper level mixes in the neighbouring block's
+	// material, which is the failure PBR_MATERIAL_MAX_LOD is set to 0 to avoid.
+	// Holding four corners inside the sprite individually is what a mip level
+	// cannot express, and it is the whole of the reason this costs four fetches
+	// instead of one.
+	//
+	// Sundial's SMOOTH_PARALLAX is this same construction - heightGather and
+	// bilinearHeightSample, libs/Parallax.glsl:61-80 - and it is on by default
+	// there; its settings menu describes it as making the parallax show a slope
+	// rather than individual cubes, which is exactly the step this removes.
+	//
+	// A textureGather would fetch the same four texels in one instruction and is
+	// deliberately not used: its footprint is the 2x2 block of texels around the
+	// coordinate as the hardware picks it, with no way to hold a corner inside the
+	// sprite, so it would bring the bleed back at every sprite's edge - the one
+	// thing the four separate fetches exist to prevent.
+	float PbrHeightBilinear(vec2 texCoord, vec4 spriteBounds) {
+		vec2 atlasSize = vec2(textureSize(normals, 0));
+		vec2 texelSize = 1.0 / atlasSize;
+
+		// The two texel centres that straddle the coordinate - the same pair, and
+		// the same weight between them, that a linear filter uses. Adding half a
+		// texel to the lower one lands exactly on the upper one's centre, so the
+		// four corners below are a proper 2x2 block and the mix is a proper
+		// bilinear.
+		vec2 lower = texCoord - 0.5 * texelSize;
+		vec2 upper = texCoord + 0.5 * texelSize;
+		vec2 weight = fract(lower * atlasSize);
+
+		float lowerLeft = PbrHeightTexel(
+			vec2(lower.x, lower.y), spriteBounds, atlasSize);
+		float lowerRight = PbrHeightTexel(
+			vec2(upper.x, lower.y), spriteBounds, atlasSize);
+		float upperLeft = PbrHeightTexel(
+			vec2(lower.x, upper.y), spriteBounds, atlasSize);
+		float upperRight = PbrHeightTexel(
+			vec2(upper.x, upper.y), spriteBounds, atlasSize);
+
+		return mix(
+			mix(lowerLeft, lowerRight, weight.x),
+			mix(upperLeft, upperRight, weight.x),
+			weight.y);
+	}
+
+	// Samples the height channel of the normal map, interpolated between the four
+	// texels around the coordinate by hand - see PbrHeightBilinear above for why
+	// that is not something the atlas can be asked to do.
+	//
+	// A height of exactly zero is read as the reference height instead of as the
+	// deepest point. This follows Sundial, which clamps it the same way in all
+	// four places it reads a height (Parallax.glsl:124, 182, 199, 214), and it is
+	// the one substantive difference between its march and this one. What its
+	// picture of a door looks like was not verified here - only that its code
+	// reads a zero this way and this pack's did not.
+	//
+	// LabPBR does say that 0 is the deepest point a height field can reach, and
+	// on a texel that has a material that is what it means. The problem is the
+	// texels that have no material at all: the transparent pixels a resource pack
+	// keeps inside a cutout sprite, of which a door's window is one. Those have
+	// no height to report and report 0 for the same reason a missing map reports
+	// 0 everywhere, and the two cases cannot be told apart from the value alone.
+	//
+	// Which of the two readings the march gets decides what it does with such a
+	// texel, and it decides it completely. Read as "deepest" it is a pit the ray
+	// is guaranteed to fall into: the march's last layer sits below zero whatever
+	// the height there is, so a ray that reaches one is caught by it, and the
+	// coordinate it returns is inside the window - where the albedo is
+	// transparent, the alpha test throws the fragment away, and the sky shows
+	// through the middle of the door. Read as "flat" the same texel is a wall the
+	// ray stops at the near edge of, half a texel into the wood.
+	//
+	// The cost is one texel of depth on a resource pack that really does draw the
+	// bottom of a pit as exactly 0, which is the trade Sundial makes as well.
+	//
+	// The single fetch below is reached in two cases, and they are different
+	// things wearing the same shape. With PBR_PARALLAX_SMOOTH on it is the
+	// fallback for a fragment with no sprite to interpolate inside, which is the
+	// hand and the entities: a face drawn through PBR_MATERIALS_ANY_TEXTURE
+	// reports a zero half-size (see lit.vsh), and four corners cannot be held
+	// inside a box that is not there. Exactly one of this function's six callers
+	// reaches it that way - PbrParallaxShadow's first sample, which is taken
+	// before that function's own bounds check - and what it gets there is the same
+	// undecoded height it has always got. The others have all checked by then, and
+	// a face without bounds never reaches the march at all (see PbrParallaxUV).
+	// With the option off it is the whole of the sample instead, which not only
+	// reads the pack's hard edges exactly as they were drawn but takes the
+	// interpolation and its four fetches out of the program entirely.
+	float PbrHeight(vec2 texCoord, PbrGradients gradients, vec4 spriteBounds) {
+		float height;
+
+		#ifdef PBR_PARALLAX_SMOOTH
+			// Interpolated, wherever there is a sprite to interpolate inside. A
+			// face with no sprite of its own - the hand and the entities, which
+			// report a zero half-size - has no box to hold four corners in, and
+			// takes the single fetch below like everything else.
+			if (PbrSpriteUsable(spriteBounds)) {
+				height = PbrHeightBilinear(texCoord, spriteBounds);
+			} else {
+				height = textureGrad(
+					normals,
+					texCoord,
+					gradients.ddxTexCoord,
+					gradients.ddyTexCoord).a;
+			}
+		#else
+			// Straight from the atlas. This is the whole of the sample and not a
+			// fallback, and it is what keeps the option free to turn off: with the
+			// block above compiled out, nothing calls the interpolating functions
+			// at all, so the driver discards them and their four fetches per
+			// sample are not paid for.
+			height = textureGrad(
+				normals,
+				texCoord,
+				gradients.ddxTexCoord,
+				gradients.ddyTexCoord).a;
+		#endif
+
+		return height + clamp(1.0 - height * 1.0e10, 0.0, 1.0);
 	}
 #endif
 
@@ -1141,6 +1655,29 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 // Without this, a height field can only be faked by shifting the whole surface
 // uniformly, which does not produce occlusion between the near and far parts of
 // the surface and therefore does not read as depth at all.
+//
+// The march itself follows Sundial-Lite's calculateParallax
+// (libs/Parallax.glsl, lines 168-223). Its structure, and what came with it:
+//
+//   - The ray runs in the sprite's own 0-1 box rather than in atlas
+//     coordinates, so that a displacement is always the same fraction of the
+//     material. See PbrSpriteLocal.
+//   - The step grows from small to large as the ray descends, by the fixed
+//     increment 2 / PBR_PARALLAX_STEPS. A step that grew linearly would make
+//     the ray's depth depend on the layer count; this way the layers sum to the
+//     full depth range whatever that count is, which is what turns the step
+//     count into a quality knob instead of a second depth knob.
+//   - The depth is measured relative to the sprite, which is the same as
+//     Sundial's * quadSize and takes the screen-space derivatives out of the
+//     depth entirely. See PBR_PARALLAX_DEPTH for what that fixed.
+//   - The offset is faded to the room the fragment has left before a sample would
+//     leave the sprite, which is this pack's own rule rather than one taken from
+//     the reference: it wrapped, and the reason this does not is set out in
+//     PbrFadeOffsetToSprite.
+//
+// What was deliberately not taken from it is the refinement: this pack bisects
+// between the two layers that bracket the crossing, with PBR_PARALLAX_REFINE
+// deciding how many times, and that is left as it was.
 vec2 PbrParallaxUV(
 	mat3 frame,
 	vec3 cameraRelativePos,
@@ -1181,6 +1718,25 @@ vec2 PbrParallaxUV(
 			return texCoord;
 		#endif
 
+		// A face whose sprite bounds say nothing has no local box to march in,
+		// so the coordinate is passed through and the face is drawn with no
+		// displacement. This is the hand above and the entities - everything
+		// drawn with PBR_MATERIALS_ANY_TEXTURE reports a zero half-size, because
+		// its coordinate indexes its own texture rather than a sheet (see
+		// lit.vsh). Nothing here depends on what the boundary treatment is, which
+		// is why the hand and the entities went through the wrap, the clamp and
+		// the fade without any of them changing what they look like: a face with
+		// no box is returned before any of it runs.
+		//
+		// One thing is worth recording about that: entities used to be marched
+		// anyway, in atlas coordinates, with no bounds to keep the samples
+		// inside anything - the clamp had nothing to clamp against and passed
+		// every sample through. Skipping them is the smaller of the two
+		// changes, and it is the one the note claimed was already happening.
+		if (!PbrSpriteUsable(spriteBounds)) {
+			return texCoord;
+		}
+
 		// The view direction, expressed in the tangent space of this fragment.
 		vec3 viewDirection = normalize(-cameraRelativePos);
 		vec3 viewTangent = vec3(
@@ -1218,16 +1774,37 @@ vec2 PbrParallaxUV(
 			return texCoord;
 		}
 
-		vec3 dPdu;
-		vec3 dPdv;
+		// The height at the fragment itself, which is where the ray starts.
+		//
+		// Everything below is measured on the same axis as this: LabPBR stores
+		// 1.0 for "not displaced", so a texel's *depth* is 1.0 minus its height,
+		// and the ray starts at the top of that range and descends through it.
+		//
+		// Sampled at the coordinate the fragment arrived with rather than through
+		// PbrClampToSprite, because a fragment is inside its own sprite by
+		// construction - and rounding at the very edge of one is exactly what
+		// clamping the coordinate would hold at the edge instead of at the
+		// fragment's own texel. The interpolation's own four corners are a
+		// different matter: on a fragment sitting on the sprite's outermost texel
+		// each of them can be half a texel outside it, which is why PbrHeightTexel
+		// holds them individually rather than trusting the coordinate to be far
+		// enough in.
+		float startHeight = PbrHeight(texCoord, gradients, spriteBounds);
 
-		if (!PbrTexCoordAxes(gradients, dPdu, dPdv)) {
+		// A resource pack whose height channel is flat costs this one sample and
+		// produces no displacement: there is nothing above the reference height
+		// for the ray to meet, so the march would stop on its first layer every
+		// time. Sundial skips it in the same place and for the same reason.
+		if (startHeight >= 1.0 - 1.0e-4) {
 			return texCoord;
 		}
 
-		// The displacement, in world space, of a point that sits
-		// PBR_PARALLAX_DEPTH blocks below the reference surface, seen along the
-		// view ray.
+		// The displacement, in sprite-relative units, of a point that sits
+		// PBR_PARALLAX_DEPTH below the reference surface, seen along the view
+		// ray. One unit is one sprite width, so the depth no longer depends on
+		// the atlas resolution or on the surface's UV axes - see
+		// PBR_PARALLAX_DEPTH for what that fixed, and PbrSpriteLocal for where
+		// the units come from.
 		//
 		// A point that is further away from the eye than the surface appears to
 		// be is the one that gets sampled: looking down at a recessed point, the
@@ -1235,91 +1812,180 @@ vec2 PbrParallaxUV(
 		// eye. Since viewTangent points *towards* the eye, the negation below is
 		// what turns "towards the eye" into "away from the eye", which is the
 		// direction the ray march then travels in.
+		//
+		// The direction comes from the surface's UV axes rather than from the
+		// tangent frame, and that was this march's first mistake: a tangent
+		// frame built from at_tangent, as this pack's is, is not obliged to
+		// point the same way as the atlas's u and v. Its axes can be swapped or
+		// reversed against the texture, and taking viewTangent.xy for the
+		// direction then sends the ray the other way - which reads as the
+		// surface's relief being inside out, or as a floor showing the face you
+		// would see from above it. Sundial's frame is built from the texture
+		// coordinates' own screen derivatives, so its axes line up with u and v
+		// by construction and it can use them directly; this pack cannot, and
+		// has to say which way u and v point.
+		//
+		// The axes come from the screen-space derivatives, which is the only
+		// place the answer exists, and they are read for their direction alone -
+		// see the note on the offset below for why the length half of them is
+		// not used. A face whose derivatives cannot resolve them falls back to
+		// the tangent frame instead of giving up: being told the direction
+		// approximately is worth more than having no parallax at all on that
+		// face.
+		vec3 dPdu;
+		vec3 dPdv;
+
+		// Both axes or neither. PbrTexCoordAxes' own return value only says that
+		// one of them survived, which is not enough here on two counts: a single
+		// axis does not say which way the other one runs, and the one it drops is
+		// exactly zero, so normalizing it below would put a NaN in the ray - and
+		// a NaN coordinate is not something the samples inside the march can
+		// recover from, since only the value the march returns is checked.
+		if (!PbrTexCoordAxes(gradients, dPdu, dPdv)
+			|| dot(dPdu, dPdu) <= 0.0
+			|| dot(dPdv, dPdv) <= 0.0) {
+			dPdu = frame[0];
+			dPdv = frame[1];
+		}
+
 		vec3 worldOffset = -strength * PBR_PARALLAX_DEPTH
 			* (viewTangent.x * frame[0] + viewTangent.y * frame[1])
 			/ depthRate;
 
+		// The offset in the sprite's local box, where one unit is one sprite
+		// across and one unit of z is the whole height range. Projecting it onto
+		// the texture's own axes is the whole of the conversion.
+		//
+		// The axes are used for their direction only. Their lengths were in the
+		// divisor when the direction was first taken from them - a divisor of
+		// 2 * zw * |dPdu|, which is the width of the sprite in blocks - and that
+		// divisor is exactly 1.0 on an ordinary one-block face, so dropping it
+		// leaves every face that already looked right bit for bit as it was.
+		// Where it was not 1.0 it was worse than useless: a face that squeezes a
+		// whole sprite into less than a block divides by that fraction and so
+		// multiplies the displacement instead, by eight on a face an eighth of a
+		// block across, which walks the ray round and round the sprite. See the
+		// paragraph below for why that length cannot be trusted anyway.
+		//
+		// The length is not merely redundant either, it is the half of the axis
+		// the depth buffer spoils. Both axes are built from dFdx and dFdy of
+		// cameraRelativePos, which lit.fsh reconstructs out of the depth buffer,
+		// and the depth buffer quantizes: every fragment of a 2x2 quad that lands
+		// in the same depth quantum reconstructs its position with the same
+		// error along the view ray, which scales both position derivatives by a
+		// common factor. An axis therefore comes out pointing the right way and
+		// measuring the wrong length, and how wrong changes from quad to quad as
+		// the camera moves. Dividing the whole displacement by that length is
+		// what turns it into per-quad shimmer over the surface, and no step count
+		// or refinement can take it back out, because the march is being handed a
+		// different ray rather than a less accurate one.
+		//
+		// Sundial and Mellow both scale their step by a length taken from these
+		// same derivatives and neither has this problem, because the position
+		// they differentiate is one the vertex stage interpolated - Sundial's
+		// viewPos, Mellow's ViewPos - and not one reconstructed from the depth
+		// buffer. This pack's note on PBR_TANGENT_ATTRIBUTE is the same story
+		// about the same route.
+		vec2 localOffset = vec2(
+			dot(worldOffset, normalize(dPdu)),
+			dot(worldOffset, normalize(dPdv)));
+
 		// Shallow view angles divide by a small slope, which on its own would
 		// drag the sample far enough to leave the sprite it belongs to. The
-		// material data read from a neighbouring sprite describes a different
-		// block, and the boundary where that starts happening is visible as a
-		// line across the ground at a fixed distance from the player.
-		float worldOffsetLength = length(worldOffset);
+		// material read from a neighbouring part of the atlas describes a
+		// different block, and the boundary where that starts happening is
+		// visible as a line across the ground at a fixed distance from the
+		// player.
+		float localOffsetLength = length(localOffset);
 
-		if (worldOffsetLength > PBR_PARALLAX_MAX_OFFSET) {
-			worldOffset *= PBR_PARALLAX_MAX_OFFSET / worldOffsetLength;
+		if (localOffsetLength > PBR_PARALLAX_MAX_OFFSET) {
+			localOffset *= PBR_PARALLAX_MAX_OFFSET / localOffsetLength;
 		}
 
-		vec2 fullOffset = PbrWorldOffsetToTexCoord(worldOffset, dPdu, dPdv);
+		// The second cap, at half a sprite per axis, which is as far as the ray
+		// can travel and still be reading the material it started in. This is a
+		// look rather than a guard - see PBR_PARALLAX_MAX_OFFSET - and it is no
+		// longer what keeps the ray inside the sprite: the fade below is.
+		localOffset = clamp(localOffset, vec2(-0.5), vec2(0.5));
 
-		// The displacement is capped in texture coordinates as well, at half a
-		// sprite. That is as far as a sample can travel and still be inside the
-		// material it started in, and expressing it here rather than only in
-		// blocks makes the cap follow the sprite: a large texture, or a face
-		// whose sprite covers more than one block, gets proportionally more room.
-		vec2 spriteHalfSize = spriteBounds.zw;
+		// The point the ray starts at, in the sprite's local box, and the depth
+		// it starts at: the top of the height range, depth 0.
+		vec2 startCoord = PbrSpriteLocal(texCoord, spriteBounds);
+		vec3 parallaxCoord = vec3(startCoord, 1.0);
 
-		if (all(greaterThan(spriteHalfSize, vec2(0.0)))
-			&& all(lessThanEqual(spriteHalfSize, vec2(0.5)))) {
-			fullOffset = clamp(fullOffset, -spriteHalfSize, spriteHalfSize);
-		}
+		// The offset is then scaled down to the room this fragment has before its
+		// sample would leave the sprite - the rule PbrFadeOffsetToSprite sets out,
+		// and the reason the march needs no wrap. PbrClampToSprite on the samples
+		// themselves is the backstop behind it.
+		localOffset = PbrFadeOffsetToSprite(startCoord, localOffset);
 
-		// What the diagnostic reports: the offset as it stands once both caps
-		// have had their say, in the same units as the displacement the march
-		// returns. Nothing reads it outside PBR_DEBUG_PARALLAX.
-		offsetLength = length(fullOffset);
+		// What the diagnostic reports: the offset as it stands once both caps and
+		// the fade have had their say, converted back into texture coordinates so
+		// that it is the same quantity it has always been. The PBR_DEBUG_PARALLAX
+		// view divides it by the sprite's half-size to show a fraction of a
+		// sprite, and that division only comes out right if the offset is in
+		// texture coordinates when it gets there.
+		//
+		// Nothing reads it outside that view.
+		offsetLength = length(localOffset * 2.0 * spriteBounds.zw);
+
+		// The direction and the length of one step: localOffset is the
+		// horizontal travel of the *whole* ray and -1.0 its whole descent, so
+		// this divides both by the layer count and then lets stepScale change
+		// the length of each layer as the march goes.
+		vec3 stepSize = vec3(localOffset, -1.0) / float(PBR_PARALLAX_STEPS);
+		float stepScale = 2.0 / float(PBR_PARALLAX_STEPS);
+
+		// The two layers that bracket the crossing, kept as the ray goes rather
+		// than found again afterwards: they are the last point the ray was still
+		// above the surface at and the first one it was below, and both the
+		// refinement and the unrefined interpolation further down need them.
+		vec2 previousCoord = startCoord;
+		float previousHeight = startHeight;
+		float previousZ = 1.0;
+		float sampleHeight = startHeight;
+		bool crossed = false;
 
 		// Walk along the ray in layers until it passes below the surface it is
-		// tracing. Each layer moves the sample further from the eye and deeper
-		// into the height field, which is why the offset is added.
+		// tracing.
 		//
-		// The offset is *not* shortened near the edge of the sprite: the ray
-		// keeps its full length and only the height it reads is held inside the
-		// sprite - see PbrClampSample, which is what keeps the border of a block
-		// face from going flat.
-		//
-		// LabPBR stores 1.0 for "not displaced", so it is the *depth* of the
-		// surface (1 - height) that the ray is compared against. That also means
-		// a resource pack without height data costs exactly one sample here and
-		// produces no displacement, so this degrades gracefully.
-		float layerStep = 1.0 / float(PBR_PARALLAX_STEPS);
-		vec2 stepOffset = fullOffset * layerStep;
-
-		vec2 currentTexCoord = texCoord;
-		float currentLayer = 0.0;
-		float currentDepth = 1.0 - PbrHeight(
-			PbrClampSample(currentTexCoord, spriteBounds), gradients);
-
-		vec2 previousTexCoord = currentTexCoord;
-		float previousLayer = 0.0;
-
+		// The step scale is what makes the layer count a quality knob rather
+		// than a depth knob. It starts at 2 / steps and grows by the same amount
+		// every layer, so the layers are small near the reference surface - where
+		// a resource pack's height channel has nearly all of its variation - and
+		// large at the bottom of the range, while the descent still adds up to
+		// the full depth range whatever the layer count is. A fixed step would
+		// make the ray travel 1 / steps of the range per layer instead, so
+		// lowering the count would flatten the surface rather than coarsen it,
+		// and PBR_PARALLAX_STEPS would be a second depth control fighting the
+		// real one.
 		for (int i = 0; i < PBR_PARALLAX_STEPS; i++) {
-			if (currentLayer >= currentDepth) {
+			previousCoord = parallaxCoord.xy;
+			previousHeight = sampleHeight;
+			previousZ = parallaxCoord.z;
+
+			parallaxCoord += stepSize * stepScale;
+
+			sampleHeight = PbrHeight(
+				PbrClampToSprite(parallaxCoord.xy, spriteBounds),
+				gradients,
+				spriteBounds);
+
+			// The surface is above the ray here, so the two have crossed
+			// somewhere between this layer and the one before it.
+			if (sampleHeight > parallaxCoord.z) {
+				crossed = true;
 				break;
 			}
 
-			previousTexCoord = currentTexCoord;
-			previousLayer = currentLayer;
-
-			currentTexCoord += stepOffset;
-			currentLayer += layerStep;
-			currentDepth = 1.0 - PbrHeight(
-				PbrClampSample(currentTexCoord, spriteBounds), gradients);
+			stepScale += 2.0 / float(PBR_PARALLAX_STEPS);
 		}
 
-		// How far above or below the surface the ray is at each of the two
-		// layers that bracket the intersection.
-		//
-		// `beforeDepth` is measured rather than assumed to be positive: if the
-		// march simply ran out of layers, there is no crossing to refine and the
-		// last sample is the best answer available.
-		float afterDepth = currentDepth - currentLayer;
-		float beforeDepth = (1.0 - PbrHeight(
-			PbrClampSample(previousTexCoord, spriteBounds), gradients))
-			- previousLayer;
-
-		if (afterDepth > 0.0 || beforeDepth <= 0.0) {
-			return PbrClampSample(currentTexCoord, spriteBounds);
+		if (!crossed) {
+			// The height channel is at its deepest along the whole ray, which is
+			// the one case where there is no crossing to find. The answer is
+			// then the furthest point the march reached.
+			return PbrClampToSprite(parallaxCoord.xy, spriteBounds);
 		}
 
 		#if PBR_PARALLAX_REFINE > 0
@@ -1334,39 +2000,68 @@ vec2 PbrParallaxUV(
 			// not enough to hide them, and the texture snaps between a handful
 			// of positions, which reads as the surface being built out of
 			// stacked layers rather than following a continuous slope.
-			vec2 lowTexCoord = previousTexCoord;
-			vec2 highTexCoord = currentTexCoord;
-			float lowLayer = previousLayer;
-			float highLayer = currentLayer;
+			//
+			// The two ends stay on the ray as they move, in the local box and
+			// possibly outside it, and only the samples are clamped - so the
+			// interval is a straight piece of the ray even when it has left the
+			// sprite, and the bisection cannot be confused by a coordinate that
+			// folded back on itself partway along it. The fade above is what keeps
+			// this a corner case rather than the normal one: with the offset scaled
+			// to the room available, the ray only reaches the boundary as its
+			// displacement reaches zero.
+			vec2 lowCoord = previousCoord;
+			vec2 highCoord = parallaxCoord.xy;
+			float lowZ = previousZ;
+			float highZ = parallaxCoord.z;
 
 			for (int i = 0; i < PBR_PARALLAX_REFINE; i++) {
-				vec2 midTexCoord = 0.5 * (lowTexCoord + highTexCoord);
-				float midLayer = 0.5 * (lowLayer + highLayer);
+				vec2 midCoord = 0.5 * (lowCoord + highCoord);
 
-				if ((1.0 - PbrHeight(
-						PbrClampSample(midTexCoord, spriteBounds), gradients))
-					> midLayer) {
+				// The ray's height at the midpoint, which needs no sample to
+				// know: the ray travels in a straight line in this space - the
+				// direction of a step is the same for every layer and only its
+				// length grows - so its height is linear in its position along
+				// it, and the midpoint of the two heights is the height at the
+				// midpoint of the two coordinates.
+				float midZ = 0.5 * (lowZ + highZ);
+
+				if (PbrHeight(
+						PbrClampToSprite(midCoord, spriteBounds),
+						gradients,
+						spriteBounds)
+					> midZ) {
+					// The surface is above the ray here, so the crossing is
+					// between the low end and this point.
+					highCoord = midCoord;
+					highZ = midZ;
+				} else {
 					// The ray is still above the surface here, so the crossing
 					// is further along the ray.
-					lowTexCoord = midTexCoord;
-					lowLayer = midLayer;
-				} else {
-					highTexCoord = midTexCoord;
-					highLayer = midLayer;
+					lowCoord = midCoord;
+					lowZ = midZ;
 				}
 			}
 
-			return PbrClampSample(
-				0.5 * (lowTexCoord + highTexCoord), spriteBounds);
+			return PbrClampToSprite(0.5 * (lowCoord + highCoord), spriteBounds);
 		#else
 			// Without refinement, at least interpolate between the two layers.
+			//
+			// Each gap is the distance between the ray and the surface at one of
+			// the two points - height minus height, so its sign says which side
+			// of the crossing that point is on - and the crossing is the same
+			// fraction of the way along the interval as the low point's gap is
+			// of the two of them together. The floor under the denominator is
+			// what keeps two points that landed on the crossing at the same time
+			// from dividing by nothing.
+			float lowGap = previousHeight - previousZ;
+			float highGap = sampleHeight - parallaxCoord.z;
 			float weight = clamp(
-				afterDepth / max(afterDepth - beforeDepth, 1.0e-4),
+				lowGap / min(lowGap - highGap, -1.0e-4),
 				0.0,
 				1.0);
 
-			return PbrClampSample(
-				mix(currentTexCoord, previousTexCoord, weight), spriteBounds);
+			return PbrClampToSprite(
+				mix(previousCoord, parallaxCoord.xy, weight), spriteBounds);
 		#endif
 	#endif
 }
@@ -1395,7 +2090,13 @@ vec2 PbrParallaxUV(
 		// xy: the centre of this face's sprite, zw: half of its size.
 		vec4 spriteBounds
 	) {
-		float surfaceHeight = PbrHeight(texCoord, gradients);
+		// Interpolated exactly as the view ray's heights are, and that is not a
+		// coincidence: the two marches are tracing one height field, so a shadow
+		// measured against a differently filtered copy of it would be cast by
+		// geometry the displacement does not show. This is also the one call that
+		// can arrive without usable bounds - see the note on PbrHeight's fallback
+		// - because the bounds are checked a few lines below rather than here.
+		float surfaceHeight = PbrHeight(texCoord, gradients, spriteBounds);
 
 		// A point sitting at the reference height cannot be shadowed by the
 		// height field, because nothing in it is tall enough to rise above the
@@ -1428,43 +2129,47 @@ vec2 PbrParallaxUV(
 
 		float depthRate = max(lightTangent.z, 0.25);
 
-		vec3 dPdu;
-		vec3 dPdv;
-
-		if (!PbrTexCoordAxes(gradients, dPdu, dPdv)) {
+		// The sprite bounds have to be usable here for the same reason the view
+		// ray needs them: the march below runs in the sprite's local box, and a
+		// face without bounds has no box to run in. Nothing is shadowed there,
+		// which is the same answer as a flat height channel above.
+		if (!PbrSpriteUsable(spriteBounds)) {
 			return 1.0;
 		}
 
 		// The ray towards the light rises by one layer of height per step, so
-		// the horizontal distance it covers per step is one layer of height
-		// measured along the light's direction. Note that there is no negation
-		// here: this ray travels towards the light, unlike the view ray above,
-		// which travels away from the eye and into the surface.
-		vec3 worldOffset = PBR_PARALLAX_DEPTH
-			* (lightTangent.x * frame[0] + lightTangent.y * frame[1])
-			/ depthRate;
+		// the horizontal distance it covers over the whole march is one full
+		// depth range measured along the light's direction. Note that there is
+		// no negation here: this ray travels towards the light, unlike the view
+		// ray above, which travels away from the eye and into the surface.
+		//
+		// The depth is the same PBR_PARALLAX_DEPTH the view ray uses and in the
+		// same sprite-relative units, so that the two rays are tracing one
+		// height field rather than two of different depths. A light ray that
+		// reached further horizontally than the geometry is deep would darken
+		// stretches of surface that no view ray could ever be displaced to, and
+		// the shadow would land where the shape it belongs to is not.
+		vec2 localOffset = PBR_PARALLAX_DEPTH * lightTangent.xy / depthRate;
 
-		float offsetLength = length(worldOffset);
+		float localOffsetLength = length(localOffset);
 
-		if (offsetLength > PBR_PARALLAX_MAX_OFFSET) {
-			worldOffset *= PBR_PARALLAX_MAX_OFFSET / offsetLength;
+		if (localOffsetLength > PBR_PARALLAX_MAX_OFFSET) {
+			localOffset *= PBR_PARALLAX_MAX_OFFSET / localOffsetLength;
 		}
-
-		vec2 fullOffset = PbrWorldOffsetToTexCoord(worldOffset, dPdu, dPdv);
 
 		// Capped the same way the view ray's displacement is, and for the same
 		// reason - see PbrParallaxUV.
-		vec2 spriteHalfSize = spriteBounds.zw;
+		localOffset = clamp(localOffset, vec2(-0.5), vec2(0.5));
 
-		if (all(greaterThan(spriteHalfSize, vec2(0.0)))
-			&& all(lessThanEqual(spriteHalfSize, vec2(0.5)))) {
-			fullOffset = clamp(fullOffset, -spriteHalfSize, spriteHalfSize);
-		}
-
-		// The shadow ray is held inside the sprite the same way the view ray is:
-		// the offset is left at its full length and it is the samples that are
-		// clamped - see PbrClampSample.
-		vec2 stepOffset = fullOffset / float(PBR_PARALLAX_STEPS);
+		// The point this ray starts from, in the sprite's local box, and the offset
+		// it will travel - faded to the room this fragment has, by the same rule
+		// and the same function the view ray's offset is put through. A light ray
+		// that left the sprite would be occluded by material belonging to another
+		// block, and one held at the edge would darken the face's whole edge strip;
+		// see PbrFadeOffsetToSprite.
+		vec2 localTexCoord = PbrSpriteLocal(texCoord, spriteBounds);
+		localOffset = PbrFadeOffsetToSprite(localTexCoord, localOffset);
+		vec2 stepOffset = localOffset / float(PBR_PARALLAX_STEPS);
 
 		// The height range that this ray actually travels through. A resource
 		// pack's height channel normally covers only a fraction of its range, so
@@ -1472,29 +2177,39 @@ vec2 PbrParallaxUV(
 		// height maps casting no shadow at all - which is exactly what happened
 		// before this was measured locally.
 		float farHeight = PbrHeight(
-			PbrClampSample(texCoord + fullOffset, spriteBounds), gradients);
+			PbrClampToSprite(localTexCoord + localOffset, spriteBounds),
+			gradients,
+			spriteBounds);
 		float variation = max(surfaceHeight, farHeight)
 			- min(surfaceHeight, farHeight);
 		float variationScale = 1.0 / max(variation, 0.05);
 
 		float layerStep = 1.0 / float(PBR_PARALLAX_STEPS);
 		float rayHeight = surfaceHeight;
-		vec2 currentTexCoord = texCoord;
+		vec2 currentCoord = localTexCoord;
 
 		// How far the ray ends up buried underneath the height field is what
 		// decides how much light gets through. Counting the blocked layers
 		// instead would dilute the result across the whole march: a crevice is
 		// open along most of the ray and only blocked close in.
+		//
+		// Unlike the view ray, this one steps evenly. What it is measuring is
+		// how deep the surface is at its worst point along the ray, and that is
+		// a maximum over the whole ray rather than a crossing that has to be
+		// found, so there is nothing here for a steplength that varies with
+		// depth to buy.
 		float deepest = 0.0;
 
 		for (int i = 0; i < PBR_PARALLAX_STEPS; i++) {
-			currentTexCoord += stepOffset;
+			currentCoord += stepOffset;
 			rayHeight += layerStep;
 
 			deepest = max(
 				deepest,
 				PbrHeight(
-					PbrClampSample(currentTexCoord, spriteBounds), gradients)
+					PbrClampToSprite(currentCoord, spriteBounds),
+					gradients,
+					spriteBounds)
 					- rayHeight);
 		}
 
@@ -1633,13 +2348,17 @@ PbrSurface PbrDecode(vec2 texCoord, PbrGradients gradients) {
 				// Hardcoded metal, looked up from the table.
 				pbr.f0 = PbrMetalF0(int(green255 + 0.5));
 				pbr.metalness = 1.0;
+				pbr.metalID = float(int(green255 + 0.5));
 			} else {
 				// Albedo-based metal. f0 is filled in from the surface color by
 				// PbrResolveAlbedo(). This is also where hardcoded metals land
 				// when the metal lookup is turned off, which approximates them
-				// far better than treating them as dielectrics would.
+				// far better than treating them as dielectrics would - and it is
+				// why they are given the albedo metal's ID rather than their own:
+				// the table that ID would index is the one that is turned off.
 				pbr.metalness = 1.0;
 				pbr.albedoMetal = 1.0;
+				pbr.metalID = PBR_METAL_ALBEDO;
 			}
 		}
 	#endif

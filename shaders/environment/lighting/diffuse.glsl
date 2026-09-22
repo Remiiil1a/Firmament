@@ -165,7 +165,7 @@ vec3 AmbientSkyLighting(float skyLightStrength, float ambientStrength) {
 	// 0.6 in linear light, so what is written here is roughly what reaches the
 	// screen, multiplied by the surface's color. A cave floor at 0.05 is a very
 	// dark grey; making one properly readable takes several times that.
-	#define MIN_AMBIENT_BRIGHTNESS 0.2 // [0.0 0.01 0.03 0.05 0.1 0.2 0.35 0.6]
+	#define MIN_AMBIENT_BRIGHTNESS 0.1 // [0.0 0.01 0.03 0.05 0.1 0.2 0.35 0.6]
 
 	// Fade sky ambient lighting away as sky light fades away, as that helps us
 	// rather convincingly approximate indirect lighting. But, have a "minimum"
@@ -372,12 +372,16 @@ float DirectLighting(
 	// How much of the direct light survives the shadow sources, where 1.0 is
 	// fully lit. Read by the subsurface scattering term in
 	// PbrSubsurfaceScatter, which is a fraction of the light that arrives.
-	out float shadowVisibility
+	out float shadowVisibility,
+	// The colour the direct light arrives in, white unless stained glass stood in
+	// its way. Written by ShadowMapping on every path through it.
+	out vec3 shadowTint
 ) {
 	// Note: these are set before any of the early outs below, so that callers
 	// never read an undefined value.
 	specular = vec3(0.0);
 	shadowVisibility = 0.0;
+	shadowTint = vec3(1.0);
 
 	// Derive the direct lighting contribution (directLightStrength), which for
 	// most surfaces is Lambertian:
@@ -474,10 +478,14 @@ float DirectLighting(
 			// says it is thin, which is what confines the shadow softening to
 			// the feature. See PbrDecode.
 			pbr.sss,
-			shadowVisibility);
+			shadowVisibility,
+			shadowTint);
 	#else
 		directLightStrength *= shadowSample;
 		shadowVisibility = shadowSample;
+		// No shadow map, so no buffer of colours that came through glass either -
+		// see COLORED_SHADOWS in /environment/materialIDs.glsl.
+		shadowTint = vec3(1.0);
 	#endif
 
 	#ifdef PBR_SURFACE
@@ -681,6 +689,25 @@ vec3 DiffuseLightingImpl(
 		lighting *= PbrAmbientDiffuseWeight(pbr, fragment.worldNormal, viewDirection);
 	#endif
 
+	#if defined(PBR_SURFACE) && defined(PBR_SPECULAR)
+		// A metal has no diffuse response at all, and this is the indirect half
+		// of taking it away - the direct half is scaled in DirectLighting above,
+		// for the same reason and by the same option.
+		//
+		// It has to be here rather than there because the two halves arrive by
+		// different routes: the direct one is a single term, while this one is
+		// the sky's ambient light, the block light around the fragment, the
+		// ambient floor, the material's own occlusion and the dimension's
+		// additions, already summed. Scaling the sum is the only place that
+		// covers all of them.
+		//
+		// It is placed after indirectLighting was captured above and before the
+		// ambient specular is added below, which is what keeps this from being
+		// applied to the reflection: what a metal still has left is exactly that
+		// reflection, and dimming it here would undo the same light twice.
+		lighting *= 1.0 - PBR_METAL_DIFFUSE * pbr.metalness;
+	#endif
+
 	// The specular reflection of the direct lighting, which is zero for every
 	// material that does not reflect anything.
 	vec3 specular;
@@ -689,6 +716,11 @@ vec3 DiffuseLightingImpl(
 	// scattering term reads it, and it is written by DirectLighting on every
 	// path through it.
 	float shadowVisibility;
+
+	// The colour the direct light arrives in, which is white until stained glass
+	// colours it - see COLORED_SHADOWS in /environment/materialIDs.glsl. Written
+	// by DirectLighting on every path through it as well.
+	vec3 shadowTint = vec3(1.0);
 
 	// If the direct light strength is nonzero, add in direct lighting
 	// based on sampling the shadow map.
@@ -699,7 +731,8 @@ vec3 DiffuseLightingImpl(
 			pbr,
 			viewDirection,
 			specular,
-			shadowVisibility);
+			shadowVisibility,
+			shadowTint);
 	#else
 		// Without shadow mapping there is no light visibility term to build a
 		// highlight on top of, so PBR materials simply do not get one.
@@ -708,7 +741,11 @@ vec3 DiffuseLightingImpl(
 		float directLightStrength = 1.0;
 	#endif
 
-	lighting += (vec3(directLightStrength) + specular) * directLightColor;
+	// The tint belongs to the direct light and to nothing else: it is sunlight
+	// that came through a window, where the ambient light around the fragment
+	// did not. It is applied to the highlight along with the diffuse light,
+	// because a highlight is the same light seen from a different angle.
+	lighting += (vec3(directLightStrength) + specular) * directLightColor * shadowTint;
 
 	#if defined(PBR_SURFACE) && defined(PBR_SPECULAR)
 		// Ice is left out while PBR_TRANSLUCENT is on: its reflections are drawn

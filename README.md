@@ -21,19 +21,41 @@ Bug reports about it do not belong in Steadfast's issue tracker.
 ## What this edit adds
 
 * **Materials (PBR)** - normal, specular, parallax, subsurface and emissive maps
-  from a labPBR resource pack, with reflections and self-shadowing.
+  from a labPBR resource pack, with reflections and self-shadowing. Parallax has a
+  smoothing option of its own, and the displacement is held inside the sprite the
+  fragment came from rather than wrapped round to the far side of it.
+* **Colored shadows** - sunlight that has come through stained glass lands on the
+  ground in the colour of the pane, and a nether portal tints the light around it
+  with its own glow. How much colour the light takes on is a setting, and the
+  portal's glow can be switched off on its own.
+* **Volumetric light, above and below the waterline** - the light shafts are drawn
+  under water as well, running along the same light axis as the ones above it, and
+  brightened where the ripples on the surface gather them. Their strength is a
+  setting, and the underwater shafts have a multiplier of their own on top of it.
+* **Enchantment glint brightness** - the sparkle on an enchanted item or a piece
+  of armour can be made brighter. The game adds the glint's own colour to the
+  frame, so the light it contributes grows with the square of the setting: at the
+  shipped value of 2.0 it contributes four times what it did.
 * **Distant terrain** - screen-space shadows for terrain past the shadow map's
   reach, which is what Distant Horizons and Voxy terrain otherwise never gets.
 * **Water that is not flat on the ground** - the sides of waterfalls and of water
   running downhill are drawn as water, with the same surface, colour and
   reflections as a still surface, laid out in the frame the face actually has
   rather than one assumed from the world's axes.
+* **Reflections** - a sky term per material, plus optional screen-space
+  reflections of the world, blurred in two passes by a filter that keeps
+  neighbours reflecting the same thing apart from those that do not. A metal
+  reflection strength, a smoothness threshold, a blur width, and a debug view
+  that shows the reflection on its own are all options.
 * **Temporal antialiasing** - on by default, with the history weighted by motion
   so that it reduces noise while standing still without smearing while walking.
+* **Clouds** - a layer of cube-shaped cells in place of Minecraft's flat cloud
+  boxes, with scattering inside the cloud, and its phase, transmittance and
+  height falloff as settings.
 * **The End** - the dimension is supported rather than falling back to the
   Overworld's sky.
-* Plus the blocky volumetric clouds, motion blur and the rest that Steadfast's
-  own release notes describe.
+* Plus motion blur, a screen vignette that is **on by default**, and the rest that
+  Steadfast's own release notes describe.
 
 ## Requirements
 
@@ -45,7 +67,7 @@ Bug reports about it do not belong in Steadfast's issue tracker.
 
 ## Installation
 
-1. Drop `Firmament-v0.4-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
+1. Drop `Firmament-v0.5-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
    Do not unzip it.
 2. Pick it in **Video Settings → Shader Packs**.
 3. In the shader options, `Materials (PBR) → Material format` follows the
@@ -60,6 +82,14 @@ Bug reports about it do not belong in Steadfast's issue tracker.
   rejecting history that disagrees, not by tracking it.
 * **Voxy terrain's vertices are emitted by the mod**, not by this pack, so it is
   not covered by TAA's sub-pixel jitter.
+* **Reflections are left out where they cannot be right.** A surface seen through
+  water, ice or glass gets no environment reflection at all, and neither does a
+  face turned towards the camera, because a ray that points back at the viewer has
+  nothing in front of it to trace. Both are deliberate: a reflection in the wrong
+  place reads worse than no reflection.
+* **The glint option only ever makes the sparkle brighter.** It cannot recolour
+  it: Minecraft multiplies the enchantment's colour in before this pack sees the
+  layer, so any second colour could only take light away.
 * Everything in `NOTICE.md` about what is and is not covered by Steadfast.
 
 ## Credits
@@ -70,6 +100,10 @@ Bug reports about it do not belong in Steadfast's issue tracker.
 | **Firmament edit** | Remiiil1a - direction, testing, tuning; code written by **DeepSeek V4.1 Flash** (AI) |
 | **Referenced code** | follows **Mellow Shader v3.4** by **TheCMK** (MIT) and **Sundial Lite** by **geforcelegend** (GPLv3) |
 | **labPBR standard** | the shaderLABS community - material channel layout and conventions |
+
+No assets are reused from either of the two referenced packs - no textures, no
+logos, no screenshots - and neither project is affiliated with this one or
+endorses it. Their names are not part of this pack's name or branding.
 
 The two referenced packs have their own entries in the settings menu, under
 **Credits & licence → Special thanks**.
@@ -85,5 +119,6 @@ The two referenced packs have their own entries in the settings menu, under
 * Sundial Lite is Copyright (c) geforcelegend, **GPLv3** - the same licence as
   this pack, whose copy is `LICENSE.md`.
 * There is no warranty. The full summary is in **`NOTICE.md`**, and what changed
-  in each release is in the **`RELEASE_NOTES-*.md`** files, which are kept with
-  the project rather than shipped inside the pack.
+  in each release is in **`CHANGELOG.md`**. The long-form notes for each release
+  are the `RELEASE_NOTES-*.md` files, which are kept with the project rather than
+  shipped inside the pack.

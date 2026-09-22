@@ -61,15 +61,23 @@
 // PbrAttributeFrame in pbr.glsl.
 in vec4 at_tangent;
 
-#ifdef PBR_ATLAS
-	// The centre of this face's sprite in the block atlas. This is what
-	// parallax mapping uses to keep its displaced samples inside the sprite
-	// they started in - see the note in lit.fsh.
-	in vec4 mc_midTexCoord;
+// The two varyings below are needed by whatever program reads material maps,
+// which is the block atlas programs and the entity programs that opted in
+// through PBR_MATERIALS_ANY_TEXTURE. Only the atlas path has sprites to stay
+// inside of, so only it needs the attribute that describes them.
+#if defined(PBR_ATLAS) || defined(PBR_MATERIALS_ANY_TEXTURE)
+	#ifdef PBR_ATLAS
+		// The centre of this face's sprite in the block atlas. This is what
+		// parallax mapping uses to keep its displaced samples inside the sprite
+		// they started in - see the note in lit.fsh.
+		in vec4 mc_midTexCoord;
+	#endif
 
-	// xy is that centre, zw is the distance from it to this vertex, which for a
-	// block face (whose corners are the corners of one sprite) is half of the
-	// sprite's size.
+	// xy is that centre, zw is the distance from it to this vertex, or the other
+	// axis's distance when this one is nil (see the assignment in main for why
+	// that case exists), which for a block face (whose corners are the corners of
+	// one sprite) is half of the sprite's size. An entity has no sprite to
+	// describe: see the assignment below for what it carries instead, and why.
 	out vec4 spriteBounds;
 
 	// The tangent on its way to the material decoding, in world space and with
@@ -160,6 +168,25 @@ uint FetchMaterialID(vec3 worldNormal) {
 				//
 				// For now, use the same lighting as glass by treating all
 				// unknown translucents as glass.
+				return GLASS;
+			}
+
+			if (materialID == NETHER_PORTAL) {
+				// The nether portal has an ID of its own so that the shadow
+				// program can recognise it and tint the light around it with the
+				// colour of its glow - see NETHER_PORTAL in
+				// /environment/materialIDs.glsl for the number and why it is
+				// shaped the way it is.
+				//
+				// What it asks for here is the material it already had. A portal
+				// is drawn in the translucent pass and, before it had an ID,
+				// arrived here as GENERIC and was handed GLASS by the branch
+				// above; this says the same thing outright instead of leaving it
+				// to the low four bits of the portal's number working out to the
+				// same 6. Nothing but the portal can carry that number - it is
+				// the only block.properties entry that has ever used it - so no
+				// other block can reach this line, and every other block leaves
+				// this function through exactly the branches it always did.
 				return GLASS;
 			}
 		#endif
@@ -305,27 +332,108 @@ void main() {
 		texcoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
 	#endif
 
-	#ifdef PBR_ATLAS
-		// mc_midTexCoord is in the same space as gl_MultiTexCoord0, so it takes
-		// the same transform to land in the atlas.
-		vec2 spriteCenter = (gl_TextureMatrix[0] * mc_midTexCoord).xy;
-		spriteBounds = vec4(spriteCenter, abs(texcoord - spriteCenter));
+	#if defined(PBR_ATLAS) || defined(PBR_MATERIALS_ANY_TEXTURE)
+		#ifdef PBR_ATLAS
+			// mc_midTexCoord is in the same space as gl_MultiTexCoord0, so it takes
+			// the same transform to land in the atlas.
+			vec2 spriteCenter = (gl_TextureMatrix[0] * mc_midTexCoord).xy;
+			// A vertex that lies on the sprite's own centre line reports its distance
+			// as zero, and that zero is not the sprite's size. The door is where this
+			// happens: one sprite of 16x32 covered by two faces of 1x1 apiece, so the
+			// upper face has two of its vertices on the sprite's horizontal centre
+			// line. Interpolated, that zero collapses the box the marches run in - the
+			// near edge of the box is the centre minus the half, which for a fragment
+			// on that side of the line is that fragment's own coordinate, so the local
+			// coordinate is a constant 0 (1 on the other side) and the axis stops
+			// being a scale at all: the ray's travel along it shrinks to nothing on
+			// the line, and what is left of the division there is rounding noise
+			// rather than a position.
+			//
+			// The other axis is asked instead. Sundial reaches the same answer from
+			// the same attribute (Terrain.vert: a component of mc_midTexCoord equal to
+			// the vertex's own swaps in the other one). It is not exact - on that door
+			// the rescued half is 8px where the truth is 16px, so the box comes out
+			// half the height it ought to be and the vertical displacement is
+			// compressed smoothly, by at most a third, toward the middle of the
+			// sprite - but it stays inside the sprite, which is the property the box
+			// exists for and the one a substitute taken from a sprite that is wide and
+			// short would not have.
+			//
+			// That a face whose four vertices are the four corners of its sprite is
+			// bit for bit unaffected is the reason this is safe to do blind: its
+			// distance to the centre is half the sprite in every component, at least
+			// half a texel, which is 6.1e-5 even in an 8192-wide atlas against the
+			// 1e-6 below - the rounding noise on a value of this size is around 1e-7,
+			// so the threshold sits between the two with room on both sides. Neither
+			// assignment is reached there, so what is written out is the number that
+			// was written out before and every reader of it (PbrSpriteLocal,
+			// PbrFadeOffsetToSprite, PbrClampToSprite, PbrSpriteUsable, the height
+			// field shadow and the diagnostic view) is left on the same value.
+			vec2 spriteHalfSize = abs(texcoord - spriteCenter);
+
+			// Both are read before either is written, so that each axis takes the
+			// other's own distance rather than one that has already been replaced. A
+			// vertex on the centre line in both axes at once is left with the zero it
+			// reported: PbrSpriteUsable reads that as "no box here", and the face is
+			// drawn with no displacement rather than with a wrong one.
+			vec2 halfSize = spriteHalfSize;
+
+			if (spriteHalfSize.x < 1.0e-6) {
+				halfSize.x = spriteHalfSize.y;
+			}
+
+			if (spriteHalfSize.y < 1.0e-6) {
+				halfSize.y = spriteHalfSize.x;
+			}
+
+			spriteBounds = vec4(spriteCenter, halfSize);
+		#else
+			// An entity is not drawn from a sprite sheet: its texture coordinate
+			// already indexes its own texture, and there is no sprite for a
+			// displaced sample to fall out of. The zero half-size is what says
+			// that - PbrSpriteUsable reads it as "nothing usable here", and both
+			// of the marches leave a face without bounds undisplaced rather than
+			// running one in coordinates that describe no box. On the entity
+			// path that is exactly what is wanted.
+			//
+			// Leaving it unassigned instead is what made the player's armour and
+			// held item see-through: an uninitialized varying interpolates to
+			// whatever the driver left in it, the clamp then boxes the albedo
+			// lookup into an arbitrary square of the skin, and the lookup lands
+			// on the transparent parts of it.
+			spriteBounds = vec4(0.5, 0.5, 0.0, 0.0);
+		#endif
 
 		// The geometry's tangent, brought into world space exactly the way
 		// FetchWorldNormal brings the normal there - the two attributes arrive
 		// in the same space, so whatever reasoning applies to one applies to the
 		// other.
 		//
-		// The offset before normalizing is there because normalizing a zero
-		// vector is undefined, and a zero tangent is a real case rather than a
-		// hypothetical one: Minecraft's entity format has no tangent attribute.
-		// The fragment stage detects the degenerate direction that produces and
-		// falls back to the derivative frame.
+		// The length is measured first rather than an offset being added before
+		// normalizing, which is what this used to do: normalizing a zero vector
+		// is undefined, so an offset kept that from happening - but it also
+		// turned the zero into a perfectly good unit vector pointing one fixed
+		// way, and the fragment stage's degenerate test, which is a length test,
+		// then had nothing left to detect. A zero tangent is not a hypothetical
+		// case: Minecraft's entity format has no tangent attribute at all, so
+		// every entity arriving here carries one, and every one of them was
+		// getting a frame built around that arbitrary direction.
+		//
+		// Passing the zero through instead costs nothing - a zero vector
+		// transforms to a zero vector, whichever branch below runs - and leaves
+		// the fragment stage free to fall back to the derivative frame, which is
+		// the frame an entity should have.
+		vec3 tangentDirection = vec3(0.0);
+		float tangentLength = length(at_tangent.xyz);
+		if (tangentLength > 1.0e-6) {
+			tangentDirection = at_tangent.xyz / tangentLength;
+		}
+
 		#if defined(NORMALS_ARE_IN_WORLD_SPACE)
-			vec3 worldTangent = normalize(at_tangent.xyz + vec3(1.0e-9, 0.0, 0.0));
+			vec3 worldTangent = tangentDirection;
 		#else
 			vec3 worldTangent = (gbufferModelViewInverse * vec4(
-				gl_NormalMatrix * normalize(at_tangent.xyz + vec3(1.0e-9, 0.0, 0.0)),
+				gl_NormalMatrix * tangentDirection,
 				0.0)).xyz;
 		#endif
 

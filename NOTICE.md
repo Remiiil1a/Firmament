@@ -34,7 +34,7 @@ Those same terms also require, for any modified version:
   modified version anywhere else;
 * that the **file name include the same thing**, for which the terms suggest the
   suffix `-edit-of-coderbot-Steadfast` - hence
-  `Firmament-v0.4-edit-of-coderbot-Steadfast.zip`;
+  `Firmament-v0.5-edit-of-coderbot-Steadfast.zip`;
 * that the GPL and those terms are kept, and that nothing suggests this is an
   official Steadfast release. **It is not.** coderbot does not support it, and
   bug reports about it do not belong in Steadfast's issue tracker.
@@ -92,8 +92,10 @@ quotes code from the projects named in it.
 
 Versions are counted as: **v0.1** is the material work, **v0.2** is everything
 from the cloud layer onward, and **v0.3** is the distant-terrain, temporal
-antialiasing and water work after it, and **v0.4** is the sky, the reflected sun
-and moon, and the settings work after that. See the `RELEASE_NOTES-*.md` files.
+antialiasing and water work after it, **v0.4** is the sky, the reflected sun and
+moon, and the settings work after it, and **v0.5** is the work after that. What
+each release changed is listed in `CHANGELOG.md` in the short form, and in the
+`RELEASE_NOTES-*.md` files in full.
 
 **Added in v0.1**
 
@@ -160,6 +162,37 @@ and moon, and the settings work after that. See the `RELEASE_NOTES-*.md` files.
 * A settings menu reorganised into two levels, with every option reachable and
   the shipped profile named the same in both languages.
 
+**Added in v0.5**
+
+* A screen vignette, **on by default**: the corners of the frame lose a little
+  of their light. It is applied to the linear light and before the tonemap,
+  rather than to the finished image, so that the corners go dark instead of flat.
+  Its strength, and where the falloff starts and where it completes, are options.
+* Colored shadows: sunlight that has come through stained glass lands on the
+  ground in the colour of the pane rather than as a hole in the light, and a
+  nether portal tints the light around it with its own glow. How much colour the
+  light takes on is an option, and the portal's glow can be switched off on its
+  own.
+* Volumetric light: the light shafts are drawn **under water** as well as in air,
+  along the same light axis, and their strength is a setting - with a multiplier
+  of its own for the underwater ones - where before there was no strength setting
+  at all.
+* Enchantment glint brightness: how bright the sparkle on an enchanted item or a
+  piece of armour is drawn.
+* Scattering inside the cloud layer, with the number of passes and how much each
+  one attenuates as options.
+* Reflection settings: a metal reflection strength, the smoothness a surface
+  needs before it reflects at all, a blur width, and a debug view that shows the
+  reflection on its own.
+* Smooth parallax: whether the height channel is interpolated across a texel
+  rather than sampled at its centre.
+* The star field is reflected in water, alongside the sun and the moon.
+
+**Removed in v0.5**
+
+* Water scattering, which v0.4 added: its options and the code behind them are
+  gone. The water's absorption, colour and reflection are unchanged.
+
 **Fixed in v0.4**
 
 * A sky that turned solid white for a few seconds in a thunderstorm. The test
@@ -187,6 +220,8 @@ and moon, and the settings work after that. See the `RELEASE_NOTES-*.md` files.
 | `LICENSE-MELLOW-APACHE.txt` | Apache License 2.0 - verbatim copy from Mellow Shader v3.4 |
 | `README.md` | What the pack is, what it adds, what it costs |
 | `README.zh-CN.md` | The same, in Simplified Chinese |
+| `CHANGELOG.md` | What changed in each release, in the short form |
+| `CHANGELOG.zh-CN.md` | The same, in Simplified Chinese |
 Two further things are **not shipped inside the pack**. They are kept with the
 project the pack is built in:
 

@@ -15,4 +15,14 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #version 150 compatibility
+
+// Keep this in sync with gbuffers_entities_translucent.fsh - it has to be
+// defined in both stages, or the sprite bounds varying that the material path
+// needs would only exist on one side - and it has to be the same name in both,
+// or the two stages would disagree about what that varying means.
+#define PBR_ENTITIES
+#ifdef PBR_ENTITIES
+	#define PBR_MATERIALS_ANY_TEXTURE
+#endif
+
 #include "/program/world/lit.vsh"

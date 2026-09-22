@@ -185,9 +185,76 @@ uniform vec2 windowToNdc;
 
 // The environment reflections for materials, which need the sky model above and
 // bring it in themselves if this program did not already ask for it. Only
-// compiled when the option is on, since it is one sky evaluation per pixel.
-#if defined(PBR_REFLECTIONS)
+// compiled when one of the two options is on, since it is one sky evaluation
+// per pixel.
+//
+// Both options rather than the sky one alone: the file's own guard is the same
+// pair, and the hand's reflection below is a traced one - it needs these
+// whether or not the sky half of the world's reflection is switched on.
+#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
 	#include "/environment/lighting/reflections.glsl"
+#endif
+
+// How much of the diffuse response a metal keeps on a held item, from none of
+// it to all of it - the number, and why it exists, are where it is used, at the
+// end of the material block in main().
+//
+// Declared here rather than in gbuffers_hand.fsh, which is where a constant
+// about the hand belongs, because this file is included by every world program:
+// a name the hand's program defines alone would be missing from the expansion
+// of all the others, and which of them compile the line that uses it is then a
+// question about the preprocessor rather than about the hand. Whoever uses it
+// declares it, which is the same rule the includes in this file follow.
+#if defined(PBR_HAND_ITEMS)
+	#define PBR_HAND_METAL_DIFFUSE 0.5
+#endif
+
+// The two buffers a held item's reflection is traced against.
+//
+// depthtex2 is the depth buffer the hand is not in. depthtex1 - the one the
+// world's own reflections march - holds the item itself at the item's own
+// pixels, so a ray leaving the item meets the item first and paints it with
+// whatever is behind it; that was measured twice on this pack, and it is why a
+// held item was left out of the reflection altogether. Mellow Shader, which
+// does reflect held items, solves the same problem by hand: its ray gives up
+// when the depth under it is nearer than 0.56, and the same number appears in
+// its SSAO pass with the comment "Skip hand". Sundial documents depthtex2 in
+// its own option list as the depth without the hand, which is the same rule
+// kept by the loader instead of by the shader.
+//
+// colortex4 is the world's colour with no reflections in it, which is what the
+// world's reflections sample - except that at this point in the frame the pass
+// that writes it has not run yet, so what is there is the last finished frame.
+// That is the same one-frame-old picture Mellow's reflection reads (gaux1,
+// with gaux1Clear set so that it survives), and it is the only one there is:
+// the item is drawn while the frame it belongs to is still being filled.
+#if defined(PBR_HAND_ITEMS) && defined(PBR_SSR)
+	uniform sampler2D depthtex2;
+	uniform sampler2D colortex4;
+
+	// The one test a hit has to pass that the trace does not make itself: it
+	// has to be beyond the item. See where it is used, at the end of the
+	// material block in main().
+	//
+	// A reflected ray only ever travels away from the surface it left, so a
+	// genuine hit is always further from the eye than the fragment that cast
+	// it, and anything nearer is the item meeting itself. That test is exact
+	// and needs no threshold - which is what the first version of this got
+	// wrong. It refused every hit closer than a block instead, and a block is
+	// most of what a held item reflects when the player is anywhere near
+	// anything: mining, standing against a wall, looking down. The result was a
+	// reflection that covered part of the item and not the rest, with the
+	// boundary moving as the player walked.
+
+	// The trace's step budget, which is the option the world's screen-space
+	// reflections use, and for the same reason: this is one trace per pixel of
+	// the item rather than one per pixel of the screen.
+	#define RAYMARCH_STEPS PBR_SSR_STEPS
+
+	// Raytrace(...), for the trace itself. Nothing else in this file includes
+	// it: the deferred pass and composite1 are different programs.
+	#include "/lib/raytrace.glsl"
+
 #endif
 
 #ifdef DISTANT_HORIZONS
@@ -210,10 +277,20 @@ uniform vec2 windowToNdc;
 	// emissive.
 	in vec2 lightMap;
 
-	#ifdef PBR_ATLAS
+	// Must match the guard in lit.vsh, or one stage would have a varying the
+	// other does not. The entity programs get here through
+	// PBR_MATERIALS_ANY_TEXTURE rather than PBR_ATLAS.
+	#if defined(PBR_ATLAS) || defined(PBR_MATERIALS_ANY_TEXTURE)
 		// xy: the centre of this face's sprite in the block atlas, zw: half of
-		// its size. Parallax mapping uses this to keep its samples inside the
-		// sprite they belong to; see PbrClampSample.
+		// its size, except that an axis whose extent is nil takes the other
+		// axis's half instead (see the assignment in lit.vsh). Parallax mapping
+		// works in the box these describe, and a sample that would leave that box
+		// has the offset faded by the room the fragment has left and is held at the
+		// box's edge behind that, rather than being wrapped round to the far side of
+		// the sprite; see PbrFadeOffsetToSprite and PbrClampToSprite, and
+		// PbrSpriteLocal for the box itself. A zero half-size, which is what a
+		// non-atlas surface carries, is what PbrSpriteUsable reads as "no box here",
+		// and both of the marches then leave the surface undisplaced.
 		in vec4 spriteBounds;
 
 		// The tangent this geometry actually carries, from lit.vsh, with the
@@ -375,6 +452,13 @@ void main() {
 	vec3 reflectionNormal = vec3(0.0, 1.0, 0.0);
 	float reflectionRoughness = 1.0;
 	vec3 reflectionF0 = vec3(0.0);
+
+	// Which metal this is, or 0 for anything that is not one. Carried alongside
+	// the reflectance because the deferred pass needs it to know which metals
+	// reflect which colour at a grazing angle, and because a metal is also
+	// allowed to reflect at a roughness where everything else is not. See
+	// PbrMetalF82 and PbrReflectionSmoothness.
+	float reflectionMetalID = 0.0;
 
 	#ifdef PBR_SURFACE
 		// Sample the derivatives that the material decoding needs up here,
@@ -636,7 +720,63 @@ void main() {
 				#endif
 			} else {
 		#endif
-				surfaceColor *= texture(gtexture, surfaceTexCoord);
+				// The base texture is sampled at the displaced coordinate so
+				// that the albedo lines up with the surface the height field
+				// describes rather than staying flat.
+				//
+				// What the displaced coordinate is not allowed to do is decide
+				// the alpha test below. The height field is a 2D claim about a
+				// 3D surface, and a ray that walks off a groove can land on a
+				// texel the fragment's own surface does not have at all: the
+				// transparent pixels a resource pack keeps inside a cutout
+				// sprite, of which a door's window is one. The alpha read there
+				// is zero, the alpha test throws the fragment away, and both
+				// symptoms land in the same band - a point of fine grain per
+				// pixel, because where the ray lands moves with the view, and
+				// sky through the middle of a solid surface. That band is
+				// exactly the texels whose own height sits below the reference
+				// height, which is the seams, the frame edges and the border of
+				// the window, and it is also the only place the march runs at
+				// all: a texel at the reference height returns before the march
+				// starts, which is why the flat parts of the same surface stay
+				// clean.
+				//
+				// So a sample that would fail the test is retaken at the
+				// coordinate the fragment arrived with. A fragment is inside
+				// opaque material by construction - it is drawn from that texel
+				// - so it stays opaque, and what it gives up is the
+				// displacement it could not have shown anyway, there being no
+				// material at the point the ray chose. The cost is one fetch,
+				// and only for the fragments that would otherwise be discarded:
+				// a surface with no transparent texel in it never enters the
+				// branch.
+				//
+				// Sundial and Mellow both sample the albedo at the displaced
+				// coordinate and both alpha test what they get - which is where
+				// this march came from, and where this guard does not - so this
+				// is a departure from the reference rather than a port of it.
+				//
+				// Written against alphaTestRef rather than against zero on
+				// purpose: in a program whose alpha test is off the reference is
+				// zero, so the branch cannot be taken there, and nothing changes
+				// for a surface that was never cut out. The parallax test is
+				// here for the same reason - with the option off the displaced
+				// coordinate is the fragment's own to begin with.
+				vec4 baseTexture = texture(gtexture, surfaceTexCoord);
+
+				#if defined(PBR_SURFACE) && defined(PBR_PARALLAX)
+					if (baseTexture.a < alphaTestRef) {
+						// Explicit gradients: this fetch is inside a branch, so
+						// an implicit level of detail is not available to it.
+						baseTexture = textureGrad(
+							gtexture,
+							texcoord,
+							pbrGradients.ddxTexCoord,
+							pbrGradients.ddyTexCoord);
+					}
+				#endif
+
+				surfaceColor *= baseTexture;
 		#if defined(TRANSLUCENT)
 			}
 		#endif
@@ -797,12 +937,45 @@ void main() {
 			// it is where albedo-based metals pick up their reflectance.
 			pbr = PbrResolveAlbedo(pbr, surfaceColor.rgb);
 
+			// How much of the diffuse response a metal keeps on a held item,
+			// from none of it to all of it.
+			//
+			// A metal in the world reflects what is around it and has almost no
+			// diffuse response of its own, and that trade is what makes it read
+			// as metal - see PBR_METAL_DIFFUSE, which is where the response is
+			// taken away. A held item cannot make the other half of that trade,
+			// because it is not in the world the reflection is built from. Both
+			// halves of that reflection were measured to leave a held item
+			// looking like a window onto whatever is behind it, and refusing
+			// both is what the neutral material below does; see §21 of
+			// PBR_PORTING.md for the test that settled it.
+			//
+			// So an item made of metal has to keep some of what a metal in the
+			// world gives up, or it has nothing left to show. With the
+			// reflection refused and the diffuse response removed, a metal held
+			// item is black whatever the light around it is doing - which is
+			// what a held gold block was doing before this number existed.
+			//
+			// Half of it is a guess, and one to adjust by eye: the constant is
+			// declared at the top of this file.
+			//
+			// The metalness is kept as well as scaled, so that the reflection
+			// below is weighted by the material the resource pack authored
+			// rather than by the adjusted one - the two would otherwise dim each
+			// other by the same amount, and a metal item would be left dimmer
+			// than either on its own.
+			#if defined(PBR_HAND_ITEMS)
+				float handMetalness = pbr.metalness;
+				pbr.metalness *= 1.0 - PBR_HAND_METAL_DIFFUSE;
+			#endif
+
 			// Hand the material on to the environment reflection, which the
 			// deferred pass applies. Set after the albedo is resolved so that a
 			// metal reflects with the colour it actually has.
 			reflectionNormal = pbrNormal;
 			reflectionRoughness = pbr.roughness;
 			reflectionF0 = pbr.f0;
+			reflectionMetalID = pbr.metalID;
 
 			// Surfaces drawn by the translucent pass have their own reflection
 			// path in TranslucentLighting, which reflects the world as well as
@@ -811,6 +984,40 @@ void main() {
 			#if defined(TRANSLUCENT)
 				reflectionRoughness = 1.0;
 				reflectionF0 = vec3(0.0);
+				reflectionMetalID = 0.0;
+			#endif
+
+			// Everything drawn after the deferred pass is left out for a
+			// sharper version of the same reason, and this is the rule the
+			// three programs above already follow - water, Distant Horizons
+			// water and Colorwheel's translucents all define AFTER_DEFERRED and
+			// all write a neutral material here. The translucent entities were
+			// the one that did not, and they are where the third-person player
+			// is drawn: a player is a translucent entity, so the player, its
+			// armour and whatever it holds arrive here rather than at
+			// gbuffers_entities the way a mob does.
+			//
+			// What goes wrong without it is not a wrong reflection but a
+			// reflection of nothing: colortex4 - the picture of the world the
+			// reflections are sampled from - is copied by the deferred pass, and
+			// the deferred pass is over by the time any of this geometry is
+			// drawn. So the surface is in the depth buffer the ray marches and
+			// not in the colour buffer it samples: the ray meets the surface
+			// itself, and takes the colour of whatever is standing behind it.
+			// A held item in third person showing the scene through itself is
+			// exactly that, and it is what a held item and a held block differ
+			// by - a block goes to gbuffers_entities and is drawn before the
+			// copy is taken.
+			//
+			// There is nothing to give them instead. The trace would need a
+			// depth buffer with the entities left out and a colour buffer with
+			// them left in, and neither exists - the hand's reflection has the
+			// first of those in depthtex2 and no need of the second, which is
+			// why it could be done there and cannot be done here.
+			#if defined(AFTER_DEFERRED)
+				reflectionRoughness = 1.0;
+				reflectionF0 = vec3(0.0);
+				reflectionMetalID = 0.0;
 			#endif
 
 			// The hand is left out of the environment reflection for a reason of its
@@ -840,6 +1047,7 @@ void main() {
 			#if defined(PBR_HAND_ITEMS)
 				reflectionRoughness = 1.0;
 				reflectionF0 = vec3(0.0);
+				reflectionMetalID = 0.0;
 			#endif
 		#endif
 
@@ -884,6 +1092,105 @@ void main() {
 			vec3 viewDirection = normalize(-cameraRelativePos);
 
 			fragmentColor.rgb = DiffuseLighting(surface, pbr, viewDirection);
+
+			// The reflection a held item is given, which is the one the world's
+			// surfaces are given: the same direction, the same Fresnel, the same
+			// smoothness gate, the same strength, and the same trace. See the
+			// notes on the two buffers at the top of this file for what it is
+			// traced against and why those and not the world's.
+			//
+			// It is applied here rather than in the deferred pass because the
+			// deferred pass cannot tell the hand from the world - it must refuse
+			// the hand - and because this is the one point in the frame at which
+			// the item is known to be the item.
+			//
+			// What stood here two batches ago was a sky term with no trace
+			// behind it, and it read as a wash of pale sky over the item: a
+			// held item shows its faces to the camera, and a face turned towards
+			// the eye reflects whatever is behind the player. The trace is what
+			// answers that. The faces whose reflected ray leaves the item are
+			// given the world; only the ones that genuinely point back past the
+			// eye are left with the sky, which is what a mirror held up in front
+			// of you would show as well.
+			#if defined(PBR_HAND_ITEMS) && defined(PBR_SSR)
+				// The camera sits at the origin of view space, so the item's
+				// view position is its camera-relative position turned out of
+				// the world's axes - the transpose of the matrix the geometry
+				// was drawn with, which for a rotation is its inverse.
+				mat3 handView = mat3(gbufferModelView);
+				vec3 handViewPos = handView * cameraRelativePos;
+
+				// The reflected direction, in view space - the space the depth
+				// buffer the ray is marched through is in. The normal and the
+				// view direction are both world-space, so what comes back is
+				// turned out of the world's axes by the same matrix as the
+				// position above.
+				vec3 handViewReflected = handView * PbrReflectionDirection(
+					pbrNormal,
+					viewDirection,
+					pbr.roughness);
+
+				float handNdotV = max(dot(pbrNormal, viewDirection), 1.0e-4);
+
+				vec3 handWeight = mix(
+					PBR_REFLECTIONS_STRENGTH,
+					PBR_METAL_REFLECTION_STRENGTH,
+					clamp(handMetalness, 0.0, 1.0))
+					* PbrReflectionFresnel(
+						pbr.f0,
+						PbrMetalF82(pbr.metalID),
+						handNdotV,
+						pbr.roughness)
+					* PbrReflectionSmoothness(pbr.roughness, handMetalness);
+
+				// What the item reflects: the world, and nothing where the ray
+				// found none of it.
+				//
+				// There is no sky here, and that is deliberate rather than
+				// unfinished. The world's reflection falls back to the sky
+				// model, and a held item was given the same fallback first - but
+				// the sky a face turned towards the camera reflects is the sky
+				// behind the player, and over an item that is a wash of pale
+				// blue rather than a reflection: on a gold apple it reads as the
+				// item going white. It was the whole of what a held item showed
+				// before the trace existed, which is why the trace was worth
+				// asking for; with the trace there, the fallback is in the way
+				// of it.
+				//
+				// So a pixel whose ray found nothing keeps what it already has -
+				// its own diffuse response, and the ambient specular the surface
+				// programs apply to every material - and only a pixel the ray
+				// reached is given anything on top.
+				vec3 handEnvironment = vec3(0.0);
+
+				vec2 handHitPos;
+				vec3 handHitViewPos;
+
+				if (Raytrace(
+					depthtex2,
+					gbufferProjection,
+					gbufferProjectionInverse,
+					handViewPos,
+					handViewReflected,
+					vec2(0.5, 1.0),
+					handHitPos,
+					handHitViewPos
+				) && length(handHitViewPos) > length(handViewPos)) {
+					// Faded out near the edge of the screen, where the ray is
+					// about to leave the buffer and there is nothing left to
+					// find. The world's reflection does the same, for the same
+					// reason, and with the same width.
+					vec2 handHitAbs = abs(handHitPos * 2.0 - 1.0);
+					float handHitFade = min(
+						1.0,
+						(1.0 - max(handHitAbs.x, handHitAbs.y)) / 0.10);
+
+					handEnvironment =
+						texture(colortex4, handHitPos).rgb * handHitFade;
+				}
+
+				fragmentColor.rgb += handWeight * handEnvironment;
+			#endif
 		#else
 			fragmentColor.rgb = DiffuseLighting(surface);
 		#endif
@@ -1144,7 +1451,12 @@ void main() {
 	// on, which is the price of the fixed list below and cheaper in the end than
 	// a list that changes with the options - see the note above.
 	gl_FragData[3] = vec4(reflectionNormal, reflectionRoughness);
-	gl_FragData[4] = vec4(reflectionF0, 0.0);
+
+	// The metal ID rides in the alpha channel of the reflectance, which was
+	// written as a hard zero before there was anything to put there. The byte it
+	// is divided by is the byte it came from, so the eight-bit buffer carries it
+	// without loss - see PbrMetalF82 for what reads it back.
+	gl_FragData[4] = vec4(reflectionF0, reflectionMetalID / 255.0);
 
 	/* DRAWBUFFERS:02678 */
 }

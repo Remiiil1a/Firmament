@@ -40,6 +40,12 @@
 // its sun direction and has to come after it.
 #include "sky/bodies.glsl"
 
+// The star field. Included here rather than only where the sky is drawn,
+// because a reflection of the sky needs it for the same reason it needs the two
+// discs above: it is part of the sky, and what a reflection is handed is this
+// model alone, which has no stars in it either.
+#include "sky/stars.glsl"
+
 // The End's own sky, which is not an atmosphere at all.
 #include "sky/end.glsl"
 

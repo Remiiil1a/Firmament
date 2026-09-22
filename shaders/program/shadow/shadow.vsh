@@ -22,6 +22,14 @@ in vec3 at_midBlock;
 out vec2 texcoord;
 out float waterHeight;
 
+// The material this fragment belongs to, which the fragment shader needs to pick
+// the one material whose colour the light passing through it should take on.
+// Flat, because a material is not something to interpolate across a face.
+//
+// This was a local until colored shadows arrived; see COLORED_SHADOWS in
+// /environment/materialIDs.glsl for what the fragment shader does with it.
+flat out uint materialID;
+
 uniform mat4 shadowModelViewInverse;
 
 #include "/environment/materialIDs.glsl"
@@ -29,7 +37,7 @@ uniform mat4 shadowModelViewInverse;
 void main() {
 	vec4 viewPos = gl_ModelViewMatrix * gl_Vertex;
 	vec4 cameraRelativePos = shadowModelViewInverse * viewPos;
-	uint materialID = DecodeMaterialID(mc_Entity.x);
+	materialID = DecodeMaterialID(mc_Entity.x);
 
 	// TODO: Deduplicate this, copied from lit.fsh
 	if (materialID == WATER &&
