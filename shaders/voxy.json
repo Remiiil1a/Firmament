@@ -36,6 +36,7 @@
 		"nightSkyOverridePremultiplied",
 		"ambientSkyColor",
 		"worldSunVector",
+		"rainStrength",
 		"caveFogColor",
 		"eyeSkylight",
 		"isEyeInWater",
@@ -43,6 +44,7 @@
 		"borderFogDistance",
 		"underwaterFogColor",
 		"atmosphereFogCoefficient",
+		"rainFogAmount",
 		"blindness",
 		"sunrise",
 		"skyZenithDay",
@@ -51,11 +53,17 @@
 		"moonrise",
 		"skyZenithNight",
 		"skyHorizonNight",
-		"skyLightNight"
+		"skyLightNight",
+		"taaJitter",
+		"worldDay"
 	],
+	"taaOffset": "{ return taaJitter; }",
 	"samplers": {
 		"vxDepthTexOpaque": "sampler2D",
 		"colortex4": "sampler2D",
-		"noisetex": "sampler2D"
+		"noisetex": "sampler2D",
+		"lightmap": "sampler2D",
+		"sunTex": "sampler2D",
+		"moonPhasesTex": "sampler2D"
 	}
 }

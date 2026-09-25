@@ -80,7 +80,33 @@
 	// path and is left bit for bit as it was.
 	vec3 F_AdobeF82(vec3 f0, vec3 f82, float VdotH) {
 		const float K = 49.0 / 46656.0;
-		float Fc = pow(1.0 - VdotH, 5.0);
+
+		// The base is clamped to zero, and that is not tidiness: it is the fix
+		// for a black blot on reflective surfaces. See PBR_PORTING.md 139.
+		//
+		// VdotH is the cosine of an angle, so it cannot be more than one - but
+		// the number the callers pass is a dot product between a unit normal
+		// that has been through a buffer and a normalized view direction, and
+		// neither is exact. colortex7 is RGBA16F, so the normal it gives back
+		// carries about three decimal digits, and a dot product that is
+		// mathematically 1.0 arrives as 1.0001 or so - not at one pixel, but on
+		// every pixel whose surface faces the camera, which is a wide and
+		// contiguous band of the screen. The base is then a little below zero,
+		// and pow() with a negative base is undefined in GLSL. On the drivers
+		// this was found on it is a NaN.
+		//
+		// A NaN here is not an inaccurate highlight. Fc is a vec3 of them and
+		// the whole Fresnel term is, so the reflection is a NaN, and composite3
+		// adds it to the picture - where the value added and the value checked
+		// were not the same variable, so it reached the screen and was drawn as
+		// black. It reads as a blot rather than as speckles because the
+		// condition is a band of angles rather than a single pixel, and it is
+		// intermittent because that band moves as the surface and the camera
+		// do.
+		//
+		// The exponent is a constant, so pow is the only way this can happen
+		// and one clamp is the whole of the fix.
+		float Fc = pow(clamp(1.0 - VdotH, 0.0, 1.0), 5.0);
 		vec3 b = (K - K * f82) * (7776.0 + 9031.0 * f0);
 
 		return clamp(

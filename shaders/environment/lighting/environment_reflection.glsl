@@ -17,23 +17,23 @@
 // The environment reflection of a PBR material, as applied by the pass that
 // adds it to the picture.
 //
-// It lives here rather than in that pass because it is that pass's position in
-// the frame that matters, and it has moved once already. It used to be applied
-// by copy_and_fog, which is the pass that *writes* the buffer a reflection has
-// to read - see the sampler below - and a pass cannot read what it is writing.
-// It reads the temporal history instead in that position, and the history has
-// the reflections of the frame before in it, which makes the reflection a loop
-// rather than a lookup: stable while it is faint and sharp, divergent into
-// black as soon as it is neither.
+// It reads colortex3: the frame resolved over the last few frames, with no
+// reflection in it. That is the buffer a reflection wants, because it is the
+// only picture of the world on screen that has stopped moving. A trace over a
+// single raw frame - which is what the deferred pass leaves in colortex3 -
+// re-answers every frame from a foot that the jitter has shifted, and nothing
+// downstream averages the result, because the reflection is added after the
+// temporal resolve. That is what a crawling reflection is, and why it reads
+// worse at a lower frame rate.
 //
-// composite1 runs one pass later, after the reflection copy is finished, which
-// is what makes the read below legal rather than merely probable.
+// composite3 owns both halves of that arrangement: it runs after composite1,
+// which writes colortex3, and it never writes a reflection back into it, so the
+// trace finds the world and never another reflection.
 //
-// The uniforms it needs are declared here rather than in either program,
-// because both include this file in different positions and only the one that
-// calls it needs them.
+// The uniform it needs is declared here rather than in the pass, because the
+// pass includes this file.
 
-uniform sampler2D colortex4;
+uniform sampler2D colortex3;
 uniform sampler2D colortex7;
 uniform sampler2D colortex8;
 uniform sampler2D depthtex1;
@@ -67,7 +67,7 @@ vec3 EnvironmentReflection(
 		// no reflection at all, and the reason for that is not about the
 		// surface - it is about where the reflection would be put.
 		//
-		// Water is drawn after the pass that copies the world into colortex4,
+		// Water is drawn after the pass that copies the world into colortex3,
 		// and it refracts what is behind it, so the picture of a block under
 		// the surface is not where the block is. The depth and the material of
 		// that block still are: depthtex1 is the opaque depth, and the block is
@@ -310,7 +310,7 @@ vec3 EnvironmentReflection(
 					if (blurPixels < 0.75) {
 						// Smooth enough that taps this close together would only
 						// add cost and noise.
-						hitColor = texture(colortex4, hitPos).rgb;
+						hitColor = texture(colortex3, hitPos).rgb;
 					} else {
 						vec2 pixelSize = windowToNdc * 0.5;
 						vec3 blurred = vec3(0.0);
@@ -322,7 +322,7 @@ vec3 EnvironmentReflection(
 								* (blurPixels * ringScale);
 
 							blurred += texture(
-								colortex4,
+								colortex3,
 								hitPos + offset * pixelSize).rgb;
 						}
 

@@ -92,6 +92,31 @@
 	#define BLOCKLIGHT_HAS_LIGHTMAP
 #endif
 
+// The same lightmap, for the programs whose uniforms come from elsewhere - which
+// is Voxy's terrain, and only Voxy's terrain.
+//
+// No declaration here, and that is the whole subtlety: an entry in the samplers
+// map of voxy.json is not this pack asking for a sampler, it is Voxy being told
+// to declare one and bind a texture to it. Voxy therefore emits the declaration
+// itself into every program that reads that file, and a second one written here
+// would be the same declaration twice in one program - which does not compile.
+// What this file contributes is only the knowledge that the sampler is there to
+// be sampled.
+//
+// This is the same arrangement the pack's rainStrength uniform has with the same
+// file, and it is what the source checker's rules about the Voxy chain exist to
+// catch. They caught this one; see PBR_PORTING.md 147.
+//
+// What it is for: without it, level-of-detail terrain is the one place in the
+// world that cannot see the lightmap, so it is the one place whose block light has
+// no color to take - and taking the color from the lightmap everywhere else is
+// what left the far half white while the near half stayed warm. Lighting that
+// changes color at the edge of the render distance is worse than lighting that is
+// wrong everywhere, because the edge moves.
+#if defined(EXTERNALLY_DEFINED_UNIFORMS) && defined(VOXY_LIGHTMAP)
+	#define BLOCKLIGHT_HAS_LIGHTMAP
+#endif
+
 // How bright block light is at full block light level.
 //
 // This number is the pack's own rather than something read from the lightmap:
@@ -99,6 +124,95 @@
 // falloff baked into them, and this model replaces that with its own falloff
 // and this.
 #define BLOCKLIGHT_STRENGTH 4.0 // [1.0 2.0 3.0 4.0 5.0 6.0 8.0]
+
+// The color temperature of block light, in kelvin.
+//
+// The color of block light comes from the lightmap, because the lightmap is how
+// a resource pack says what color its lights are - see BlockLightTint below. This
+// is for the case where a resource pack says nothing, or says something that does
+// not suit the world being built, and what is wanted is to move the whole of it
+// warm or cool without editing the pack. It reaches the level-of-detail terrain
+// as well, which has no lightmap and takes a color of the pack's own; see the
+// note in BlockLightTint's far branch.
+//
+// The scale is the one a photographer uses. A candle and a torch are around
+// 1800 to 2500 K and read as deep orange; an incandescent bulb is 2700 K, which
+// is the warm white most people mean by "warm"; 4000 K is neutral; daylight is
+// 5500 to 6500 K; an overcast sky is 7000 and up and reads blue. So lowering this
+// makes block light more yellow, and raising it makes it whiter and then blue.
+//
+// 6500 is the middle of the scale rather than the middle of the numbers, and it is
+// the default because it is exactly no change: the tint below is computed as a
+// ratio against this value, so at 6500 it is one and the pack draws what it drew
+// before this option existed. Every other setting moves away from that.
+//
+// A hundred kelvin per step, because that is the finest step anybody can see on a
+// light color and anything finer would be a list of numbers no one could read.
+#define BLOCKLIGHT_TEMPERATURE 6500 // [1000 1100 1200 1300 1400 1500 1600 1700 1800 1900 2000 2100 2200 2300 2400 2500 2600 2700 2800 2900 3000 3100 3200 3300 3400 3500 3600 3700 3800 3900 4000 4100 4200 4300 4400 4500 4600 4700 4800 4900 5000 5100 5200 5300 5400 5500 5600 5700 5800 5900 6000 6100 6200 6300 6400 6500 6600 6700 6800 6900 7000 7100 7200 7300 7400 7500 7600 7700 7800 7900 8000 8100 8200 8300 8400 8500 8600 8700 8800 8900 9000 9100 9200 9300 9400 9500 9600 9700 9800 9900 10000]
+
+// What the option above is a ratio against, which is the value that leaves the
+// light alone.
+#define BLOCKLIGHT_TEMPERATURE_NEUTRAL 6500.0
+
+// The color a black body at this temperature glows, from Tanner Helland's
+// approximation of the Planckian locus - the same curve the kelvin scale on a
+// camera or a light bulb is drawn from.
+//
+// Every pow() below has a guarded base, and that is the lesson from
+// PBR_PORTING.md 139 rather than caution for its own sake: a pow() with a
+// negative base is undefined in GLSL and comes out as a NaN on the drivers this
+// pack has been tested on, and the two expressions here are of the form
+// (t - 60) to a negative power, which is negative for every temperature below
+// 6000 K - that is, most of the list above. The clamps are what make the two
+// halves of each branch meet.
+vec3 BlockLightTemperatureRgb(float kelvin) {
+	float t = clamp(kelvin, 1000.0, 40000.0) * 0.01;
+
+	float red = t <= 66.0
+		? 255.0
+		: 329.698727446 * pow(max(t - 60.0, 1.0), -0.1332047592);
+
+	float green = t <= 66.0
+		? 99.4708025861 * log(max(t, 1.0)) - 161.1195681661
+		: 288.1221695283 * pow(max(t - 60.0, 1.0), -0.0755148492);
+
+	float blue;
+	if (t >= 66.0) {
+		blue = 255.0;
+	} else if (t <= 19.0) {
+		blue = 0.0;
+	} else {
+		blue = 138.5177312231 * log(max(t - 10.0, 1.0)) - 305.0447927307;
+	}
+
+	return clamp(vec3(red, green, blue) / 255.0, vec3(0.0), vec3(1.0));
+}
+
+// The factor to multiply block light's color by.
+//
+// Two normalizations, and both of them are the difference between this being a
+// color control and being a second brightness control:
+//
+//  - Against the neutral temperature, so that the default setting is exactly one
+//    and the option does nothing until it is moved. Without this every setting
+//    would also brighten or darken the world by whatever the curve happens to do
+//    at that temperature.
+//  - Against its own brightness afterwards, so that the factor changes the hue
+//    and not the luminance. A warm tint that also took a third of the light away
+//    would read as "warmer and darker", and the two are separate controls here:
+//    BLOCKLIGHT_STRENGTH above is the brightness one.
+//
+// Both arguments are compile-time constants, so a driver folds this to two
+// constants; the two calls are kept as calls rather than written out because the
+// curve is the thing being documented.
+vec3 BlockLightTemperatureTint() {
+	vec3 tint = BlockLightTemperatureRgb(float(BLOCKLIGHT_TEMPERATURE))
+		/ BlockLightTemperatureRgb(BLOCKLIGHT_TEMPERATURE_NEUTRAL);
+
+	float luma = dot(tint, vec3(0.2126, 0.7152, 0.0722));
+
+	return tint / max(luma, 1.0e-4);
+}
 
 // The color of block light, taken from the lightmap.
 //
@@ -114,6 +228,10 @@
 // contribution from the sky, and reduced to its hue, because the brightness of
 // block light is built from the falloff in BlockLighting and
 // BLOCKLIGHT_STRENGTH rather than from the lightmap's own.
+//
+// BLOCKLIGHT_TEMPERATURE then moves that hue along with everything else - see the
+// note on the option, and the note on the far half of the world in the branch
+// below.
 vec3 BlockLightTint(vec2 lightMapCoord) {
 	#if defined(BLOCKLIGHT_HAS_LIGHTMAP)
 		vec3 tint = texture(lightmap, vec2(lightMapCoord.x, 1.0 / 32.0)).rgb;
@@ -124,12 +242,22 @@ vec3 BlockLightTint(vec2 lightMapCoord) {
 			return vec3(1.0);
 		}
 
-		// Only the hue: scaled so that its brightest channel is one.
-		return tint / max(max(tint.r, tint.g), tint.b);
+		// Only the hue: scaled so that its brightest channel is one, and then
+		// moved to the temperature the option asks for.
+		return tint / max(max(tint.r, tint.g), tint.b)
+			* BlockLightTemperatureTint();
 	#else
-		// A program whose uniforms come from elsewhere does not get the
-		// lightmap. That is Voxy's terrain, which keeps a neutral color.
-		return vec3(1.0);
+		// Reached only by a program that reads its uniforms from elsewhere and was
+		// not given the lightmap - which is no program at all now that Voxy's
+		// terrain asks for it, and is kept because a path that cannot be taken is
+		// cheaper to keep than to rediscover. What it used to be is in
+		// PBR_PORTING.md 146: the fallback was a warm orange of the pack's own,
+		// written here to undo a regression where this returned white, and 147
+		// replaced it with the lightmap itself for the programs that can have one.
+		//
+		// The temperature option is applied here too, so that a program which ends
+		// up on this path still moves with everything else.
+		return vec3(1.0, 0.52, 0.20) * BlockLightTemperatureTint();
 	#endif
 }
 
@@ -567,8 +695,21 @@ vec3 DiffuseLightingImpl(
 	SurfaceFragment fragment,
 	PbrSurface pbr,
 	// The direction from this fragment towards the camera, in world space.
-	vec3 viewDirection
+	vec3 viewDirection,
+	// How much of the colour this returns is a mirror rather than light the
+	// surface was given, in linear RGB. Two things make it up: the highlight of
+	// the sun or moon, and the environment term further down. Both are
+	// reflections, and a reflection is a picture of a light rather than a light
+	// - which is the whole reason the bloom leaves it out.
+	//
+	// Written on every path through this function. The callers that have no use
+	// for it pass a variable nobody reads.
+	out vec3 specularColor
 ) {
+	// Set before any of the early outs below, so that no caller ever reads an
+	// undefined value - the same rule the two outputs of DirectLighting follow.
+	specularColor = vec3(0.0);
+
 	// Part of approximating subsurface scattering
 	bool subsurfaceScatter = fragment.materialID == SUBSURFACE_SCATTERING \
 		|| fragment.materialID == GROUND_FOLIAGE \
@@ -747,6 +888,13 @@ vec3 DiffuseLightingImpl(
 	// because a highlight is the same light seen from a different angle.
 	lighting += (vec3(directLightStrength) + specular) * directLightColor * shadowTint;
 
+	// And the highlight is kept on its own as well as added to the lighting.
+	//
+	// Tinted by exactly what the line above tinted it with, so that this is the
+	// same quantity the frame received: a highlight seen through stained glass
+	// is removed in the colour it was added in, rather than in white.
+	specularColor = specular * directLightColor * shadowTint;
+
 	#if defined(PBR_SURFACE) && defined(PBR_SPECULAR)
 		// Ice is left out while PBR_TRANSLUCENT is on: its reflections are drawn
 		// by TranslucentLighting, which has both a direction and a screen-space
@@ -761,12 +909,19 @@ vec3 DiffuseLightingImpl(
 		if (!skipAmbientSpecular) {
 			// The environment reflection, so that a material responds to the
 			// light around it and not only to the sun and moon.
-			lighting += PbrAmbientSpecular(
+			//
+			// Held in a variable of its own rather than added straight into the
+			// lighting, because it belongs to the specular total below as well:
+			// this is the second of the two terms that make it up.
+			vec3 ambientSpecular = PbrAmbientSpecular(
 				pbr,
 				fragment.worldNormal,
 				viewDirection,
 				indirectLighting,
 				fragment.skyLight);
+
+			lighting += ambientSpecular;
+			specularColor += ambientSpecular;
 		}
 	#endif
 
@@ -781,6 +936,13 @@ vec3 DiffuseLightingImpl(
 		surfaceColor = Desaturate(surfaceColor, desaturation);
 	#endif
 
+	// The same multiplication by the surface colour that the return below does,
+	// and after the night desaturation for the same reason the return is: what
+	// is wanted is not something proportional to the highlight but the exact
+	// part of the returned colour that the highlight contributed, so that
+	// subtracting it leaves what the surface would have looked like without it.
+	specularColor *= surfaceColor;
+
 	// Emission is deliberately not added here: it is added by the caller, so
 	// that everything that glows goes through one place. See lit.fsh.
 	return surfaceColor * lighting;
@@ -790,15 +952,20 @@ vec3 DiffuseLightingImpl(
 // Distant Horizons terrain, Voxy terrain, and every program at all when PBR is
 // turned off.
 vec3 DiffuseLighting(SurfaceFragment fragment) {
-	return DiffuseLightingImpl(fragment, PbrNone(), vec3(0.0));
+	// There is no material here, so nothing this call shades reflects anything
+	// and the specular total can only come out zero. The parameter exists so
+	// that there is one implementation rather than two.
+	vec3 specularColor;
+	return DiffuseLightingImpl(fragment, PbrNone(), vec3(0.0), specularColor);
 }
 
 #ifdef PBR_SURFACE
 	vec3 DiffuseLighting(
 		SurfaceFragment fragment,
 		PbrSurface pbr,
-		vec3 viewDirection
+		vec3 viewDirection,
+		out vec3 specularColor
 	) {
-		return DiffuseLightingImpl(fragment, pbr, viewDirection);
+		return DiffuseLightingImpl(fragment, pbr, viewDirection, specularColor);
 	}
 #endif

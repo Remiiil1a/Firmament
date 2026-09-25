@@ -34,6 +34,18 @@
 const int R11F_G11F_B10F = 0;
 const int colortex6Format = R11F_G11F_B10F;
 
+// Where the specular highlight is recorded, so that the bloom can leave it out.
+//
+// The same format as colortex0, deliberately: this value is subtracted from
+// that buffer, and in one format the two agree digit for digit, so a pixel
+// whose whole colour is its highlight comes out at exactly zero rather than at
+// whatever a change of format rounded off. It is also an unsigned format with
+// no exponent of its own, and that is what rules out a value arriving at the
+// bloom's blur as a NaN, an infinity or a negative - a blur is the worst place
+// for one of those to appear, because it spreads it over the whole screen
+// instead of leaving it where it was. See lib/bloom.glsl.
+const int colortex15Format = R11F_G11F_B10F;
+
 // The material the environment reflection is computed from, read back by the
 // deferred pass. See the material outputs at the bottom of this file.
 //
@@ -334,6 +346,32 @@ uniform vec2 windowToNdc;
 	in vec2 texcoord;
 #endif
 
+#if defined(WEATHER)
+	// Rain and snow particles.
+	//
+	// Declared behind this guard rather than in a shared file, for the reason
+	// WAVING_FOLIAGE is declared beside its own: only this program draws
+	// weather, so only this program should carry the options, and nothing that
+	// Distant Horizons patches has to know about them.
+	//
+	// AMOUNT tiles the rain texture across each quad, which packs more drops
+	// into the same column of rain; SIZE then keeps only the middle of each
+	// drop, which makes the drops thinner. SIZE is scaled by AMOUNT where it is
+	// used, so the drops stay the same thickness on screen as AMOUNT changes
+	// and the two controls stay independent of each other. Snow is drawn by
+	// this program too, so both act on snow as well, and 1.0 is the untouched
+	// vanilla particle for either one. SATURATION is the colour of the particle
+	// itself: 1.0 leaves the texture's own pale blue-grey alone, 0.0 takes the
+	// colour out of it, and above 1.0 pushes what colour there is.
+	#define RAIN_DROP_AMOUNT 1.0 // [0.5 0.75 1.0 1.25 1.5 2.0 2.5 3.0 4.0 6.0 8.0]
+	#define RAIN_DROP_SIZE 0.5 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
+	#define RAIN_COLOR_SATURATION 1.0 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5 2.0 3.0 4.0]
+
+	// See the matching outputs in /program/world/lit.vsh.
+	in vec2 weatherSpriteCoord;
+	in vec2 weatherSpriteScale;
+#endif
+
 #define STANDARD 1
 #define NONE 2
 #define VERTEX_COLOR 3
@@ -566,6 +604,24 @@ void main() {
 
 		#ifdef PBR_SURFACE
 			surfaceTexCoord = pbrTexCoord;
+		#endif
+
+		#if defined(WEATHER)
+			// Rain and snow particles, tiled RAIN_DROP_AMOUNT times across
+			// each quad.
+			//
+			// The tiling has to be done on the sprite's own coordinate, not on
+			// surfaceTexCoord: they differ by the texture matrix, and folding
+			// an atlas coordinate leaves the sprite entirely. Subtracting the
+			// untransformed coordinate and adding the tiled one back, scaled
+			// into atlas space, is the same fold carried out in the space the
+			// sprite actually lives in. At the default of 1.0 the two folds
+			// agree and this is the identity.
+			vec2 weatherRainCoord = vec2(
+				fract(weatherSpriteCoord.x * RAIN_DROP_AMOUNT),
+				weatherSpriteCoord.y);
+
+			surfaceTexCoord = texcoord + (weatherRainCoord - weatherSpriteCoord) * weatherSpriteScale;
 		#endif
 	#endif
 
@@ -813,6 +869,49 @@ void main() {
 	// picked up as a shader configuration option.
 	#if defined(WEATHER)
 		surfaceColor.a *= 0.5;
+
+		// Rain drop width.
+		//
+		// The rain texture is a grid of drops with the gaps already painted in
+		// as transparency, so the only way to thin a drop without new art is to
+		// take another bite out of its alpha. The bite is a repeating band that
+		// keeps the middle of every texel of the sprite, RAIN_DROP_SIZE wide as
+		// a fraction of the drop - at 1.0 the band is the whole texel period and
+		// nothing is removed.
+		//
+		// The band is measured in the tiled coordinate, so scaling it by
+		// RAIN_DROP_AMOUNT is what keeps the drops the same thickness on screen
+		// when the tiling above packs more of them into the same quad.
+		#if !defined(NO_GTEXTURE)
+			float weatherDropTexels = weatherSpriteScale.x * textureSize(gtexture, 0).x;
+
+			float weatherDropMask = step(
+				abs(fract(weatherDropTexels * weatherRainCoord.x) - 0.5),
+				clamp(RAIN_DROP_AMOUNT * RAIN_DROP_SIZE, 0.0, 1.0) * 0.5);
+
+			// A sprite of no width gives no texel period to measure the band in,
+			// and the band then collapses to a constant that happens to sit on
+			// the discard side for every value of the two options below 1.0 -
+			// which is a whole world of rain disappearing at once because one
+			// option moved, and that is exactly what was reported. When the
+			// width of the sprite is unknown there is nothing to measure a drop
+			// against, so nothing is taken away.
+			surfaceColor.a *= weatherDropTexels > 0.5 ? weatherDropMask : 1.0;
+		#endif
+
+		// Rain colour saturation.
+		//
+		// The particle textures are a pale blue-grey, and against a dark scene
+		// rain reads as a blue haze rather than as water. This mixes the colour
+		// towards its own luminance to take that out, and away from it to push
+		// what colour there is. The weights are Rec. 709's, the same grey the
+		// rest of the pack measures against.
+		//
+		// It is applied to the sampled colour, which the surface tint has
+		// already been folded into, so a coloured tint on the particle is
+		// carried along with it rather than left behind.
+		float weatherLuma = dot(surfaceColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+		surfaceColor.rgb = mix(vec3(weatherLuma), surfaceColor.rgb, RAIN_COLOR_SATURATION);
 	#endif
 
 	#endif
@@ -912,6 +1011,17 @@ void main() {
 	#endif
 
 	vec4 fragmentColor = vec4(vec3(0.0), surfaceColor.a);
+
+	// How much of that colour is a mirror rather than light the surface was
+	// given. Filled in by DiffuseLighting below, which is the only code that
+	// knows: the same sun that lights a surface also leaves a highlight on it,
+	// and it is the second of those two that a bloom should not be counting,
+	// because a highlight is a picture of a light rather than a light.
+	//
+	// Left at zero on every path that never calls it - water and glass take
+	// their reflection from TranslucentLighting instead - so the bloom simply
+	// does not take that out. See BLOOM_EXCLUDE_SPECULAR in lib/bloom.glsl.
+	vec3 specularInFrame = vec3(0.0);
 
 	// Apply sRGB to linear conversion
 	//
@@ -1091,7 +1201,7 @@ void main() {
 			// view direction is simply the direction back towards the origin.
 			vec3 viewDirection = normalize(-cameraRelativePos);
 
-			fragmentColor.rgb = DiffuseLighting(surface, pbr, viewDirection);
+			fragmentColor.rgb = DiffuseLighting(surface, pbr, viewDirection, specularInFrame);
 
 			// The reflection a held item is given, which is the one the world's
 			// surfaces are given: the same direction, the same Fresnel, the same
@@ -1238,21 +1348,24 @@ void main() {
 				// missing or meaningless data from turning a block into a lamp.
 				//
 				// The first is the same signal the block self-emission above is
-				// built on: only a surface that the world's own lighting already
-				// treats as a light source may glow. The alpha channel reads as
-				// "fully emissive" whenever it is zero, and a specular map
-				// generated by a tool - or shipped by a mod that has never heard
-				// of LabPBR - has zeros in it everywhere. Without this test,
-				// every modded leaf and tuft of grass carrying such a map lights
-				// up like a lantern, which is exactly what it is here to stop.
-				// It also means a block that is not a light source cannot be
-				// made to glow by its texture alone.
+				// built on - whether the game's own lighting treats this block as a
+				// light source - and it is only applied when
+				// PBR_EMISSION_ANY_BLOCK is off. On, which is the default, the
+				// alpha channel decides on any block at all, because that is what
+				// the channel is for: an ore is not a light source in the game, and
+				// a pack that paints a glowing vein into one is asking for exactly
+				// this. See the option in pbr.glsl for what turning it off protects
+				// against.
 				//
 				// The second is how much of the pixel the fragment covers, which
 				// is LabPBR's rule for cut-out materials: a pack that leaves the
 				// gaps in a leaf, or the space around a tuft of grass, at alpha
 				// zero is describing holes rather than asking for them to emit.
-				float pbrEmission = pbr.emission * emissive;
+				float pbrEmission = pbr.emission;
+
+				#ifndef PBR_EMISSION_ANY_BLOCK
+					pbrEmission *= emissive;
+				#endif
 
 				fragmentColor.rgb += PBR_EMISSION_STRENGTH
 					* pbrEmission * surfaceColor.rgb * fragmentColor.a;
@@ -1314,6 +1427,14 @@ void main() {
 		vec4 fog = FogV2(skyFogStrength, fogDistance, fogDistance, skyLight);
 
 		fragmentColor.rgb = mix(fragmentColor.rgb, fog.rgb, fog.a);
+
+		// And the highlight recorded for the bloom fades by the same amount.
+		// The mix above is linear, so the part of the frame the highlight
+		// contributes is exactly this much of what was recorded; leaving it
+		// unfaded would have the bloom subtract more highlight than the frame
+		// still holds wherever the fog is thick, and what that looks like is
+		// patches of missing glow in the distance rather than fog.
+		specularInFrame *= 1.0 - fog.a;
 
 		// FogV2 instead just tells us the amount of sky color to add in to the
 		// final fogged fragment color, so we can skip computing the sky color
@@ -1458,5 +1579,16 @@ void main() {
 	// without loss - see PbrMetalF82 for what reads it back.
 	gl_FragData[4] = vec4(reflectionF0, reflectionMetalID / 255.0);
 
-	/* DRAWBUFFERS:02678 */
+	// The specular highlight, for the bloom to take back out. Written by every
+	// program that comes through here and zero wherever there was no highlight,
+	// so that the bloom is never reading a stale highlight under a surface that
+	// has stopped reflecting.
+	//
+	// Paid for whether or not the bloom option that reads it is on. That is the
+	// same bargain the two buffers above are on, and for the same reason: the
+	// list at the bottom of this file is fixed, so that the attachments can
+	// never disagree with the writes. See the note there.
+	gl_FragData[5] = vec4(specularInFrame, 1.0);
+
+	/* RENDERTARGETS: 0,2,6,7,8,15 */
 }

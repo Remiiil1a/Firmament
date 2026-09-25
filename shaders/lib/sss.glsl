@@ -49,6 +49,31 @@
 	// added together - so a value near 1.0 also takes some sky light with it.
 	#define SSS_STRENGTH 0.75 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.75 0.8 0.9 1.0]
 
+	// The most this effect is allowed to darken a pixel by, as a fraction of its
+	// own colour. 0.9 is the behaviour this had before the option existed, and it
+	// is the default; lowering it keeps the distance shadows from ever getting
+	// close to black.
+	//
+	// It exists because of what it multiplies. SSS_STRENGTH above already says
+	// this is applied to the whole colour rather than to the sunlight alone - by
+	// the time this pass runs, the direct light, the sky light, the ambient and
+	// the reflection have all been added into one number, and there is no way to
+	// take the sun back out of it. So the effect's strength and its risk are the
+	// same dial: at full strength a fully occluded pixel keeps a quarter of its
+	// colour, which on a dim surface is not a shadow but a hole. This separates
+	// the two - how much of the effect to use, and how dark it may ever get.
+	//
+	// The default was 0.5 for one batch, on the theory that a growing black blot
+	// came from this effect. Turning the whole effect off did not stop the blot,
+	// so that theory is dead and the default is back where the pack's look is. The
+	// option stays, because the argument above is about what this code multiplies
+	// and not about the blot. See PBR_PORTING.md 155.
+	//
+	// The correct fix for the argument above is to attenuate the sunlight alone,
+	// which needs the surface programs to keep the direct and indirect parts
+	// apart. See PBR_PORTING.md 154.
+	#define SSS_DARK_LIMIT 0.9 // [0.0 0.25 0.4 0.5 0.6 0.7 0.8 0.9]
+
 	// How many steps the ray takes, spread evenly across the ray's length on
 	// screen. More steps mean the samples sit closer together, which is what
 	// keeps the shadow's edge from breaking up into the gaps between them.

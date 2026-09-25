@@ -20,6 +20,10 @@
 #define WEATHER
 #define NEVER_RECEIVES_SHADOWS
 
+// RAIN_DROP_AMOUNT and RAIN_DROP_SIZE live in /program/world/lit.fsh, behind the
+// same WEATHER guard that this program raises, because that is where the
+// particle is finally given its alpha and where the two are read.
+
 // What is left of the candidates for the End's light flash. It is drawn over the
 // sky rather than as part of it - the pack's sky programs do not draw it, and
 // removing it from the programs that draw particles, glowing parts, the block

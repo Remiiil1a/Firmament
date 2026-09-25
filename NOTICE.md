@@ -34,7 +34,7 @@ Those same terms also require, for any modified version:
   modified version anywhere else;
 * that the **file name include the same thing**, for which the terms suggest the
   suffix `-edit-of-coderbot-Steadfast` - hence
-  `Firmament-v0.5-edit-of-coderbot-Steadfast.zip`;
+  `Firmament-v0.6-edit-of-coderbot-Steadfast.zip`;
 * that the GPL and those terms are kept, and that nothing suggests this is an
   official Steadfast release. **It is not.** coderbot does not support it, and
   bug reports about it do not belong in Steadfast's issue tracker.
@@ -93,9 +93,10 @@ quotes code from the projects named in it.
 Versions are counted as: **v0.1** is the material work, **v0.2** is everything
 from the cloud layer onward, and **v0.3** is the distant-terrain, temporal
 antialiasing and water work after it, **v0.4** is the sky, the reflected sun and
-moon, and the settings work after it, and **v0.5** is the work after that. What
-each release changed is listed in `CHANGELOG.md` in the short form, and in the
-`RELEASE_NOTES-*.md` files in full.
+moon, and the settings work after it, **v0.5** is the work after that, and
+**v0.6** is bloom, volumetric fog, the rain and snow particles and the sun and
+moon's own images. What each release changed is listed in `CHANGELOG.md` in the
+short form, and in the `RELEASE_NOTES-*.md` files in full.
 
 **Added in v0.1**
 
@@ -182,8 +183,8 @@ each release changed is listed in `CHANGELOG.md` in the short form, and in the
 * Scattering inside the cloud layer, with the number of passes and how much each
   one attenuates as options.
 * Reflection settings: a metal reflection strength, the smoothness a surface
-  needs before it reflects at all, a blur width, and a debug view that shows the
-  reflection on its own.
+  needs before it reflects at all, how far a rough surface's reflection is
+  gathered, and a debug view that shows the reflection on its own.
 * Smooth parallax: whether the height channel is interpolated across a texel
   rather than sampled at its centre.
 * The star field is reflected in water, alongside the sun and the moon.
@@ -192,6 +193,28 @@ each release changed is listed in `CHANGELOG.md` in the short form, and in the
 
 * Water scattering, which v0.4 added: its options and the code behind them are
   gone. The water's absorption, colour and reflection are unchanged.
+
+**Added in v0.6**
+
+* Bloom, with its strength, the brightness it starts at and the radius of the
+  spill as options, and the specular highlight of a surface left out of it by
+  default.
+* Volumetric fog: the air marched through as a medium rather than tinted over the
+  frame, at a quarter of the frame's resolution and lit by the shadow map, with a
+  world-locked noise medium that drifts with the wind. Density, height, base,
+  distance, march steps, the noise and a full-resolution switch are options, and
+  rain thickens it.
+* Rain and snow particle options: how many times the texture is tiled across a
+  rain column, how much of each drop's width is kept, and the particle's colour
+  saturation.
+* The sun and the moon are reflected from the game's own images - `sun.png` and
+  the eight lunar phases, carried by the pack - with a size trim for each body
+  and the tilt of their orbit as options.
+
+**Changed in v0.6**
+
+* Temporal antialiasing is off by default and marked experimental.
+* The shipped defaults were retuned.
 
 **Fixed in v0.4**
 

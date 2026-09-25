@@ -105,6 +105,20 @@ in vec4 at_tangent;
 	out vec2 texcoord;
 #endif
 
+#if defined(WEATHER)
+	// Where the rain and snow sprites sit inside the block atlas.
+	//
+	// The coordinate the fragment shader receives has already been through the
+	// texture matrix, so it names a place in the atlas rather than a place on
+	// the sprite. Tiling that coordinate walks straight off the sprite and
+	// samples whichever block happens to be the atlas neighbour of the rain,
+	// so the two pieces needed to undo the trip - the sprite-local coordinate,
+	// and how big the sprite is in atlas space - are measured here, where the
+	// matrix is still in hand, and carried across for RAIN_DROP_AMOUNT to use.
+	out vec2 weatherSpriteCoord;
+	out vec2 weatherSpriteScale;
+#endif
+
 #if !defined(NEVER_RECEIVES_SHADOWS)
 	// The projected shadowmap position to sample from.
 	//
@@ -330,6 +344,16 @@ void main() {
 
 	#if !defined(NO_GTEXTURE)
 		texcoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
+
+		#if defined(WEATHER)
+			// The texture matrix is a scale and a translation, nothing more, so
+			// two points recover it in full: the sprite's own origin, and its
+			// far corner.
+			weatherSpriteCoord = gl_MultiTexCoord0.xy;
+
+			vec2 weatherAtlasOrigin = (gl_TextureMatrix[0] * vec4(0.0, 0.0, 0.0, 1.0)).xy;
+			weatherSpriteScale = (gl_TextureMatrix[0] * vec4(1.0, 1.0, 0.0, 1.0)).xy - weatherAtlasOrigin;
+		#endif
 	#endif
 
 	#if defined(PBR_ATLAS) || defined(PBR_MATERIALS_ANY_TEXTURE)

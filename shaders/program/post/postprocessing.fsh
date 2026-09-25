@@ -33,84 +33,65 @@ const int colortex0Format = R11F_G11F_B10F;
 #include "/lib/tonemap_uchimura.glsl"
 #include "/lib/srgb.glsl"
 
+// The bloom's options, and its weights for the two levels the blur produces.
+//
+// Included here as well as in the four passes that build the blur, for two
+// reasons: this is the pass that adds the result to the frame, and this is the
+// one program that always runs, so the options are registered even when the
+// bloom is off and its passes are skipped.
+#include "/lib/bloom.glsl"
+
+// The two levels of the bloom, as composite7 and composite10 left them.
+//
+// Declared unconditionally rather than behind the option, because a uniform
+// that the preprocessor removes is a uniform nothing reads, and a buffer
+// nothing reads is a buffer the loader has no reason to allocate.
+uniform sampler2D colortex12;
+uniform sampler2D colortex13;
+
 // GODRAYS BEGIN
-#include "/lib/bayer8.glsl"
 
-#define GODRAYS // Efficient screen-space light shafts.
+// The shafts, as the volumetric fog pass left them: the light the medium
+// scattered towards the eye, at half resolution.
+//
+// This used to be a mask that the final pass blurred towards the sun's position
+// on screen, and it is now built by a march through the air instead - see
+// /program/post/volumetric_fog.fsh, and PBR_PORTING.md 169 for why. What it
+// carries changed with it: a colour rather than a single channel, because a
+// blur towards a point on the screen can only ever produce a brightness, while
+// light actually scattered inside a volume has the colour of the light that
+// scattered.
+//
+// The screen-space fades went with the technique that needed them, and that is
+// the one thing worth knowing when reading shaders.properties: godraysColor is
+// still built there, and godraysViewAngleFade and godraysOffscreenFade are
+// still computed there, but the value the pass reads is the un-faded
+// fogSunColor. A shaft whose sun has left the screen is the case the volumetric
+// version exists for and the one the old version could not draw.
+uniform sampler2D colortex1;
 
-// How bright the shafts are, as a multiple of what the pack draws on its own.
+// Whether to draw the shafts and the medium that carries them.
 //
-// This is the only place the setting is applied. It scales the exposure that is
-// premultiplied into godraysColor, which is the value the pass below adds to the
-// frame, so one line covers everything the option is about.
+// The name is the one the screen-space version used, kept on purpose: the
+// quality profiles in shaders.properties, the menu and both lang files all
+// reference it, and every one of them still means the same thing by it -
+// whether this pack draws volumetric light. What changed is how it is drawn.
+#define GODRAYS
+
+// How bright the shafts are.
 //
-// It is deliberately not applied where the mask is built - see
-// /program/post/noisy_godrays.fsh. That pass has an arm for the water and an arm
-// for the air, and a factor multiplied into both of them is a factor that has to
-// be kept in step in two places. Here there is one.
+// Applied in shaders.properties, where the light's colour and the exposure are
+// built: GODRAYS_STRENGTH multiplies into godraysColor there, and the pass
+// reads that with the screen-space fades taken back out. One place applies it,
+// which is what makes 1.0 harmless - at 1.0 the extra term multiplies by one.
 //
-// 1.0 is what the pack has always drawn, exactly: the multiply is the last one
-// in the chain, so at 1.0 all it does is multiply by one.
-//
-// 0.0 makes the exposure exactly zero, and the final pass then adds nothing - it
-// does not even run the blur, because that whole branch is behind
-// godraysExposure > 0.0. That is a frame with no shafts in it, the same as with
-// the option above turned off. It is not quite the same amount of work: turning
-// that one off also skips the pass that builds the mask, while a strength of zero
-// leaves that pass running and writing zeros into a buffer nothing then reads.
-// One half-resolution full-screen pass is the price of being able to take the
-// shafts down to nothing without giving up the rest of the feature.
+// 0.0 zeroes the exposure, and therefore godraysColor and fogSunColor, so the
+// pass adds nothing. It does not skip the march: the pass that builds the
+// buffer still runs and writes zeros into it. One half-resolution full-screen
+// pass is the price of being able to take the shafts down to nothing without
+// turning the medium off with them.
 #define GODRAYS_STRENGTH 2.0 // [0.0 0.25 0.5 0.75 1.0 1.5 2.0 3.0]
 
-uniform sampler2D colortex1;
-uniform vec4 screenLightVector;
-uniform float godraysExposure;
-
-// Godrays function based on GPU Gems 3:
-//
-// "Chapter 13. Volumetric Light Scattering as a Post-Process"
-// https://developer.nvidia.com/gpugems/gpugems3/part-ii-light-and-shadows
-//
-// Tweaks:
-// - Moved to sampling the depth map instead of the color map
-//   (DepthCompareSample)
-// - By varying the starting position using noise, we can get away with a
-//   much-reduced sample count
-float SmoothGodrays(vec2 texCoord, vec2 ScreenLightPos) {
-	// Constants for the godrays
-	const float NUM_SAMPLES = 8.0;
-	const float DENSITY = 0.75;
-	const float DECAY = pow(0.0001, 1.0 / NUM_SAMPLES);
-
-	// Calculate vector from pixel to light source in screen space.
-	vec2 deltaTexCoord = (texCoord - ScreenLightPos);
-	// Divide by number of samples and scale by control factor.
-	deltaTexCoord *= 1.0f / NUM_SAMPLES * DENSITY;
-	// NEW: Use noise to allow us to get away with a singificantly reduced
-	// iteration count.
-	texCoord += deltaTexCoord * 1.5 * Bayer8(-gl_FragCoord.xy);
-	// Store initial sample.
-	float accumulated = texture(colortex1, texCoord).r;
-	// Set up illumination decay factor.
-	float illuminationDecay = 1.0f;
-	// Evaluate summation from Equation 3 NUM_SAMPLES iterations.
-	for (uint i = uint(0); i < uint(NUM_SAMPLES); i++) {
-		// Step sample location along ray.
-		texCoord -= deltaTexCoord;
-		// Retrieve sample at new location.
-		float depthSample = texture(colortex1, texCoord).r;
-		// Apply sample attenuation scale/decay factors.
-		depthSample *= illuminationDecay;
-		// Accumulate depth samples.
-		accumulated += depthSample;
-		// Update exponential decay factor.
-		illuminationDecay *= DECAY;
-	}
-	// Output final accumulated sample with a further scale control factor.
-	float exposure = pow(1.0 - 4.0 * length(deltaTexCoord)
-		* (1.0 - 0.3 * Bayer8(-gl_FragCoord.xy)), 8.0);
-	return exposure * accumulated / NUM_SAMPLES;
-} 
 // GODRAYS END
 
 // Note: if we do not define all values used in GLSL expressions, we get the
@@ -212,14 +193,18 @@ void main() {
 	#endif
 
 	#if DEBUG == DEBUG_GODRAYS_NOISY
-		finalColor = vec3(texture(colortex1, screenCoord).r);
+		// The scattered light as the pass wrote it, at the buffer's own
+		// resolution: what the march left between its steps shows up here as
+		// banding, which is what the dither and the step count are for.
+		#ifdef VOLUMETRIC_FOG_FULL_RES
+			finalColor = texelFetch(colortex1, ivec2(gl_FragCoord.xy), 0).rgb;
+		#else
+			finalColor = texelFetch(colortex1, ivec2(gl_FragCoord.xy * 0.25), 0).rgb;
+		#endif
 	#elif DEBUG == DEBUG_GODRAYS_SMOOTH
-		if (godraysExposure > 0.0) {
-			float godrays = SmoothGodrays(screenCoord, screenLightVector.xy);
-			finalColor = godraysColor * godrays;
-		} else {
-			finalColor = vec3(0.0);
-		}
+		// And the same buffer sampled the way the picture samples it, which is
+		// what the frame actually receives.
+		finalColor = texture(colortex1, screenCoord).rgb;
 	#elif DEBUG == DEBUG_SKYLIGHT
 		finalColor = vec3(texture(colortex5, screenCoord).r);
 	#else
@@ -233,12 +218,30 @@ void main() {
 		#endif
 
 		#ifdef GODRAYS
-		if (godraysExposure > 0.0) {
-			float godrays = SmoothGodrays(screenCoord, screenLightVector.xy);
+			// The light the march collected, added on top of the frame.
+			//
+			// Added rather than mixed, and with no transmittance term, because
+			// the fading of the distance is the pack's own fog and it has
+			// already been applied per fragment. See the note at the top of
+			// /program/post/volumetric_fog.fsh.
+			color += texture(colortex1, screenCoord).rgb;
+		#endif
 
-			// Note: godraysExposure is premultiplied into godraysColor
-			color += godraysColor * godrays;
-		}
+		#ifdef BLOOM
+			// Both levels of the blur, at their own weights: the
+			// half-resolution one is the tight core of the halo, and the
+			// quarter-resolution one, which is blurred twice, is the part that
+			// spreads. See lib/bloom.glsl for why there are two.
+			//
+			// Added before the vignette rather than after it, so that the
+			// corners darken the glow along with everything else. That is what
+			// a lens does: the light that scattered inside the glass on its way
+			// to a corner is dimmed by the same falloff as the light that went
+			// straight there.
+			vec3 bloom = textureLod(colortex12, screenCoord, 0.0).rgb * BLOOM_TIGHT_WEIGHT
+				+ textureLod(colortex13, screenCoord, 0.0).rgb * BLOOM_WIDE_WEIGHT;
+
+			color += bloom * BLOOM_STRENGTH;
 		#endif
 
 		#if VIGNETTE == VIGNETTE_ON

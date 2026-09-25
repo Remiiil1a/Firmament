@@ -43,12 +43,29 @@ Bug reports about it do not belong in Steadfast's issue tracker.
   reflections as a still surface, laid out in the frame the face actually has
   rather than one assumed from the world's axes.
 * **Reflections** - a sky term per material, plus optional screen-space
-  reflections of the world, blurred in two passes by a filter that keeps
-  neighbours reflecting the same thing apart from those that do not. A metal
-  reflection strength, a smoothness threshold, a blur width, and a debug view
-  that shows the reflection on its own are all options.
-* **Temporal antialiasing** - on by default, with the history weighted by motion
-  so that it reduces noise while standing still without smearing while walking.
+  reflections of the world. A rough surface's reflection is gathered over the
+  cone its own roughness opens - two rings of four directions - rather than taken
+  in one direction and called the answer, and the sky it reflects is gathered
+  over the same cone. A metal reflection strength, the smoothness a surface needs
+  before it reflects at all, how far that gathering spreads, and a debug view that
+  shows the reflection on its own are all options.
+* **Bloom** - anything brighter than the display can hold spills a glow around
+  itself. The specular highlight of a surface is left out of it by default: a
+  highlight is a picture of a light rather than a light.
+* **Volumetric fog** - the air marched through as a medium rather than tinted over
+  the frame, at a quarter of the frame's resolution and lit by the shadow map, so
+  the shafts through a canopy are cast by it. The medium is a world-locked noise
+  drifting with the same wind the clouds use, so it never slides with the camera,
+  and rain thickens it.
+* **Rain and snow particles** - the rain texture can be tiled across each column
+  and each drop's width kept or trimmed, and its colour taken out or pushed.
+* **The sun and the moon in water** - the game's own `sun.png` and its eight
+  lunar phases, carried by the pack, so the disc on the water and its phase are
+  the ones the sky is showing. Each body is trimmed against the sky's size
+  separately, and the axis they orbit about is a setting of its own - the two
+  rise in the east, set in the west, and cross the sky at an angle.
+* **Temporal antialiasing** - off by default and experimental, with the history
+  weighted by motion when it is on.
 * **Clouds** - a layer of cube-shaped cells in place of Minecraft's flat cloud
   boxes, with scattering inside the cloud, and its phase, transmittance and
   height falloff as settings.
@@ -67,7 +84,7 @@ Bug reports about it do not belong in Steadfast's issue tracker.
 
 ## Installation
 
-1. Drop `Firmament-v0.5-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
+1. Drop `Firmament-v0.6-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
    Do not unzip it.
 2. Pick it in **Video Settings → Shader Packs**.
 3. In the shader options, `Materials (PBR) → Material format` follows the

@@ -10,7 +10,7 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
+// 
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -60,6 +60,13 @@
 			// in every other dimension. It cannot be used here as well because a
 			// program has only one main, so if it ever changes, this needs to
 			// change with it.
+			//
+			// Note: the two bodies' images are the game's here, and are not
+			// replaced with this pack's copies of them. That was tried, by
+			// sampling img/sun.png and the phase row with this same texcoord
+			// instead, and what it drew was a large, half-transparent body: the
+			// coordinate this program is handed is not the sprite's own. See
+			// PBR_PORTING.md 185.
 			vec4 srgb = tinting * texture(gtexture, texcoord);
 			vec4 fragmentColor = SrgbToLinear(srgb);
 			fragmentColor.rgb *= UNLIT_BRIGHTNESS;

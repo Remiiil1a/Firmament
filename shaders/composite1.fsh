@@ -20,10 +20,11 @@
 
 // The temporal anti-aliasing resolve.
 //
-// The gbuffer programs render the world with a sub-pixel offset that cycles
-// through a Halton sequence (see /lib/taa.glsl), and this pass is what turns
-// those offset frames into a single smoother image, by averaging each one with
-// a history of the ones before it.
+// The gbuffer programs render the world with a sub-pixel offset that walks one
+// step of a low-discrepancy sequence per frame (see /lib/taa.glsl, and the TAA
+// section of shaders.properties for the sequence itself), and this pass is what
+// turns those offset frames into a single smoother image, by averaging each one
+// with a history of the ones before it.
 //
 // The history is reprojected with the previous frame's camera matrices, so that
 // it lands in the right place while the camera moves. There are no motion
@@ -48,6 +49,14 @@ const int R11F_G11F_B10F = 0;
 const int colortex3Format = R11F_G11F_B10F;
 
 uniform sampler2D colortex0;
+
+// The previous frame, resolved, which is what this pass accumulates onto.
+//
+// It is also the buffer the environment reflection traces over, one pass later.
+// Nothing may be added to what is written into it here: a reflection in the
+// history would be pulled back out again by the neighbourhood clamp below, whose
+// neighbourhood is read from colortex0 and has no reflection in it. See
+// composite3.fsh.
 uniform sampler2D colortex3;
 
 // The depth buffer that includes translucents, so that it matches what is
@@ -82,18 +91,9 @@ uniform float blindness;
 
 #include "/lib/raytrace.glsl"
 
-// EnvironmentReflection(...), which this pass applies.
-//
-// It used to be applied by copy_and_fog. That pass writes the buffer a
-// reflection has to read - see the note in the file itself - so it could only
-// read the temporal history, and the history has the reflections of the frame
-// before in it. That makes the reflection a loop rather than a lookup: stable
-// while it is faint and sharp, and divergent into a black stain that spreads
-// outward from every reflective surface as soon as it is neither.
-//
-// This pass runs after copy_and_fog has finished writing that buffer, which is
-// what makes reading it legal here rather than merely probable.
-#include "/environment/lighting/environment_reflection.glsl"
+// The environment reflection used to be applied by this pass. It now has a pass
+// of its own, one later, because the buffer it has to read is the resolved image
+// - which is the buffer this pass writes. See composite3.fsh.
 
 // The sky light the reflection is faded out by, written by the surface programs
 // and not touched since.
@@ -103,8 +103,11 @@ uniform sampler2D colortex2;
 // this directive from the raw source text, so having one in each branch of an
 // #if would leave it unclear which one applies.
 //
-// colortex3 is left untouched when anti-aliasing is off, which costs nothing
-// since nothing reads it in that case.
+// colortex3 is written whether anti-aliasing is on or off. It used to be skipped
+// when it was off, on the grounds that nothing read the buffer in that case -
+// which stopped being true when the environment reflection moved into a pass of
+// its own, because that pass reads this one for the world to trace over. See the
+// note at the write itself.
 /* DRAWBUFFERS:03 */
 
 // The previous frame's resolved image at the given screen position, read with a
@@ -173,13 +176,132 @@ void main() {
 
 	vec3 current = texelFetch(colortex0, pixel, 0).rgb;
 
+	// Kept as it arrived, for the debug view below: the repair further down would
+	// otherwise hide exactly what that view exists to show.
+	vec3 currentRaw = current;
+
+	// Whether what the geometry wrote here is a colour at all.
+	//
+	// This is the one place a bad value can be caught before it becomes permanent.
+	// Everything downstream reads this buffer back - the neighbourhood below, the
+	// clamp that is built from it, and the history this pass writes - so a pixel
+	// that is not a number does not just spoil one frame: it spoils the average of
+	// everything around it, and then it is written into the history for the next
+	// frame to read. That is what a black blot that grows until it covers the
+	// terrain is, and it needs no help from any one effect: with a long enough
+	// history the clamp's own neighbourhood is black too, mean and deviation are
+	// both zero, and the region holds itself in place until the view turns far
+	// enough for the reprojection to fall off the screen and reset it.
+	//
+	// One bound rather than three tests, because a NaN fails every comparison:
+	// "is this inside the range I can use" is false of it, which is why the
+	// negation is the check. See PBR_PORTING.md 131.
+	bool currentUsable = dot(current, current) < 1.0e18;
+
 	vec3 resolved;
 
 	#if TAA == TAA_OFF
 		// The pass runs even with anti-aliasing switched off, so that the buffer
 		// flow through the pipeline does not change; with it off, this is just a
 		// copy.
-		resolved = current;
+		resolved = currentUsable ? current : vec3(0.0);
+	#elif TAA == TAA_DENOISE
+		// Denoising: a pixel averaged with the same surface point from the frame
+		// before, by one tap and with no bound on what that sample may say.
+		//
+		// This is the whole of what the dither needs. The screen-space shadows, the
+		// ambient occlusion and the godrays scatter their samples differently every
+		// frame *at a given pixel*, so averaging a pixel over frames is what removes
+		// the noise - the same reason the mode below does it, reached without most
+		// of what that mode needs.
+		//
+		// What is left out, and why: there is no neighbourhood and there is no
+		// clamp, so nothing here has to decide which history values are plausible
+		// and there is no bound for a bad one to pass or fail; and the history
+		// arrives through one bilinear tap rather than through the Catmull-Rom
+		// filter the mode below uses, which reaches two texels and is what carries
+		// a dark pixel into the pixels beside it. A bad sample here can therefore
+		// only sit at the point it was sampled at. It also cannot lock: every frame
+		// mixes it with a current frame, so it fades over the frames that follow.
+		//
+		// The reprojection is kept, and that is the one piece of the mode below this
+		// does take. Without it the average is between this pixel and whatever used
+		// to be behind it, and since the camera moves that is a different surface
+		// from one frame to the next: the two are mixed and what is seen is a double
+		// image, which is far worse than the softening it costs the denoising. See
+		// PBR_PORTING.md 161.
+		//
+		// TAA_STRENGTH is how long the average is in both modes.
+		vec3 denoiseHistory;
+
+		float denoiseDepth = texelFetch(depthtex0, pixel, 0).r;
+		vec3 denoiseNdc = vec3(screenCoord * 2.0 - 1.0, denoiseDepth * 2.0 - 1.0);
+		vec4 denoiseViewH = gbufferProjectionInverse * vec4(denoiseNdc, 1.0);
+		vec3 denoiseViewPos = denoiseViewH.xyz / denoiseViewH.w;
+		vec3 denoiseWorldPos =
+			(gbufferModelViewInverse * vec4(denoiseViewPos, 1.0)).xyz + cameraPosition;
+		vec4 denoiseClip = gbufferPreviousProjection * (gbufferPreviousModelView
+			* vec4(denoiseWorldPos - previousCameraPosition, 1.0));
+		vec2 denoiseCoord = (denoiseClip.xy / denoiseClip.w) * 0.5 + 0.5;
+
+		// Written as "is it inside the frame", then negated, so that a coordinate
+		// that is not a number fails it - the same test the mode below makes, and
+		// for the same reason.
+		bool denoiseOffScreen =
+			!(all(greaterThanEqual(denoiseCoord, vec2(0.0)))
+				&& all(lessThanEqual(denoiseCoord, vec2(1.0))))
+			|| denoiseClip.w <= 0.0;
+
+		// Fetched at this pixel's own index, and not at denoiseCoord.
+		//
+		// The reprojected coordinate is still computed, because how far it lies
+		// from this pixel is the only measure of "did this pixel move" there is
+		// without motion vectors - but the sample comes from where this pixel is.
+		// That is the whole of what keeps a dark value where it is: whatever goes
+		// wrong upstream, what this reads is the same pixel's own past, so a good
+		// reprojection and a bad one both leave it here.
+		denoiseHistory = (frameCounter < 2) ? current : texelFetch(colortex3, pixel, 0).rgb;
+
+		// The same two tests the mode below applies to its history: a value that is
+		// not a number would be carried forward for ever, and an exact zero is the
+		// shape this buffer leaves of a value it could not store - it is
+		// R11F_G11F_B10F, which has no encoding for a NaN.
+		if (!(dot(denoiseHistory, denoiseHistory) < 1.0e18)) {
+			denoiseHistory = current;
+		}
+
+		if (denoiseHistory == vec3(0.0)) {
+			denoiseHistory = current;
+		}
+
+		// And how much of it to keep: nothing at all where the pixel moved.
+		//
+		// This is what makes the mode usable. Averaging a pixel with its own past
+		// is only an average of one thing while the pixel is showing the same
+		// surface; the moment the camera turns, the thing behind the pixel is
+		// another surface, and averaging the two is a double image - which is what
+		// the previous version of this mode did, and it was reported as severe.
+		// The reprojected coordinate answers it: if it and this pixel are in the
+		// same place, whatever is here was here last frame too. Where it is not,
+		// the current frame is passed through on its own - no denoising while
+		// moving, and nothing smeared either.
+		//
+		// Guarded because it is built from the reprojected coordinate, and a
+		// coordinate that is not a number would make the weight one, which is a NaN
+		// written into both buffers.
+		float denoiseWeight = 0.0;
+
+		if (!denoiseOffScreen) {
+			vec2 denoiseVelocity =
+				(screenCoord - denoiseCoord) * vec2(viewWidth, viewHeight);
+			denoiseWeight = TAA_STRENGTH * exp(-dot(denoiseVelocity, denoiseVelocity));
+		}
+
+		if (!(denoiseWeight >= 0.0 && denoiseWeight <= 1.0)) {
+			denoiseWeight = 0.0;
+		}
+
+		resolved = mix(current, denoiseHistory, denoiseWeight);
 	#else
 	ivec2 screenSize = ivec2(viewWidth, viewHeight);
 
@@ -188,6 +310,29 @@ void main() {
 	// rather than camera-relative is what makes this survive the camera moving.
 	float depth = texelFetch(depthtex0, pixel, 0).r;
 
+	// The sub-pixel jitter is deliberately NOT taken back out here, and this is
+	// worth spelling out, because the arithmetic makes it look as though it
+	// should be.
+	//
+	// It is true that the depth at this pixel belongs to a surface the jittered
+	// camera moved by up to half a pixel, so reconstructing from this pixel's own
+	// coordinate does land slightly to the side of the surface that was actually
+	// sampled. What that costs is a sub-pixel error in one lookup.
+	//
+	// Subtracting TaaJitter() costs more, and not in a way the subtraction itself
+	// shows: it makes the position the history is read from depend on this frame's
+	// jitter. The history is accumulated at the pixel's own index, so the picture
+	// held in it is displaced a little further every frame, in the direction of
+	// that frame's jitter. That offset does not settle. Under a still camera it
+	// settles into an oscillation of roughly the jitter times 1 / (1 - TAA_STRENGTH)
+	// - several times the sub-pixel error it was meant to remove - and it reads as
+	// the whole picture shaking. It grows with TAA_JITTER, so that option is what
+	// makes it visible first, and it is why the subtraction was reverted in
+	// PBR_PORTING.md 119.
+	//
+	// The jitter belongs to the current frame's sampling, not to the history's
+	// indexing: the frames that carry it are the ones being averaged, and the
+	// average is what removes it.
 	vec3 ndcPos = vec3(screenCoord * 2.0 - 1.0, depth * 2.0 - 1.0);
 	vec4 viewPosH = gbufferProjectionInverse * vec4(ndcPos, 1.0);
 	vec3 viewPos = viewPosH.xyz / viewPosH.w;
@@ -204,8 +349,21 @@ void main() {
 	// Both the neighbourhood and the history are read from the current frame's
 	// screen space, so anything that was off screen or behind the camera last
 	// frame has no usable history at all.
-	bool offScreen = any(lessThan(previousScreenCoord, vec2(0.0)))
-		|| any(greaterThan(previousScreenCoord, vec2(1.0)));
+	//
+	// Written as "is it inside the frame", then negated, rather than as "is it
+	// outside it". The two say the same thing about a number and different things
+	// about a NaN, which is the whole point of spelling it this way: every
+	// comparison against a NaN is false, so a coordinate that came out of a
+	// division by zero is neither less than zero nor greater than one, and an
+	// outside test written the other way round lets it through. What is then
+	// sampled is not a colour, and this buffer does not fade - the resolve writes
+	// its own result back for the next frame to read, so a value that is not a
+	// number spreads outward through the Catmull-Rom taps until it covers the
+	// screen. It is intermittent because it needs the reprojection to land on a
+	// w of zero, which is why it reads as a black blot that appears and goes away
+	// again as the view turns. See PBR_PORTING.md 129.
+	bool offScreen = !(all(greaterThanEqual(previousScreenCoord, vec2(0.0)))
+		&& all(lessThanEqual(previousScreenCoord, vec2(1.0))));
 	bool behindCamera = previousClipPos.w <= 0.0;
 
 	// Gather the neighbourhood of the current frame, which serves two purposes:
@@ -213,6 +371,11 @@ void main() {
 	// version used for sharpening below.
 	vec3 neighborhoodSum = vec3(0.0);
 	vec3 neighborhoodSquareSum = vec3(0.0);
+	float neighborhoodCount = 0.0;
+
+	// The brightest value the current frame shows in this pixel's own
+	// neighbourhood, which the clamp below uses to tighten its upper end.
+	vec3 neighborhoodMaximum = vec3(-1.0e18);
 
 	for (int x = -1; x <= 1; x++) {
 		for (int y = -1; y <= 1; y++) {
@@ -220,12 +383,42 @@ void main() {
 				ivec2(0), screenSize - 1);
 			vec3 neighbor = texelFetch(colortex0, offsetPixel, 0).rgb;
 
+			// The same test as on the centre pixel, and for the same reason: one
+			// pixel that is not a number would otherwise make the mean, the
+			// deviation and the clamp that is built from them all NaN, which turns
+			// a single bad pixel into a region of them. A neighbour that cannot be
+			// used is left out of both sums and counted as nothing.
+			if (!(dot(neighbor, neighbor) < 1.0e18)) {
+				continue;
+			}
+
 			neighborhoodSum += neighbor;
 			neighborhoodSquareSum += neighbor * neighbor;
+			neighborhoodCount += 1.0;
+			neighborhoodMaximum = max(neighborhoodMaximum, neighbor);
 		}
 	}
 
-	vec3 neighborhoodMean = neighborhoodSum / 9.0;
+	// No usable neighbour at all leaves it at its starting value, which is not a
+	// bound a colour can be clamped to. The centre pixel is the one value that is
+	// certainly here.
+	if (neighborhoodCount < 1.0) {
+		neighborhoodMaximum = current;
+	}
+
+	// Divided by how many neighbours were usable rather than by nine: a skipped
+	// neighbour is not a zero, and counting it as one would pull the mean down.
+	float neighborDivisor = max(neighborhoodCount, 1.0);
+	vec3 neighborhoodMean = neighborhoodSum / neighborDivisor;
+
+	// The centre pixel repaired from its neighbourhood, when the geometry wrote
+	// something that is not a colour there. The mean of the pixels around it is a
+	// plausible value and a finite one, which is all this has to be: it is read by
+	// the clamp, by the resolve and by the write to the history below, and any of
+	// those three would carry a value that is not a number into the next frame.
+	if (!currentUsable) {
+		current = neighborhoodMean;
+	}
 
 	// Variance clipping, from Salvi's "An Excursion in Temporal Supersampling".
 	//
@@ -241,11 +434,50 @@ void main() {
 	// The standard deviation is derived from the mean and the mean of the
 	// squares, which the loop above accumulates as it goes.
 	vec3 variance = max(
-		neighborhoodSquareSum / 9.0 - neighborhoodMean * neighborhoodMean,
+		neighborhoodSquareSum / neighborDivisor - neighborhoodMean * neighborhoodMean,
 		vec3(0.0));
 	vec3 deviation = sqrt(variance);
 
-	vec3 history = HistorySample(previousScreenCoord);
+	// The history is fetched only when there is a coordinate to fetch it with.
+	// HistorySample's floor, clamp and texture are all undefined for a coordinate
+	// that is not a number - and a driver is free to answer one with a perfectly
+	// ordinary colour from the edge of the texture, which would then sail past
+	// every check below because it looks exactly like a valid history.
+	bool historyUsable = !offScreen && !behindCamera && frameCounter >= 2;
+	vec3 history = historyUsable ? HistorySample(previousScreenCoord) : current;
+
+	// A history that is not a number, or is infinite, is replaced rather than left
+	// to the clamp. The clamp does happen to save a -Inf - clamp(-Inf, a, b) is a -
+	// but that is the arithmetic being kind rather than a decision this code made,
+	// and it does nothing at all for a NaN. One bound asks the whole question:
+	// a NaN fails every comparison, so "is this inside the range I can use" is
+	// false of it and of both infinities.
+	if (!(dot(history, history) < 1.0e18)) {
+		history = current;
+	}
+
+	// A history that is exactly black is treated as no history at all.
+	//
+	// This is Mellow Shader's guard, and it is taken from there because it is the
+	// one thing in that resolve this pack did not have - see `if (PrevColor ==
+	// vec3(0)) return Color;` in global/post/taa.glsl. What it is for is the value
+	// this buffer cannot store: colortex3 is R11F_G11F_B10F, which has no encoding
+	// for a NaN or an infinity, so a value that is not a number is written as an
+	// ordinary zero and read back the next frame looking like a pixel that is
+	// black. Nothing in the clamp below can tell that zero from a real one, because
+	// every bound there is built to allow black - a shadow is black, and the lower
+	// end is floored at zero on purpose.
+	//
+	// An exact zero is what it is looking for and not "very dark", because very
+	// dark is a shadow and this is not: it is the shape a value takes when the
+	// buffer had to round it away. A pixel that was genuinely black last frame
+	// takes the current frame here instead of the history, so it stops
+	// accumulating for as long as it stays black - a little of the dither is left
+	// in the darkest parts of the image, which is the price of a blot that
+	// otherwise never stops. See PBR_PORTING.md 159.
+	if (history == vec3(0.0)) {
+		history = current;
+	}
 
 	if (frameCounter < 2 || offScreen || behindCamera) {
 		// Nothing trustworthy has been accumulated yet, or the pixel was not on
@@ -253,10 +485,37 @@ void main() {
 		history = current;
 	}
 
-	history = clamp(
-		history,
-		neighborhoodMean - TAA_CLAMP * deviation,
-		neighborhoodMean + TAA_CLAMP * deviation);
+	// The lower bound is floored at zero, and that is not tidiness.
+	//
+	// The history is fetched with Catmull-Rom, whose negative lobes undershoot on
+	// the bright side of an edge - and a specular highlight on a metal is exactly
+	// that shape: a bright line lying on a dark surface. The neighbourhood there
+	// has a low mean and a large deviation, so "the mean minus TAA_CLAMP
+	// deviations" is itself negative, the clamp has nothing to pull the undershoot
+	// back to, and a negative colour is drawn as black. It reads as sparse dark
+	// speckles along the edge of the highlight, which is where it was found - and
+	// only on the resolved side of the split view, which is what says it is this
+	// pass and not the geometry. See PBR_PORTING.md 134.
+	vec3 historyLower = max(neighborhoodMean - TAA_CLAMP * deviation, vec3(0.0));
+	vec3 historyUpper = neighborhoodMean + TAA_CLAMP * deviation;
+
+	// A floor under the lower bound, measured against the current frame's mean and
+	// not against its darkest value - see TAA_DARK_FLOOR in lib/taa.glsl for why
+	// the darkest value is a no-op here, and for the loop in the history alone that
+	// this exists to stop.
+	//
+	// The upper end is tightened by the neighbourhood's brightest value as well,
+	// which can only ever reject a history brighter than anything the frame shows
+	// nearby.
+	//
+	// The two cannot cross: the mean times a fraction of at most one is at or below
+	// the mean, the mean is at or below the statistical upper end, and the
+	// neighbourhood's brightest value is at or above its mean - so the lower end is
+	// never above the upper one, whatever the deviation does.
+	historyLower = max(historyLower, neighborhoodMean * TAA_DARK_FLOOR);
+	historyUpper = min(historyUpper, neighborhoodMaximum);
+
+	history = clamp(history, historyLower, historyUpper);
 
 	// How far this pixel moved since the previous frame, in pixels.
 	vec2 velocity = (screenCoord - previousScreenCoord) * vec2(viewWidth, viewHeight);
@@ -280,7 +539,47 @@ void main() {
 	float stillness = exp(-dot(velocity, velocity));
 	float historyWeight = TAA_STRENGTH * mix(0.7, 1.0, stillness);
 
+	// The weight is checked before it is used, and this is the last place in this
+	// pass where a value that is not a number can still get in.
+	//
+	// The frames either side of this pass cannot carry one, and that is not an
+	// assumption about the effects upstream - it is the buffer formats. colortex0
+	// and colortex3 are both R11F_G11F_B10F, an unsigned format with no encoding
+	// for a NaN or an infinity, so whatever the surfaces write arrives here finite
+	// and so does the history. Everything that could produce one is therefore
+	// arithmetic inside this function, and velocity is the arithmetic left:
+	// previousScreenCoord is previousClipPos.xy / previousClipPos.w, and a clip
+	// position that is zero in both is 0/0.
+	//
+	// offScreen does catch that coordinate, and history is replaced by current for
+	// it. The weight is built from the same velocity and was never checked, and
+	// mix(current, current, NaN) is a NaN.
+	//
+	// Why a NaN here is worse than one frame of one pixel: it does not stay a NaN.
+	// Neither buffer can hold one, so what the next frame reads back is an ordinary
+	// zero - black, finite, and inside every bound the clamp below can put on it.
+	// That is a black pixel in the history that the current frame does not have,
+	// and the Catmull-Rom fetch hands it to the pixels beside it, which is a blot
+	// that starts somewhere and grows. See PBR_PORTING.md 158.
+	//
+	// Zero rather than anything else: a weight of zero means this pixel is taken
+	// from the current frame and not from the history at all, which is the one
+	// answer that cannot be wrong about a frame that is known to be finite.
+	if (!(historyWeight >= 0.0 && historyWeight <= 1.0)) {
+		historyWeight = 0.0;
+	}
+
 	resolved = mix(current, history, historyWeight);
+
+	// And the result, before it is written to either buffer - the same guard the
+	// reflection's own history has in composite3, and missing here until now.
+	// Everything above is finite by the argument in the note, so this cannot fire
+	// today; it is here because "everything above is finite" is a claim about six
+	// other expressions, and the cost of being wrong about one of them is a black
+	// blot that the clamps are structurally unable to catch.
+	if (!(dot(resolved, resolved) < 1.0e18)) {
+		resolved = current;
+	}
 
 	// Averaging frames together softens the image, which is the price of the
 	// anti-aliasing; a little sharpening puts the edge definition back without
@@ -317,83 +616,41 @@ void main() {
 		}
 	#endif
 
-	#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
-		// The environment reflection of every material surface on screen, added
-		// here rather than where the surface was drawn - see the include above.
-		//
-		// It goes on after the temporal resolve, so the reflection is not itself
-		// accumulated and may shimmer a little where it is noisy or aliased. That
-		// is the price of not feeding it back into the buffer it reads, and it is
-		// the cheap side of the trade: a reflection that flickers is a small
-		// annoyance, and a reflection that compounds itself every frame is a
-		// black screen.
-		//
-		// The view position is rebuilt here rather than reused from the branch
-		// above, because that one only runs when anti-aliasing is on.
-		//
-		// depthtex1 rather than depthtex0: the tracer marches the opaque depth
-		// buffer, so the ray has to start on the surface that buffer describes.
-		// depthtex0 has the translucents in it, and at any pixel where a water or
-		// glass surface is in front the two are different surfaces - so the ray
-		// would set out from the glass and immediately meet the block behind it,
-		// which is a reflection of the wrong thing from the wrong place.
-		//
-		// The uniform itself is declared in environment_reflection.glsl, which is
-		// included above. Nothing needs adding here for this, and adding it here
-		// would be the same declaration twice in one program, which does not
-		// compile.
-		float reflectionDepth = texelFetch(depthtex1, pixel, 0).r;
+	// The environment reflection is not applied here.
+	//
+	// It has a pass of its own, one later, because the buffer it has to read is
+	// the resolved image - the one this pass is about to write - and a pass
+	// cannot read what it is writing. Applying it here would also put it into
+	// the history below, where the neighbourhood clamp pulls it back out again
+	// every frame: that clamp is bounded by the variance of colortex0, and
+	// colortex0 has no reflection in it.
+	//
+	// See composite3.fsh.
 
-		if (reflectionDepth < 1.0) {
-			vec3 reflectionNdc = vec3(
-				gl_FragCoord.xy * windowToNdc,
-				reflectionDepth * 2.0) - 1.0;
-			vec4 reflectionViewPosH =
-				gbufferProjectionInverse * vec4(reflectionNdc, 1.0);
-			vec3 reflectionViewPos =
-				reflectionViewPosH.xyz / reflectionViewPosH.w;
+	// What the screen shows, which is the resolved frame unless the debug view
+	// below is on. The history written underneath is the resolved frame either
+	// way: a diagnostic must not change what it is diagnosing.
+	vec3 shown = resolved;
 
-			// Whether this pixel is being looked at through something
-			// translucent, which the reflection declines to be computed for -
-			// see the note on the parameter in environment_reflection.glsl.
-			//
-			// The two depth buffers answer it between them: only one of them has
-			// the translucent pass in it, so the one with the translucents in it
-			// being the nearer of the two means there is a water, ice or glass
-			// surface in front of whatever is drawn at this pixel.
-			bool seenThrough = texelFetch(depthtex0, pixel, 0).r
-				< texelFetch(depthtex1, pixel, 0).r;
-
-			vec3 environmentReflection = EnvironmentReflection(
-				reflectionViewPos,
-				texelFetch(colortex2, pixel, 0).r,
-				seenThrough);
-
-			// The debug view, which is the reflection and nothing else: the whole
-			// frame is replaced by it, at four times its strength so that the
-			// faint reflection a well-behaved surface carries can be seen at all.
-			//
-			// It exists because the reflection is the one thing in this pack that
-			// cannot be judged from the finished picture. A normal map that is
-			// wrong looks wrong and a shadow that is wrong looks wrong, but a
-			// reflection that is being blurred wrongly and one that is being
-			// traced wrongly both come out as "a strange reflection", and no
-			// amount of looking at the picture tells them apart. See
-			// PBR_DEBUG_REFLECTION in pbr.glsl, and its entry in the lang files.
-			#if PBR_DEBUG == PBR_DEBUG_REFLECTION
-				resolved = environmentReflection * 4.0;
-			#else
-				resolved += environmentReflection;
-			#endif
-		}
+	#ifdef TAA_DEBUG
+		// Left half, what this pass was handed; right half, what it made of it.
+		// See the note on TAA_DEBUG in lib/taa.glsl for how to read it.
+		shown = gl_FragCoord.x < viewWidth * 0.5 ? currentRaw : resolved;
 	#endif
 
-	gl_FragData[0] = vec4(resolved, 1.0);
+	gl_FragData[0] = vec4(shown, 1.0);
 
-	#if TAA != TAA_OFF
-		// The history written here is the resolved image, not the raw frame:
-		// accumulating already-resolved frames is what gives the effect its
-		// temporal reach.
-		gl_FragData[1] = vec4(resolved, 1.0);
-	#endif
+	// The history written here is the resolved image, not the raw frame:
+	// accumulating already-resolved frames is what gives the effect its
+	// temporal reach.
+	//
+	// Written whether anti-aliasing is on or off. It used to be written only when
+	// it was on, because nothing read the buffer otherwise - which stopped being
+	// true when the environment reflection moved to its own pass, since that pass
+	// reads this one for the world to trace over. Skipping the write left it
+	// holding whatever the last frame with anti-aliasing on had put there. With
+	// anti-aliasing off nothing below reads it, so this is a plain copy of the
+	// current frame: the same thing the resolve produces when it has nothing to
+	// accumulate onto.
+	gl_FragData[1] = vec4(resolved, 1.0);
 }

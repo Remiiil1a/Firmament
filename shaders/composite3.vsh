@@ -14,5 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+// Added 2026-09-22 by Remiiil1a for Firmament - the environment reflection's own
+// pass. See the note at the top of composite3.fsh.
+
 #version 150 compatibility
-#include "/program/post/volumetric_fog.fsh"
+
+void main() {
+	gl_Position = ftransform();
+}

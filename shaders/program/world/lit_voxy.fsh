@@ -23,8 +23,29 @@
 // an #extension directive in the middle of the shader.
 #define MC_GL_ARB_texture_gather
 
+// Voxy hands this program only the uniforms that voxy.json lists in its
+// "uniforms" array, and it hands over every one of them by name - so a uniform
+// this file's includes declare but that the array does not name is not an error.
+// It is declared, it compiles, and it reads zero for the whole frame.
+//
+// That is worth knowing before adding anything to the chain below: a missing
+// name looks exactly like a feature that does not work, and only on Voxy's
+// terrain. rainStrength was missing that way, which left the sun, the moon and
+// the stars in the water's reflection at full strength through a thunderstorm -
+// while the same water drawn by the game itself faded them out correctly, since
+// an ordinary program is given every uniform it declares.
+//
+// So: when this chain starts reading a new uniform, add it to that array in the
+// same change. See PBR_PORTING.md 124.
 #define EXTERNALLY_DEFINED_UNIFORMS
 #define NO_HELD_BLOCK_LIGHTING
+
+// The lightmap, which this program gets through voxy.json rather than from the
+// uniforms this pack declares for itself - see the note where the lightmap is
+// declared in environment/lighting/diffuse.glsl, and "lightmap" in the samplers
+// map of voxy.json. It is what lets level-of-detail terrain be lit in the same
+// color as the blocks beside it, which is the whole of why it is asked for.
+#define VOXY_LIGHTMAP
 
 // Water absorption configuration, has wide-reaching impacts across the codebase
 // Uniforms: none

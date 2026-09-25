@@ -368,6 +368,27 @@ void dWorldPosdxdy(
 	ddyWorldPos = worldTangent * dudy + worldBinormal * dvdy;
 }
 
+// How much of the water's reflection to keep.
+//
+// 1.0 is every bit of it, which is what the pack has always drawn and what this
+// is a way out of. It is here because the reflection is the one part of the water
+// that reads as a shader rather than as water: a lake in a forest shows you the
+// forest twice, and a pack that gets the reflection slightly wrong makes still
+// water look like a mirror laid on the ground. Turning it down keeps the water's
+// own colour and its Fresnel edge, and takes away the picture in it.
+//
+// 0.0 is no reflection at all - water lit and fogged like any other surface.
+//
+// It reaches level-of-detail water as well as the water beside it. Both go through
+// TranslucentLighting, which is where this is applied, so there is one place it
+// could have been and one place it is - see the note at the application below.
+//
+// It does not go above one. A Fresnel term is a fraction of the incoming light and
+// cannot exceed all of it, so a setting that asked for more would be answered with
+// the same picture as 1.0 - a slider whose top half does nothing, which is worse
+// than a shorter slider. See PBR_PORTING.md 148.
+#define WATER_REFLECTION_STRENGTH 0.5 // [0.0 0.1 0.25 0.5 0.75 1.0]
+
 vec4 TranslucentLighting(
 	vec4 fragmentColor,
 	vec3 worldNormal,
@@ -539,7 +560,18 @@ vec4 TranslucentLighting(
 		// for the fresnel factor:
 		// https://en.wikipedia.org/wiki/Schlick's_approximation
 		float fresnel = F0 + (1.0 - F0) * pow(1.0 + dot(incident, normal), 5.0);
-		fresnel *= reflectionStrength;
+		// The water's reflection strength is scaled by the option here, and by the
+		// material and by nothing else: ice and glass come through the same code
+		// and keep every bit of their reflection, because a window and a frozen
+		// lake are read as surfaces rather than as water, and dimming them is not
+		// what the option is for.
+		//
+		// This is the only line the option is applied on, which is what makes it
+		// reach the level-of-detail water as well: Voxy's water and the water drawn
+		// by the chunk renderer both arrive at this function, so neither of them
+		// can be left out of it.
+		fresnel *= reflectionStrength
+			* (materialID == WATER ? WATER_REFLECTION_STRENGTH : 1.0);
 
 		// Very basic reflections using the sky gradient. There is no need to
 		// apply fog to the sky reflection, as we apply fog at the very end for
@@ -569,11 +601,14 @@ vec4 TranslucentLighting(
 			// the part that is being seen through.
 			//
 			// Both directions are turned into view space here, where the game
-			// holds the sun for the sky it draws - see SkyBodies.
+			// holds the sun for the sky it draws - see SkyBodies. The third
+			// argument is the world-to-view rotation, so that the quad the body
+			// is drawn in is built in the same space as the two directions.
 			if (materialID == WATER) {
 				skyReflection += SkyBodies(
 					(gbufferModelView * vec4(reflected, 0.0)).xyz,
-					normalize(sunPosition));
+					normalize(sunPosition),
+					mat3(gbufferModelView));
 			}
 		#else
 			// The patch's own program. It has neither the view matrix the
@@ -587,7 +622,9 @@ vec4 TranslucentLighting(
 			// the sky above it is small in the view and the disc does not sit
 			// next to the real sun on screen.
 			if (materialID == WATER) {
-				skyReflection += SkyBodies(reflected, worldSunVector);
+				// No rotation wanted here: both directions are already in world
+				// space, so the identity is what takes world to world.
+				skyReflection += SkyBodies(reflected, worldSunVector, mat3(1.0));
 			}
 		#endif
 		vec3 reflectedColor = skyReflection;

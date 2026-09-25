@@ -43,7 +43,7 @@
 //   _s.b   - subsurface scattering above 64.5/255, porosity below it. The
 //            scattering is read when PBR_SUBSURFACE is on, the porosity when
 //            PBR_POROSITY_WETNESS is.
-//   _s.a   - emission. 255 means "does not emit", 0 means "fully emissive".
+//   _s.a   - emission. 254 means "fully emissive", 255 means "does not emit".
 //
 // Every feature below has its own switch, so a player who does not want, say,
 // the cost of parallax mapping can turn just that off.
@@ -200,13 +200,30 @@ const float PBR_DEFAULT_F0 = 0.04;
 // Whether to add the emission stored in the alpha channel of the specular map.
 #define PBR_EMISSION
 
+// Whether the emission in a specular map is used on any block, or only on the
+// blocks the game's own lighting already treats as light sources.
+//
+// On by default, and this is the LabPBR rule: the alpha channel is the resource
+// pack saying "this part of my texture emits", and it is how a pack makes an ore
+// vein, a rune or a lamp's glass glow. An ore is not a light source in the game,
+// so a rule that asked for one would mean the channel could never do the thing it
+// exists for. See PBR_PORTING.md 164.
+//
+// Off is the older behaviour, kept as the escape hatch rather than as a default:
+// a pack, or a texture a mod generated, that paints emission where it did not
+// mean to - or that leaves the channel at its maximum by accident - would have
+// every such sprite light up. Turn this off if something glows that should not,
+// and the emission is then only added where the game's own lighting already
+// calls the block a light source.
+#define PBR_EMISSION_ANY_BLOCK
+
 // How bright that emission is.
 //
 // LabPBR stores emission as a fraction of the surface color, and on its own
 // that is rarely bright enough to read as something lit from within - the
 // tonemapper compresses it straight back down. Raise this to make emissive
 // materials actually glow.
-#define PBR_EMISSION_STRENGTH 1.5 // [0.5 0.75 1.0 1.5 2.0 3.0 4.0 6.0]
+#define PBR_EMISSION_STRENGTH 4.0 // [0.5 0.75 1.0 1.5 2.0 3.0 4.0 6.0]
 
 // Whether blocks that emit light should glow with their own color.
 //
@@ -939,12 +956,14 @@ float PbrMaterialOcclusion(PbrSurface pbr) {
 //     material that reflects everything, scatters everything and is porous
 //     everywhere - not something a pack authors.
 //
-// The alpha is meaningless too, whichever end of the range the atlas left it at,
-// and this is the part that matters for emission: LabPBR stores emission as the
-// *inverse* of alpha, so a zero there reads as "fully emissive" and a whole
-// block's worth of missing data turns into a lamp. That is what shows up as a
-// glow over modded leaves and grass, and it is why both colours are rejected
-// with any alpha rather than only the opaque pair.
+// The alpha is meaningless too, whichever end of the range the atlas left it at.
+// Emission happens to survive that on its own: a missing sprite reads as
+// transparent black, and LabPBR defines an alpha of zero as "emits nothing".
+// The porosity and the scattering do not - they read the blue channel - so
+// telling an empty atlas region apart from a real material is what the two
+// rejected colours above are for. Rejecting both with any alpha, rather than
+// only the opaque pair, is what keeps a block the pack never covered from
+// scattering all of the light or darkening as though it were porous everywhere.
 //
 // The price is that a material which really is fully emissive and has exactly
 // zero reflectance, zero scattering and zero porosity is read as having no data
@@ -2364,16 +2383,22 @@ PbrSurface PbrDecode(vec2 texCoord, PbrGradients gradients) {
 	#endif
 
 	#ifdef PBR_EMISSION
-		// 255 means "does not emit", 0 means "fully emissive". Resource packs
-		// without specular maps sample as 1.0 here, which correctly yields no
-		// emission at all.
+		// LabPBR stores emission as alpha directly: 0 is 0% and 254 is 100%.
+		// 255 is not "more than 100%", it is the no-data value - an RGB image
+		// with no alpha channel at all loads as 255 everywhere, so a pack that
+		// never touched the channel has to read as "does not emit" rather than
+		// as a lamp. That is the whole reason the useful range stops one short
+		// of the top, and it is why this is a multiply and not a subtraction.
+		// See PBR_PORTING.md 165.
 		//
-		// Only where the atlas holds a material, though: a sprite with no
-		// specular map reads as transparent black, whose alpha of zero would
-		// otherwise be read as "fully emissive" and make every such block glow.
-		// See PbrMissingSpecular.
+		// The albedo supplies the color; this only supplies the amount.
+		//
+		// Still behind PbrMissingSpecular: a sprite with no specular map reads
+		// as transparent black, and while its alpha of zero already decodes to
+		// no emission, the same guard is what keeps the porosity and the
+		// scattering off data that is not there (see the block below).
 		if (!PbrMissingSpecular(specularSample)) {
-			pbr.emission = max(1.0 - specularSample.a, 0.0);
+			pbr.emission = specularSample.a * step(specularSample.a, 0.999);
 		}
 	#endif
 

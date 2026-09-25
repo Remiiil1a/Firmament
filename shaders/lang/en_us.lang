@@ -94,15 +94,25 @@ profile.comment=\
 
 screen.EFFECTS=Effects & post-processing
 screen.EFFECTS_LIGHT=Light effects
+screen.WEATHER_SETTINGS=Rain and snow particles
+screen.ATMOSPHERE_VOLUMETRIC_FOG=Volumetric fog
+screen.FOG_SETTINGS=Basics
+screen.FOG_SHAPE_SETTINGS=Shape and time
 screen.EFFECTS_CAMERA=Camera effects
 screen.EFFECTS_COLOR=Colour and tonemapping
-screen.EFFECTS_TAA=Temporal anti-aliasing
+screen.EFFECTS_TAA=Anti-aliasing
+screen.EFFECTS_BLOOM=Bloom
 screen.WATER=Water & stained glass
 screen.ATMOSPHERE_CLOUDS=Atmosphere & clouds
 screen.LIGHTING=Lighting & shadows
 screen.PBR=Materials (PBR)
-screen.PBR_MATERIALS=Material maps and detail
-screen.PBR_RESPONSE=Surface response and reflections
+screen.PBR_NORMAL_SETTINGS=Normal maps
+screen.PBR_PARALLAX_SETTINGS=Parallax
+screen.PBR_SURFACE_SETTINGS=Surface and fallback
+screen.PBR_SPECULAR_SETTINGS=Specular
+screen.PBR_METAL_SETTINGS=Metals
+screen.PBR_EMISSION_SETTINGS=Emission
+screen.PBR_REFLECTION_SETTINGS=Environment reflections
 screen.PBR_COVERAGE=Coverage
 screen.DEVELOPMENT=Development & debugging
 screen.ABOUT=Credits & licence
@@ -709,19 +719,43 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials.\n
 	is nothing for it to read. Turn it off if the check above shows it picking up \
 	materials that are not the entity's own.
 
-option.PBR_DEBUG=Material debug view [build 261]
+option.PBR_DEBUG=Material debug view [build 331]
+option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
+option.DEFERRED_DEBUG.comment=The **left half** shows **what the geometry wrote** (colortex0, as this pass reads it); the **right half** shows **what this pass writes back** - after the fog, the reflections and the water absorption.\n\n**Watch which half it appears in first - not how far it spreads.**\n\n**The right half contains the left half's input**: this pass only adds fog, tints and darkening, and never erases what the geometry wrote. So:\n\n- **On the right only** is the one reading that says anything: the geometry does not have it and **this pass** made it - the fog, the reflections, the water absorption or the screen-space shadows;\n- **on both** is the ordinary case and says nothing, beyond that the geometry has it - which very likely means the geometry drew it.\n\n**Use one split view at a time** - with both on they overlap and neither reads clearly. When the blot appears, take a screenshot: the divide is at the middle of the screen.
+option.TAA_DEBUG=Temporal anti-aliasing split view
+option.TAA_DEBUG.comment=The **left half** of the screen shows the picture this pass was **handed**; the **right half** shows the picture it **produced**.\n\n**Watch which half it appears in first - not how far it spreads.** The two halves are the same frame and differ only in the value written out, and the history buffer is shared across the whole screen, so a blot that appears anywhere spreads across the middle. Its extent always crosses that line, so the extent says nothing at all.\n\nLet it clear (turn the view), then watch the next one appear and note **the half you first see it in**:\n\n- **Left** means it was already in the frame the resolve was handed, so the source is upstream - the geometry or the deferred pass - and the history is only keeping it;\n- **right** means the history makes it;\n- appearing **on the left first and spreading right afterwards** is the same reading as the first.\n\nThe left half shows the **raw** value, before the repair below - so a value that is not a number reads as the black it is rather than as the patched version.\n\n**Note** that what is written into the history is always the real result: a diagnostic must not change what it is diagnosing. With temporal anti-aliasing off this does nothing, because that branch does not run.
 option.SSS_GAIN=Sky shadow depth gain
+option.AMBIENT_OCCLUSION=Ambient occlusion (experimental)
+option.AMBIENT_OCCLUSION.comment=Darkens corners, wall bases and the joins between blocks. Light does not actually reach those places, and this pack - like the game itself - lights a surface by its light level alone, so a wall is exactly as bright at its base as at its top.\n\nIt asks the **depth buffer** how much of each pixel's surroundings is standing behind something else. That makes it a screen-space effect: it only knows about what is on screen, and thin things such as grass and fences are missed.\n\n**Off by default**: it changes the brightness of the whole picture, so it is meant to be turned on deliberately and compared against having it off.\n\n**It runs before the temporal resolve** (the deferred pass), so the noise in its samples is averaged away over time by the anti-aliasing - that is the premise it rests on. Applied after the resolve instead, every bit of that noise would stay in the picture.\n\n**If turning it on seems to do nothing**: turn on the occlusion debug view below, which shows the measurement itself rather than its result.\n\n**A known boundary**: terrain drawn by Voxy has none of it yet. Voxy writes no normal buffer, and occlusion with no direction to place its samples in is noise rather than shading.
+option.AO_STRENGTH=Occlusion strength
+option.AO_STRENGTH.comment=How much of it to apply. The default of 1.0 is the full amount, **and 1.0 is the ceiling**: above it a fully occluded pixel comes out negative, and a negative colour is drawn as black.\n\nSetting it to 0 turns the effect off without touching the option above - which is the cleanest way to compare, because nothing else about the picture changes.
+option.AO_RADIUS=Occlusion radius
+option.AO_RADIUS.comment=How far a sample may be from the point it tests, in blocks.\n\nThis is the scale of the effect: about a block reaches the corner where two walls meet and the gap under a fence, and stops short of the shading the sun and the sky already do at larger scales.\n\nRaising it costs nothing extra - the sample count is what sets the cost - but the same number of samples is then spread over a larger disk, so the result comes out coarser as well as broader.
+option.AO_SAMPLES=Occlusion samples
+option.AO_SAMPLES.comment=How many samples are taken per pixel.\n\nThis is the pass's cost, one depth fetch each, and it is the dial for how noisy the result is: the noise falls with the square root of it, so doubling the count is worth about a third less noise for twice the work.\n\nThe default is 24, where the first version used 12. Raise it if the result flickers; lower it if it costs too much.
+option.AO_DEBUG=Occlusion debug view
+option.AO_DEBUG.comment=Shows the **measurement itself** and nothing else: white where much of the pixel's surroundings is unblocked, black where all of it is blocked.\n\nIt exists to tell "the occlusion is not running" apart from "the occlusion is computing zero". Both look like nothing happening in the finished picture, and drawing the measurement directly is what separates them.\n\n**What it should look like**: dark at corners, in the joins between blocks and where grass meets the ground, and close to white across flat ground and flat walls. **A uniformly grey screen** means the test is reporting occlusion everywhere - a tolerance that is wrong - rather than the effect being weak.
 screen.END=The End
 screen.ATMOSPHERE_SKY=Sky, sun and moon
+screen.STAR_SETTINGS=Stars
 screen.ATMOSPHERE_FOG=Fog
 screen.CLOUDS=Clouds
+screen.CLOUD_BASIC_SETTINGS=Cloud basics
+screen.CLOUD_VOLUMETRIC_SETTINGS=Volumetric clouds
+screen.CLOUD_SCATTER_SETTINGS=Multiple scattering
 screen.WATER_STYLE=Surface
 screen.WATER_EFFECTS=Waves, parallax and caustics
+screen.WATER_SHAPE_SETTINGS=Surface shape
+screen.WATER_OPTICS_SETTINGS=Reflections and refraction
 screen.WATER_COLOUR=Colour and absorption
 screen.LIGHTING_SKY=Sky light
 screen.LIGHTING_BLOCK=Block light and bleed
 screen.SHADOWS=Shadows
+screen.SHADOW_SETTINGS=Real-time shadows
+screen.SSS_SETTINGS=Screen-space shadows
+screen.AO_SETTINGS=Ambient occlusion
 screen.DEBUG_VIEWS=Debug views
+screen.EXPERIMENTAL_TAA=Experimental: temporal anti-aliasing (not recommended)
 screen.DEV_TOOLS=Developer switches
 option.TAA=Temporal anti-aliasing
 option.CLOUD_DEBUG=Cloud lighting diagnostic [0 off | 1 direct | 2 transmittance | 3 phase]
@@ -844,19 +878,31 @@ value.STARS.STARS_OFF=Off
 value.STARS.STARS_ON=On
 value.TAA.TAA_OFF=Off
 value.TAA.TAA_ON=On
-option.TAA.comment=**On by default.** It is the one effect here that trades image \
-	stability for smoothness, and the trade is worth it at these settings: it \
-	renders each frame with a small sub-pixel offset and \
-	averages several frames together, so that each pixel is sampled from \
-	several positions instead of one. This smooths out edges that no single \
-	frame can resolve, for far less than rendering at a higher resolution.\n\n\
-	Steadfast has no motion vectors, so things that move on their own - \
-	entities, water, particles, the held item - cannot be reprojected correctly \
-	and are handled by throwing away history that does not match the current \
-	frame instead. Lower the strength - or turn this off entirely - if the \
-	ghosting behind moving things reads worse than the aliasing it removes.\n\n\
-	Voxy terrain is not covered, as its geometry is emitted by the Voxy mod \
-	rather than by these vertex shaders.
+value.TAA.TAA_DENOISE=Denoise only
+option.TAA.comment=**Off by default, and not recommended.**\n\n\
+	**With this on - in any of the three modes - a black blot can appear**: a small \
+	dark region that turns up every now and then and grows. Eight rounds of work \
+	never found its source; all that is known is the shape of the experiment, which \
+	is that it appears with this pass on and does not appear with it off, over \
+	versions of testing. So the option has been moved to Development as experimental \
+	and left off.\n\n\
+	**For anti-aliasing use SMAA**, on the Effects menu. The only thing lost by \
+	leaving this off is the temporal averaging of the dither: the screen-space \
+	shadows, the occlusion and the godrays keep their noise and it keeps moving.\n\n\
+	The three modes:\n\
+	- **Denoise only**: each pixel is averaged with its own past, read at that same \
+	pixel rather than at a reprojected one, and only where the pixel has not moved. \
+	Nothing is carried from one pixel to another and nothing is averaged across a \
+	surface boundary, so it neither spreads nor smears; the cost is that it does not \
+	denoise while the camera is moving, and the noise moves with it.\n\
+	- **On**: the anti-aliasing, with the sub-pixel jitter. It smooths edges and it \
+	is the mode in which the blot is most visible, because the reprojection carries \
+	a bad value from the frame to pixels it does not belong to.\n\
+	- **Off**: a copy.\n\n\
+	Anti-aliasing strength is the length of the average in the first two: lower is \
+	weaker denoising and a faster recovery from a bad frame.\n\n\
+	Voxy terrain is not covered, because its vertices come from the Voxy mod rather \
+	than from these vertex shaders.
 
 option.TAA_STRENGTH=Anti-aliasing strength
 option.TAA_STRENGTH.comment=How much of the accumulated history each frame \
@@ -883,17 +929,169 @@ option.TAA_CLAMP.comment=How many standard deviations of the current frame's \
 	behind it, and what keeps textures from being averaged into a smudge. Raise \
 	it if the image flickers, lower it if surfaces look soft or smeared.
 
+option.TAA_DARK_FLOOR=History brightness floor (black blot guard)
+option.TAA_DARK_FLOOR.comment=How dark the history may be, as a fraction of the \
+	mean of the current frame's neighbourhood. 0.0 is no floor at all, which is \
+	what the code did before this option existed; 0.25 means the history may never \
+	be darker than a quarter of what the current frame shows around this pixel.\n\n\
+	Why it is needed: the statistical clamp above has a lower end of "the \
+	neighbourhood mean minus TAA_CLAMP deviations", floored at zero. At a block's \
+	edge the neighbourhood holds a bright face and the dark thing beside it, so the \
+	deviation is large, the lower end goes below zero, the floor catches it, and \
+	what is left is a lower bound of zero - no lower bound at all, which is what \
+	lets a history that has gone black be kept.\n\n\
+	An earlier attempt at this put the floor at the neighbourhood's darkest value, \
+	and that is a no-op: at an edge the darkest thing there is the dark side of the \
+	edge, it sits below the statistical lower end, and the maximum of the two is \
+	therefore the statistical one. The floor has to be measured against something \
+	the blot cannot drag down, and the mean of the current frame's neighbourhood is \
+	that.\n\n\
+	Why no other kind of bound will do: what was measured is that the side of the \
+	split view showing the frame is clean and the side showing the result is dark, \
+	so the black was never in the frame - it lives in the history alone. A black \
+	history is fetched through a Catmull-Rom filter reaching two texels, so the \
+	pixels beside it go dark the frame after, and their frames are clean as well. \
+	Nothing in that loop needs the frame to be wrong, so no bound read from the \
+	history can stop it, and neither can a limit on how fast it moves - every step \
+	of it is small. A bound read from the frame, every frame, is what stops it.\n\n\
+	The cost is that a genuinely black detail on a bright surface is lifted to this \
+	fraction of its surroundings, which is why this is a slider: 0.0 is the old \
+	behaviour, and lower values trade less lifting for less protection. See \
+	PBR_PORTING.md 157.
+
 option.TAA_SHARPEN=Sharpening
 option.TAA_SHARPEN.comment=How much to sharpen the resolved image, to counter \
 	the softening that averaging frames together introduces.\n\n\
 	A little goes a long way - too much brings back the aliasing the effect \
 	exists to remove.
 
+option.SMAA=SMAA
+option.SMAA.comment=Morphological anti-aliasing: it finds the edges already in the \
+	finished image, works out what shape each one makes, and blends across it by \
+	the amount that shape calls for.\n\n\
+	This and Temporal anti-aliasing are alternatives rather than a pair - they \
+	answer the same question in opposite ways, and running both pays both their \
+	prices for one of their answers. Set Temporal anti-aliasing to "Off" and use \
+	this one.\n\n\
+	Note that it does not denoise. It can move an edge but it cannot average a \
+	per-frame sample out, so the dither of the screen-space shadows, of the \
+	ambient occlusion and of the godrays is left as it was drawn. With the \
+	temporal resolve off that dither no longer shimmers - the jitter is what made \
+	it move - but it is still a fixed pattern rather than a smooth gradient.
+
+option.SMAA_THRESHOLD=SMAA Contrast Threshold
+option.SMAA_THRESHOLD.comment=How far apart two neighbouring pixels have to be \
+	before the edge between them is treated as one worth smoothing.\n\n\
+	Lower values find more edges, including the ones that are only a texture's own \
+	detail - which reads as the texture being blurred rather than as its edges \
+	being smoothed. Higher values miss real edges.
+
+option.SMAA_SEARCH_DISTANCE=SMAA Search Distance
+option.SMAA_SEARCH_DISTANCE.comment=How far along an edge to look for the point \
+	where it ends.\n\n\
+	An edge that continues past this distance is treated as one that does not end \
+	near this pixel, so no blend is applied. Lower values are cheaper and leave \
+	long diagonal edges less smooth.
+
+option.SMAA_DEBUG=SMAA Status View
+option.SMAA_DEBUG.comment=Whether SMAA is running, and which stage it stops at if \
+	it is not.\n\n\
+	The frame is replaced by two of the three stages' own buffers:\n\n\
+	- Red: the edges the first stage found. Red lines are the places the picture \
+	was judged to have an edge.\n\
+	- Green: the blend weight the second stage got from the lookup table, which \
+	only appears where there is red.\n\n\
+	Three readings, and the first two both happen with the option switched on:\n\n\
+	- Yellow lines on black: both stages ran and the table answered. SMAA is \
+	working.\n\
+	- Red with no green: the lookup images are not reaching the second stage, so \
+	the weight is zero and there is no blend - the effect is off in all but name.\n\
+	- The ordinary picture: the third stage never ran, which means SMAA is off.\n\n\
+	Like the other split and diagnostic views, it replaces the whole frame - one \
+	at a time.
+
+option.BLOOM=Bloom
+option.BLOOM.comment=Whether the parts of the frame that are brighter than white \
+	spill a glow onto what is around them.\n\n\
+	A lens does this, and so does an eye: light bright enough to overexpose a \
+	pixel does not stop at the edge of the thing giving it off, it scatters \
+	inside the glass and lands on the pixels nearby - which is why a torch at \
+	night has a halo rather than a hard outline. This is the cheap imitation of \
+	that: take what is brighter than white, blur it, and add it back.\n\n\
+	It happens **before the tonemap**, and that is the part that matters: \
+	"brighter than white" only means anything before the curve, since afterwards \
+	everything above white has already been squashed flat and there is nothing \
+	left to find.\n\n\
+	It deliberately does not feed on the godrays, the motion blur or the \
+	vignette - all three are added after it - and it carries nothing across \
+	frames, so it cannot smear or accumulate.\n\n\
+	**If the picture looks hazy and flat, lower this or raise the threshold \
+	rather than reaching for the tonemapping.**
+option.BLOOM_STRENGTH=Bloom strength
+option.BLOOM_STRENGTH.comment=How much of the blurred light is added back.\n\n\
+	This is what decides whether the effect reads as "the bright things glow" or \
+	as "someone smeared vaseline on the lens". It scales both the tight and the \
+	wide level, so it is the only strength control there is.
+option.BLOOM_THRESHOLD=Bloom threshold
+option.BLOOM_THRESHOLD.comment=How bright a pixel has to be before any of it \
+	blooms.\n\n\
+	The frame is in linear light with 1.0 at white, so a pixel below 1.0 is \
+	simply not bright enough to have spilled anywhere.\n\n\
+	Lowering this pulls ordinary lit surfaces into the glow, which thickens the \
+	effect but washes the contrast out; raising it picks out only what is \
+	genuinely overexposed - the sun, lava, a torch flame.\n\n\
+	The fade around the threshold is **soft rather than a hard cut**. A hard cut \
+	leaves a visible line at the edge of every bright surface - the pixels just \
+	above it bloom and their neighbours just below do not - and what that looks \
+	like is a ghost of the object's outline.
+option.BLOOM_RADIUS=Bloom radius
+option.BLOOM_RADIUS.comment=How far the glow spreads, as a multiple of the \
+	blur's own width.\n\n\
+	That width is about thirteen pixels at 1080p. Raising this widens the halo \
+	and **costs nothing extra**: the tap count, not the radius, is what the \
+	passes pay for.
+
+option.BLOOM_EXCLUDE_SPECULAR=Bloom leaves out highlights
+option.BLOOM_EXCLUDE_SPECULAR.comment=Whether the **specular highlight** on a \
+	surface is taken back out of the glow.\n\n\
+	**On by default.** This is what keeps the effect believable rather than \
+	merely strong: **a highlight is a picture of a light and not a light**. The \
+	sun that makes it is somewhere else entirely, and its reflection on a \
+	polished floor does not light the room. Bloom it anyway and **a shiny \
+	surface ends up looking like a lamp of its own**, which is what a highlight \
+	being bloomed looks like in the first place.\n\n\
+	The cost is one more buffer for the terrain shaders to write - colortex15, \
+	declared in program/world/lit.fsh - and one more fetch per tap in the pass \
+	that keeps the bright parts. Turning it off skips those fetches and nothing \
+	else: the buffer is written either way.\n\n\
+	**What it does not cover**: water, ice and glass take their reflection from \
+	TranslucentLighting rather than from the surface lighting, so a highlight on \
+	those still blooms. That is a deliberate stopping point and not an \
+	oversight - it is the sun glinting off water, which is the one specular \
+	highlight a camera really does bloom. Say so if that is the one that looks \
+	wrong.
+
 option.PBR_EMISSION=Emission
 option.PBR_EMISSION.comment=Whether the emission stored in the alpha channel of \
 	the specular map should be added to the surface color.\n\n\
 	Emissive blocks then glow with their own color regardless of the light \
 	around them, and still fade into the fog with distance.
+
+option.PBR_EMISSION_ANY_BLOCK=Emission on any block
+option.PBR_EMISSION_ANY_BLOCK.comment=Whether the emission in a specular map \
+	applies to **any** block, or only to the blocks the game itself treats as light \
+	sources - the ones at a full block light level.\n\n\
+	**On by default, and this is the LabPBR rule**: the alpha channel is the \
+	resource pack saying "this part of my texture emits", and it is how a pack makes \
+	an ore vein, a rune or a lamp's glass glow. **An ore is not a light source**, so \
+	a rule that asked for one would mean the channel could never do the thing it \
+	exists for.\n\n\
+	Off is the older behaviour, kept as the escape hatch rather than as a \
+	default: **if a resource pack - or a texture some mod generated - paints \
+	emission where it did not mean to, or leaves the channel at its maximum by \
+	accident**, every such sprite lights up. **Turn this off if something glows \
+	that should not**; the emission is then only added where the game's own \
+	lighting already calls the block a light source.
 
 option.PBR_EMISSION_STRENGTH=Emission strength
 option.PBR_EMISSION_STRENGTH.comment=How bright the emission from the resource \
@@ -925,6 +1123,28 @@ option.BLOCKLIGHT_STRENGTH.comment=How bright block light is at full light level
 	replaces that with its own - so that is what this is.\n\n\
 	Raising it brightens everything a torch lights; it does not change its \
 	color.
+
+option.BLOCKLIGHT_TEMPERATURE=Block light temperature
+option.BLOCKLIGHT_TEMPERATURE.comment=The color temperature of block light, in \
+	kelvin, in steps of 100 K.\n\n\
+	The color itself comes from the lightmap, which is how a resource pack says \
+	what color its lights are. This only moves that color warmer or cooler; it does \
+	not replace it.\n\n\
+	The scale is the one a photographer uses. A candle or a torch is about 1800 to \
+	2500 K and reads as deep orange; an incandescent bulb is 2700 K, which is the \
+	warm white most people mean by "warm"; 4000 K is near neutral; daylight is 5500 \
+	to 6500 K; an overcast sky at 7000 K and up reads blue. Lower is more yellow, \
+	higher goes white and then blue.\n\n\
+	The default of 6500 K means no change at all: the tint is computed as a ratio \
+	against this value, so at 6500 it multiplies by one and the picture is exactly \
+	what it was before this option existed.\n\n\
+	It changes the hue only and not the brightness - brightness is the option \
+	above, block light strength.\n\n\
+	It reaches level-of-detail terrain as well, and the two halves of the world use \
+	the same lightmap, so their color is the same - the far half looks like the near \
+	one. That is what asking Voxy for the lightmap bought: before it, the far half \
+	had no lightmap to read and fell back to an orange of the pack's own, and the \
+	two did not match.
 
 option.LIGHT_TINT_STRENGTH=Light color tinting
 option.LIGHT_TINT_STRENGTH.comment=How far a surface takes the color of the \
@@ -995,6 +1215,47 @@ option.LIGHT_BLEED_DEPTH.comment=How different in depth two pixels may be \
 	whatever is in front of it. Raise it if the color stops too abruptly at the \
 	edges of objects; lower it if a light seems to shine through the wall it is \
 	behind.
+
+option.INDIRECT_BOUNCE=Indirect bounce
+option.INDIRECT_BOUNCE.comment=Whether the part of the light that bounces from \
+	one surface onto another is drawn.\n\n\
+	The options above this one are about the light a source gives off. This is \
+	the other half: **a surface that has been lit is a source as well**. A sunlit \
+	red wall puts red onto the white wall beside it, a torch-lit floor lights the \
+	underside of the table above it, and the reason a corner is not simply the \
+	sum of the lights pointing into it is that every surface is also giving light \
+	back. Minecraft's own light is a flood fill - it has no notion of a surface \
+	returning light - so without this the only light a surface can receive is \
+	light that came from a block marked as a lamp.\n\n\
+	The gather is the same disk as above, over the frame itself instead of over \
+	the lamp mask, and weighted by how bright each tap already is: what is bright \
+	is what is giving light back, and what is in shadow is not.\n\n\
+	**It is an approximation and it behaves like one**: it blurs light that is \
+	already on screen, so it redistributes light rather than creating any, and it \
+	cannot reach a surface in shadow down a corridor. What it is for is the local \
+	case - two surfaces meeting at a corner, each giving the other its color.\n\n\
+	**Off by default.** b311 shipped this on and the verdict from testing it was \
+	that the effect is not visible, which is the right verdict: **the half that \
+	was cut for cost - a surface's own orientation deciding how much of what \
+	surrounds it arrives - is what would have made this read as light**, and \
+	without it this is a wide blur of the frame, close enough to the color bleed \
+	above it that turning it on changes very little. **Worth turning on to look \
+	at; not worth paying for by default until the directional half exists.**
+option.INDIRECT_BOUNCE_STRENGTH=Indirect bounce strength
+option.INDIRECT_BOUNCE_STRENGTH.comment=How much of the bounced light is added.\n\n\
+	Like the bleed above it, this adds light rather than mixing it in - but \
+	unlike that one **it is taken from light already in the picture**, so this is \
+	the one option on this page that can leave the frame brighter and hazier than \
+	it was. **If the result looks washed out rather than lit, lower this first**, \
+	before touching anything else here.
+option.INDIRECT_BOUNCE_FLOOR=Indirect bounce floor
+option.INDIRECT_BOUNCE_FLOOR.comment=How bright a surface has to be before it \
+	counts as giving light back.\n\n\
+	A fraction of white. The ambient light every surface receives is already in \
+	the frame, and if all of it counted as a source then **every surface would \
+	bounce** and the effect would be a haze rather than light with a direction. \
+	Raising this narrows it to what is genuinely bright - sunlight, lava, a lit \
+	lamp - and lowering it brings ordinary surfaces in.
 
 option.END_SKY=End sky
 value.END_SKY.END_SKY_AUTO=End only
@@ -1360,7 +1621,7 @@ option.DIRECTIONAL_SKYLIGHT_SHADING.comment=Whether the sky's ambient light \
 	which is the flatter and more stylised of the two and the one to pick if the \
 	undersides of things look too dark.
 
-option.GODRAYS=Volumetric light
+option.GODRAYS=Volumetric fog and shafts
 option.GODRAYS.comment=Whether light shafts are drawn radiating from the sun, \
 	from a mask of where the sky itself is visible.\n\n\
 	This is a screen-space effect built by blurring that mask outwards, so it only \
@@ -1385,6 +1646,106 @@ option.GODRAYS_STRENGTH.comment=How bright the light shafts are, as a multiple o
 	though - turning that option off also skips the pass that builds the mask, while \
 	a strength of zero leaves that pass running and writing zeros into a buffer that \
 	nothing then reads.
+
+option.RAIN_COLOR_SATURATION=Rain colour saturation
+option.RAIN_COLOR_SATURATION.comment=How much colour the particle itself carries. **1.0 is the texture's own pale blue-grey**; lower takes the colour out (0.0 is pure grey) and higher pushes what colour there is.\n\nIt acts on the sampled colour, with the surface tint already folded in, so a coloured tint is scaled along with it rather than left behind.\n\nIt changes colour only, not opacity - for a rain that reads as heavier or lighter, use **Rain drop size** above. Snow behaves the same way.
+
+option.RAIN_DROP_AMOUNT=Rain drop amount
+option.RAIN_DROP_AMOUNT.comment=How many times the rain texture is tiled across each rain column. Higher packs more drops into the same space and the rain reads as **denser**; lower spreads them out.\n\nThis changes how many drops there are, not how thick they are - thickness is the next option, and the two are deliberately kept independent, so any pair of settings works.\n\n1.0 is vanilla. Snow is drawn by the same program, so this affects **snow** as well.
+
+option.RAIN_DROP_SIZE=Rain drop size
+option.RAIN_DROP_SIZE.comment=How much of each drop's original width is kept. **Lower makes the streaks thinner**, higher makes them thicker, and 1.0 leaves the particle exactly as it was.\n\nIt works by taking a further bite out of each drop's alpha. The gaps between drops are already painted into the texture, so trimming the drop itself needs no new art.\n\n0.1-0.2 is a drizzle; below that the rain fades to nearly invisible. Snow behaves the same way.
+
+option.VOLUMETRIC_FOG_DENSITY=Fog density
+option.VOLUMETRIC_FOG_DENSITY.comment=How thick the air is, per block. This is the \
+	master dial for the whole effect: raise it and the low ground fills up, lower \
+	it and the shafts thin out.\n\n\
+	It acts on the **medium the march walks through**, not on anything added to \
+	the screen - so it sets both how bright the shafts are and how quickly they \
+	fade with height.
+option.VOLUMETRIC_FOG_HEIGHT=Fog height
+option.VOLUMETRIC_FOG_HEIGHT.comment=How many blocks up the fog has thinned to \
+	about a third of its density at the bottom. Larger values make a deeper layer \
+	that reaches higher; smaller ones keep the fog on the ground.\n\n\
+	This is the dimension **volumetric** fog has that a screen-space shaft does \
+	not: **fog pools in low places**, and a blur across the screen cannot express \
+	that at all.
+option.VOLUMETRIC_FOG_BASE=Fog base height
+option.VOLUMETRIC_FOG_BASE.comment=The height the fog is measured from. 62 is \
+	Minecraft's sea level and where this was tuned, so the layer sits in valleys \
+	and along the water and thins out on the hills.\n\n\
+	Raising it lifts the whole layer; lowering it puts the thick air below the \
+	surface, where only caves see it.
+option.VOLUMETRIC_FOG_DISTANCE=March distance
+option.VOLUMETRIC_FOG_DISTANCE.comment=How far the ray may reach, in blocks. \
+	Past this the medium is not sampled at all.\n\n\
+	This costs less than it looks: the steps are spread quadratically, so the \
+	last one already covers the most ground and changing this number moves \
+	nearly nothing.\n\n\
+	**It does not leave a hole in the distance**: the pack's own fog is computed \
+	per fragment with no distance limit, and it is what fades the far world out.
+option.VOLUMETRIC_FOG_STEPS=March steps
+option.VOLUMETRIC_FOG_STEPS.comment=How many times the ray samples the medium. \
+	**This is the cost of the effect.**\n\n\
+	The samples are spread quadratically rather than evenly - most of them fall \
+	in the first few dozen blocks, where the medium has its edges, and the far \
+	ones are allowed to be far apart. 24 is where the banding stops showing with \
+	the dither in place; below that, rings appear around the light.
+
+option.VOLUMETRIC_FOG_NOISE=Fog structure
+option.VOLUMETRIC_FOG_NOISE.comment=Whether the medium has a shape of its own.\n\n\
+	**0 is an even haze**, which is what this was before the option existed; \
+	raising it gathers the fog into patches with gaps between them.\n\n\
+	**This is not only a matter of looks**: with no structure of its own, the \
+	shadow test is the only thing on screen that varies, and then **every time \
+	the shadow map is realigned by a texel, what is seen is the fog jumping**. \
+	Giving the medium patches of its own, fixed to the world and drifting on the \
+	pack's wind, is what makes the eye read it as fog - which is what this does.
+option.VOLUMETRIC_FOG_SCALE=Fine fog scale
+option.VOLUMETRIC_FOG_SCALE.comment=How large the patches are, in blocks. \
+	Larger is a softer, wider fog; smaller is a broken-up one.
+option.VOLUMETRIC_FOG_OCTAVES=Fog noise layers
+option.VOLUMETRIC_FOG_OCTAVES.comment=How many layers of noise are summed. More \
+	layers is finer detail, and **each one costs two noise fetches per step**.
+option.VOLUMETRIC_FOG_OCTAVE_SCALE=Fog layer scale
+option.VOLUMETRIC_FOG_OCTAVE_SCALE.comment=How much smaller each layer is than \
+	the one before it.
+option.VOLUMETRIC_FOG_OCTAVE_FADE=Fog layer fade
+option.VOLUMETRIC_FOG_OCTAVE_FADE.comment=How much weaker each layer is than the \
+	one before it.
+
+option.VOLUMETRIC_FOG_TIME_VARIATION=Fog follows the time of day
+option.VOLUMETRIC_FOG_TIME_VARIATION.comment=Whether the medium's density follows \
+	the time of day.\n\n\
+	**0 is the same all day; 1 follows the day**: **thickest at sunrise and \
+	sunset**, thinning through the morning until **noon is nearly bare**, then \
+	building again through the night towards the next sunrise. Morning and evening \
+	mist are one thing seen from two sides, which is why one curve covers both.\n\n\
+	This is the switch; the curve's shape is fixed.
+option.VOLUMETRIC_FOG_RAIN_STRENGTH=Thicker in rain
+option.VOLUMETRIC_FOG_RAIN_STRENGTH.comment=How much thicker the fog is in \
+	rain.\n\n\
+	**0 leaves it unchanged**; 1 doubles it at full rain, scaling in between, and \
+	the weather term is **squared** - a drizzle barely registers while a storm \
+	closes the view in.\n\n\
+	**It drives two things, and the second is the one that shows**: the medium the \
+	volumetric pass walks through does get thicker, but rain is exactly what hides \
+	the shafts that medium scatters. **The distance fading out** is what rain \
+	looks like, and that belongs to the pack's own fog. One value drives both.\n\n\
+	It only applies **out in the open**: rain does not thicken the air inside a \
+	cave, and someone under cover sees the sky darken without the fog following it \
+	in.
+option.VOLUMETRIC_FOG_FULL_RES=Full resolution fog
+option.VOLUMETRIC_FOG_FULL_RES.comment=Whether to march and store the fog at the \
+	**full resolution of the frame**.\n\n\
+	**Off by default** - a quarter of the frame, which is the resolution the \
+	default step count is tuned for.\n\n\
+	⚠️ **Performance warning: this raises the cost of the fog by about sixteen \
+	times.** It is the most expensive post effect this pack has, and at full \
+	resolution it stops being a pass's worth of work and becomes a second frame's.\n\n\
+	**Turn it on only to see what the upscale was hiding**: it sharpens the shafts \
+	and the edges of the fog patches.\n\n\
+	It is a compile-time option, so changing it reloads the shaders.
 
 option.UNDERWATER_GODRAYS=Underwater light shafts
 option.UNDERWATER_GODRAYS.comment=Whether the light shafts are drawn when the \
@@ -1628,6 +1989,21 @@ option.SSS_STRENGTH.comment=How much the distance shadows darken. It is applied 
 	this runs the two have already been added together - so a value near 1.0 takes \
 	some sky light with it as well.
 
+option.SSS_DARK_LIMIT=Maximum darkening
+option.SSS_DARK_LIMIT.comment=The most this effect may darken a pixel, as a \
+	fraction of its own colour. 0.5 is "no darker than half"; 0.9 is what the code \
+	did before this option existed.\n\n\
+	It exists because of what it multiplies. This is applied to the whole colour - \
+	the direct light, the sky light, the ambient and the reflection are already \
+	added into one number by the time this runs, so the sunlight cannot be taken \
+	back out of it - which makes "how much effect" and "how dark it may get" the \
+	same dial. At full strength a fully occluded pixel keeps a quarter of its \
+	colour, and on a dim surface that is not a shadow, it is a hole. This separates \
+	the two.\n\n\
+	The correct fix is to attenuate the sunlight alone, which needs the surface \
+	programs to keep the direct and indirect parts apart. Until then this is the \
+	bound that keeps the failure readable as a shadow rather than as a black blot.
+
 option.SSS_STEPS=Ray steps
 option.SSS_STEPS.comment=How many steps the ray takes. More steps means finer \
 	ones over the same length, which is what keeps it from slipping between two \
@@ -1648,8 +2024,32 @@ option.VIGNETTE_START=Vignette start
 option.VIGNETTE_END=Vignette reaches full
 value.VIGNETTE.VIGNETTE_ON=On
 value.VIGNETTE.VIGNETTE_OFF=Off
-option.WATER_SKY_BODIES=Sun and moon in reflections
-option.WATER_BODY_SIZE=Reflected body size
+option.WATER_REFLECTION_STRENGTH=Water reflection strength
+option.WATER_REFLECTION_STRENGTH.comment=How much of the water's reflection to keep.\n\n\
+	1.0 keeps every bit of it, which is what the pack has always drawn and what \
+	this option is a way out of. It is here because the reflection is the one part \
+	of the water that reads as a shader rather than as water: a lake in a forest \
+	shows you the forest twice, and a reflection that is slightly wrong makes still \
+	water look like a mirror laid on the ground. Turning it down keeps the water's \
+	own colour and its Fresnel edge, and takes away the picture in it.\n\n\
+	0.0 is no reflection at all - water lit and fogged like any other surface.\n\n\
+	It reaches level-of-detail water as well as the water beside it: both go \
+	through the same function and this is applied in the one place.\n\n\
+	It does not go above one. A Fresnel term is the fraction of the incoming light \
+	that is reflected and cannot exceed all of it, so a larger setting would be \
+	answered with the same picture as 1.0 - a slider whose top half does nothing, \
+	which is worse than a shorter slider.\n\n\
+	Water only. Ice and glass come through the same code and keep every bit of \
+	their reflection, because a window and a frozen lake are read as surfaces \
+	rather than as water.
+
+option.WATER_SUN_SIZE=Sun reflection trim
+option.WATER_SUN_SIZE.comment=How much **larger or smaller** the sun is in the water than in the sky. **1.000 is the same size**, the range is 0.700 to 1.200 and the steps are half of one percent.\n\nThe default of **1.075** is a value measured against the sky, not a starting point to copy - but it does say one thing: the size this pack worked out from "sixty wide at a distance of a hundred" was **7.5 percent too small**.\n\nIt splits the work with **Reflected body size** above: that one is the coarse control that finds the magnitude, this one is the fine control that lines it up.
+option.WATER_MOON_SIZE=Moon reflection trim
+option.WATER_MOON_SIZE.comment=The same as the previous one, for the moon alone. It is a separate control for a reason: **the sun in the sky nearly fills its own square, while the moon is a disc painted inside one** and the disc covers only part of it - so the two need very different factors to come out the same size.\n\nThe default of **0.740** is about a third away from the sun's 1.075, which is that fact measured.
+option.WATER_BODY_TILT=Celestial axis tilt
+option.WATER_BODY_TILT.comment=Which **axis the bodies turn about**. This is not a control for a picture's orientation; it is the plane of their orbit. 0 puts the axis straight up, which leaves them circling the horizon and barely rising at all; 90 lays the axis flat and north-south, which takes them straight over the top.\n\n**The default of 48.4** is a value measured against the sky again, after the spurious flip described in the code was taken out.\n\n**It being a direction rather than a rotation axis is why values past ninety are meaningful and should not be normalised back into a right angle**: a direction and its opposite name the same axis while giving two pictures that are mirror images of each other, one of which turns the reflected body half way round. **131.6 and -48.4 are this value and its mirror.**\n\n**And it lands exactly on the pack's own constant**: everywhere this pack asks how high the sun is, it normalises worldSunVector.y by 0.75 rather than 1.0, with a comment reading "worldSunVector.y never actually gets to 1.0", and a sun that tops out at 0.75 puts the orbit acos(0.75) = **48.4 degrees** off the vertical - **the eye and the pack's own constant agree on the same number**.
+option.WATER_BODY_SIZE.comment=How large the sun and the moon are in the water. It measures the **half-angle of the whole image**: 0.96 is the size the game draws them at (about 16.5 degrees). This is the coarse control; the two trims below it are what lines the size up.\n\nOnly a little over a quarter of that image is the lit body, so for a smaller, tighter reflection **raise** this towards 1.\n\nThe old 0.995 was the radius of a disc this pack drew for itself. That disc and the glow around it are gone; what is sampled now is the game's own image.
 option.WATER_BODY_BRIGHTNESS=Reflected body brightness
 value.WATER_SKY_BODIES.WATER_SKY_BODIES_ON=On
 value.WATER_SKY_BODIES.WATER_SKY_BODIES_OFF=Off

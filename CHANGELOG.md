@@ -16,6 +16,46 @@ report problems in this project, not in Steadfast's.
 
 ---
 
+## v0.6 - 2026-09-26
+
+### Added
+
+* **Bloom.** Anything brighter than the display can hold now spills a glow around
+  itself, with its strength, the brightness it starts at and the radius of the
+  spill as settings. The specular highlight of a surface is left out of it by
+  default: a highlight is a picture of a light rather than a light, and blooming
+  it puts a second sun on every wet stone.
+* **Volumetric fog.** The air is a medium that is marched through rather than a
+  tint laid over the frame. It is drawn at a quarter of the frame's resolution
+  and lit by the shadow map, so the shafts that come through a canopy are cast by
+  it, and the medium is a world-locked noise that drifts with the same wind the
+  clouds use, so it never slides with the camera. Density, height, base,
+  distance, march steps, the amount and scale of the noise and its octaves are
+  settings, the whole thing can be drawn at full resolution, and rain thickens
+  it.
+* **Rain and snow particles.** The two controls the texture allows without new
+  art: how many times it is tiled across each rain column, and how much of each
+  drop's width is kept, which makes the rain thicker or thinner. Its colour can
+  be taken out or pushed as well. Snow is drawn by the same program and moves
+  with it.
+* **The sun and the moon in water are the game's own images.** The pack carries
+  `sun.png` and the eight lunar phases and reflects those, so the disc on the
+  water is the disc the sky shows and its phase is the sky's phase. Each body is
+  trimmed against the sky's size separately, and the axis the two orbit about is
+  a setting of its own, because that axis is neither the world's up nor the
+  horizon: the two rise in the east, set in the west, and cross the sky at an
+  angle.
+
+### Changed
+
+* **Temporal anti-aliasing is off by default** and has moved to the development
+  page as an experimental effect. The black blot it can produce is still
+  unexplained, and an effect that produces one does not belong in the defaults.
+* **The shipped defaults were retuned**: bloom has no threshold, PBR emission is
+  brighter, the rain is thinner, the volumetric fog is thinner and answers rain
+  less, the water reflects less of the sky, and the sun and the moon on the water
+  are brighter.
+
 ## v0.5 - 2026-09-22
 
 ### Added
@@ -38,8 +78,8 @@ report problems in this project, not in Steadfast's.
 * **Scattering inside the cloud layer**, with the number of scattering passes and
   how much each one attenuates as settings.
 * **Reflection settings**: a metal reflection strength, the smoothness a surface
-  needs before it reflects at all, a blur width, and a debug view that shows the
-  reflection on its own.
+  needs before it reflects at all, how far a rough surface's reflection is
+  gathered, and a debug view that shows the reflection on its own.
 * **Smooth parallax**, a setting for whether the height channel is interpolated
   across a texel rather than sampled at its centre.
 * **The star field is reflected in water**, alongside the sun and the moon.
@@ -47,10 +87,10 @@ report problems in this project, not in Steadfast's.
 ### Changed
 
 * **Reflections were reworked.** The ray is no longer tilted towards the surface
-  normal on its way out, the trace has twice the step budget it had, and the blur
-  is a two-pass filter that weighs a neighbour by how closely it matches what the
-  pixel it is being blurred into reflects, so that a reflection of the ground and a
-  reflection of the sky are no longer averaged into each other.
+  normal on its way out, the trace has twice the step budget it had, and a rough
+  surface's reflection is gathered over the cone its own roughness opens - two
+  rings of four directions - with the sky it reflects gathered over the same cone,
+  rather than both being taken at a single direction.
 * **Parallax marching was rewritten** and its direction is now taken from the
   texture's own axes rather than from the geometry's tangent frame, which is what
   had made it move the wrong way on some faces. The displacement is also held
@@ -78,12 +118,13 @@ report problems in this project, not in Steadfast's.
 * **Held items and armour, in third person, showed the world through them.**
 * **Held items were lit by a sky reflection** that pointed back behind the player
   and washed metal out. That term is gone, and the reflection is traced instead.
-* **Parallax could flicker, shed fine grain, or punch holes in a surface** through
-  which the sky showed. Three separate causes were found and fixed: an extra
-  division in the displacement, a displacement that landed on a neighbouring
-  sprite's texels, and a displacement that sent the colour sample into a
-  transparent texel of its own sprite.
-* **Reflections blurred into a smear or a ghost** rather than into a soft image.
+* **Parallax flickered, and the fine grain on ordinary block faces** turned out to
+  be the height channel being read one texel at a time, which is what the
+  interpolating option above is for. The march also had an extra division in its
+  displacement, which is what made it overshoot on some faces.
+* **Parallax moved the wrong way** across a face, because the displacement was
+  being laid out along the geometry's tangent frame rather than along the
+  texture's own axes.
 
 ### Removed
 

@@ -16,6 +16,21 @@
 
 // Modified 2026-09-13 by Remiiil1a for Firmament - v0.1 (edit of coderbot's Steadfast).
 
+// Show the picture this pass was handed on the left of the screen, and the one it
+// writes on the right - the same split the temporal resolve has, one pass earlier.
+//
+// It exists because the resolve's own split answered its question and moved the
+// search along: the dark blot that grows over the terrain is present in the frame
+// the resolve is handed, which means the geometry or this pass put it there and
+// the resolve is only keeping it. Of those two this is the cheap one to rule out.
+//
+// Left half: colortex0 as the surface programs left it. Right half: what this pass
+// writes, after the fog, the reflections and the water absorption.
+//
+// Which side the blot is on is the reading: the left means the geometry drew it,
+// the right means this pass made it. See PBR_PORTING.md 135.
+//#define DEFERRED_DEBUG
+
 // We must make a copy of colortex0 for forward-rendered reflections and
 // refraction, as we cannot sample a texture we are rendering into.
 const int R11F_G11F_B10F = 0;
@@ -139,6 +154,11 @@ uniform float far;
 // uses it.
 #include "/lib/sss.glsl"
 
+// AmbientOcclusion(...), for the light the sky cannot reach, and SssScreenNoise,
+// which is the dither it samples with. See the note in that file on why it
+// belongs in this pass rather than after the temporal resolve.
+#include "/environment/lighting/ssao.glsl"
+
 // The previous frame, resolved. The screen-space reflection traces against the
 // depth buffer below and reads the colour it finds here: this frame's own
 // colortex0 is being written by this very pass, so it cannot be sampled at
@@ -215,6 +235,78 @@ void main() {
 	// > centers. For example, the (0.5, 0.5) location is returned for the
 	// > lower-left-most pixel in the window.
 	vec3 background = texelFetch(colortex0, ivec2(gl_FragCoord), 0).rgb;
+
+	#ifdef AMBIENT_OCCLUSION
+		// Ambient occlusion, applied before the fog below so that the fog is not
+		// darkened by the ground it happens to sit behind. See
+		// environment/lighting/ssao.glsl for what it is and why it is here, in
+		// the pass before composite1 resolves the frame over time - that resolve
+		// is what turns these samples into a smooth result.
+		//
+		// depthtex1 rather than depthtex0, for the reason the reflection uses it
+		// as well: the occlusion is asked about opaque geometry, and at a pixel
+		// where water or glass is in front, depthtex0 holds that surface while
+		// depthtex1 holds the block behind it - and the block behind it is not
+		// what this pixel's brightness is about.
+		float aoDepth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
+		float aoFrontDepth = texelFetch(depthtex0, ivec2(gl_FragCoord), 0).r;
+
+		// Two things have to be true before this pixel can be shaded by it. There
+		// has to be an opaque surface here at all, and it has to be the surface
+		// this pixel shows rather than one behind something translucent.
+		bool aoHasSurface = aoDepth < 1.0 && abs(aoDepth - aoFrontDepth) < 1.0e-6;
+
+		// And there has to be a normal to place the samples around. Only the
+		// surface programs write one: Voxy draws its own terrain and writes no
+		// material buffer at all, so its pixels still hold whatever the last
+		// surface program to reach them left behind - and occlusion measured
+		// around that would be noise rather than shading. Skipping them says so
+		// plainly: there is no ambient occlusion on Voxy's terrain yet. See
+		// PBR_PORTING.md 128 for what giving it one would take.
+		vec4 aoMaterial = texelFetch(colortex7, ivec2(gl_FragCoord), 0);
+		bool aoHasNormal = dot(aoMaterial.xyz, aoMaterial.xyz) > 0.5;
+
+		if (aoHasSurface && aoHasNormal) {
+			float ao = AmbientOcclusion(
+				depthtex1,
+				gbufferProjection,
+				gbufferProjectionInverse,
+				ViewPosFromDepth(gbufferProjectionInverse, aoDepth),
+				aoMaterial.xyz,
+				// The dither of lib/sss.glsl, borrowed rather than written again:
+				// it is a per-pixel pattern that also moves every frame, which is
+				// what leaves the temporal filter something it can average away.
+				// A pattern fixed to the pixel would be the same value in the
+				// history as in the current frame, and averaging it with itself
+				// keeps it in the picture forever.
+				SssScreenNoise(gl_FragCoord.xy));
+
+			// Checked at the point of use as well as inside: this factor is
+			// multiplied into the frame, and the resolve that follows writes its
+			// own result back for the next frame to read - so a factor that is not
+			// a number does not fade, it spreads. See PBR_PORTING.md 130.
+			//
+			// One bound rather than a test for each, for the reason the same guard
+			// inside ssao.glsl gives: a NaN fails every comparison, so "is it
+			// outside the range I want" is true of it, and "is it inside" is not.
+			if (!(ao >= 0.0 && ao <= 1.0)) {
+				ao = 1.0;
+			}
+
+			#ifdef AO_DEBUG
+				background = vec3(ao);
+			#else
+				// Bounded on both sides, for the reason the same line is capped in
+				// the screen-space shadows above: a factor below zero is drawn as
+				// black, and this pass writes the buffer the temporal history is
+				// built from, so such a pixel would stay. The option's own list no
+				// longer goes above 1.0, which is what makes this unreachable in
+				// practice - and this is what makes it unreachable if the list
+				// changes again. See PBR_PORTING.md 136.
+				background *= clamp(mix(1.0, ao, AO_STRENGTH), 0.0, 1.0);
+			#endif
+		}
+	#endif
 
 	#ifdef SCREENSPACE_SHADOWS
 		// Shadows for terrain past the shadow map's reach, cast by whatever the
@@ -347,7 +439,31 @@ void main() {
 					// below is what covers that moment.
 					normalize(shadowLightPosition));
 
-				background *= mix(1.0, lit, sssWeight);
+				// The weight is capped, and that cap is the difference between a
+				// dark shadow and a black hole in the picture.
+				//
+				// ScreenSpaceShadow returns exactly zero for a ray that is more
+				// than half blocked, which is the ordinary result out here rather
+				// than a rare one - this effect only runs past the shadow map's
+				// reach, on terrain several dozen blocks away. Without a cap the
+				// whole colour of the pixel is multiplied by zero and drawn flat
+				// black, with no texture and no noise left in it. See
+				// PBR_PORTING.md 136.
+				//
+				// Capping the weight rather than the result leaves every pixel
+				// that is not shadowed exactly as it was: mix(1.0, 1.0, anything)
+				// is still 1.0.
+				//
+				// The cap was a fixed 0.9 and is now SSS_DARK_LIMIT, which
+				// defaults lower, because 0.9 was not low enough for what it caps.
+				// Note what this multiplies: not the sunlight, but the whole colour
+				// of the pixel - the direct light, the sky light and the ambient
+				// together, because the forward rendering has already added them
+				// into one number by the time this pass runs. At a quarter of its
+				// colour a dim surface is not in shadow, it is gone, and a region
+				// of it was reported still to grow. The option's own note has the
+				// rest; see PBR_PORTING.md 154.
+				background *= mix(1.0, lit, min(sssWeight, SSS_DARK_LIMIT));
 			}
 		}
 	#endif
@@ -426,6 +542,18 @@ void main() {
 			vec4 cloud = BlockyClouds(cloudRay, cameraPosition, shadowLightPosition);
 			scene = mix(scene, cloud.rgb, cloud.a);
 		}
+	#endif
+
+	#ifdef DEFERRED_DEBUG
+		// Left half, what the surface programs left in colortex0; right half, what
+		// this pass is about to write. One look says whether the dark blot that
+		// grows over the terrain comes from the geometry or from here - see the
+		// note on DEFERRED_DEBUG at the top of this file, and PBR_PORTING.md 135.
+		//
+		// windowToNdc rather than windowToScreen: this pass declares the first and
+		// not the second, and a coordinate multiplied by it is 1.0 at the middle of
+		// the screen rather than 0.5.
+		scene = gl_FragCoord.x * windowToNdc.x < 1.0 ? background : scene;
 	#endif
 
 #if WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED || defined(VOXY)
