@@ -1,4 +1,4 @@
-option.STEADFAST=Steadfast Shaders
+  ❌ [the bloom threshold is 0 by default (and the shipped default is 0.0 as of v0.7, which turns the core off and leaves the ring and the glow)] 命中 0 次（应为 1） option.STEADFAST=Steadfast Shaders
 option.STEADFAST.comment=Made by coderbot16, the original developer of Iris. \
 	This is a closed alpha release - §c§lplease do not redistribute in public!
 value.STEADFAST.BY_CODERBOT=by coderbot16
@@ -102,6 +102,53 @@ screen.EFFECTS_CAMERA=Camera effects
 screen.EFFECTS_COLOR=Colour and tonemapping
 screen.EFFECTS_TAA=Anti-aliasing
 screen.EFFECTS_BLOOM=Bloom
+screen.SELECTION_SETTINGS=Selection outline
+
+option.SELECTION_BOX=Outline style
+option.SELECTION_BOX.comment=What the block selection outline looks like. Four \
+	settings:\n\n\
+	**Vanilla** leaves it alone and lets the pack's ordinary shading have it.\n\
+	**None** removes it, depth write and all.\n\
+	**Glow** draws it in a colour you pick, with a halo of the same colour around \
+	it.\n\
+	**RGB** is Glow with the colour walking round the wheel by itself, a full turn \
+	in about ten seconds.\n\n\
+	⚠️ Strictly this governs every line the game draws, because there is only one \
+	program for all of them: the selection outline, the entity hitboxes F3+B shows, \
+	the bounding box of a structure block. The pack cannot tell them apart - they \
+	arrive at the same program with the same material - so all four settings apply \
+	to all of them. That is why a hitbox changes colour too.
+
+value.SELECTION_BOX.SELECTION_BOX_VANILLA=Vanilla
+value.SELECTION_BOX.SELECTION_BOX_NONE=None
+value.SELECTION_BOX.SELECTION_BOX_GLOW=Glow
+value.SELECTION_BOX.SELECTION_BOX_RGB=RGB
+
+option.SELECTION_GLOW_R=Glow red
+option.SELECTION_GLOW_R.comment=One of the three values the Glow setting draws \
+	the outline in, 0 to 255. All three sliders step one at a time, so every value \
+	from 0 to 255 is reachable.\n\n\
+	⚠️ They are read as sRGB - the number a colour picker shows - and converted on \
+	the way in, so that 128 looks like a mid tone rather than like a fifth of full \
+	brightness.\n\n\
+	⚠️ They do nothing in RGB, Vanilla or None: RGB picks its own colours and the \
+	other two do not glow at all. Changing them there and seeing no difference is \
+	not a fault.
+
+option.SELECTION_GLOW_G=Glow green
+option.SELECTION_GLOW_G.comment=See Glow red.
+
+option.SELECTION_GLOW_B=Glow blue
+option.SELECTION_GLOW_B.comment=See Glow red.
+
+option.SELECTION_RGB_SPEED=RGB cycle speed
+option.SELECTION_RGB_SPEED.comment=How fast the RGB setting walks round the \
+	colour wheel.\n\n\
+	At 1.0 a full turn takes about ten seconds. Slower than that it stops reading \
+	as a glow and starts reading as a frame whose colour is slightly wrong; faster \
+	and it becomes a strobe.\n\n\
+	It only means anything in the RGB setting.
+
 screen.WATER=Water & stained glass
 screen.ATMOSPHERE_CLOUDS=Atmosphere & clouds
 screen.LIGHTING=Lighting & shadows
@@ -719,7 +766,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials.\n
 	is nothing for it to read. Turn it off if the check above shows it picking up \
 	materials that are not the entity's own.
 
-option.PBR_DEBUG=Material debug view [build 331]
+option.PBR_DEBUG=Material debug view [build 347]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=The **left half** shows **what the geometry wrote** (colortex0, as this pass reads it); the **right half** shows **what this pass writes back** - after the fog, the reflections and the water absorption.\n\n**Watch which half it appears in first - not how far it spreads.**\n\n**The right half contains the left half's input**: this pass only adds fog, tints and darkening, and never erases what the geometry wrote. So:\n\n- **On the right only** is the one reading that says anything: the geometry does not have it and **this pass** made it - the fog, the reflections, the water absorption or the screen-space shadows;\n- **on both** is the ordinary case and says nothing, beyond that the geometry has it - which very likely means the geometry drew it.\n\n**Use one split view at a time** - with both on they overlap and neither reads clearly. When the blot appears, take a screenshot: the divide is at the middle of the screen.
 option.TAA_DEBUG=Temporal anti-aliasing split view
@@ -736,6 +783,7 @@ option.AO_SAMPLES.comment=How many samples are taken per pixel.\n\nThis is the p
 option.AO_DEBUG=Occlusion debug view
 option.AO_DEBUG.comment=Shows the **measurement itself** and nothing else: white where much of the pixel's surroundings is unblocked, black where all of it is blocked.\n\nIt exists to tell "the occlusion is not running" apart from "the occlusion is computing zero". Both look like nothing happening in the finished picture, and drawing the measurement directly is what separates them.\n\n**What it should look like**: dark at corners, in the joins between blocks and where grass meets the ground, and close to white across flat ground and flat walls. **A uniformly grey screen** means the test is reporting occlusion everywhere - a tolerance that is wrong - rather than the effect being weak.
 screen.END=The End
+screen.END_BODY_SETTINGS=The End's body
 screen.ATMOSPHERE_SKY=Sky, sun and moon
 screen.STAR_SETTINGS=Stars
 screen.ATMOSPHERE_FOG=Fog
@@ -1268,9 +1316,9 @@ option.END_SKY.comment=Whether the End gets a sky of its own: open space with a 
 	test: it draws the same sky in the Overworld and the Nether, which is the \
 	quickest way to confirm the sky itself works if you are not seeing it in \
 	the End.\n\n\
-	The End has no sky light at all, so its islands are lit only by the Minimum \
-	ambient brightness option above; raise that if the End is too dark to \
-	navigate.
+	The End has no sky light at all, so its islands are lit by Minimum ambient \
+	brightness (under Lighting and shadows) together with End light on this page; \
+	raise End light if the End is too dark to navigate.
 
 option.END_STAR_DENSITY=Star density
 option.END_STAR_DENSITY.comment=How crowded the End's starfield is. At 0.0 the \
@@ -1282,60 +1330,218 @@ option.END_STAR_BRIGHTNESS.comment=How bright the stars are.\n\n\
 	They are the only thing in the End that is brighter than the surface of a \
 	lit block, so this sets how much the sky comes to dominate the view.
 
-option.END_BODY=The End's body
-value.END_BODY.END_BODY_OFF=Off
-value.END_BODY.END_BODY_STAR=Star
-value.END_BODY.END_BODY_BLACK_HOLE=Black hole
-option.END_BODY.comment=What to put at the point in the End's sky that the \
-	dimension is lit from.\n\n\
-	The End has no sky light, so the only thing lighting its islands is this \
-	pack's direct light, and in the End that light comes from a fixed direction - \
-	the sun sits where noon puts it and stays there, tilted by the pack's sun \
-	path rotation. That is the one place in this sky where something belongs, so \
-	whichever is chosen here is drawn exactly where that light comes from, above \
-	the light it casts.\n\n\
-	Star: a disc with a boiling surface and a corona. This is the one that makes \
-	sense of the lighting, since the light is coming from it.\n\n\
-	Black hole: a black shadow, a ring of light bent around its edge, and an \
-	accretion disc that is brighter on the side coming towards you. The disc \
-	turns at a speed that falls with distance, so it shears rather than rotating \
-	as a rigid texture, and the sky around the hole is bent so that what is \
-	behind it is seen around it. It is nonsense as a light source and looks the \
-	best.\n\n\
-	Off leaves the stars on their own.
+option.END_STAR_SIZE=End star size
+option.END_STAR_SIZE.comment=How large a single star is drawn, as a multiple of \
+	its natural size.\n\n\
+	The starfield is a grid laid over the sky, one star to a cell, and each star \
+	is a disc drawn inside its own cell. This scales that disc's radius, so it \
+	changes how big the stars look and not how many there are - Star density \
+	above is the one that decides how many cells hold a star at all.\n\n\
+	The steps stop at 2.5 because of a ceiling that is easy to miss: the \
+	starfield only ever looks at the cell the view direction falls into and \
+	never at its neighbours, so a disc whose radius grows past roughly half a \
+	cell gets clipped square against the cell edge. The natural radius is 0.078 \
+	to 0.11 of a cell, so even the largest step reaches only 0.20 to 0.28 of \
+	one. Going further would mean sampling the neighbouring cells as well.\n\n\
+	Batch 339 removed that ceiling rather than ducking it: a star is now placed \
+	inset from its cell's walls by its own radius, so it cannot reach one, at a \
+	cost of nothing at all. See the note in end.glsl and PBR_PORTING.md 196 - the \
+	same change is what fixed the stars being sliced, which is what Star tint \
+	below and the report that prompted it are about.
+
+option.END_STAR_TINT=Star tint
+option.END_STAR_TINT.comment=How far the End's starfield is moved towards \
+	violet.\n\n\
+	0.0 leaves the field exactly as it was - a range from hot blue through to \
+	cool orange - and 1.0 is a violet field. Values in between blend.\n\n\
+	It is not "paint every star the same violet". Both ends of the colour range \
+	move together, so the field keeps its warm and cool variation at every \
+	setting instead of flattening into one colour as it turns.\n\n\
+	This affects the End's field only. The Overworld's night stars are a \
+	different implementation - environment/sky/stars.glsl - and are not affected \
+	by it.\n\n\
+	1.0 by default as of v0.7, which is the whole field violet. It was 0.0 when the option was added, because adding an option should not change the picture If \
+	you would rather the End's stars were violet out of the box, say so - it is \
+	one number.
+
+option.END_GIANT=End body
+option.END_GIANT.comment=What sits in the End's sky: a very small white-hot centre, \
+	a bright ring bent out of the sky behind it - the Einstein ring - a wide faint \
+	halo around both, and the starfield and nebula that the body bends.\n\n\
+	The End has no sky light, so the one thing lighting its islands is this pack's \
+	direct light, and in the End that light comes from a single direction. The \
+	body is drawn exactly where that light comes from, which is what keeps it \
+	agreeing with the light it casts.\n\n\
+	This is the switch for the whole page. With it off the End is the turning sky \
+	and nothing else - a legitimate place to be, not a broken one.\n\n\
+	Batch 338, at the user's request after "it would be even better if it could be \
+	made dynamic" and four further points:\n\n\
+	1. The three old bodies - Off, Star and Black hole, chosen by an END_BODY \
+	setting - were deleted, and the body is now always this one.\n\
+	2. Surface detail and Photosphere and chromosphere were deleted outright, \
+	appearance as well as options, because the user's verdict was that they did \
+	not look good. There is therefore no visible disc any more: the body is a \
+	small hot centre, the ring and the halo, which is the shape of the demo it \
+	came from.\n\
+	3. The motion is much faster, and the starfield turns with the nebula.\n\
+	4. The colour is a properly saturated violet. The violet end used to be so \
+	pale that mixing 35% of it into a warm white gave a slightly warm white, so \
+	the option could not reach the colour it was named after.\n\n\
+	Reference: https://github.com/rossning92/Blackhole, which the user picked out \
+	for its gravitational lensing. Its 300-steps-per-pixel integrator is not \
+	copied; what is used is the closed form it converges to in the weak field.\n\n\
+	END_BODY_PLAN.md in the working directory has the layer table.
+
+option.END_GIANT_SIZE=Body size
+option.END_GIANT_SIZE.comment=The angular radius of the body, in radians, and the \
+	scale everything else is measured against. The real sun is 0.0045, so every \
+	step here is many times life size.\n\n\
+	The default is about 15 degrees across and the largest about 26. With no \
+	visible disc left on the body, this is what scales the width of the core, the \
+	radius of the halo, and the Einstein radius the ring sits at.\n\n\
+	Raising it does cost a little: how far from the body the shader gives up is \
+	measured in these same multiples.
+
+option.END_GIANT_GLOW=Body brightness
+option.END_GIANT_GLOW.comment=The overall multiplier, applied to everything at \
+	the end. It does not disturb the ratios between the layers, so it is the one \
+	to reach for when the whole body wants to be brighter or dimmer.
+
+option.END_GIANT_CORE=Core overexposure
+option.END_GIANT_CORE.comment=How bright the white-hot centre is, in linear light.\n\n\
+	It is deliberately far above white - this is the brightest thing in the \
+	dimension, the tonemapper needs something to compress, and the bloom \
+	threshold is 0 by default so it takes anything above zero.\n\n\
+	It is also deliberately narrow, and since batch 338 it is the only part of the \
+	body that carries its own light: the photosphere, the chromosphere and the \
+	surface detail are all gone.\n\n\
+	At 0.0 only the Einstein ring and the halo are left and the centre goes \
+	completely dark - which is the lensed singularity of the demo this came from.
+
+option.END_GIANT_LENS=Gravitational lensing
+option.END_GIANT_LENS.comment=How hard the body bends the sky behind it.\n\n\
+	This is the headline of batch 336, added at the user's request and after \
+	https://github.com/rossning92/Blackhole. That project integrates the bent \
+	ray over 300 steps per pixel; this uses the closed form it converges to in \
+	the weak field - the point-mass deflection alpha = theta_E^2 / theta - which \
+	is one rotation: about twenty ALU, and no extra sampling, because the \
+	starfield and the nebula were being sampled anyway and this only changes the \
+	direction they are sampled in.\n\n\
+	It does two things: the sky behind is dragged radially around the body, so \
+	stars near the ring are stretched into arcs, and the mapping piles up into a \
+	bright ring - the Einstein ring.\n\n\
+	If it seems to do nothing, check Nebula band first: a black sky with a few \
+	points in it, bent, is still a black sky with a few moved points.\n\n\
+	At 0.0 the sky is not bent at all.
+
+option.END_GIANT_LENS_RING=Einstein ring size
+option.END_GIANT_LENS_RING.comment=The Einstein radius, as a multiple of the disc's \
+	radius: how far out the sky is dragged into a ring.\n\n\
+	This sets how large the effect is; Gravitational lensing sets how strong it \
+	is. The default is 2.2 disc radii, so the ring sits just outside the star.\n\n\
+	Larger puts the ring further out and wraps more of the sky into it; smaller \
+	brings it in against the body.
+
+option.END_GIANT_NEBULA=Nebula band
+option.END_GIANT_NEBULA.comment=How strong the nebula band across the End's sky is.\n\n\
+	This is not decoration. It is what makes the lensing visible at all. Batch \
+	334's sky was very nearly black with a few sparse points in it, and bending \
+	that gives back the same black sky with the points moved: the effect is \
+	spent and nothing is seen. The demo this was modelled on has a nebula \
+	skybox, which is why the ring there is worth looking at. One noise fetch, \
+	and only inside the band - outside it the function returns before the fetch.\n\n\
+	At 0.0 the sky is the plain black it was, and Gravitational lensing has \
+	almost nothing left to show.
+
+option.END_GIANT_MOTION=Body motion
+option.END_GIANT_MOTION.comment=Whether the End's sky turns.\n\n\
+	Reworked in batch 338 on the user's report. Batch 337 had the star spinning \
+	and the nebula flowing, and the user measured it as too weak: "even at the \
+	highest setting it is not obvious". Three things changed:\n\n\
+	1. The rate went up about fourfold and the top of the slider from 3.0 to 5.0.\n\
+	2. The starfield turns with it - the user asked for exactly that: "I would \
+	like the other stars in the End's sky to turn as well".\n\
+	3. The stars and the nebula turn together, because they are one sky and \
+	turning them apart would slide one across the other.\n\n\
+	The turn is about the nebula band's own axis, which is the one axis that \
+	leaves the band where it is and lets only its contents stream along it. And \
+	because what is in the Einstein ring is that sky piled up, the ring's \
+	contents stream too - which is still why the ring needs no animation of its \
+	own.\n\n\
+	The body itself does not turn: it is radially symmetric now - a hot centre, a \
+	ring and a halo - so nothing would be visible if it did.\n\n\
+	With this off, nothing anywhere carries a time term and the picture is \
+	completely still.
+
+option.END_GIANT_MOTION_SPEED=Motion speed
+option.END_GIANT_MOTION_SPEED.comment=The angular rate of the sky's turn, as a \
+	multiplier.\n\n\
+	At 1.0 the whole sky comes round in about three minutes - a little under two \
+	degrees a second - which is visible as movement without being a carousel. The \
+	top step, 5.0, is about 36 seconds a turn.\n\n\
+	Batch 337's 1.0 was roughly a quarter of this, and the user measured even its \
+	maximum as invisible, which is why the rate and the range moved together.\n\n\
+	Turn it down to 0.25 or 0.5 to be left alone, or up past 2.0 for an obvious \
+	stream of stars.
+
+option.END_GIANT_HALO=Body halo
+option.END_GIANT_HALO.comment=The wide, very faint glow around the body.\n\n\
+	It is deliberately inconspicuous: you should not notice it, you should \
+	notice the sky around the body going hard when it is turned off. It is what \
+	stops the body looking pasted on.\n\n\
+	0.10 by default. Raising it a long way starts to colour the whole End.
+
+option.END_GIANT_TINT=Body colour
+option.END_GIANT_TINT.comment=The body's colour, from a warm white at 0.0 to the \
+	End's own violet at 1.0.\n\n\
+	Batch 338 saturated both ends and raised the default from 0.35 to 0.65, and v0.7 raised it again to 1.0. The \
+	reason is that the violet end used to be vec3(0.88, 0.82, 1.00) - so pale it \
+	is nearly white - and mixing 35% of it into a warm white gives \
+	vec3(0.958, 0.892, 0.870), which is a slightly warm white and not violet at \
+	all. The option simply could not reach the colour it was named after; the \
+	user found that and asked for it to be fixed.\n\n\
+	0.0 is a neutral warm white; 0.65 is a clear lavender and 1.0 - the default as of v0.7 - is fully violet; 1.0 is \
+	fully violet.\n\n\
+	As of batch 340 the End's volumetric fog follows this option as well. The End \
+	has no sun, so what lights its air is this body, and the air therefore takes \
+	the body's colour rather than the direct light's. The two read the same \
+	definition - environment/sky/end_palette.glsl - so turning this moves the body \
+	and the fog together, and there is no setting that can make them disagree.\n\n\
+	The End's underwater volumetric fog is deliberately not affected. The water \
+	column has an absorption colour of its own and the pack already fades its \
+	underwater light towards it; tinting the air inside the water as well would \
+	have the pack contradicting its own underwater lighting.
 
 option.END_AMBIENT=End light
 option.END_AMBIENT.comment=How much light the End has of its own.\n\n\
 	Every other dimension is lit by its sky, and the End has no sky light at \
-	all, so without this its islands are lit by nothing but the Minimum ambient \
-	brightness above - which is to say, almost not at all. This stands in for \
-	the light the End's sky does not give it, and it is a violet-white light \
-	rather than a neutral one, so that the End reads as somewhere else rather \
-	than as an unlit overworld.\n\n\
-	Off by default. It was reported as having no effect at all where it was \
-	written, and the cause was never found. What is known: the End's sky and \
-	haze do work there, so the dimension is recognized, and the debug view's \
-	version of this light - ten times brighter and ignoring this value - does \
-	show up. That leaves the value itself reaching the terrain as the only \
-	question, which points at the terrain rather than at this option: terrain \
-	drawn by another mod, Voxy for instance, is rendered by a shader path that \
-	is given no biome information and would take itself for the overworld.\n\n\
-	Raise it to try it; around 0.35 is a readable but still very dim End.
-option.END_VOID_GLOW=Void glow
-option.END_VOID_GLOW.comment=How much light comes up out of the void below the \
-	End's islands.\n\n\
-	It lights the undersides of everything, which is what stops the islands \
-	from reading as flat cutouts, and it costs nothing anywhere else.\n\n\
-	Off by default, for the same reason as the light above.
-
-option.END_FOG=End haze
-option.END_FOG.comment=How far the End's haze takes the color of its sky.\n\n\
-	The End has no sky light, so the fog treats it as one enormous cave and \
-	fogs it with the cave color. This fogs it with the color of its sky instead, \
-	which is what lets its islands fade into space rather than into a grey \
-	wall.\n\n\
-	At 0.0 the End is fogged exactly as it was before.
-
+	all, so without this its islands are lit by nothing but Minimum ambient \
+	brightness - which is a dim but readable floor, and one this pack added: \
+	upstream Steadfast has no such option, which is why its End really is \
+	almost black. This lays a second light on top of that floor, and it is a \
+	violet rather than a neutral white.\n\n\
+	Batch 338 saturated that violet and kept the brightness the same. The user's \
+	report was that this "does not give the End a violet atmosphere", and the \
+	reason turned out to be two things: the old colour, vec3(0.62, 0.58, 0.82), \
+	was itself very pale; and the neutral ambient floor is a large part of the \
+	total in the End rather than a small correction, because the dimension has no \
+	sky light. The two together came to vec3(0.324, 0.319, 0.407) - a ratio of \
+	0.80 : 0.78 : 1.00, which is a blue-tinted grey and not a violet. The new \
+	colour is scaled so that its luminance is unchanged, so the hue is what \
+	moved and the End did not get darker.\n\n\
+	On by default at 1.0 as of v0.7 (0.35 from batch 332 until then). Until then it sat at 0.0, because an \
+	early trial of it was reported as having no visible effect and the cause was \
+	assumed to be elsewhere. Batch 332 worked the numbers again: that trial was \
+	at 0.14, which is only about 1.8 times the ambient floor and genuinely is \
+	hard to see, and the old note about the debug view being "ten times \
+	brighter" is that same 0.14 measured against a debug value of 1.0. So there \
+	was never a defect in this code - the conclusion was simply drawn too early.\n\n\
+	It brightens, it does not light. Batch 332's report said the dimension had \
+	no light and that this turned it on, and the user corrected that: the End \
+	was not dark once Minimum ambient brightness was in place, and what this \
+	adds is extra brightness.\n\n\
+	Raise it to see the End better. 0.35 is a readable End that is still plainly \
+	dusky; 1.5 brings it up to something like dusk.
 option.END_DEBUG=End detection debug view
 option.END_DEBUG.comment=Replaces the sky with a report of what the checks that \
 	decide whether this is the End actually returned.\n\n\
@@ -1351,27 +1557,23 @@ option.END_DEBUG.comment=Replaces the sky with a report of what the checks that 
 	sky should look normal.\n\n\
 	It also paints, in the End, the things each program draws, which is how the \
 	End's light flash can be traced to the program responsible for it:\n\n\
-	red - the terrain: the End's own light reaching it\ngreen - glowing parts \
+	green - glowing parts \
 	(eyes)\nblue - the enchant glint\nwhite - the beacon beam\nblack - lines and \
 	the block outline\nmagenta - weather and entities\norange - block \
 	entities\nteal - water and translucents\npurple - translucent entities\n\
 	yellow - the held item\ngrey - the block breaking overlay\n\n\
 	If the patch of block texture in the sky turns one of those colors, that is \
-	the program drawing it. If the terrain turns red, the End's light is working \
-	and the sliders under Lighting are doing something.\n\n\
+	the program drawing it.\n\n\
+	The terrain is not painted a flat red in this version. It is a readout \
+	instead: the red channel is End light as a fraction of its largest step, so \
+	1.5 is full red. Pulling End light up should visibly redden the terrain; if \
+	the slider moves and the terrain does not change at all, the value is not \
+	reaching the shader. That is what separates "the option does nothing" from \
+	"the option works but is hard to see", which the old flat red could not do.\n\n\
+	It is still multiplied by the texture, so it reads as the terrain being \
+	tinted rather than as a clean bar - the user pointed that out in batch 332's \
+	report. A proper readout would bypass the surface colour.\n\n\
 	This is a diagnostic, and is off by default.
-
-option.HIDE_END_FLASH=Hide the End's light flash
-option.HIDE_END_FLASH.comment=Whether to drop the light flash that Minecraft \
-	1.21.9 and up draws in the End's sky.\n\n\
-	It does not survive being shadered: it is a textured quad that the shader \
-	mod has no texture binding for, so it ends up sampling whatever was left \
-	bound - the block atlas - and appears as a patch of some random block's \
-	texture hanging in the sky. There is nothing to be done with it from here, \
-	since it is not this pack's sky and cannot be lit by it, so it is dropped \
-	instead.\n\n\
-	On versions without the flash this does nothing at all, which is checked \
-	for rather than assumed. Turn it off if you would rather keep the flash.
 
 option.FANCY_TRANSLUCENTS=Fancy translucents
 option.FANCY_TRANSLUCENTS.comment=Whether water, ice, and glass get their own \
@@ -1747,6 +1949,59 @@ option.VOLUMETRIC_FOG_FULL_RES.comment=Whether to march and store the fog at the
 	and the edges of the fog patches.\n\n\
 	It is a compile-time option, so changing it reloads the shaders.
 
+option.NETHER_PLUMES=Nether plumes
+option.NETHER_PLUMES.comment=Draws columns of smoke rising through the Nether's \
+	air, and a layer of it gathered under the ceiling.\n\n\
+	Modelled on Bliss Shader, at the user's request. That one is a \
+	three-dimensional density field marched by rays, not a reddening of everything \
+	with distance - which is exactly why batch 342's distance haze was taken back \
+	out: it was the wrong shape. The march used here is this pack's own.\n\n\
+	What makes the result stand in columns rather than in clouds is two things, \
+	both written up where they live in volumetric_fog.glsl:\n\n\
+	1. The field that makes the columns is read in the horizontal plane only, so \
+	it cannot vary up a column's height. That is what a column is.\n\
+	2. The field that erodes them is read in three dimensions, but its vertical \
+	axis is squashed forty-eight to one first - so the erosion is slow vertically \
+	too, and it carves holes in a column rather than slicing across one.\n\n\
+	Take the first out and the columns go; take the second out and they become \
+	pipes; un-squash the second and they become weather.\n\n\
+	⚠️ This can only add light, never take it away. The pass writes what the \
+	medium scatters towards the eye and that buffer is added to the frame - there \
+	is no transmittance term and no channel to carry one. So these are plumes that \
+	glow rather than plumes that blot out what is behind them, which is the half of \
+	Bliss's effect that fits here. The other half would mean changing the buffer \
+	and the pass that reads it.\n\n\
+	⚠️ It cannot leave a seam on Distant Horizons or Voxy terrain: this pass runs \
+	over the finished frame, so whatever those drew is underneath it. Batch 342's \
+	haze was applied in the geometry programs, where those are compiled with \
+	EXTERNALLY_DEFINED_UNIFORMS and are told they are not in the Nether at all.\n\n\
+	With this off, the Nether is the way it was before this batch.\n\n\
+	⚠️ It depends on the master switch above it, Volumetric fog and shafts: the \
+	plumes are written into that fog's buffer, and whether that buffer is added to \
+	the frame at all is what that switch decides. **If the plumes do not appear, \
+	check that first.**\n\n\
+	⚠️ And one more thing worth knowing before tuning: this pack marches 96 blocks \
+	of medium, and the plume is cleared for the first 24 of them around the eye - so \
+	a good share of the steps land in the cleared bubble. **If the plumes look \
+	sparse or grainy, raising the march distance (96 to 128 or 192) does more than \
+	raising the density.**
+
+option.NETHER_PLUME_DENSITY=Plume density
+option.NETHER_PLUME_DENSITY.comment=How much smoke there is.\n\n\
+	**0.0 is no plumes at all**; the layer under the ceiling has a switch of its \
+	own. The default is 1.5 as of v0.7, raised by the user; 1.0 was a first estimate - this number and the one below it \
+	are things that have to be looked at, so it is set to a value that can \
+	definitely be seen.\n\n\
+	⚠️ Too high and the Nether stops being a place and becomes a lamp.
+
+option.NETHER_CEILING_SMOKE=Ceiling smoke
+option.NETHER_CEILING_SMOKE.comment=The smoke that gathers under the ceiling.\n\n\
+	It is not the same thing as the plumes: it is a flat layer with no noise in it \
+	at all, and its whole shape is the third power of how far the point is above \
+	y=40. It is a heavy part of how Bliss looks - you can look up and see something \
+	resting on you, and that is what gives the Nether a roof.\n\n\
+	**0.0 is no ceiling smoke.**
+
 option.UNDERWATER_GODRAYS=Underwater light shafts
 option.UNDERWATER_GODRAYS.comment=Whether the light shafts are drawn when the \
 	camera is in water as well as when it is in air.\n\n\
@@ -2051,6 +2306,20 @@ option.WATER_BODY_TILT=Celestial axis tilt
 option.WATER_BODY_TILT.comment=Which **axis the bodies turn about**. This is not a control for a picture's orientation; it is the plane of their orbit. 0 puts the axis straight up, which leaves them circling the horizon and barely rising at all; 90 lays the axis flat and north-south, which takes them straight over the top.\n\n**The default of 48.4** is a value measured against the sky again, after the spurious flip described in the code was taken out.\n\n**It being a direction rather than a rotation axis is why values past ninety are meaningful and should not be normalised back into a right angle**: a direction and its opposite name the same axis while giving two pictures that are mirror images of each other, one of which turns the reflected body half way round. **131.6 and -48.4 are this value and its mirror.**\n\n**And it lands exactly on the pack's own constant**: everywhere this pack asks how high the sun is, it normalises worldSunVector.y by 0.75 rather than 1.0, with a comment reading "worldSunVector.y never actually gets to 1.0", and a sun that tops out at 0.75 puts the orbit acos(0.75) = **48.4 degrees** off the vertical - **the eye and the pack's own constant agree on the same number**.
 option.WATER_BODY_SIZE.comment=How large the sun and the moon are in the water. It measures the **half-angle of the whole image**: 0.96 is the size the game draws them at (about 16.5 degrees). This is the coarse control; the two trims below it are what lines the size up.\n\nOnly a little over a quarter of that image is the lit body, so for a smaller, tighter reflection **raise** this towards 1.\n\nThe old 0.995 was the radius of a disc this pack drew for itself. That disc and the glow around it are gone; what is sampled now is the game's own image.
 option.WATER_BODY_BRIGHTNESS=Reflected body brightness
+option.WATER_BODY_BRIGHTNESS.comment=How bright the sun and the moon are in the \
+	water's reflection of the sky.\n\n\
+	The bodies above are sprites the game draws, and this pack's sky model is \
+	atmosphere only with no disc in it, so a reflection of that sky had nothing \
+	standing in it - no sun on the water, and no moonlight at night. This pack \
+	draws the two of them into the reflection, water only, and this is how many \
+	times brighter than in the sky they are.\n\n\
+	As of batch 340 this also governs the End. The End has no sun or moon, but its \
+	own body should glare off its water the same way - and until then the body was \
+	only reflected at the brightness it has in the sky, which is why this option \
+	appeared to do nothing there. The user reported both halves: that it did \
+	nothing, and that the reflection was too weak.\n\n\
+	Both ends of the range are real: 1.0 means "as bright as the sky, no glare at \
+	all" and the default of 32.0 is a clear reflection of the body on the water.
 value.WATER_SKY_BODIES.WATER_SKY_BODIES_ON=On
 value.WATER_SKY_BODIES.WATER_SKY_BODIES_OFF=Off
 option.STARS=Stars

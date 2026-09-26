@@ -31,7 +31,9 @@
 // last program that draws late, samples the block atlas, and has nothing of its
 // own to lose in a dimension with no weather at all.
 //
-// Magenta in the debug view. See HIDE_END_FLASH in /environment/dimension.glsl.
+// Magenta in the debug view. This flag is what opts this program into the
+// suppression; the removal itself and why it is unconditional are explained in
+// /environment/dimension.glsl.
 #define SUPPRESS_END_FLASH
 #define END_DEBUG_TINT vec3(1.0, 0.0, 1.0)
 

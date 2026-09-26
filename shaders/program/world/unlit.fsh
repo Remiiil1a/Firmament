@@ -39,12 +39,15 @@ void main() {
 		}
 	#endif
 
-	#if defined(SUPPRESS_END_FLASH) && defined(HIDE_END_FLASH)
+	#if defined(SUPPRESS_END_FLASH)
 		#if !defined(MC_VERSION) || MC_VERSION >= 12109
 			// The End's light flash (Minecraft 1.21.9) is drawn as a quad in the
 			// sky with no texture that the mod knows to bind, so it samples the
 			// block atlas and shows up as a patch of a random block's texture.
 			// There is nothing to be done with it from here, so it is dropped.
+			//
+			// Unconditional as of batch 333; it used to sit behind the removed
+			// option HIDE_END_FLASH. See the note in /environment/dimension.glsl.
 			//
 			// Only what is far away is dropped, because these programs also draw
 			// things worth keeping near the player. See the same check in lit.fsh

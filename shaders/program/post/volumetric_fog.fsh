@@ -164,7 +164,17 @@ void main() {
 	// colour rather than the sunlight, because the pack's underwater light has
 	// been faded towards its own luma before it is handed out - so using it here
 	// paints a white haze over a blue world, which is what it looked like.
-	vec3 mediumColor = isEyeInWaterFog == 1 ? underwaterFogColor : fogSunColor;
+	//
+	// ⚠️ The End's tint is multiplied into the sunlight side of this and NOT
+	// into the underwater side, and the ternary is what guarantees it rather
+	// than a second test somewhere: a camera under water in the End takes the
+	// left branch, which the tint is not on. The water column has an absorption
+	// colour of its own and the pack already fades its light towards it, so
+	// tinting the air inside the water as well would have the pack contradicting
+	// its own underwater lighting. Added in batch 340; see PBR_PORTING.md 197.
+	vec3 mediumColor = isEyeInWaterFog == 1
+		? underwaterFogColor
+		: fogSunColor * VolumetricFogTint();
 
 	// The cloud transmittance that used to be worked out here was taken back out
 	// in b318: read once per pixel, at one point along the ray, it made the
@@ -173,6 +183,14 @@ void main() {
 	// exactly as they did - this was only ever the fog's own copy of it.
 
 	vec3 scatter = vec3(0.0);
+
+	#ifdef NETHER_PLUMES
+		// ⚠️ Asked once for the pixel rather than once per step. It is a uniform
+		// comparison, so it costs nothing either way, but a branch inside the loop
+		// whose answer cannot change within the pixel is the kind of thing a
+		// compiler is not always free to lift out on its own.
+		bool inNether = NetherDimension();
+	#endif
 
 	for (int i = 0; i < VOLUMETRIC_FOG_STEPS; i++) {
 		// The steps are spread quadratically rather than evenly: two thirds of
@@ -205,6 +223,49 @@ void main() {
 		}
 
 		vec3 samplePos = rayDirection * ((start + end) * 0.5);
+
+		#ifdef NETHER_PLUMES
+			// The Nether's smoke, which is a different medium lit by a different
+			// thing, so it takes the whole step rather than sharing any of it.
+			//
+			// ⚠️ No shadow map is read on this path, and that is not an
+			// optimisation. There is no sun in the Nether to trace: the answer the
+			// map holds is about a light that is not in this dimension, so asking
+			// it would light the smoke with the Overworld's sun. The glow added
+			// below is the medium's own.
+			//
+			// Because nothing below this runs, the whole rest of the loop - the
+			// density, the shadow projection, the distortion, the border fade - is
+			// skipped for the Nether as well, which is most of what a step costs.
+			if (inNether) {
+				// The bubble around the eye. samplePos is camera-relative, so its
+				// length is the distance along the ray - this needs the camera's
+				// own position for nothing.
+				float clearArea = clamp(
+					length(samplePos) / NETHER_PLUME_CLEAR, 0.0, 1.0);
+
+				vec3 worldPos = cameraPosition + samplePos;
+
+				float plume = NetherPlumeDensity(worldPos, clearArea);
+
+				// ⚠️ The exp() is the shape of the glow rather than a falloff on
+				// it: brightest where the smoke is thinnest, so a column reads as
+				// something with light behind it. See NETHER_PLUME_ABSORPTION.
+				vec3 emission = NETHER_PLUME_COLOR
+					* (exp(-NETHER_PLUME_ABSORPTION * plume) * plume
+						* NETHER_PLUME_OPTICAL * NETHER_PLUME_DENSITY);
+
+				// The ceiling smoke goes in plainly instead. It has no inside and
+				// outside to be brighter than - it is a flat layer under a roof.
+				emission += NETHER_CEILING_SMOKE_COLOR
+					* (NetherCeilingSmokeDensity(worldPos)
+						* NETHER_CEILING_SMOKE_OPTICAL);
+
+				scatter += emission * stepLength;
+
+				continue;
+			}
+		#endif
 
 		// The density is asked for a world position, not a camera-relative one:
 		// the patches are fixed to the world, so that walking past them shows

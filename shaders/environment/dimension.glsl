@@ -81,6 +81,26 @@ bool EndDimension() {
 	return dimension == 1 || biome_category == END_BIOME_CATEGORY;
 }
 
+// Whether this is the Nether.
+//
+// Added in batch 342, and asked exactly the way the End is asked: the dimension
+// itself is -1, and every biome in the Nether reports the Nether's category. The
+// two are mutually exclusive, which is why neither needs to check the other.
+//
+// ⚠️ It has no consumer at the moment, and that is deliberate rather than an
+// oversight. Batch 342's first use of it was a distance haze in fog.glsl, and
+// batch 343 took that back out: a haze uniform in distance is the wrong shape
+// for this dimension, and the user's verdict on it was that the Nether's
+// atmosphere came out strange - worst of all against Distant Horizons and Voxy,
+// whose terrain is compiled with EXTERNALLY_DEFINED_UNIFORMS and is therefore
+// told it is not in the Nether at all, so the fog stopped at the boundary
+// between their chunks and the game's. What replaces it is a volumetric plume
+// field, which is drawn over the finished frame and so cannot have that seam.
+// See NETHER_PLUMES_PLAN.md.
+bool NetherDimension() {
+	return dimension == -1 || biome_category == NETHER_BIOME_CATEGORY;
+}
+
 // Whether to draw the End's sky. Same question, plus the option that can force
 // the answer either way.
 bool EndSkyDimension() {
@@ -124,22 +144,26 @@ vec3 EndDebugColor() {
 	// Used by SkyColor in sky.glsl.
 #endif
 
-// Whether to drop the End's light flash, which Minecraft 1.21.9 and up draws as
-// a second sun in the End's sky.
+// The End's light flash - which Minecraft 1.21.9 and up draws as a second sun
+// in the End's sky - is always dropped.
 //
 // It does not survive being shadered: it is a textured quad that the mod has no
 // binding for, so it ends up sampling whatever texture was left bound - the
 // block atlas - and shows up as a patch of some random block's texture in the
-// sky. Nothing can be done with it from here: it is not the pack's sky, and the
-// pack cannot light it, so it is dropped.
+// sky. Nothing can be done with it from here: it is not the pack's sky and the
+// pack cannot light it, so it is dropped rather than kept.
 //
-// The versions are checked so that this cannot remove anything on a version
-// that does not have the flash at all. Turn this off if you would rather have
-// the flash than the sky without it.
-#define HIDE_END_FLASH
-#ifdef HIDE_END_FLASH
-	// The actual removal is in lit.fsh, and only for the programs the flash is
-	// drawn by.
-#endif
+// This used to be an option, HIDE_END_FLASH. Batch 333 removed the switch and
+// made the removal unconditional, on the user's report that turning it on or
+// off made no visible difference and that the flash is not wanted either way.
+// That matches what the code says: the End's sky is replaced by
+// gbuffers_skytextured.fsh and then the whole sky is written again in
+// composite1, so the quad is overwritten whether this ran or not - the switch
+// was never what was hiding it.
+//
+// The removal itself is in lit.fsh and unlit.fsh, and only for the programs
+// that draw the flash - each of those defines SUPPRESS_END_FLASH. The
+// Minecraft 1.21.9 version check is kept, so that this cannot remove anything
+// on a version that has no flash at all. See PBR_PORTING.md 189.
 
 #endif /* DIMENSION_INCLUDED */

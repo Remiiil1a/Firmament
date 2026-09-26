@@ -35,9 +35,6 @@
 	uniform float rainFogAmount;
 #endif
 
-// The End's haze color. Uniforms: dimension, biome_category
-#include "/environment/lighting/end_lighting.glsl"
-
 // Whether to enable fog that hides the render distance border.
 #define BORDER_FOG
 // The strength of fog at noon. 
@@ -95,16 +92,19 @@ vec4 FogV2(
 	atmosphereFog += (1.0 - exp(-fragDistance / RAIN_FOG_DISTANCE))
 		* rainFogAmount * caveFogTransition;
 
-	// The End has no sky light either, so the line above treats the whole
-	// dimension as a cave and fogs it with the cave's color. Its sky is open
-	// space, though, so its haze is the color of that space instead - which is
-	// what lets its islands fade into the sky rather than into a grey wall.
+	// The End is deliberately not given a fog colour of its own here.
 	//
-	// Applied before the branches below, so that being underwater or blind in
-	// the End still overrides it.
-	if (EndDimension()) {
-		fogColor = mix(fogColor, END_FOG_COLOR, END_FOG);
-	}
+	// It has no sky light, so the transition above already treats the whole
+	// dimension as a cave and picks the cave colour - which is only half the
+	// story. The other half is that the pack switches atmospheric fog off
+	// wherever the eye's sky light is low (fogInCaveAdjustment in
+	// shaders.properties), and in the End that is everywhere: the atmosphere
+	// term is exactly zero, and all that is left is the thin border band at the
+	// render distance. So there was no fog in the End for a colour to be
+	// applied to, and the option that used to do it here could only be seen in
+	// that band, between two colours that are both very nearly black.
+	//
+	// Batch 333 removed it. See PBR_PORTING.md 189.
 
 	if (blindness > 0.0001) {
 		// Blindness is essentially just a very strong fog.

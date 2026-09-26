@@ -727,8 +727,11 @@ vec3 DiffuseLightingImpl(
 
 	// The End's own light, which is zero in every other dimension. Its sky
 	// gives no sky light at all, so everything above contributes almost nothing
-	// there and its islands would otherwise be lit by the ambient floor alone.
-	lighting += EndAmbientLighting(ambientStrength, fragment.worldNormal);
+	// there and its islands would otherwise be lit by the ambient floor alone -
+	// which is what actually lights them, at a level the pack's own
+	// MIN_AMBIENT_BRIGHTNESS sets. This is a brightening on top of that; see
+	// the note in end_lighting.glsl.
+	lighting += EndAmbientLighting(ambientStrength);
 
 	// Compute the contribution to indirect lighting from block light without
 	// immediately applying it. When water absorption is enabled, for gameplay

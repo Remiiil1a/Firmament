@@ -16,6 +16,72 @@ report problems in this project, not in Steadfast's.
 
 ---
 
+## v0.7 - 2026-09-26
+
+### Added
+
+* **The End's own body.** The End has a body of its own: a dark core, an
+  **Einstein ring** produced by **gravitational lensing**, and a faint halo.
+  **It has no visible disc** - the photosphere, the chromosphere and the surface
+  detail are gone. It is not a star with a surface but something that presses the
+  sky behind it out into a ring.
+* **Gravitational lensing.** The sky behind the body is **actually bent**, from
+  the closed-form point-mass solution rather than by marching rays through a few
+  hundred steps. What the ring holds is therefore **the sky, piled up**: the sky
+  turns, and the contents of the ring stream with it. The ring's size is a
+  setting.
+* **A nebula band.** The End's sky has a band of nebula across it. It is both the
+  scenery and **what makes the lensing visible** - against an even starfield there
+  is nothing to see bend.
+* **The End's sky moves.** The whole sky - stars and nebula together - turns
+  slowly about the nebula band's own axis, and **far faster than in batch 337**:
+  every step of the speed setting was raised, and the top of its range went from
+  3.0 to 5.0.
+* **A violet tint for the stars.** The End's field can be moved towards violet as
+  a whole. Both ends of its range of colours move together rather than being
+  replaced by one, so the field keeps its variety at every setting.
+* **Nether plumes.** Columns of smoke now rise through the Nether's air, with a
+  layer of it gathered under the ceiling. The amount and the ceiling layer have a
+  setting each.
+* **Four styles for the block selection outline.** Vanilla, None, Glow and RGB.
+  **Glow** draws the outline in a colour you set - one value per channel, 0 to
+  255 - and puts a halo of that colour around it; **RGB** walks the colour round
+  the wheel on its own.
+
+### Changed
+
+* **The shipped defaults are this release's tuned set** (ten settings): End
+  ambient light `1.0`, the End body's core brightness `0.0`, its tint `1.0` (fully
+  violet), its rotation speed `0.25`, star size `2.0`, star violet tint `1.0`,
+  Nether plume density `1.5`, and the outline's glow colour `255 / 255 / 255`.
+  **A core brightness of `0.0` means the body's centre is dark** - what is left is
+  the Einstein ring and the halo, which is this release's deliberate look.
+* **The End's own light is on by default, and it is now properly saturated
+  violet.** The violet end used to be so pale that mixing it into a warm white
+  gave a slightly warm white - **the option could not reach the colour it was
+  named after**. Now that it can, the colour was compensated for brightness, so
+  turning it up does not darken the dimension with it.
+* **The End's volumetric fog follows the body's own colour** - the same palette -
+  **except underwater**, which stays with the water's own fog.
+* **The old three-tier body is gone** (Off / Star / Black hole). The End's body is
+  none of them.
+* **Three End options that never did anything are gone**: the void glow, the End
+  fog, and the switch for suppressing the flash. The flash suppression is now
+  unconditional.
+* **The End's body has no "photosphere / chromosphere / surface" settings any
+  more**, removed along with the disc.
+
+### Fixed
+
+* **The End's stars were sliced off with a straight edge.** The field only ever
+  looked at the one cell the view direction fell into, so a star that crossed a
+  cell wall came out with a straight edge cut off it. A star is now placed inset
+  from the walls by its own radius, which removes the edge and **removes the
+  ceiling on the size setting with it**.
+* **The Overworld's sun and moon no longer appear in the End's water**, the End's
+  own body is reflected there instead, and **`WATER_BODY_BRIGHTNESS` now applies
+  in the End as well**.
+
 ## v0.6 - 2026-09-26
 
 ### Added

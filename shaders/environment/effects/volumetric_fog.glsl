@@ -46,6 +46,36 @@ uniform float volumetricFogRainFactor;
 // The pack's value noise, which the patches are built from. Uniforms: noisetex
 #include "/lib/valueNoise.glsl"
 
+// Which dimension this air is in, for the tint below.
+#include "/environment/dimension.glsl"
+
+// The End's palette: the colour its body is, and the colour its air takes.
+#include "/environment/sky/end_palette.glsl"
+
+// The colour the End's air is tinted with, and 1.0 everywhere else.
+//
+// Added in batch 340 at the user's request: the End has no sun, so what lights
+// its air is the End's own body, and the air should therefore be the colour of
+// that body rather than of the direct light. Which colour that is comes from
+// environment/sky/end_palette.glsl, the same file the body itself reads, so the
+// two cannot drift apart - the requirement was that they "stay consistent", and
+// a second copy of the colour is not a way of staying consistent.
+//
+// ⚠️ It does NOT check whether the camera is under water, and that is on
+// purpose. It is multiplied into the shafts' atmospheric colour only, never
+// into their underwater one: the program that reads both already chooses
+// between them with isEyeInWaterFog, so the water is excluded by where this is
+// applied rather than by a second test here. Putting the test in both places
+// would mean either one of them could be removed without anything looking
+// wrong - which is how the two would drift apart. See PBR_PORTING.md 197.
+vec3 VolumetricFogTint() {
+	if (EndDimension()) {
+		return EndPaletteColor();
+	}
+
+	return vec3(1.0);
+}
+
 // Volumetric fog: the air itself, and what the sun does inside it.
 //
 // Until b312 the shafts this pack drew were a screen-space trick - a blur that
@@ -216,6 +246,95 @@ uniform float volumetricFogRainFactor;
 // same macro to know which buffer it is looking at.
 //#define VOLUMETRIC_FOG_FULL_RES
 
+// The Nether's smoke columns.
+//
+// Requested in batch 344, after the user's verdict on batch 342's attempt at the
+// same thing: that batch put a distance haze in environment/fog.glsl, and what
+// they wanted was Bliss Shader's Nether plumes - a field of vertical columns of
+// smoke, not a uniform reddening of everything with distance. The technique here
+// is that shader's, ported onto this file's own noise and clock.
+//
+// ⚠️ Why it lives in this pass and not in fog.glsl, which is the obvious home
+// for a dimension's fog. Two reasons, and the second is what decided it:
+//
+//   * this pass is a march through the air, which is what columns of smoke need
+//     and what a per-fragment distance term cannot express at all;
+//   * ⚠️ this pass runs over the finished frame. Batch 342's haze was applied in
+//     the geometry programs, where "is this the Nether" is answered by the
+//     dimension uniform - and Distant Horizons and Voxy compile their terrain
+//     with EXTERNALLY_DEFINED_UNIFORMS, which makes that uniform a constant
+//     zero. Their terrain was therefore told it was not in the Nether and got no
+//     haze, while the game's own chunks did, and the seam between the two was
+//     visible. A pass over the frame cannot have that problem: whatever it draws
+//     is on top of every program's output, whoever drew it.
+//
+// ⚠️ What this pass cannot do is darken. It writes the light the medium scatters
+// towards the eye, and that buffer is added to the frame - there is no
+// transmittance term and no channel to carry one. So these columns are smoke
+// that GLOWS rather than smoke that blots light out, which is the half of
+// Bliss's effect that fits. The other half - a column darkening what is behind
+// it - would need this pass to write a multiplier as well, and that is a change
+// to the buffer and to the pass that reads it rather than something to add here.
+#define NETHER_PLUMES
+
+// How much of it there is.
+//
+// ⚠️ The shipped default is 1.5 as of v0.7: the user raised it from the 1.0 this
+// first shipped at, and that is the setting the release uses. The retuned
+// defaults are listed in CHANGELOG.md under v0.7.
+#define NETHER_PLUME_DENSITY 1.5 // [0.0 0.5 1.0 1.5 2.0 3.0]
+
+// How much smoke gathers under the ceiling.
+#define NETHER_CEILING_SMOKE 1.0 // [0.0 0.5 1.0 1.5 2.0 3.0]
+
+// The height the columns stand on, and the height they thin out below, in world
+// blocks.
+//
+// 32 is the Nether's lava sea level and where the smoke should start; 100 is
+// under the bedrock roof.
+//
+// ⚠️ These are Bliss's numbers, 31 and 100, and they are first guesses for this
+// pack rather than anything measured. If the smoke starts in the wrong place in
+// game, this is the pair to move.
+#define NETHER_PLUME_BASE 32.0
+#define NETHER_PLUME_TOP 100.0
+
+// How far around the eye the smoke is held off, in blocks.
+//
+// ⚠️ Not a detail. Without it the player stands inside a column and the screen
+// is a wall of orange; the effect has to be something seen from outside. Bliss
+// clears a bubble for exactly this reason.
+#define NETHER_PLUME_CLEAR 24.0
+
+// What the smoke glows with, and how its brightness falls off.
+//
+// ⚠️ Nothing lights this medium, because there is nothing here to light it: the
+// Nether has no sun, so the shadow-map march below has no light to trace and the
+// glow is the smoke's own.
+//
+// ⚠️ The brightness is the density times an exp() of the density, and that is
+// the shape of the effect rather than a detail of it: it makes the smoke
+// brightest where it is THINNEST, so that a column reads as something with light
+// behind it rather than as a solid bar of light. Bliss darkens its emission the
+// same way. Its 15.0 is this same curve over a much smaller range, because its
+// density is not normalised to one and this one is.
+const vec3 NETHER_PLUME_COLOR = vec3(1.00, 0.40, 0.16);
+const float NETHER_PLUME_ABSORPTION = 2.0;
+
+// How much smoke there is per block, where the field is at its thickest.
+//
+// ⚠️ Of the same order as VOLUMETRIC_FOG_DENSITY above, and for the same reason:
+// both are optical depths per block, so a ray of the same length through either
+// comes out at a comparable brightness. Much above this the Nether stops being a
+// place and becomes a lamp.
+const float NETHER_PLUME_OPTICAL = 0.008;
+
+// And the same for the smoke under the ceiling. It is a flat layer rather than
+// columns, so it is charged separately and has a colour of its own - a dark
+// neutral, which is what Bliss gives it and what smoke under a roof looks like.
+const vec3 NETHER_CEILING_SMOKE_COLOR = vec3(0.10, 0.075, 0.070);
+const float NETHER_CEILING_SMOKE_OPTICAL = 0.004;
+
 // The noise the patches are made of, in three dimensions.
 //
 // The pack's noise texture is two-dimensional, so the third is faked by reading
@@ -297,3 +416,115 @@ float VolumetricFogDensity(vec3 worldPosition) {
 		* volumetricFogTimeFactor * volumetricFogRainFactor
 		* mix(1.0, patches, VOLUMETRIC_FOG_NOISE);
 }
+
+#ifdef NETHER_PLUMES
+	// The Nether's smoke columns, as a density at a world position.
+	//
+	// Bliss Shader's cloudVol(), ported onto this file's own noise and clock.
+	// What makes its result stand in columns rather than in clouds is two things,
+	// and they are worth separating before changing anything here:
+	//
+	//   * the field that makes the columns is read in the horizontal plane only,
+	//     so it cannot vary up a column's height. That is what a column is;
+	//   * the field that erodes them is read in three dimensions, but the
+	//     vertical axis of it is squashed 48 to one first - so the erosion is
+	//     slow vertically too, and the holes it carves are holes in a column
+	//     rather than slices across one.
+	//
+	// Take the first out and the columns go; take the second out and they become
+	// pipes; un-squash the second and they become weather.
+	//
+	// ⚠️ clearArea is passed in rather than worked out here. It is the bubble
+	// around the eye, and it is a parameter because this file does not declare
+	// cameraPosition - the pass that includes it does - so reaching for the
+	// position here would be a dependency this file has no way to state. Bliss
+	// splits it the same way, for what that is worth.
+	float NetherPlumeDensity(vec3 worldPosition, float clearArea) {
+		// The two ends of the layer, because the Nether has a floor and a roof and
+		// the smoke should thin at both.
+		//
+		// ⚠️ Asked before the noise rather than after. The march puts most of its
+		// steps outside the layer - a camera on a hill is above all of it - and a
+		// step out there should cost a comparison rather than the four texture
+		// fetches the erosion takes. It is the same early out the Overworld path
+		// gets from VolumetricFogDensity returning exactly zero.
+		float floorFade = smoothstep(
+			NETHER_PLUME_BASE - 4.0, NETHER_PLUME_BASE + 10.0, worldPosition.y);
+		float roofFade = 1.0 - smoothstep(
+			NETHER_PLUME_TOP - 30.0, NETHER_PLUME_TOP, worldPosition.y);
+		float layer = floorFade * roofFade * clearArea;
+
+		if (layer <= 0.0) {
+			return 0.0;
+		}
+
+		vec3 squashed = vec3(
+			worldPosition.x, worldPosition.y / 48.0, worldPosition.z);
+
+		// The columns lean, and lean more the higher they are, which is what makes
+		// them read as something rising rather than as wallpaper.
+		float lean = pow(
+			max(worldPosition.y - NETHER_PLUME_BASE, 0.0) / 16.0, 2.1);
+
+		// ⚠️ Read in the horizontal plane, and that is the whole of why this is a
+		// column field: the sample has no y in it at all.
+		//
+		// ⚠️ VolumetricFogNoise has an axis convention - it reads its noise in xy
+		// and steps through its slices in z - and the two horizontal axes happen to
+		// be the ones it wants in xy, so this one needs no reordering. The next one
+		// does.
+		float columns = VolumetricFogNoise(vec3(
+			(worldPosition.xz + lean) / VOLUMETRIC_FOG_SCALE, 0.0));
+
+		// The erosion: a second field eating into them, drifting on the pack's own
+		// wind clock so that they churn rather than standing still. The wind is the
+		// one the leaves and the clouds move on, so the smoke does not run on a
+		// clock of its own.
+		//
+		// ⚠️ The axes are reordered on the way in, and that is not cosmetic. The
+		// slice axis of that noise is its z, so handing it (x, y, z) would make the
+		// slice index follow world z - which changes with every fraction of a block,
+		// and consecutive slices are unrelated fields. What comes out of that is not
+		// eroded smoke but static. Handing it (x, z, y) makes the slices horizontal
+		// layers of the world, which is what a density field wants, and drifting its
+		// z is then drifting in world height - so the rise of the smoke comes out of
+		// the same term as its shape rather than needing a second one.
+		//
+		// ⚠️ And the three axes are scaled apart on purpose: the squash already
+		// makes world height slow (48 to one), and the extra factor here sets how
+		// many blocks a slice lasts - about twenty. A single uniform scale cannot do
+		// both that and the four-block features the horizontal axes want.
+		vec3 erosionAt = vec3(
+			squashed.x * 0.22,
+			squashed.z * 0.22,
+			squashed.y * 2.4 + windTheta.w * 0.05);
+
+		float erosion = VolumetricFogNoise(erosionAt) * 0.7 + 0.3;
+
+		// ⚠️ Subtracted rather than multiplied, and that is what makes it smoke
+		// rather than a sponge. Multiplying would only dim the field everywhere
+		// the erosion is low; subtracting takes pieces of it away outright, so
+		// that the gaps between columns are gaps and the light comes through them.
+		//
+		// ⚠️ And the square on the columns before that subtraction is what keeps
+		// the field mostly empty. Unity noise is mid-range almost everywhere, so
+		// subtracting a constant from it would leave a sheet of thin smoke and a
+		// few holes; squaring first pushes the low half towards zero and leaves
+		// the subtraction something to bite on.
+		float plume = max(columns * columns - (1.0 - erosion), 0.0);
+
+		return plume * layer;
+	}
+
+	// The smoke that gathers under the ceiling.
+	//
+	// A flat layer rather than a column field, which is why it shares nothing with
+	// the function above but the clock: Bliss's has no noise in it at all, and
+	// what gives it its shape is the third power of the height above y=40.
+	float NetherCeilingSmokeDensity(vec3 worldPosition) {
+		float layer = pow(
+			clamp((worldPosition.y - 40.0) / 50.0, 0.0, 1.0), 3.0);
+
+		return layer * NETHER_CEILING_SMOKE;
+	}
+#endif // NETHER_PLUMES

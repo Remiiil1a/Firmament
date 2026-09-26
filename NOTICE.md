@@ -34,7 +34,7 @@ Those same terms also require, for any modified version:
   modified version anywhere else;
 * that the **file name include the same thing**, for which the terms suggest the
   suffix `-edit-of-coderbot-Steadfast` - hence
-  `Firmament-v0.6-edit-of-coderbot-Steadfast.zip`;
+  `Firmament-v0.7-edit-of-coderbot-Steadfast.zip`;
 * that the GPL and those terms are kept, and that nothing suggests this is an
   official Steadfast release. **It is not.** coderbot does not support it, and
   bug reports about it do not belong in Steadfast's issue tracker.
@@ -95,7 +95,7 @@ from the cloud layer onward, and **v0.3** is the distant-terrain, temporal
 antialiasing and water work after it, **v0.4** is the sky, the reflected sun and
 moon, and the settings work after it, **v0.5** is the work after that, and
 **v0.6** is bloom, volumetric fog, the rain and snow particles and the sun and
-moon's own images. What each release changed is listed in `CHANGELOG.md` in the
+moon's own images, and **v0.7** is the End's own sky - the body, the gravitational lensing behind it and the nebula band it sits in - with the Nether's smoke plumes and the four styles for the block selection outline. What each release changed is listed in `CHANGELOG.md` in the
 short form, and in the `RELEASE_NOTES-*.md` files in full.
 
 **Added in v0.1**
@@ -216,6 +216,47 @@ short form, and in the `RELEASE_NOTES-*.md` files in full.
 * Temporal antialiasing is off by default and marked experimental.
 * The shipped defaults were retuned.
 
+**Added in v0.7**
+
+* The End's own body: a dark core, an Einstein ring produced by gravitational
+  lensing, and a halo, with no visible disc behind them - the photosphere, the
+  chromosphere and the surface detail of the old three-tier body are gone. The
+  ring's size is a setting.
+* Gravitational lensing, from the closed-form point-mass solution, so that the
+  ring holds the sky behind the body piled up; its contents stream as the sky
+  turns.
+* A nebula band across the End's sky, which is also what makes the lensing
+  visible - against an even starfield there is nothing to see bend.
+* Motion for the End's sky, stars and nebula turning together about the band's own
+  axis, with a speed setting whose range now reaches twice as high.
+* A violet tint for the End's star field, moving both ends of its range of colours
+  together so the field keeps its variety.
+* Smoke plumes in the Nether: columns rising through the air, with a layer
+  gathered under the ceiling, each with a setting of its own.
+* Four styles for the block selection outline - vanilla, none, glow and RGB - with
+  the glow's colour set per channel from 0 to 255 and a cycle speed for the RGB
+  style.
+
+**Changed in v0.7**
+
+* The shipped defaults are the tuned set this release was cut from; ten settings
+  moved, including the End's own light to the top of its range, the End's body
+  tint to fully violet, and the Nether's plumes to a thicker setting.
+* The End's own light is on by default and is now properly saturated violet, with
+  the colour compensated for brightness so that raising it does not darken the
+  dimension.
+* The End's volumetric fog follows the body's own colour, except underwater, which
+  stays with the water's fog.
+* The End's old three-tier body - off, star and black hole - is gone.
+* Three End options that never had any effect are gone: the void glow, the End
+  fog, and the switch for the flash suppression, which is now unconditional.
+
+**Fixed in v0.7**
+
+* The End's stars were sliced off with a straight edge by the cell walls. A star
+  is now inset by its own radius, which also lifts the ceiling on its size.
+* The Overworld's sun and moon are no longer drawn in the End's water; the End's
+  own body is reflected there, and the body brightness setting applies in it.
 **Fixed in v0.4**
 
 * A sky that turned solid white for a few seconds in a thunderstorm. The test

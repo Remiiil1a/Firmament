@@ -584,9 +584,26 @@ vec4 TranslucentLighting(
 		//
 		// The sun and the moon below are the exception and are water only; the
 		// note there says why.
+		//
+		// ⚠️ In the End, neither of those is added. Fixed in batch 338, and both
+		// halves were wrong there:
+		//
+		//   * SkyStars is the Overworld's starfield, and the End's sky draws its
+		//     own - EndSkyColor calls EndStarfield - so adding this as well put
+		//     two starfields in the same water;
+		//   * SkyBodies draws the sun and the moon from this pack's copies of
+		//     the game's images, placed by sunPosition and worldSunVector, and
+		//     neither of those is empty in the End: it is the Overworld's sun,
+		//     so the End's water reflected a sun the End does not have. The user
+		//     reported exactly that.
+		//
+		// The test is EndSkyDimension rather than EndDimension because what
+		// matters is which sky SkyColor returns, and that is the same question.
 		vec3 skyReflection = SkyDither(
 			gl_FragCoord.xy,
-			SkyColor(reflected) + SkyStars(reflected));
+			EndSkyDimension()
+				? SkyColor(reflected)
+				: SkyColor(reflected) + SkyStars(reflected));
 
 		#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
 			// The sun and the moon are added on top, on water only. The sky model
@@ -604,7 +621,12 @@ vec4 TranslucentLighting(
 			// holds the sun for the sky it draws - see SkyBodies. The third
 			// argument is the world-to-view rotation, so that the quad the body
 			// is drawn in is built in the same space as the two directions.
-			if (materialID == WATER) {
+			//
+			// ⚠️ Not in the End, as of batch 338. There is no sun and no moon
+			// drawn in the End's sky, so a disc of either on the End's water is
+			// a reflection of something that is not there - and it was there,
+			// which is what the user saw. See the note above.
+			if (materialID == WATER && !EndSkyDimension()) {
 				skyReflection += SkyBodies(
 					(gbufferModelView * vec4(reflected, 0.0)).xyz,
 					normalize(sunPosition),
@@ -621,12 +643,59 @@ vec4 TranslucentLighting(
 			// game draws in the sky - and that is the far terrain's water, where
 			// the sky above it is small in the view and the disc does not sit
 			// next to the real sun on screen.
-			if (materialID == WATER) {
+			//
+			// The End is skipped for the same reason as above. It cannot
+			// normally get here at all - dimension.glsl answers "not the End"
+			// for a program built this way, because the patch is handed no
+			// dimension - but the test is written out rather than left implied.
+			if (materialID == WATER && !EndSkyDimension()) {
 				// No rotation wanted here: both directions are already in world
 				// space, so the identity is what takes world to world.
 				skyReflection += SkyBodies(reflected, worldSunVector, mat3(1.0));
 			}
 		#endif
+
+		// The End's body, added to its own water the way the Overworld's sun and
+		// moon are added to theirs - and this is where WATER_BODY_BRIGHTNESS
+		// lives in the End.
+		//
+		// ⚠️ Batch 338 stopped SkyBodies from drawing the Overworld's sun and
+		// moon in the End, which was right: the End has neither, and the user
+		// could see the Overworld's sun reflected in its water. But the End's
+		// body was then only ever in that reflection at the brightness it has in
+		// the sky, and water is where a body is supposed to glare. There is no
+		// End equivalent of SkyBodies, so the option appeared to do nothing
+		// there, and the user reported both halves of that: the reflection was
+		// too weak, and the brightness option did not work. See PBR_PORTING.md
+		// 197.
+		//
+		// ⚠️ The multiplier is WATER_BODY_BRIGHTNESS - 1.0 rather than
+		// WATER_BODY_BRIGHTNESS, because the sky reflection above already
+		// contains the body once. Adding 32 times it would make the water 33
+		// times the sky; adding 31 makes it 32, which is what the option means
+		// and what the Overworld's water shows. At the option's lowest step of
+		// 1.0 there is no glare at all, which is the honest reading of it.
+		//
+		// ⚠️ Only the body is scaled, never the sky around it: the lens, the
+		// starfield and the nebula in the reflection stay where the option above
+		// left them, exactly as only the disc of the sun is added to Overworld
+		// water and not the sky it sits in.
+		#ifdef END_GIANT
+			if (materialID == WATER && EndSkyDimension()) {
+				vec3 endAxis = normalize(worldSunVector);
+
+				// The lens is evaluated again for its ring, so that the Einstein
+				// ring glints on the water too. It is about twenty ALU, on water
+				// only, and the magnification it reports is not wanted here.
+				float endMagnification = 1.0;
+				float endRing = 0.0;
+				EndLensBackground(reflected, endAxis, endMagnification, endRing);
+
+				skyReflection += EndGiantBody(reflected, endAxis, endRing)
+					* max(WATER_BODY_BRIGHTNESS - 1.0, 0.0);
+			}
+		#endif
+
 		vec3 reflectedColor = skyReflection;
 
 		// Allows water and ice to reflect the world in addition to the sky.

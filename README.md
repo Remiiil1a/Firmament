@@ -84,7 +84,7 @@ Bug reports about it do not belong in Steadfast's issue tracker.
 
 ## Installation
 
-1. Drop `Firmament-v0.6-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
+1. Drop `Firmament-v0.7-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
    Do not unzip it.
 2. Pick it in **Video Settings → Shader Packs**.
 3. In the shader options, `Materials (PBR) → Material format` follows the

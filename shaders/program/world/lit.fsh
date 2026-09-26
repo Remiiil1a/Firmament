@@ -405,12 +405,32 @@ void main() {
 		}
 	#endif
 
-	#if defined(SUPPRESS_END_FLASH) && defined(HIDE_END_FLASH)
+	// The selection outline, removed outright when the option says so.
+	//
+	// ⚠️ discard rather than writing something invisible, because the point of
+	// NONE is that the box is not there - and discarding also skips the depth
+	// write, so nothing of the outline is left behind for anything downstream to
+	// find. It is here, at the top, so that a fragment which is not going to be
+	// drawn does not pay for the rest of the shader either.
+	//
+	// ⚠️ After the debug block above rather than before it: that block is how a
+	// program is identified, and an option that could hide the evidence would
+	// make identifying one harder.
+	#if defined(DRAWING_LINES) && SELECTION_BOX == SELECTION_BOX_NONE
+		discard;
+	#endif
+
+	#if defined(SUPPRESS_END_FLASH)
 		#if !defined(MC_VERSION) || MC_VERSION >= 12109
 			// The End's light flash (Minecraft 1.21.9) is drawn as a quad in the
 			// sky with no texture that the mod knows to bind, so it samples the
 			// block atlas and shows up as a patch of a random block's texture.
 			// There is nothing to be done with it from here, so it is dropped.
+			//
+			// Unconditional as of batch 333: this used to sit behind an option,
+			// HIDE_END_FLASH, and the user reported that toggling it changed
+			// nothing. That is because the flash is overwritten by the End's sky
+			// anyway - see the note in /environment/dimension.glsl.
 			//
 			// Only what is far away is dropped, because the programs that draw
 			// it also draw things worth keeping near the player. Past ten blocks
@@ -1559,6 +1579,29 @@ void main() {
 	// never disagree with the writes, which is the failure a conditional list
 	// risks and which would be very hard to see: the writes would land in
 	// whichever buffers the directive happened to name.
+	// The selection outline's own colour, when it has one.
+	//
+	// ⚠️ Overridden here, immediately before the writes, rather than returned
+	// early somewhere above - and the reason is the fixed list of attachments
+	// this file keeps. A fragment that returned after writing gl_FragData[0]
+	// alone would leave the other five buffers holding whatever was in them from
+	// the last thing drawn at that pixel: stale skylight, stale reflection
+	// material, a stale specular highlight for the bloom to subtract. Letting the
+	// shader run to the end and changing only the colour is what keeps every
+	// write paired with a value.
+	//
+	// ⚠️ And the colour is written several times over its own brightness, which
+	// is what the bloom turns into the glow - see SELECTION_GLOW_STRENGTH where
+	// it is defined, including what it costs.
+	// ⚠️ The guard is on the macro's own name, and the macro is defined by the
+	// selection box options only when there is something to write - so this block
+	// is compiled in the one program that draws lines and dropped in the other
+	// fourteen. See where it is defined for why the guard is written this way
+	// rather than as a test on that program's flag.
+	#if defined(SELECTION_BOX_OVERRIDE)
+		SELECTION_BOX_OVERRIDE
+	#endif
+
 	gl_FragData[0] = fragmentColor;
 	gl_FragData[1] = vec4(skyLight);
 	gl_FragData[2] = vec4(emitterColor, 1.0);

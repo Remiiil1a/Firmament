@@ -68,7 +68,7 @@ Steadfast 的附加条款要求修改版的名称以 `(edit of coderbot's Steadf
 
 ## 安装
 
-1. 把 `Firmament-v0.6-edit-of-coderbot-Steadfast.zip` 放进 `.minecraft/shaderpacks/`，
+1. 把 `Firmament-v0.7-edit-of-coderbot-Steadfast.zip` 放进 `.minecraft/shaderpacks/`，
    **不要解压**。
 2. 在 **视频设置 → 光影** 里选中它。
 3. 光影选项里 `材质（PBR）→ 材质格式` 跟着资源包走：用资源包就保持 `LabPBR`，
