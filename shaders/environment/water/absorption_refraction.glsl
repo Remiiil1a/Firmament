@@ -39,29 +39,41 @@ vec3 RefractionBasedWaterAbsorption(
 	waterDepth = 1.0;
 
 	if (refractedScreenPos.z < 1.0) {
-		// The incident vector only gives a reasonable indication of the water
-		// depth when hitting water's top face. As a result, we use the sky
-		// light value of the background when reflecting through water sides or
-		// when underwater, since in those cases it is a more reliable
-		// heuristic.
+		// The vertical distance between this fragment and what it refracts
+		// gives a reasonable indication of the water depth only when this
+		// fragment's own normal is vertical, that is, when we are looking at
+		// water's top face. As a result, we use the sky light value of the
+		// background when reflecting through water sides or when underwater,
+		// since in those cases it is a more reliable heuristic.
 		if (verticalNormal) {
-			// We take the vector between the refracted position (sea floor) and
-			// the origin position (ocean surface), and then use the dot product
-			// to measure the vertical distance between the two, as the upVector
-			// in view space is equivalent to (0, 1, 0) in world space.
+			// `verticalNormal` is `worldNormal.y > 0.9999` at the call site,
+			// so this branch really does mean the top face.
 			//
-			// This is equivalent to subtracting the Y components in world
-			// space, but avoids some matrix transformations and similar.
+			// We take the vector between the refracted position (the lake bed
+			// the trace landed on) and this fragment's own position, and
+			// project it onto `upVector` to get its vertical component. That is
+			// not the same as the length of the vector unless the two positions
+			// are exactly one above the other, but it is the number we want.
+			//
+			// `upVector` is world-up expressed in view space - the caller
+			// passes `gbufferModelView[1].xyz` - so this dot product is the
+			// world-space Y difference, without transforming either position
+			// back to world space first.
 			//
 			// This only requires assuming that a straight line in world space
 			// is also straight in view space, which we already assume in the
 			// refraction trace & reflection tracing code.
 			float depthInMeters = dot(viewPos - viewPosRefracted, upVector);
 
-			// This is the reference equation for water depth, where the depth
-			// starts at 0.0 at the surface, and goes to a maximum of 1.0 at 15
-			// blocks below the water surface, which is intentionally within the
-			// same range as sky light attenuation (see details below.
+			// This is the reference equation for water depth: 0.0 at the
+			// surface, rising to a maximum of 1.0 at 15 blocks below it, which
+			// is intentionally the same range as skylight attenuation (worked
+			// through in the branch below).
+			//
+			// Note the 15 rather than 16 - the 1/16 offset is already on top of
+			// the 1/16 slope, so 15 is where the clamp bites. Above 15 blocks
+			// the clamp holds this at 1.0 rather than letting the falloff run
+			// exponential off the top of the scale.
 			waterDepth = clamp(
 				depthInMeters * (1.0 / 16.0) + 1.0 / 16.0,
 				0.0,
@@ -72,7 +84,7 @@ vec3 RefractionBasedWaterAbsorption(
 			// (1.0 - skylight) * (15.0 / 16.0) + 1.0 / 16.0
 			//
 			// Which is equivalent to the calculation above, as skylight
-			// attenuates overhe 15 blocks.
+			// attenuates over 15 blocks.
 			//
 			// For example, 1 block of depth will have a skylight level of 14.
 			// This will be encoded in a lightmap coordinate of 14.5 / 16.0.
@@ -83,10 +95,9 @@ vec3 RefractionBasedWaterAbsorption(
 			// This results in a value of 14.0 / 15.0, which, when plugged into
 			// the equation above, gives a waterDepth of 0.125.
 			//
-			// When we plug 1.0 (distance between water surface and bottom) into
-			// the original equation based on water height instead of skylight,
-			// we get 1/16 + 1/16, or 1/8, which is also equivalent to 0.125,
-			// a match.
+			// When we plug a `depthInMeters` of 1.0 into the equation based on
+			// water height instead of skylight, we get 1/16 + 1/16, or 1/8,
+			// which is also equivalent to 0.125, a match.
 			//
 			// Here is how it is optimized:
 			//
@@ -97,6 +108,12 @@ vec3 RefractionBasedWaterAbsorption(
 			//
 			// This final form is in the format of a fused multiply-add, which
 			// is a single instruction.
+			//
+			// The pair of constants below is baked in as a literal 15/16 and a
+			// literal 1.0 rather than derived from a block count, so the
+			// branch would keep this slope even if the 15 above were ever
+			// changed. Both arms of the #if use the same arithmetic on purpose;
+			// they differ only in where the skylight comes from.
 			#if defined(EXTERNALLY_DEFINED_UNIFORMS)
 				// This program was not given this pack's sky light buffer: Voxy
 				// hands its shaders their own set of uniforms and textures, and
@@ -127,24 +144,50 @@ vec3 RefractionBasedWaterAbsorption(
 		// have a smooth transition!
 	} else {
 		// In this case, we hit a sky fragment, and naturally there is no
-		// skylight or reasonable world Y height available or reasonable world
-		// Y height available.
+		// skylight or reasonable world Y height available.
 		//
 		// Instead, we just have to assume that most of the time this means that
-		// we went through a lot of water, that is, we are at full water depth
-		// (ie, full water depth). This works most of the time, but sometimes
-		// (ie, looking at a waterfall), the water is not actually that thick,
-		// so this looks off.
+		// we went through a lot of water, that is, we are at full water depth.
+		// This works most of the time, but sometimes (ie, looking at a
+		// waterfall), the water is not actually that thick, so this looks off.
 		//
-		// To mitigate this, as a heuristic, if we are within 40 meters of this
+		// To mitigate this, as a heuristic, if we are within 24 blocks of this
 		// water surface, then we start to assume that the water is not actually
 		// that thick and do not apply as much water absorption.
 		//
 		// Note: This is also required to see the sun/moon through less thick
 		// volumes of water.
+		//
+		// `fadeFactor` measures depth along the camera's forward axis rather
+		// than true distance: `viewPos.z` is negative in front of the camera,
+		// so `-viewPos.z` is how far ahead of the camera this fragment is.
+		// Looking down at a steep angle from high above, one screen pixel spans
+		// many blocks of water, so this is not the distance to the water
+		// surface itself and the fade is not tied to a block depth. The
+		// denominator is 24.
+		//
+		// ⚠️ What `background` was scaled by here until batch 447 was
+		// `1.0 - fadeFactor`, and that line is one half of what drew a flat black
+		// band under the horizon on level-of-detail water. Past 24 blocks the
+		// factor is exactly zero, so the light that came through the surface was
+		// thrown away and the absorption below was left multiplying nothing. The
+		// pixel was zero - not dark water, which the absorption is perfectly
+		// capable of being: WaterAbsorption(1.0) is exp(-16, -3, -1), a deep
+		// blue-green with the red gone. That is what the depth below is for, and
+		// what a second, unbounded darkening on top of a bounded one took away.
+		//
+		// It was only half, and this file carried the other half wrongly for two
+		// batches. Removing the line on its own changed nothing, because the light
+		// it was multiplying was already black: the pixels this branch lands on
+		// are pixels nothing ever drew - the game's sky quads do not cover the
+		// view just below the horizon - so what is in them is the clear colour.
+		// This pack's water is the first thing that ever sampled them, and the
+		// other half of the fix is the fill in program/post/copy_and_fog.fsh
+		// (batch 451), which gives those pixels the sky. With that in place the
+		// absorption is handed the sky and the water comes out the deep
+		// blue-green it should have been.
 		float fadeFactor = min(-viewPos.z / 24.0, 1.0);
 		waterDepth = 0.25 + 0.75 * fadeFactor;
-		background *= 1.0 - fadeFactor;
 	}
 
 	return background * WaterAbsorption(waterDepth);

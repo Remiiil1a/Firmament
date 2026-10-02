@@ -27,9 +27,9 @@
 // this is the pass that leaves the finished wide level in colortex13, where
 // final.fsh knows to look for it.
 //
-// This is the only pass in the pack that writes a buffer another pass had
-// already read. That is safe because the reads are over: composite9 has
-// finished with colortex13 by the time this one starts.
+// It reads colortex14 and writes colortex13, which composite9 read - a pass
+// cannot read and write one buffer at the same time. That is safe here
+// because the reads are over: composite9 has finished with colortex13 by
 
 uniform sampler2D colortex14;
 

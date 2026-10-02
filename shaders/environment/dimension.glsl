@@ -18,9 +18,11 @@
 
 // Which dimension the player is in, as far as the pack needs to know.
 //
-// Only the End gets anything of its own - a sky, a light, a fog, and the
-// removal of a vanilla effect that does not survive being shadered - so this is
-// really just "is this the End", and everything else in the pack is unchanged.
+// The End is where nearly all of it is spent - a sky, a light, a fog, and the
+// removal of a vanilla effect that does not survive being shadered - so the
+// question is mostly "is this the End". The Nether is asked about for one thing
+// only, the plumes in /environment/effects/volumetric_fog.glsl, and neither
+// question changes anything else in the pack.
 //
 // There is more than one way to ask, and no single one works everywhere, so
 // both are asked. The dimension itself is the direct answer: 0 for the
@@ -51,6 +53,55 @@
 	// A program whose uniforms come from somewhere else cannot be given new
 	// ones, so it is told it is not in the End. That is Voxy's terrain, which
 	// draws into its own buffers and does not use this pack's sky.
+	//
+	// ⚠️⚠️ Batches 348 and 349 both tried to give this an answer, and both are
+	// recorded here so that neither is tried again.
+	//
+	// Batch 348 answered it at compile time, with a per-dimension voxy.json that
+	// defined a macro and included the shared one - a shape copied from another
+	// pack. Voxy answered with "Failed to parse patch data gson, dumping json".
+	// It reads those files as JSON, and neither of the two packs that do use
+	// per-dimension files includes the root voxy.json, which is what this pack
+	// has. Whether the shape is possible at all was never established, because
+	// the shape that was tried had that mistake in it.
+	//
+	// Batch 349 answered it with a uniform instead, adding "dimension" to
+	// voxy.json's "uniforms" array. ⚠️ That array is not a list of names a pack
+	// may ask for: it is the subset of a fixed set that Voxy knows how to fill,
+	// and dimension is not in it. Voxy said so outright -
+	//
+	//     [IrisVoxyRenderPipelineData]: The following uniforms could not be
+	//     found: [dimension]
+	//     0(3989) : error C1503: undefined variable "dimension"
+	//
+	// - and then failed to compile its patched pipeline in EVERY dimension and
+	// fell back to the unpatched one, which is why level-of-detail terrain
+	// stopped matching the pack at all. So: an unsupported name here is worse
+	// than a missing one. A name the array does not list and this file declares
+	// reads zero; a name the array lists but Voxy cannot fill is not declared at
+	// all, and every use of it fails to compile.
+	//
+	// ⚠️⚠️ Batch 351 tried a third route - the per-dimension file done the way
+	// the packs that support Voxy do it, with the real Voxy programs moved into
+	// a subfolder and thin shims at the root and in world1/ carrying the flag as
+	// a macro - and it broke the End outright: every block vanished and the sky
+	// went to noise.
+	//
+	// ⚠️ The reason is worth more than the attempt. A shaders/world1/ folder is
+	// not "some programs for this dimension". Once it exists, Iris takes it as
+	// the End's program set, and the programs it does not contain stop working
+	// there. That is why the packs that use this mechanism ship a shim for EVERY
+	// program in that folder - around sixty files - and it is the thing to
+	// notice before adding one: a folder holding two files disables the other
+	// forty. Reverted in batch 352.
+	//
+	// ⚠️ So this is not "untested". A future attempt has to bring the whole
+	// program set with it, or find a mechanism that does not go through
+	// shaders/world1 at all - and both routes through voxy.json are closed
+	// above.
+	//
+	// ⚠️ And END_BIOME_CATEGORY is defined below this block, so even if Voxy
+	// could be asked, the category could not be used here.
 	const int dimension = 0;
 	const int biome_category = 0;
 #else
@@ -66,15 +117,23 @@
 
 // The Nether's, from the same enum, where it is the seventeenth and last.
 //
-// Nothing the pack does is decided by this except that the cloud layer keeps out
-// of the Nether - see CloudDimension in /environment/clouds/volumetric.glsl for
-// why the dimension uniform alone is not enough to ask.
+// Two things are decided by this. The cloud layer keeps out of the Nether - see
+// CloudDimension in /environment/clouds/volumetric.glsl, which tests this
+// constant directly, for why the dimension uniform alone is not enough to ask -
+// and NetherDimension() below reads it, which is how the Nether's plumes ask
+// their question in /program/post/volumetric_fog.fsh.
 #define NETHER_BIOME_CATEGORY 16
 
 // Whether this is the End, as the shader mod reports it.
 //
-// Everything the pack does for the End is decided by this and nothing else. In
-// particular it does not depend on END_SKY: that option is about which sky to
+// This is the End question for everything the pack does there except the sky.
+// Where what is being decided is which sky SkyColor returns, the question is
+// EndSkyDimension() below instead - this, plus the END_SKY option - and that is
+// what /environment/sky.glsl, gbuffers_skytextured.fsh and the End's water
+// reflection in /environment/lighting/translucent.glsl ask. The debug view
+// further down reports the two raw checks rather than either predicate.
+//
+// This itself does not depend on END_SKY: that option is about which sky to
 // draw, and turning a sky off should not also turn off the dimension's light or
 // bring back an effect that does not work under a shader.
 bool EndDimension() {
@@ -87,16 +146,19 @@ bool EndDimension() {
 // itself is -1, and every biome in the Nether reports the Nether's category. The
 // two are mutually exclusive, which is why neither needs to check the other.
 //
-// ⚠️ It has no consumer at the moment, and that is deliberate rather than an
-// oversight. Batch 342's first use of it was a distance haze in fog.glsl, and
-// batch 343 took that back out: a haze uniform in distance is the wrong shape
-// for this dimension, and the user's verdict on it was that the Nether's
-// atmosphere came out strange - worst of all against Distant Horizons and Voxy,
-// whose terrain is compiled with EXTERNALLY_DEFINED_UNIFORMS and is therefore
-// told it is not in the Nether at all, so the fog stopped at the boundary
-// between their chunks and the game's. What replaces it is a volumetric plume
-// field, which is drawn over the finished frame and so cannot have that seam.
-// See NETHER_PLUMES_PLAN.md.
+// ⚠️ Its one consumer is the Nether's plumes: /program/post/volumetric_fog.fsh
+// asks it once per pixel, under #ifdef NETHER_PLUMES. That the route there is a
+// pass over the finished frame is the whole point of the history below.
+//
+// Recorded, in the order it happened. Batch 342's first use of this was a
+// distance haze in fog.glsl, and batch 343 took that back out: a haze uniform in
+// distance is the wrong shape for this dimension, and the user's verdict on it
+// was that the Nether's atmosphere came out strange - worst of all against
+// Distant Horizons and Voxy, whose terrain is compiled with
+// EXTERNALLY_DEFINED_UNIFORMS and is therefore told it is not in the Nether at
+// all, so the fog stopped at the boundary between their chunks and the game's.
+// What replaced it is the volumetric plume field, which is drawn over the
+// finished frame and so cannot have that seam. See NETHER_PLUMES_PLAN.md.
 bool NetherDimension() {
 	return dimension == -1 || biome_category == NETHER_BIOME_CATEGORY;
 }
@@ -115,8 +177,9 @@ bool EndSkyDimension() {
 
 // What the two checks actually returned, as a color. See END_DEBUG.
 //
-// Blue reports the dimension check itself rather than the sky option, so that
-// it answers "is this the End" rather than "would the sky be drawn".
+// Red is the dimension uniform's own test and green the biome category's; blue
+// is EndDimension() above, the pack's verdict, rather than EndSkyDimension(), so
+// that it answers "is this the End" rather than "would the sky be drawn".
 vec3 EndDebugColor() {
 	return vec3(
 		dimension == 1 ? 1.0 : 0.0,
@@ -141,29 +204,43 @@ vec3 EndDebugColor() {
 // should be black and the sky should look normal.
 //#define END_DEBUG
 #ifdef END_DEBUG
-	// Used by SkyColor in sky.glsl.
+	// Encloses no code: EndDebugColor above is used by SkyColor in
+	// /environment/sky.glsl, which asks for it under this same guard. The block
+	// is here so that END_DEBUG is also tested with #ifdef in this file, which
+	// the files that only write #if defined(END_DEBUG) do not do. Recorded, not
+	// established: whether the option system needs that test here has not been
+	// traced.
 #endif
 
 // The End's light flash - which Minecraft 1.21.9 and up draws as a second sun
 // in the End's sky - is always dropped.
 //
-// It does not survive being shadered: it is a textured quad that the mod has no
+// Recorded as the finding it was, since nothing here can re-derive it: it does
+// not survive being shadered, because it is a textured quad the mod has no
 // binding for, so it ends up sampling whatever texture was left bound - the
 // block atlas - and shows up as a patch of some random block's texture in the
 // sky. Nothing can be done with it from here: it is not the pack's sky and the
 // pack cannot light it, so it is dropped rather than kept.
 //
-// This used to be an option, HIDE_END_FLASH. Batch 333 removed the switch and
-// made the removal unconditional, on the user's report that turning it on or
-// off made no visible difference and that the flash is not wanted either way.
-// That matches what the code says: the End's sky is replaced by
-// gbuffers_skytextured.fsh and then the whole sky is written again in
-// composite1, so the quad is overwritten whether this ran or not - the switch
-// was never what was hiding it.
+// Recorded: this used to be an option, HIDE_END_FLASH, and batch 333 removed the
+// switch and made the removal unconditional, on the user's report that turning
+// it on or off made no visible difference and that the flash is not wanted
+// either way. What the code here can say about that is the shape of composite1's
+// overwrite: the End's sky is drawn by gbuffers_skytextured.fsh through SkyColor,
+// and composite1.fsh then writes the sky again over any pixel in the End whose
+// depthtex0 is exactly 1.0 - the far plane, where nothing wrote depth - so a
+// flash quad left at that depth is overwritten whether this ran or not, and one
+// that wrote a nearer depth is not. That nearer case is what the removal covers.
 //
-// The removal itself is in lit.fsh and unlit.fsh, and only for the programs
-// that draw the flash - each of those defines SUPPRESS_END_FLASH. The
-// Minecraft 1.21.9 version check is kept, so that this cannot remove anything
-// on a version that has no flash at all. See PBR_PORTING.md 189.
+// ⚠️ The removal is written in lit.fsh and unlit.fsh, but only lit.fsh's copy is
+// compiled by anything in the pack: SUPPRESS_END_FLASH is defined in exactly one
+// place, gbuffers_weather.fsh, which includes lit.fsh. Nothing defines it and
+// includes unlit.fsh, so the copy there is dead as the pack stands. That is a
+// code question, reported and not touched.
+//
+// The version test kept around it reads !defined(MC_VERSION) || MC_VERSION >=
+// 12109, so it holds the removal back only on a version that reports itself as
+// older than 1.21.9: with MC_VERSION undefined the removal does run. See
+// PBR_PORTING.md 189.
 
 #endif /* DIMENSION_INCLUDED */

@@ -20,15 +20,21 @@
 // It reads colortex3: the frame resolved over the last few frames, with no
 // reflection in it. That is the buffer a reflection wants, because it is the
 // only picture of the world on screen that has stopped moving. A trace over a
-// single raw frame - which is what the deferred pass leaves in colortex3 -
-// re-answers every frame from a foot that the jitter has shifted, and nothing
-// downstream averages the result, because the reflection is added after the
-// temporal resolve. That is what a crawling reflection is, and why it reads
-// worse at a lower frame rate.
+// single raw frame would re-answer every frame from a foot that the jitter has
+// shifted, and nothing downstream averages the result, because the reflection is
+// added after the temporal resolve. That is what a crawling reflection is, and
+// why it reads worse at a lower frame rate.
+//
+// colortex3 is composite1's output and not the deferred pass's: the deferred
+// pass leaves a raw, unresolved frame, and composite1 is what resolves it and
+// writes it here. It is the anti-aliasing history as well, and that is why it is
+// declared with colortex3Clear=false - see the note in shaders.properties and
+// lib/taa.glsl.
 //
 // composite3 owns both halves of that arrangement: it runs after composite1,
-// which writes colortex3, and it never writes a reflection back into it, so the
-// trace finds the world and never another reflection.
+// which writes colortex3, and it never writes a reflection back into it - it
+// writes colortex0 and colortex1 and nothing else - so the trace finds the world
+// and never another reflection.
 //
 // The uniform it needs is declared here rather than in the pass, because the
 // pass includes this file.
@@ -155,20 +161,26 @@ vec3 EnvironmentReflection(
 		// How wide the cone of directions this surface reflects over is, and how
 		// many pixels that comes to on screen.
 		//
-		// The angle is the roughness itself, which is the alpha the highlight is
-		// built from in PbrSpecular - so the blur and the highlight widen
-		// together, instead of one of them being a number of its own. This used
-		// to be a radius in pixels proportional to roughness, which is the same
-		// idea with the two conversions left out, and it came to about a
-		// thirtieth of the right answer on a brushed metal: roughness in this
+		// The angle is the roughness itself, in radians. It is not the alpha
+		// PbrSpecular builds its highlight from: that is the roughness squared
+		// (see PbrSpecular in pbr.glsl), so the blur opens with the roughness
+		// while the highlight opens with its square. Both widen as the surface
+		// gets rougher, which is the point - a rough surface should not keep a
+		// mirror-sharp highlight beside a wide reflection - but they are not the
+		// same number, which is why the angle is written out here rather than
+		// read back from there.
+		//
+		// This used to be a radius in pixels proportional to roughness, which is
+		// the same idea with the two conversions left out, and it came to about
+		// a thirtieth of the right answer on a brushed metal: roughness in this
 		// pack is (1 - smoothness)^2, so a surface whose authors were describing
 		// a brushed finish arrives at 0.16, and 0.16 radians is not 0.16 pixels.
 		//
 		// The pixel scale is the one that turns an angle at the centre of the
 		// screen into pixels: half the screen height, divided by the tangent of
 		// half the field of view, which is what the projection's second row
-		// carries. windowToNdc is two divided by the viewport size, so half the
-		// height is its reciprocal.
+		// carries - gbufferProjection[1][1] is 1 / tan(fovY / 2). windowToNdc is
+		// two divided by the viewport size, so half the height is its reciprocal.
 		float coneAngle = clamp(roughness, 0.0, 1.0);
 		float pixelsPerRadian = gbufferProjection[1][1]
 			/ max(windowToNdc.y, 1.0e-6);

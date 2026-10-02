@@ -34,7 +34,11 @@ const uint WATER = 4u;
 // Ice
 const uint ICE = 5u;
 
-// Blocks that do not cast shadows (Glass and translucents)
+// Blocks that do not cast shadows: glass, its panes, and fire, which is what
+// block.properties gives this ID. "Glass and translucents" is how the rest of the
+// pack refers to it - it is the material an unlisted translucent is handed - but
+// it does not cover every translucent surface: stained glass was taken out of it
+// deliberately, below.
 const uint GLASS = 6u;
 
 // Light-emitting blocks, grouped by the color of the light they give off.
@@ -54,7 +58,7 @@ const uint GLASS = 6u;
 // Note that these IDs are only about color. Whether a face actually glows is
 // still decided by the light map, so an unlit furnace that shares a family with
 // a lit one does not glow.
-const uint LIGHT_WARM = 7u;        // Torches, lanterns, glowstone, furnaces, fire
+const uint LIGHT_WARM = 7u;        // Torch, lantern, glowstone, jack o'lantern, shroomlight, furnaces
 const uint LIGHT_SOUL = 8u;        // Soul torches, soul lanterns, soul fire
 const uint LIGHT_REDSTONE = 9u;    // Redstone torches, redstone lamps
 const uint LIGHT_LAVA = 10u;       // Lava, magma
@@ -68,13 +72,16 @@ const uint LIGHT_AMETHYST = 14u;   // Respawn anchors, enchanting tables
 // Deliberately a material of its own rather than another entry in GLASS: the
 // colour of the light that passes through stained glass is what stained glass is
 // for, and it is a colour this pack has to be able to look up, which it could
-// not do if these blocks were culled from the shadow pass the way GLASS is.
+// not do if these blocks were culled from the shadow pass the way GLASS is -
+// GLASS is thrown out of the map in shadow.vsh by sending its vertices to
+// -1.0, which culls the primitive. Nothing does that to this ID.
 // Adding it to GLASS, which exists precisely to mark the materials that do not
 // cast shadows, would take that away.
 //
 // What it does share with GLASS is being a transparent surface with a specular
 // response of its own, which is what this ID is here to let the translucent
-// lighting treat it the same way.
+// lighting treat it the same way - see translucent.glsl, which tests the two
+// together.
 const uint STAINED_GLASS = 15u;
 
 // The nether portal, which is the one block that gets an ID here without being
@@ -92,15 +99,23 @@ const uint STAINED_GLASS = 15u;
 // 38 is 32 + 6, and both halves are chosen:
 //
 //  * the low four bits, 6, are GLASS, which is the material the portal already
-//    had and the only value the fragment stage will ever see it as - lit.vsh
-//    packs the material into four bits on its way there, through EncodePerFace
-//    in /lib/encoding/face.glsl. Numbering it this way means the portal decodes
-//    to the right material by construction, whether or not anything else
-//    recognises the name.
+//    had and the only value the fragment stage will ever see it as. Two lines
+//    say so, and both are needed: in a program that defines TRANSLUCENT or
+//    TRANSLUCENT_LIGHTING, lit.vsh's FetchMaterialID returns GLASS outright for
+//    this ID; and in any program at all, lit.vsh hands the material to the
+//    fragment stage only through EncodePerFace, whose material field is the low
+//    nibble, bits 0-3, in /lib/encoding/face.glsl - so a program that never
+//    recognises the name still decodes 38 & 15 as 6. Numbering it this way means
+//    the portal decodes to the right material by construction. It does not mean
+//    FetchMaterialID always returns GLASS: outside the translucent programs it
+//    falls through the geometry selector and returns 38 unchanged, and the
+//    nibble is what makes that harmless.
 //  * the bits above them are the geometry selector's field, where this pack
 //    defines exactly one value, 1 (the +16 the diagonal selector adds). 2 is
-//    nothing at all, so a 38 is not a variant of GLASS - it is a slot of its
-//    own, and no block.properties entry in this pack has ever used one.
+//    nothing at all: it is not a selector this pack defines, so a 38 is not a
+//    variant of GLASS but a slot of its own. block.10038 is the only entry in
+//    block.properties whose field there is 2 - being alone is what makes it safe
+//    - and block.10019 and block.10022 are the only two that use selector 1.
 //
 // Nothing else is allowed to point at it: it is not a filter, it is not a
 // material the lit path branches on, and everything that is not the shadow
@@ -125,9 +140,10 @@ const uint NETHER_PORTAL = 38u;
 //
 // The peak channel is 1.0, so no channel of the sunlight that lands under a
 // portal is amplified, and the rest is the hue of a portal: what survives is a
-// violet about a third as bright as the ground it falls on, which is what a
-// saturated colour costs. Raise COLORED_SHADOWS_STRENGTH's complement - lower it
-// - to keep more of the light and less of the colour.
+// violet whose Rec709 luminance is 0.343, so about a third as bright as the
+// ground it falls on, which is what a saturated colour costs. Lower
+// COLORED_SHADOWS_STRENGTH to keep more of the light and less of the colour -
+// that option is what mixes this with white.
 const vec3 NETHER_PORTAL_TINT = vec3(0.60, 0.20, 1.0);
 
 // Whether the light that has passed through stained glass arrives coloured, so
@@ -143,10 +159,16 @@ const vec3 NETHER_PORTAL_TINT = vec3(0.60, 0.20, 1.0);
 //
 // What makes the feature safe to leave on is that white is the value that means
 // "nothing coloured is in the way", and white is both what the buffer clears to
-// and what every fragment that is not a colour source writes into it. A scene
-// with no stained glass and no portal in it therefore reads back 1.0 everywhere
-// and multiplies the direct light by exactly 1.0, which is a no-op down to the
-// last bit.
+// and what every fragment that is not a colour source writes into it: shadow.fsh
+// starts its tint at vec3(1.0) and writes that buffer from every fragment it does
+// not discard. A scene with no stained glass and no portal in it therefore reads
+// back 1.0 everywhere and multiplies the direct light by exactly 1.0, which is a
+// no-op down to the last bit.
+//
+// The clear is not something this file can show - it is shadowcolor1Clear in
+// shaders.properties, whose note records that Iris clears the shadow colour
+// buffers to white on its own and that the requirement is written down there
+// rather than inherited.
 #define COLORED_SHADOWS
 
 #ifdef COLORED_SHADOWS
@@ -155,9 +177,11 @@ const vec3 NETHER_PORTAL_TINT = vec3(0.60, 0.20, 1.0);
 	//
 	// At 1.0 a pane of black stained glass puts the floor under it in the dark,
 	// which is what black glass does - and the portal puts a violet on it. Lower
-	// values keep the light and only take on the hue, which is closer to what
-	// Mellow and Sundial settle on, and is the setting to reach for if the
-	// patches look too saturated to sit alongside everything else in the scene.
+	// values keep the light and only take on the hue, which is the setting to
+	// reach for if the patches look too saturated to sit alongside everything
+	// else in the scene. Recorded: the lower range is said to be closer to what
+	// Mellow and Sundial settle on; that is a comparison with two other packs and
+	// nothing here stands behind it.
 	#define COLORED_SHADOWS_STRENGTH 1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
 
 	// Whether a nether portal tints the light around it with the colour of its
@@ -169,15 +193,22 @@ const vec3 NETHER_PORTAL_TINT = vec3(0.60, 0.20, 1.0);
 	// texture animates, and the light that lands under one was never going
 	// through anything - so the colour is authored rather than sampled (see
 	// NETHER_PORTAL_TINT above), and a portal's glow is deliberately kept off
-	// translucent surfaces, which is what stops a portal from colouring its own
-	// faces and what "standing inside one should not tint you from the inside"
-	// amounts to. See the write in /program/shadow/shadow.fsh for how the two
-	// kinds of source are told apart in the buffer.
+	// surfaces the pack calls GLASS, which is what stops a portal from colouring
+	// its own faces and what "standing inside one should not tint you from the
+	// inside" amounts to. It is GLASS specifically, not every translucent
+	// material: water and stained glass are not faded, and stained glass carries
+	// a filter colour that has to survive. See the write in
+	// /program/shadow/shadow.fsh and the read in
+	// /environment/lighting/shadowmap.glsl for how the two kinds of source are
+	// told apart in the buffer.
 	#define COLORED_SHADOWS_PORTAL
 #endif
 
 // Geometry selector: Diagonally horizontal geometry
-// Add 16 to any material ID to apply this geometry selector
+// Add 16 to any material ID to apply this geometry selector - the selector is
+// the ID shifted right by four (lit.vsh), so 16 is selector 1 and nothing else.
+// 10019 and 10022 in block.properties are the entries that use it; the nether
+// portal's 38 carries selector 2, which is not defined here at all.
 const uint GEOMETRY_HORIZONTAL_DIAGONAL_ONLY = 1u;
 
 // Standard Iris / OptiFine: IDs in block.properties via mc_Entity.x

@@ -16,6 +16,70 @@ report problems in this project, not in Steadfast's.
 
 ---
 
+## v0.8 - 2026-10-02
+
+### Added
+
+* **Motion vectors, and a temporal filter rebuilt on them.** The reprojection of
+  the previous frame now lives in one file rather than three, and the filter uses
+  the nearest depth in a pixel's own neighbourhood as its anchor, which is what
+  stops a silhouette from dragging the history of whatever stands behind it. The
+  held item is left out of the camera's translation, because it does not move with
+  the world. Three reference packs were read for this and all three had arrived at
+  the same two ideas separately.
+* **Parallax occlusion mapping, with the height taken from the material the pack
+  already reads.** A surface whose normal map carries a height in its alpha
+  channel is now displaced along the view ray: the albedo and the material maps
+  are read where the surface appears to be rather than where the geometry is, so
+  a brick's mortar line sits where the light says it does. How deep the surface
+  is, how far it may be displaced on screen, the number of steps and how many of
+  them are refined are all settings, and the effect has a switch and a distance of
+  its own. It has a page of its own under **Materials (PBR)**.
+* **Two ways to read the height.** The **smooth** path filters the height field
+  the way the other material maps are filtered, which reads as a surface with a
+  rounded profile; the per-texel path reads the height's own texel, which is what
+  shows the field at the resolution it actually has. Which one a surface wants
+  depends on what it is, so it is a setting rather than a decision made here.
+* **Parallax self-shadowing.** The height field shadows itself, with a strength
+  of its own: where the light arrives at a glancing angle, the parts of a
+  displaced surface standing behind the parts in front of them are darkened.
+
+### Fixed
+
+* **A black blot the temporal filter used to grow, and drag across the terrain.**
+  A history that could not be stored came back as an ordinary black pixel, and
+  once a pixel's whole neighbourhood was black the filter held it there. What
+  stopped it was not another threshold - those had all been tried - but changing
+  the history's format and giving each pixel a flag for whether its history may be
+  believed at all.
+* **Parallax on surfaces seen nearly edge-on.** The displacement was measured in
+  the wrong units at a glancing angle, and the sample spiral now starts from a
+  jittered point and gathers towards the near end of the height range, which is
+  where the detail is.
+* **A faint band the beacon beam left across water**, drawn as it was into the
+  buffer the water refracts, before the beam was finished.
+* **The black band on level-of-detail water, at the edge of what the
+  level-of-detail mod draws.** Water there took its refraction from the position
+  the refracted ray left the water at - and on that terrain the depth the ray
+  marches is the mod's own texture, which holds nothing past the edge of what the
+  mod has drawn. The ray then ran its whole budget and the water was coloured by
+  whatever happened to lie at the far end of it; because that position slides
+  across the picture as the view turns, the colour was dragged along with the
+  camera, and the temporal resolve accumulated the darker end of it into a flat
+  black clump. A ray that left the water into the sky is now given the sky of the
+  direction it left in, which depends on nothing on screen.
+* **Rain drops no longer redraw snow.** The three weather settings change how a
+  *rain* drop is drawn - how many are tiled across a column, how much of each
+  drop's width is kept, and how much colour the drop carries. Snow is drawn by
+  the same program, and all three were being applied to it as well. Which of the
+  two a particle is is now read from the particle texture itself, the way Sundial
+  reads it, and a flake is left as the resource pack draws it.
+* **The haze no longer begins at a boundary around the player in rain.** Haze
+  below a hundredth of a unit was being culled outright, and in light or moderate
+  rain the whole rain term is under that out to about fifteen blocks - so the rain
+  had a ring of clear air around the player, with the haze switching on at its
+  edge. The cull is gone; the haze fades in from nothing instead.
+
 ## v0.7 - 2026-09-26
 
 ### Added

@@ -47,8 +47,12 @@
 	//
 	// A rough surface scatters the reflection over too wide a range of directions
 	// to show a mirror image, so the ray is bent towards the normal as roughness
-	// grows. At full roughness it looks straight up, which is the average of the
-	// sky over the surface rather than a reflection of anything in particular.
+	// grows - by the product of the roughness and PBR_REFLECTIONS_ROUGHNESS, so
+	// at what ships (0.0) the roughness does not move the direction at all. At a
+	// factor of 1.0 a fully rough surface samples along its own normal: for the
+	// ground that is straight up, which is the average of the sky over it rather
+	// than a reflection of anything in particular, and for any other surface it
+	// is whichever way that surface faces, which is not up.
 	//
 	// The mixture is renormalized because mixing two unit vectors does not
 	// produce one, and both the sky model and the raytracer need a direction.
@@ -74,10 +78,12 @@
 	// [Kutz et al. 2021, "Novel aspects of the Adobe Standard Material"] - and
 	// Sundial's implementation of it, which is where the constants are from.
 	//
-	// With an F82 of 1.0 the term it corrects by is zero and this is Schlick
-	// exactly, which is why it can replace Schlick outright rather than being a
-	// branch: every surface that is not one of the tabulated metals takes that
-	// path and is left bit for bit as it was.
+	// With an F82 of 1.0 the term it corrects by is zero - b is (K - K * f82)
+	// times a positive factor - so the return is f0 + (1 - f0) * Fc, which is
+	// Schlick with a clamped base, and it is what every surface that is not one
+	// of the tabulated metals gets, since the table returns 1.0 for them. Recorded:
+	// that path is said to be left bit for bit as it was before this model was
+	// introduced.
 	vec3 F_AdobeF82(vec3 f0, vec3 f82, float VdotH) {
 		const float K = 49.0 / 46656.0;
 
@@ -181,10 +187,21 @@
 	// thing that removes it.
 	//
 	// The curve is Sundial's (Composite0, the reflectance of a solid surface),
-	// with the threshold generalised into PBR_REFLECTION_SMOOTHNESS_MIN: at its
-	// default the two are the same expression, smoothness - (1 - smoothness),
-	// and at either extreme it degenerates as expected - 1.0 lets everything
-	// through, 0.0 is the plain square root of the smoothness.
+	// with the threshold generalised into PBR_REFLECTION_SMOOTHNESS_MIN. At that
+	// option's default of 0.5 the two are the same expression: (smoothness - 0.5)
+	// / 0.5 is 2 * smoothness - 1, which is smoothness - (1 - smoothness).
+	//
+	// ⚠️ The two ends do not do what a threshold usually does. 0.0 is the plain
+	// square root of the smoothness with the numerator unbounded above - the
+	// threshold off, which is what the option's own note says - so no surface is
+	// excluded, only scaled by the square root of how smooth it is. 1.0 is the
+	// opposite of letting everything through: the
+	// numerator is then non-positive for every input and range is clamped at
+	// 1.0e-4, so nothing reflects but a surface of smoothness exactly 1.0. The
+	// option's top step is 0.9, where only that same surface gets through.
+	//
+	// Recorded: the curve is said to be Sundial's, from its Composite0; that is
+	// another pack and nothing here stands behind it.
 	//
 	// The conversion back to smoothness is the pack's own: PbrDecode turns the
 	// specular map's smoothness s into a roughness of (1 - s)^2, so undoing it
@@ -212,11 +229,17 @@
 	//
 	// The material buffers are cleared at the start of every frame, so a pixel
 	// that no surface program covered - the sky, a cloud, weather, a particle
-	// drawn over the top of one - reads as a zero normal, a roughness of one and
-	// no reflectance. Rejecting those here is what keeps a reflection from being
-	// computed from whatever happened to be left in the buffer, and it is also
-	// why the material outputs at the bottom of lit.fsh carry neutral values
-	// rather than being skipped when a material has nothing to say.
+	// drawn over the top of one - reads as a zero normal and no reflectance. The
+	// normal test is what rejects it: dot of a zero vector with itself is zero,
+	// and no surface can have a normal that fails that. The roughness test is
+	// doing its own work on a different case - a surface that was drawn and had
+	// nothing to say - since lit.fsh starts that material at a roughness of 1.0.
+	//
+	// What the roughness channel holds on a pixel nobody covered is the buffer's
+	// clear value, which is not written down anywhere in this pack and is not
+	// something these tests depend on; the normal and f0 tests settle it either
+	// way. It is also why the material outputs at the bottom of lit.fsh carry
+	// neutral values rather than being skipped when a material has nothing to say.
 	bool PbrReflectionPossible(
 		vec3 worldNormal,
 		float roughness,
@@ -233,8 +256,13 @@
 	// between a reflection and a wash of sky colour on the floor of a cave.
 	// Minecraft's sky light spreads sideways under an overhang and passes through
 	// glass, so a fragment can be lit as if it were outdoors with nothing of the
-	// sky visible from it; see PBR_REFLECTION_SKY_MIN for the option and for the
-	// one case this cannot tell apart.
+	// sky visible from it.
+	//
+	// Recorded, as the case this cannot tell apart: a surface lit through a glass
+	// window has a full sky light of 15, which is exactly what an open-air surface
+	// has, and there is nothing in what this is handed that separates the two. The
+	// option's own note in pbr.glsl says the same and offers the workaround of
+	// lowering PBR_REFLECTION_SKY_MIN, at the cost of reflections in caves.
 	//
 	// The trace is not scaled by it. What a traced ray finds is already lit for
 	// where it is, so a metal in a cave reflecting the cave around it is the

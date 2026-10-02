@@ -20,6 +20,10 @@
 // while requiring only shadow mapping. By carefully tweaking ambient lighting,
 // a look similar to indirect lighting can be achieved without the associated
 // complexity and performance cost.
+//
+// Recorded: "high-performance" and the cost comparison are the upstream pack's
+// own claim about this model, carried over with it. Nothing in this file
+// measures either.
 
 // LabPBR material decoding and the metallic BRDF.
 // Uniforms: normals, specular (only when PBR_SURFACE is defined)
@@ -56,6 +60,11 @@
 // before any download link.
 #define THANKS_MELLOW BY_THECMK // Authorship attribution. [BY_THECMK]
 #define THANKS_SUNDIAL BY_GEFORCELEGEND // Authorship attribution. [BY_GEFORCELEGEND]
+
+// Bliss is an edit of Chocapic13's shaders, so its entry names the base as well
+// as the edit - crediting the edit alone would leave the author of the base
+// unnamed, and the base is where its licence comes from. See NOTICE.md.
+#define THANKS_BLISS BY_X0NK // Authorship attribution. [BY_X0NK]
 
 #define FANTASY 0
 #define SEMI_NATURAL 1
@@ -132,8 +141,11 @@
 // is for the case where a resource pack says nothing, or says something that does
 // not suit the world being built, and what is wanted is to move the whole of it
 // warm or cool without editing the pack. It reaches the level-of-detail terrain
-// as well, which has no lightmap and takes a color of the pack's own; see the
-// note in BlockLightTint's far branch.
+// too, and there by the same route as everything else: lit_voxy.fsh asks Voxy for
+// the lightmap and defines VOXY_LIGHTMAP, so that terrain samples it as well. The
+// fallback branch in BlockLightTint, which has no lightmap and takes a colour of
+// the pack's own, is what used to serve the far half; it is now reached by
+// nothing in the pack, and it applies this option too in case that changes.
 //
 // The scale is the one a photographer uses. A candle and a torch are around
 // 1800 to 2500 K and read as deep orange; an incandescent bulb is 2700 K, which
@@ -158,13 +170,21 @@
 // approximation of the Planckian locus - the same curve the kelvin scale on a
 // camera or a light bulb is drawn from.
 //
-// Every pow() below has a guarded base, and that is the lesson from
-// PBR_PORTING.md 139 rather than caution for its own sake: a pow() with a
-// negative base is undefined in GLSL and comes out as a NaN on the drivers this
-// pack has been tested on, and the two expressions here are of the form
-// (t - 60) to a negative power, which is negative for every temperature below
-// 6000 K - that is, most of the list above. The clamps are what make the two
-// halves of each branch meet.
+// Every pow() below has a guarded base, and the guards are the lesson from
+// PBR_PORTING.md 139 rather than something this curve can reach. Worth being
+// exact about, because it reads the other way round: the resolved temperature is
+// clamped to 1000 K and up and then scaled by 0.01, so t is never below 10, and
+// the branch that tests t - 60 is only taken when t is above 66. Every max()
+// below is therefore inert on the path that evaluates it - t - 60 is at least 6
+// there, t is at least 10, and the log of t - 10 is only reached between 19 and
+// 66. They are kept because a curve like this is the kind of thing that gets
+// edited, and a negative base to a fractional power is undefined in GLSL and
+// comes out as a NaN on the drivers this pack has been tested on.
+//
+// The branches meet closely but not exactly: red is 255 below t = 66 and 259.7
+// just above it, and the clamp to 0 to 1 on the way out is what makes that
+// invisible. Green steps from 255.6 to 251.7 across the same point, which is
+// inside the range and does show as a slight crease.
 vec3 BlockLightTemperatureRgb(float kelvin) {
 	float t = clamp(kelvin, 1000.0, 40000.0) * 0.01;
 
@@ -281,18 +301,26 @@ vec3 AmbientSkyLighting(float skyLightStrength, float ambientStrength) {
 	// Everything above scales with sky light, which is what makes unlit places
 	// - the inside of a cave, the Nether, and the End, which has no sky light at
 	// all - sit at a brightness close to black. This adds a constant instead of
-	// scaling, so raising it lifts those places to something readable without
-	// flattening the falloff around a torch or washing the color out of a
-	// surface.
+	// scaling with the sky, so raising it lifts those places to something
+	// readable without flattening the falloff around a torch or washing the color
+	// out of a surface.
+	//
+	// ⚠️ What it does scale with depends on the branch this is compiled in: under
+	// DIRECTIONAL_SKYLIGHT_SHADING, which is the one the #define above selects,
+	// the constant sits inside the multiplication by ambientStrength and so
+	// varies with the face direction along with everything else. In the other
+	// branch it is added after that multiplication and is genuinely flat.
 	//
 	// It is deliberately not affected by sky light: the point is that this light
 	// is there when nothing else is.
 	//
 	// The range goes well above the default because of how little a small
-	// number does here: Steadfast's tonemapper is close to the identity below
-	// 0.6 in linear light, so what is written here is roughly what reaches the
-	// screen, multiplied by the surface's color. A cave floor at 0.05 is a very
-	// dark grey; making one properly readable takes several times that.
+	// number does here. The tonemapper is not close to the identity in this range:
+	// for a white surface under TONEMAP_UNCHARTED2, what is written here reaches
+	// the screen at a fraction of its own size - 0.05 arrives as about 0.038, 0.1
+	// as 0.074, 0.6 as 0.35 in linear light - and then the sRGB encode at the end
+	// of postprocessing lifts it again. A cave floor at 0.05 is a very dark grey;
+	// making one properly readable takes several times that.
 	#define MIN_AMBIENT_BRIGHTNESS 0.1 // [0.0 0.01 0.03 0.05 0.1 0.2 0.35 0.6]
 
 	// Fade sky ambient lighting away as sky light fades away, as that helps us
@@ -338,12 +366,13 @@ float HeldLightStrength(vec3 cameraRelativePos) {
 	// This is an attempt to model held light strength off of the same scale as
 	// Minecraft block lights use.
 	//
-	// Previously, this used the inverse-square law, but this lead to held light
+	// Previously, this used the inverse-square law, but this led to held light
 	// having an impact very far away from the player, which felt implausible.
 	//
-	// Implicitly, the light position is centered on the camera. This might not
-	// be desired, so to adjust, simply subtract the light position from the
-	// desired light position.
+	// What the falloff is measured from is the fragment's own camera-relative
+	// position, so the light is implicitly centred on the camera. To centre it
+	// somewhere else, subtract the wanted position from cameraRelativePos before
+	// the length below.
 	float fragDistance = length(cameraRelativePos);
 	return clamp(heldLightBaseStrength - fragDistance / 15.0, 0.0, 1.0);
 }
@@ -419,7 +448,11 @@ const float	sunPathRotation	= -40.0f;
 #endif
 
 void ApplyWaterAbsorption(
-	// Water depth in meters
+	// Water depth, normalised rather than in blocks: 1/16 at the surface under
+	// full sky light and 1.0 at fifteen blocks down or more, which is what the
+	// block light term below reads as "maximum depth". See the derivation in
+	// /environment/water/absorption_refraction.glsl, which the caller's own
+	// calculation is copied from.
 	float wdepth,
 	out vec3 directLightColor,
 	inout vec3 lighting,
@@ -428,8 +461,13 @@ void ApplyWaterAbsorption(
 	// Determine the tint needed to simulate water absorption
 	vec3 waterAbsorption = WaterAbsorption(wdepth);
 
-	// Fade direct light color to its luminance to avoid odd colors
-	// when orange sunrise light goes through water
+	// Fade the direct light from the surface colour to the underwater one as the
+	// depth grows, so that orange sunrise light does not arrive under water
+	// unaltered.
+	//
+	// The fade towards luminance is in the underwater colour itself rather than
+	// on this line: shaders.properties builds directLightUnderwater as
+	// directLightSurface mixed halfway to its own Rec601 luma.
 	directLightColor = mix(directLightSurface, directLightUnderwater, wdepth);
 
 	// Tint lighting (direct and ambient, but not block lighting) by the water
@@ -866,8 +904,13 @@ vec3 DiffuseLightingImpl(
 	// by DirectLighting on every path through it as well.
 	vec3 shadowTint = vec3(1.0);
 
-	// If the direct light strength is nonzero, add in direct lighting
-	// based on sampling the shadow map.
+	// Add in direct lighting, unless this program is one that can never receive
+	// it. Three raise NEVER_RECEIVES_SHADOWS: the weather program, which is drawn
+	// over the sky rather than in it; the Distant Horizons terrain and water
+	// programs, which have no shadow map position; and every world program when
+	// the shadow option is off, since lit.vsh raises it there when lit.fsh has
+	// not defined REAL_TIME_SHADOWS. Without the term there is nothing to build a
+	// highlight on either, which is what the #else branch says.
 	#if !defined(NEVER_RECEIVES_SHADOWS)
 		float directLightStrength = DirectLighting(
 			fragment,

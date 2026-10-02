@@ -72,11 +72,11 @@ const int colortex10Format = RGBA8;
 // fetches inside the frame.
 #include "/lib/smaa.glsl"
 
-// colortex10, and it takes RENDERTARGETS where every other pass in this pack
-// takes DRAWBUFFERS.
+// colortex10, and it takes RENDERTARGETS rather than DRAWBUFFERS. The pack
+// uses both: DRAWBUFFERS where the buffer is 9 or below, RENDERTARGETS here.
 //
-// DRAWBUFFERS is the older of the two directives and it cannot name a buffer
-// above nine. It is read one character per buffer, so "DRAWBUFFERS:10" is the two
+// DRAWBUFFERS is the older of the two and it cannot name a buffer above
+// nine. It is read one character per buffer, so "DRAWBUFFERS:10" is the two
 // buffers 1 and 0 rather than the one buffer ten, and what Iris then says is
 // "Pass sizes must match for drawbuffers [1, 0] / Original width: 960 New width:
 // 1920" - because colortex1 is the godrays at half resolution, so the pass was
@@ -91,8 +91,8 @@ const int colortex10Format = RGBA8;
 // the Voxy support.
 //
 // composite5 does the same thing for colortex11. composite6 writes colortex0,
-// which DRAWBUFFERS can name, so it keeps the older directive and matches the
-// rest of the pack.
+// which DRAWBUFFERS can name, so it keeps the older directive, as do
+// composite1, composite3, the deferred pass and the shadow pass.
 /* RENDERTARGETS: 10 */
 
 layout(location = 0) out vec4 smaaEdges;

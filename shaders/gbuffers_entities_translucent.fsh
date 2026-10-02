@@ -21,7 +21,9 @@
 #define AFTER_DEFERRED
 
 // Painted in the End by the debug view, to identify what draws the End's light
-// flash - see gbuffers_spidereyes.fsh. Purple.
+// flash - see gbuffers_spidereyes.fsh. Violet: vec3(0.6, 0.0, 1.0) is a
+// red-free blue-violet and not a magenta, which is what gbuffers_entities.fsh
+// carries and what a neighbouring program's flash would be confused with.
 #define END_DEBUG_TINT vec3(0.6, 0.0, 1.0)
 
 // Whether entities get PBR materials.
@@ -42,8 +44,13 @@
 // showing the world through them was.
 //
 // PBR_MATERIALS_ANY_TEXTURE is the same material path without that assumption:
-// the sprite bounds carry a zero half-size, which the clamp reads as "nothing
-// usable here" and leaves the coordinate alone.
+// the sprite bounds carry a zero half-size, which the material path reads as
+// "nothing usable here". What that means for parallax is worth saying, because it
+// is not "unbounded": PBR_PARALLAX_DEPTH and PBR_PARALLAX_MAX_OFFSET are fractions
+// of a sprite and the coordinate here is in this texture's own units, so with no
+// sprite there is no scale to apply them in and nothing is displaced. Turning
+// PBR_PARALLAX on therefore changes nothing in this program - see
+// gbuffers_entities.fsh, which takes PBR_ATLAS and does get bounds.
 #define PBR_ENTITIES
 #ifdef PBR_ENTITIES
 	#define PBR_MATERIALS_ANY_TEXTURE

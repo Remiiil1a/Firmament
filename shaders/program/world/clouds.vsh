@@ -39,8 +39,9 @@ out vec2 texcoord;
 out vec4 fog;
 
 void main() {
-	// This is effectively as if we multiplied with the model matrix, because we
-	// do not get the model matrix separate from the model view matrix.
+	// This is effectively as if we multiplied with the model matrix at this
+	// point in the file, because we do not get the model matrix separate from
+	// the model view matrix.
 	//
 	// gbufferModelView is a misnomer, it is actually just the view matrix. Same
 	// with gbufferModelViewInverse - it is the inverse view matrix.
@@ -66,7 +67,14 @@ void main() {
 	// this.
 	texcoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
 
-	// Compute fog based on the distance, the sky color, etc.
+	// Compute fog from the sky colour and the distance from the camera.
+	//
+	// At this point in the file fragDistance is not the ray's length: it is the
+	// larger of the height above the camera and the distance out in the
+	// horizontal plane, which is the same distance the surface programs hand
+	// Fog(). The two Fog() arguments are the far and the near half of the
+	// transition - 0.66 then 0.33 of that distance - and the 1.0 is full sky
+	// light, because nothing occludes a cloud.
 	// TODO: SkyDither?
 	vec3 skyGradient = SkyColor(normalize(cameraRelativePos.xyz));
 

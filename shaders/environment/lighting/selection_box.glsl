@@ -25,10 +25,12 @@
 // program/world/lit.fsh, where fragmentColor is finally written.
 //
 // ⚠️ "The block selection outline" is really "every line the game draws",
-// because there is only one program for all of them: the outline, the entity
-// hitboxes that F3+B shows, the bounding boxes of a structure block, and
-// anything else handed to a line render type. The pack cannot tell them apart -
-// they arrive at the same program with the same material - so every one of these
+// because there is only one program for all of them - gbuffers_basic.fsh, which
+// defines DRAWING_LINES - and it is handed the outline, the entity hitboxes that
+// F3+B shows, the bounding boxes of a structure block, and anything else with a
+// line render type. What the pack can tell is that a fragment came from that
+// program; what it cannot tell is which kind of line it is, because they arrive
+// with the same material and nothing else to go on. So every one of these
 // options applies to all of them. Worth knowing before wondering why a hitbox
 // changed colour.
 
@@ -46,9 +48,12 @@
 // What GLOW lights the outline with, one value per channel, 0 to 255.
 //
 // ⚠️ These are read as sRGB - the numbers a colour picker shows - and converted
-// on the way in, so that 128 looks like a mid tone rather than like a fifth of
-// full brightness. The pack works in linear light throughout and this is the one
-// place a player types a colour, which is why the conversion lives here.
+// on the way in, so that 128 is stored as roughly a fifth of full brightness -
+// 0.502 to the 2.2 is 0.222, in the linear light everything else here is in -
+// and therefore displays as 0.50, the mid tone the picker showed. Taken
+// unconverted it would be stored as 0.502 and display as 0.73. The pack works in
+// linear light throughout and this is the one place a player types a colour,
+// which is why the conversion lives here.
 //
 // ⚠️ They do nothing in the RGB mode, which chooses its own colours, and nothing
 // in VANILLA or NONE. Changing them in those modes is not a bug.
@@ -76,12 +81,16 @@
 // a coloured line with nothing around it; writing it several times over gives
 // the line and a halo of the same colour, which is what a glow is.
 //
-// ⚠️ The cost is that the line's own core clips towards white, because everything
-// above one is white after the tonemap. The COLOUR survives in the halo, which
-// is the larger part of what is being looked at - so a deep red reads as a white
-// line inside a red glow rather than as a red line. That is how emission usually
-// behaves and it was left that way deliberately; lowering this trades the halo
-// for the line's own colour.
+// ⚠️ What the line's own core does is not a clamp at one, and it depends on the
+// colour. lib/tonemap_uncharted2.glsl has a white point of 11.2 with a scale of
+// 1/0.7251 on top of it, and it tonemaps the three channels independently, so a
+// channel written at 5.0 comes back at about 0.974 and a channel written at 0.0
+// stays 0. The shipped white outline is written as (5, 5, 5) and lands as very
+// nearly white; a deep red is written as (5, 0, 0) and lands as (0.974, 0, 0) -
+// a saturated red line inside a red glow, not a white one. Only channels that go
+// past the white point clip, which is what makes a bright enough source read as
+// white. That is how emission usually behaves and it was left that way
+// deliberately; lowering this trades the halo for the line's own colour.
 const float SELECTION_GLOW_STRENGTH = 5.0;
 
 // The time uniform, which RGB mode cycles on.
@@ -138,10 +147,11 @@ vec3 SelectionBoxColor() {
 // ⚠️ Which matters for more than tidiness. The pack's own source check reads the
 // text without evaluating #if, and it recognises a use under a guard only when
 // the guard names the symbol being used - so a call to SelectionBoxColor sitting
-// in the world shader under a guard on DRAWING_LINES reads to it as a call in
-// fifteen programs that have never heard of the name, and it says so fifteen
-// times. Keeping the call in this macro body, and the guard on this macro's own
-// name, is what keeps the check quiet and honest at the same time.
+// in the world shader under a guard on DRAWING_LINES would read to it as a call
+// in fifteen programs that have never heard of the name, and it would say so
+// fifteen times, once per program. Keeping the call in this macro body, and the
+// guard on this macro's own name, is what keeps the check quiet and honest at
+// the same time.
 #if SELECTION_BOX == SELECTION_BOX_GLOW || SELECTION_BOX == SELECTION_BOX_RGB
 	#define SELECTION_BOX_OVERRIDE fragmentColor = vec4(SelectionBoxColor(), 1.0);
 #endif

@@ -69,10 +69,18 @@ uniform sampler2D depthtex0;
 // Reading this one instead is safe and costs nothing: colortex4 is written by
 // the deferred pass, which runs before every composite, so what is here is this
 // frame's picture. It is also the same format as colortex0 - R11F_G11F_B10F,
-// unsigned and with no exponent of its own - so it cannot hold a NaN, an
-// infinity or a negative, and this gather needs no guard for one. If the
-// deferred pass is skipped for a frame, this holds the previous frame's copy,
-// which for a blur this wide is a frame-old version of the same picture.
+// declared with that buffer's format in /program/world/lit.fsh - so it cannot
+// hold a NaN or a negative, and this gather needs no guard for one. (The format
+// is unsigned with no exponent of its own; an infinity is still representable.)
+//
+// At this point in the file the "written by the deferred pass" holds only for
+// the configurations that pass writes it in: /program/post/copy_and_fog.fsh
+// writes colortex4 only under `WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED`
+// or `VOXY`. In the other configuration it writes colortex1 and colortex0 and
+// leaves colortex4 alone, so there this buffer holds whatever last wrote it -
+// with the shipped settings, the previous frame. The pass's own comment on
+// `colortex4Clear` describes that same one-frame lag as deliberate. For a blur
+// this wide either is a frame-old version of the same picture.
 uniform sampler2D colortex4;
 
 uniform vec2 windowToScreen;

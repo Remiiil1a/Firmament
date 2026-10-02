@@ -83,24 +83,7 @@
 // above that the difference is small.
 #define MOTION_BLUR_SAMPLES 8 // [2 4 6 8 12 16 24 32]
 
-// The lens: a bug this effect had, kept on purpose because it looks like
-// something.
-//
-// The turning is measured by taking this pixel's direction, putting it through
-// the view the previous frame was drawn with, and seeing where it lands. The
-// direction has to be turned into world axes for that, and when it is not - when
-// the view-space direction is handed to the previous view's matrix - the view's
-// own rotation is applied twice. The result is a disc of wrong movement that
-// turns with the camera at twice the angle the camera turns: looking north it
-// sits exactly where you are looking and does nothing at all, and turning the
-// view a quarter turn carries it half a turn round.
-//
-// It is off by default, because a movement blur that adds movement nobody made
-// is a bug and not an effect. It is here because it was reported as a curiosity
-// and asked for again; see PBR_PORTING.md §26.
-//#define MOTION_BLUR_LENS
-#ifdef MOTION_BLUR_LENS
-#endif
+// applied twice, and the reprojection below applies it once.
 
 #ifdef MOTION_BLUR
 
@@ -129,6 +112,18 @@ uniform mat4 gbufferPreviousModelView;
 // of this effect.
 uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
+// The previous-frame matrices and the view size, which the shared reprojection
+// below needs. Declared here rather than left to the caller: this file is
+// included by more than one program and only one of them had them.
+uniform mat4 gbufferPreviousProjection;
+uniform mat4 gbufferModelViewInverse;
+uniform float viewWidth;
+uniform float viewHeight;
+
+// The one copy of that arithmetic, shared with the temporal resolve and the
+// reflection's history. ⚠️ After the declarations above, not before: the file
+// declares nothing itself and uses what is already in scope.
+#include "/lib/reproject.glsl"
 
 // How close to the eye the blur gives up, in blocks, and where it is back to
 // full strength. One frame of walking moves the camera a few centimetres, which
@@ -151,27 +146,8 @@ const float MOTION_BLUR_FAR = 1.5;
 // The price is that a very slow, deliberate turn - slower than about a quarter
 // of a pixel per frame at this resolution, which is a hand resting on the mouse
 // more than a turn - is not blurred either.
-const float MOTION_BLUR_TURN_MIN_PIXELS = 3.0;
-const float MOTION_BLUR_TURN_MAX_PIXELS = 12.0;
 
-// Where a world direction lands on the screen under the rotation of the previous
-// frame and the projection of this one - or (-1, -1) if that view had the
-// direction behind the eye, where there is no screen position to be had.
-//
-// A direction rather than a position on purpose: the screen position of a point
-// depends on nothing but the direction from the eye to it, so a direction is
-// enough for any distance, and a direction has no origin for the translation of
-// the matrix to move - which is what keeps the bob's translation out of this.
-vec2 TurnedScreenCoord(vec3 worldDir) {
-	vec3 previousDirView = mat3(gbufferPreviousModelView) * worldDir;
-	vec4 previousDirClip = gbufferProjection * vec4(previousDirView, 1.0);
 
-	if (previousDirClip.w <= 0.0) {
-		return vec2(-1.0);
-	}
-
-	return previousDirClip.xy / previousDirClip.w * 0.5 + 0.5;
-}
 
 // The finished colour of this pixel, blurred along the movement of the camera.
 //
@@ -185,6 +161,12 @@ vec3 MotionBlur(vec2 screenCoord) {
 	vec4 viewPosH = gbufferProjectionInverse * vec4(ndcPos, 1.0);
 	vec3 viewPos = viewPosH.xyz / viewPosH.w;
 
+	// The absolute world position of this pixel's surface, so the previous frame's
+	// camera can be applied to it. Working in absolute terms is what makes this
+	// survive the camera moving; composite1 does the same.
+	vec3 cameraRelativePosMB = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+	vec3 worldPos = cameraRelativePosMB + cameraPosition;
+
 	// How far the camera has travelled since the previous frame, in the axes of
 	// the view. The matrix the geometry was drawn with turns world directions
 	// into view ones, and this is a direction as far as it is concerned: only the
@@ -193,77 +175,40 @@ vec3 MotionBlur(vec2 screenCoord) {
 	vec3 travelView = mat3(gbufferModelView)
 		* (cameraPosition - previousCameraPosition);
 
-	// The same world point, seen from where the camera was a frame ago. The
-	// camera moved forward, so relative to it the point stood further back.
-	vec3 previousViewPos = viewPos - travelView;
+	// Where this pixel's world point was on screen last frame - from the one copy
+	// of that arithmetic. See /lib/reproject.glsl.
+	//
+	// This replaces two measurements that used to be added together: a
+	// translation, projected by hand, and a rotation, compared by direction. That
+	// split is what made the turn dead zone necessary - the rotation had to be
+	// judged on its own, and the walk bob lives in it - and it is what the lens
+	// option existed to exploit. One reprojection measures the whole movement of
+	// the pixel, so a bob moves it by a sub-pixel and blurs it by a sub-pixel,
+	// which is what it should do, and there is no second rotation left to keep.
+	//
+	// The held item is attached to the camera and does not slide across the screen
+	// as the camera moves, so it is reprojected by rotation alone - the same rule
+	// and the same threshold the resolve uses. See TAA_HAND_DEPTH.
+	const float MOTION_BLUR_HAND_DEPTH = 0.56;
 
-	// Where that lands on the screen, under the same view and the same
-	// projection: a frame in which the camera had moved and done nothing else.
-	vec4 previousClipPos = gbufferProjection * vec4(previousViewPos, 1.0);
+	vec3 reprojectFrom = depth > MOTION_BLUR_HAND_DEPTH
+		? worldPos
+		: worldPos + (previousCameraPosition - cameraPosition);
 
-	// A point that the previous camera would have had behind it has no screen
-	// position to be found at, and no movement worth drawing.
-	if (previousClipPos.w <= 0.0) {
-		return texture(colortex0, screenCoord).rgb;
-	}
+	Reprojection reprojection =
+		ReprojectWorldPosition(reprojectFrom, screenCoord);
 
-	// How far this pixel moved, and so the segment the blur is drawn along. A
-	// pixel with nothing in front of it has no position of its own to move, and
-	// comes out with almost no movement of its own: the sky is very far away, and
-	// travelling does not change how a distant thing looks from here.
-	vec2 previousScreenCoord = previousClipPos.xy / previousClipPos.w * 0.5 + 0.5;
-
-	// Folded back onto the edge of the screen rather than dropped, so that the
-	// few pixels at the edge blur by a little less instead of coming out as a
-	// band of sharp pixels with a blurred one beside it.
-	previousScreenCoord = clamp(previousScreenCoord, vec2(0.0), vec2(1.0));
-
+	// Where it lands, folded back onto the edge of the screen rather than dropped,
+	// so that the few pixels at the edge blur a little less instead of coming out
+	// as a band of sharp pixels with a blurred one beside it.
+	//
+	// ⚠️ The offset is a fraction of the screen, in the same units as screenCoord,
+	// and NOT the pixel-space velocity the resolve uses - that one is only ever
+	// compared against a length there, and multiplying this by the view size here
+	// smears the whole frame along the direction of travel. Batch 363 did exactly
+	// that and looked like radial streaks from the middle of the screen.
+	vec2 previousScreenCoord = clamp(reprojection.previousCoord, vec2(0.0), vec2(1.0));
 	vec2 velocity = screenCoord - previousScreenCoord;
-
-	// The turning of the camera, which is the other half of its movement: where
-	// this pixel's direction was on the screen before the view turned.
-	//
-	// The direction has to be in world axes for that, and `viewPos` is not: the
-	// vector from the eye to this pixel is expressed in the axes of the frame it
-	// was drawn in. Reading it out against the columns of that matrix turns it
-	// into world axes - the matrix's transpose, which for a rotation is its
-	// inverse - and the previous frame's matrix then turns it back into the axes
-	// the previous frame used, which is the whole comparison.
-	//
-	// Handing the view-space direction straight to the previous matrix instead
-	// applies the view's own rotation a second time, which is what MOTION_BLUR_LENS
-	// preserves on purpose. See the note on that option.
-	vec3 viewDir = normalize(viewPos);
-	mat3 viewAxes = mat3(gbufferModelView);
-	vec3 worldDir = vec3(
-		dot(viewDir, viewAxes * vec3(1.0, 0.0, 0.0)),
-		dot(viewDir, viewAxes * vec3(0.0, 1.0, 0.0)),
-		dot(viewDir, viewAxes * vec3(0.0, 0.0, 1.0)));
-
-	#ifndef MOTION_BLUR_LENS
-		vec2 turnedScreenCoord = TurnedScreenCoord(worldDir);
-	#else
-		// The view-space direction, which is the doubled rotation. Deliberate; see
-		// the option.
-		vec2 turnedScreenCoord = TurnedScreenCoord(viewDir);
-	#endif
-
-	// A direction the previous view had behind the eye has no screen position to
-	// compare against, so nothing is added for it.
-	if (all(greaterThan(turnedScreenCoord, vec2(-0.5)))
-		&& all(lessThan(turnedScreenCoord, vec2(1.5)))) {
-		vec2 turnVelocity = screenCoord - turnedScreenCoord;
-
-		// How much of the screen that turn moved, in pixels: small movements are
-		// the walk bob rather than the player turning, and are left out. See the
-		// note on the dead zone above.
-		float turnPixels = length(turnVelocity / windowToScreen);
-
-		velocity += turnVelocity * smoothstep(
-			MOTION_BLUR_TURN_MIN_PIXELS,
-			MOTION_BLUR_TURN_MAX_PIXELS,
-			turnPixels);
-	}
 
 	velocity *= MOTION_BLUR_AMOUNT;
 

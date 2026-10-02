@@ -21,6 +21,14 @@
 // Actual wave measurements/definitions used by the Noise water surface
 // implementation.
 //
+// Every "Tile Dimensions" comment below gives the two components of the
+// `vec2 tileSize` that follows it, in meters, in the order X then Y. A
+// `tileSize` is the world extent one noise tile covers along each axis - see
+// `NoiseWave.tileSize` in surface_noise.glsl, where the reciprocal becomes the
+// scale factor from world space to noise pixels. Note that the components are
+// not always in the order the prose reads: RIPPLES[0] is 1.5 m along X and
+// 2.0 m along Y.
+//
 // The parameters of these waves have been selected to give a similar appearance
 // to SEUS-11.0 and SEUS Renewed. In fact, the waves in SEUS PTGI are actually
 // just SEUS Renewed waves scaled by a factor of 4 so that they appear to have a
@@ -29,7 +37,7 @@
 // that the baked water caustics texture used by SEUS PTGI (as opposed to the
 // procedural caustics of Renewed) could be kept to a smaller size.
 //
-//Since we use procedural caustics, that is not a worry for us.
+// Since we use procedural caustics, that is not a worry for us.
 
 // Number of ripple waves in the water surface (NOISE only).
 #define NUM_RIPPLES 4 // [0 1 2 3 4]
@@ -48,7 +56,7 @@
 const NoiseWave RIPPLES[4] = NoiseWave[](
 	// Larger, low frequency ripples
 	NoiseWave (
-		// Tile Dimensions: 1.5 meters x 4 meters
+		// Tile Dimensions: 1.5 meters x 2.0 meters
 		vec2(1.5, 2.0),
 		// Shear Angle: 30° (Tilt by 60°)
 		30.0 * Degrees,
@@ -60,7 +68,7 @@ const NoiseWave RIPPLES[4] = NoiseWave[](
 		16.0
 	),
 	NoiseWave (
-		// Tile Dimensions: 1 meter x 1.5 meters
+		// Tile Dimensions: 1.0 meter x 1.5 meters
 		vec2(1.0, 1.5),
 		// Shear Angle: -36° (Tilt by -54°)
 		-36.0 * Degrees,
@@ -106,9 +114,12 @@ const NoiseWave RIPPLES[4] = NoiseWave[](
 //
 // These waves have a more distinctive and intermittent "crest" shape
 // and are otherwise flat. They are very slightly more computationally costly
-// than "ripple" waves, because computing the normal vectors requires both a
-// smoothNoise2D sample and a gradSmoothNoise2D sample, wheras ripple waves
-// only require a gradSmoothNoise2D sample.
+// than "ripple" waves. In the analytic gradient path this is a whole extra
+// noise evaluation per wave: the crest gradient needs both a smoothNoise2D
+// sample, to get the value the crestDerivative is evaluated at, and a
+// gradSmoothNoise2D sample, whereas a ripple only needs the gradSmoothNoise2D.
+// In the height path it is only the extra `crest` call (a mul, a cos and an fma
+// in surface_noise.glsl) around a sample both kinds already take.
 //
 // However, they do not add a significant increase in computational cost
 // for computing the wave height, which due to parallax mapping is still a

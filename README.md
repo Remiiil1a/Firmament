@@ -57,8 +57,11 @@ Bug reports about it do not belong in Steadfast's issue tracker.
   the shafts through a canopy are cast by it. The medium is a world-locked noise
   drifting with the same wind the clouds use, so it never slides with the camera,
   and rain thickens it.
-* **Rain and snow particles** - the rain texture can be tiled across each column
-  and each drop's width kept or trimmed, and its colour taken out or pushed.
+* **Rain particles** - the rain texture can be tiled across each column and each
+  drop's width kept or trimmed, and its colour taken out or pushed. Snow is drawn
+  by the same program and is **not** touched by any of it: which of the two a
+  particle is is read from the particle texture, so a flake stays as the resource
+  pack has it.
 * **The sun and the moon in water** - the game's own `sun.png` and its eight
   lunar phases, carried by the pack, so the disc on the water and its phase are
   the ones the sky is showing. Each body is trimmed against the sky's size
@@ -84,7 +87,7 @@ Bug reports about it do not belong in Steadfast's issue tracker.
 
 ## Installation
 
-1. Drop `Firmament-v0.7-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
+1. Drop `Firmament-v0.8-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
    Do not unzip it.
 2. Pick it in **Video Settings → Shader Packs**.
 3. In the shader options, `Materials (PBR) → Material format` follows the
@@ -95,8 +98,10 @@ Bug reports about it do not belong in Steadfast's issue tracker.
 * **Distant shadows only reach as far as the depth buffer does**: terrain behind
   the camera, off screen, or hidden does not cast, and thin things like grass and
   fences are easy to miss.
-* **TAA has no motion vectors** - anything that moves on its own is handled by
-  rejecting history that disagrees, not by tracking it.
+* **TAA has no object motion vectors** - the previous frame's camera is used for
+  the reprojection, but nothing tells it how an entity, a particle or a falling
+  block moved, so those are handled by rejecting history that disagrees rather
+  than by tracking it.
 * **Voxy terrain's vertices are emitted by the mod**, not by this pack, so it is
   not covered by TAA's sub-pixel jitter.
 * **Reflections are left out where they cannot be right.** A surface seen through
@@ -115,15 +120,17 @@ Bug reports about it do not belong in Steadfast's issue tracker.
 |---|---|
 | **Steadfast 0.8.0** | coderbot - the original shader, and all of the base rendering, profiles and style |
 | **Firmament edit** | Remiiil1a - direction, testing, tuning; code written by **DeepSeek V4.1 Flash** (AI) |
-| **Referenced code** | follows **Mellow Shader v3.4** by **TheCMK** (MIT) and **Sundial Lite** by **geforcelegend** (GPLv3) |
+| **Referenced code** | follows **Mellow Shader v3.4** by **TheCMK** (MIT), **Sundial Lite** by **geforcelegend** (GPLv3), and **Bliss Shader** by **X0nk**, an edit of **Chocapic13's** shaders |
 | **labPBR standard** | the shaderLABS community - material channel layout and conventions |
 
-No assets are reused from either of the two referenced packs - no textures, no
-logos, no screenshots - and neither project is affiliated with this one or
-endorses it. Their names are not part of this pack's name or branding.
+No assets are reused from any of the three referenced packs - no textures, no
+logos, no screenshots - and none of the three projects is affiliated with this one
+or endorses it. Their names are not part of this pack's name or branding.
 
-The two referenced packs have their own entries in the settings menu, under
-**Credits & licence → Special thanks**.
+All three referenced packs have their own entries in the settings menu, under
+**Credits & licence → Special thanks**. Bliss is credited together with
+**Chocapic13**, whose shaders it is an edit of: its own licence file carries
+Chocapic13's notice rather than one of its own.
 
 ## Licence
 
@@ -135,6 +142,10 @@ The two referenced packs have their own entries in the settings menu, under
 * Mellow Shader is Copyright (c) 2026 TheCMK, **MIT** (`LICENSE-MELLOW-MIT.txt`).
 * Sundial Lite is Copyright (c) geforcelegend, **GPLv3** - the same licence as
   this pack, whose copy is `LICENSE.md`.
+* Bliss Shader is an edit of **Chocapic13's** shaders by **X0nk**. Its
+  `LICENSE.md` is a single line, `© 2020 Chocapic13. All rights reserved.`,
+  inherited from the base it edits; what this pack follows from it, and how that
+  stands, is set out in **`NOTICE.md`**.
 * There is no warranty. The full summary is in **`NOTICE.md`**, and what changed
   in each release is in **`CHANGELOG.md`**. The long-form notes for each release
   are the `RELEASE_NOTES-*.md` files, which are kept with the project rather than

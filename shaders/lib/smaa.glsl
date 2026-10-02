@@ -171,10 +171,22 @@
 
 // How different two pixels have to look to count as an edge.
 //
-// A plain Euclidean distance between two colours, weighted mostly by green
-// because the eye is, and switched between two weightings by how red the midpoint
-// is - which is the "redmean" approximation of how a person sees a colour
-// difference, and is what the reference implementation uses.
+// A Euclidean distance between two colours, weighted per channel - most heavily
+// on green, and the red and blue weights swapped against each other by how red
+// the midpoint of the two colours is. The switch is a step at a midpoint red of
+// 0.5, so the function has two discrete weightings rather than a continuous
+// scale, and its name is the one this is borrowed from: the "redmean"
+// approximation of how a person sees a colour difference.
+//
+// This is Mellow Shader's redmean verbatim (global/post/smaa.glsl in
+// Mellow_Shader_v3.4), including the step, so it is the version of the idea the
+// reference implementation in use here actually has - not the continuous
+// redmean formula some other references give. The three weights are 2 + r, 4 and
+// 3 - r, so green always counts for four times the worst case of either side.
+//
+// Note that the input this is handed is a display-space colour rather than the
+// linear light the rest of the pack works in; see composite4.fsh for where the
+// conversion happens.
 float SmaaRedmean(vec3 a, vec3 b) {
 	float r = step(0.5, mix(a.r, b.r, 0.5));
 	vec3 d = a - b;
@@ -188,7 +200,11 @@ float SmaaRedmean(vec3 a, vec3 b) {
 
 // How many pixels the edge continues past a sampled point, read out of the search
 // table. The addressing is the reference implementation's and depends on the
-// table's own size, which is 64 by 16.
+// table's own size, which is 64 by 16 - but note what SEARCH_TEX_SIZE below
+// holds: it is 66 by 33, one texel past each edge of that, because the reference
+// implementation's addressing is written for a table with a one-texel border.
+// The last two lines divide by the true 64 by 16, so the value that reaches the
+// sampler is still a coordinate in the image that is actually bound.
 float SmaaSearchLength(vec2 sample, float offset) {
 	const vec2 SEARCH_TEX_SIZE = vec2(66.0, 33.0);
 
@@ -263,7 +279,10 @@ float SmaaSearchYDown(sampler2D edges, vec2 texcoord, float end) {
 
 // What the table says to do about an edge whose ends are d1 and d2 away, seen
 // from the two sides e1 and e2. The table is 160 by 560 and this is its own
-// addressing.
+// addressing: e1 and e2 are each rounded to one of the sixteen edge shapes and
+// become the block's position in the table, and d1 and d2 pick the cell inside
+// that block. The 0.5 is the texel centre, for the same reason as everywhere
+// else in this file.
 vec2 SmaaSampleArea(float d1, float d2, float e1, float e2) {
 	vec2 coord = 16.0 * round(4.0 * vec2(e1, e2)) + vec2(d1, d2) + 0.5;
 	return texture(smaaArea, coord / vec2(160.0, 560.0)).rg;

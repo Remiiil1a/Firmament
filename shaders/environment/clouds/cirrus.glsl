@@ -86,9 +86,11 @@ float cirrusCloudPlane(float seconds, vec3 channel, vec2 at) {
 	// star-shaped artifacts of value noise, which would otherwise produce very
 	// unconvincing clouds.
 	//
-	// For the other 2 midrange contributions, we stretch the sampling position
-	// diagonally, producing a distinctive "feathered" appearance. These
-	// contributions account for 12% of the final density value.
+	// For the other 2 midrange contributions (8% and 4%), we stretch the
+	// sampling position diagonally, producing a distinctive "feathered"
+	// appearance. Together those two account for 12% of the final density
+	// value; with the 56% primary and the 28% layer above, that is the 96%
+	// the four midrange terms cover, and the two detail terms add the last 3%.
 	float density = 0.56 * primary;
 
 	density += 0.28 * noise(channel,
@@ -180,8 +182,11 @@ const vec3[4] noiseChannels = vec3[4](
 );
 
 // This can appear in any order. Normally, translucent blending requires strict
-// ordering, but because the color of clouds is constant we don't need to retain
-// that.
+// ordering, but the loop below only accumulates `alpha` additively into
+// cloudColorWeight and multiplicatively into skyColorWeight, so swapping two
+// layers gives the same two sums - the order genuinely cannot matter here. It
+// is not merely that cloudColor is constant (that is what lets the loop keep
+// one color at all), it is that neither accumulator is order-dependent.
 const float[4] scales = float[4](-5, -2, -7.5, -1);
 
 // Clouds are animated over time.
@@ -230,7 +235,7 @@ vec3 blendCirrusClouds(vec3 skyColor, vec2 intersectPos) {
 	// 5. (1.0 - B) * (1.0 - A) * skyColor + cloudColor * (A - AB + B)
 	//
 	// An important note is that since the cloud alpha should not be too high
-	// (as that looks ugly, IMO), the product AB ends up being quote small.
+	// (as that looks ugly, IMO), the product AB ends up being quite small.
 	//
 	// A decent approximation is just assuming that AB is zero, which seems to
 	// work & I did not see any sort of noticeable difference. This helps

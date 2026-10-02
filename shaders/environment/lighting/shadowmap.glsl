@@ -37,7 +37,7 @@ const bool shadowHardwareFiltering1 = true;
 	uniform sampler2DShadow shadowtex1;
 	#define shadowSampler shadowtex1
 
-	// Whether underwater terrain will have an antimated water caustics overlay.
+	// Whether underwater terrain will have an animated water caustics overlay.
 	#define WATER_CAUSTICS
 #else
 	uniform sampler2DShadow shadowtex0;
@@ -65,11 +65,18 @@ const bool shadowHardwareFiltering1 = true;
 #endif
 
 // Higher shadow map resolutions give sharper shadows at the expense of
-// perfomance.
+// performance.
 const int shadowMapResolution = 2048; // [1024 1536 2048 3072 4096]
 
 // Render distance of the shadow map, in blocks. No objects outside of this
 // distance cast or receive real-time shadows.
+//
+// Recorded, because nothing in this pack can demonstrate it: the shader mod is
+// what reads the two multipliers below, and the pack's understanding is that
+// shadowDistanceRenderMul scales the box terrain is culled against - see the
+// note on that box in ShadowMapping - while entityShadowDistanceMul does the
+// same for entities. At 0.25 that is a quarter of the distance here, 32 blocks,
+// which is where entities stop.
 const float shadowDistance = 128; // [32 48 64 80 96 112 128 144 160 192 256]
 const float shadowDistanceRenderMul = 1.0;
 const float entityShadowDistanceMul = 0.25;
@@ -111,7 +118,9 @@ const float entityShadowDistanceMul = 0.25;
 #ifdef WATER_CAUSTICS
 	#include "/environment/water/caustics_noise.glsl"
 
-	// Distance in meters to apply parallax mapping to the water surface. 
+	// How far out, in blocks, the water caustics overlay is applied. It fades
+	// out over the four blocks past this, and there is nothing parallax about it
+	// - the note below says why it has a distance limit at all.
 	#define WATER_CAUSTICS_DISTANCE 48.0 // [8.0 16.0 24.0 32.0 48.0 64.0]
 #endif
 
@@ -126,7 +135,7 @@ float SampleWaterCaustics(
 	// distance.
 	//
 	// In addition, rendering caustics far away from the player is still costly
-	// and unnoticable after a certain distance, so it is a good optimization to
+	// and unnoticeable after a certain distance, so it is a good optimization to
 	// give them a render distance limit.
 	float causticsStrength = causticsFade * withinShadowMap;
 	causticsStrength *= 1.0 - smoothstep(
@@ -284,8 +293,9 @@ float ShadowMapping(
 	// resource pack stored can trigger this, whichever is larger, so a pack that
 	// marks one plant as thin gets the wider shadow on that plant alone.
 	//
-	// Note the gate: with PBR_SUBSURFACE off this stays 1.0 for every material,
-	// which leaves the shadows exactly as they were.
+	// Note the gate: it takes both PBR_SURFACE and PBR_SUBSURFACE, so with
+	// either one off this stays 1.0 for every material, which leaves the shadows
+	// exactly as they were.
 	float shadowSoftnessScale = 1.0;
 	#if defined(PBR_SURFACE) && defined(PBR_SUBSURFACE)
 		// How much wider the filter is spread for a fully scattering material.
@@ -314,10 +324,16 @@ float ShadowMapping(
 	#endif
 
 	#ifdef COLORED_SHADOWS
-		// Neither stained glass nor a nether portal occludes. Both are drawn in
-		// the translucent stage, and the shadow map this samples - shadowtex1, the
-		// one without translucents - leaves that stage out, so what either of them
-		// leaves on the ground is not a hole in the light but a colour in it.
+		// Neither stained glass nor a nether portal occludes - while
+		// FANCY_TRANSLUCENTS is on, which is what makes shadowSampler shadowtex1,
+		// the map without the translucent stage in it. Both are drawn in the
+		// translucent stage, and that map leaves the stage out, so what either of
+		// them leaves on the ground is not a hole in the light but a colour in it.
+		//
+		// With FANCY_TRANSLUCENTS off the sampler is shadowtex0, which does have
+		// that stage in it: a pane or a portal then occludes like anything else
+		// and the tint below has nothing left to add. The two options are
+		// independent, so this is the one combination where that happens.
 		//
 		// Looked up at the same texel the shadow itself was sampled at, which is
 		// the point: the shadow map records the nearest surface along the light
@@ -351,10 +367,14 @@ float ShadowMapping(
 				// and a portal would otherwise light its own faces with its own
 				// glow, which would darken every green in them.
 				//
-				// So a colour that came from an emitter is faded out on translucent
-				// surfaces, and the alpha is what says a colour came from an
-				// emitter. Standing inside a portal is the same case seen from the
-				// other side, and is answered by the same line.
+				// So a colour that came from an emitter is faded out on surfaces
+				// the pack calls GLASS - glass, its panes, fire, and any unlisted
+				// translucent, which is what the portal's own faces are too. Not
+				// on every translucent material: water and stained glass are left
+				// alone, the latter because a filter's colour has to survive. The
+				// alpha is what says a colour came from an emitter. Standing
+				// inside a portal is the same case seen from the other side, and
+				// is answered by the same line.
 				//
 				// Stained glass is deliberately not treated this way - see the
 				// branch above, and note that its colour is written with an alpha of

@@ -173,6 +173,10 @@ const float causticsLogMagnitude[6] = float[](
 
 // TODO: Copied from surface_noise.glsl
 //
+// This is a copy of `crest` in surface_noise.glsl and not the same function -
+// it has its own name and its own body, so a change to one will not reach the
+// other.
+//
 // This function reshapes the original smooth transitions
 // between different wave levels into more visible "crests"
 // on the transitions between different wave levels, such that
@@ -192,9 +196,11 @@ float crestCaustics(float h) {
 float WaterCaustics(vec3 worldPos, float time) {
 	// Project the 2D caustics on to the 3D underwater surface.
 	//
-	// While potentially unintuitive, projecting this as we would with the
-	// shadow map looks bad. Perhaps we can rotate this with the light position
-	// but this simple approach seems to be completely fine.
+	// This shears the pattern by world Y, so it slides as the surface rises and
+	// falls rather than staying fixed in the XZ plane. While potentially
+	// unintuitive, projecting this as we would with the shadow map looks bad.
+	// Perhaps we can rotate this with the light position but this simple
+	// approach seems to be completely fine.
 	worldPos.xz += vec2(-2.0 / 3.0, 2.0 / 3.0) * worldPos.y;
 
 	// Deform the coordinates with a sine wave to add some additional animation,
@@ -236,5 +242,17 @@ float WaterCaustics(vec3 worldPos, float time) {
 
 	// Allow anywhere between 66% brightness to 250% brightness. Square it
 	// so that caustics are more intermittent.
+	//
+	// Those two figures describe the term before the square. The sum of the
+	// per-wave terms below reaches 3.02 when every wave's noise is at its
+	// maximum, since the weights sum to 1 - that end is exact. The 0.66 end is
+	// the low end of the range in practice rather than a bound the arithmetic
+	// enforces: the smallest weight is 0.15 of 1.0, so a single wave going to
+	// zero only drops the sum by about that much. This line maps the range onto
+	// -0.33 to 1.5 rather than onto 0 to 1.
+	//
+	// The constant is written as (1.5 + 0.33), i.e. 1.83 fed in as a sum so the
+	// compiler folds it and saves an instruction. Square first, then scale: the
+	// multiply by 1.83 is applied to the square, not inside it.
 	return (caustics * caustics) * (1.5 + 0.33) - 0.33;
 }

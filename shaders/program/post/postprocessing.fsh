@@ -149,9 +149,7 @@ uniform vec3 godraysColor;
 // - once by the falloff, and again by the tonemap's own shoulder, which is
 // already compressing everything up there - and what that produces is corners
 // that go flat rather than corners that go dark.
-#define VIGNETTE_ON 1
-#define VIGNETTE_OFF 0
-#define VIGNETTE VIGNETTE_ON // [VIGNETTE_OFF VIGNETTE_ON]
+#define VIGNETTE
 
 // How much of its light a corner loses. The centre of the screen is never
 // touched; this is the falloff at its very edge.
@@ -244,7 +242,7 @@ void main() {
 			color += bloom * BLOOM_STRENGTH;
 		#endif
 
-		#if VIGNETTE == VIGNETTE_ON
+		#ifdef VIGNETTE
 			// Squared distance from the centre of the screen, in the -1..1 space
 			// the screen's edges are 1 away in: 0 at the centre, 1 at the middle
 			// of an edge, 2 in a corner.

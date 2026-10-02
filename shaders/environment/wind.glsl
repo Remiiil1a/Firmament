@@ -16,14 +16,25 @@
 
 // Straightforward & fast but visually appealing displacement implementation.
 // Utilizes custom uniforms defined in shaders.properties.
+//
+// worldPos is genuinely world space, not camera-relative: the one caller adds
+// cameraPosition to its camera-relative position before calling this (lit.vsh,
+// in WaveFoliage). That is load-bearing - the phases below are taken from the
+// position, so a camera-relative argument would drag the patches along with the
+// camera instead of leaving them fixed in the world.
 uniform float windStrengthHalf;
 uniform vec4 windTheta;
 
 vec3 WindDisplacement(vec3 worldPos) {
 	// Wind magnitude is given by a sine wave with a positional phase shift.
-	// In other words, it cycles between 0 and the wind strength, and varies
-	// with the block position, but in a continuous manner such that wind
-	// appears to move in patches.
+	// In other words, it cycles between 0 and twice windStrengthHalf - which is
+	// what the name says, the uniform being half the peak - and varies with the
+	// block position, but in a continuous manner such that wind appears to move
+	// in patches.
+	//
+	// The phase it varies with is worldPos.y + worldPos.z, so it does not vary
+	// with x at all: two blocks at the same height and the same z move together
+	// however far apart they are along x.
 	float magnitude = sin(windTheta.w + worldPos.y + worldPos.z)
 		* windStrengthHalf + windStrengthHalf;
 
@@ -31,6 +42,10 @@ vec3 WindDisplacement(vec3 worldPos) {
 	// the phase based on position. In the vertical direction (y), we halve the
 	// phase shift, as wind is horizontal, and making columns of leaves appear
 	// to move as a more continuous unit makes the wind more convincing.
+	//
+	// The phase is the same (worldPos.x + worldPos.z) for all three axes; the
+	// vec2 below is (scale for x and z, scale for y), and it is read as
+	// windPhaseShift.xyx.
 	vec2 windPhaseShift = (worldPos.x + worldPos.z) * vec2(1.5, 0.75);
 
 	// Finally, compute the displacement vector as magnitude times direction.

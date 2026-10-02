@@ -34,7 +34,7 @@ Those same terms also require, for any modified version:
   modified version anywhere else;
 * that the **file name include the same thing**, for which the terms suggest the
   suffix `-edit-of-coderbot-Steadfast` - hence
-  `Firmament-v0.7-edit-of-coderbot-Steadfast.zip`;
+  `Firmament-v0.8-edit-of-coderbot-Steadfast.zip`;
 * that the GPL and those terms are kept, and that nothing suggests this is an
   official Steadfast release. **It is not.** coderbot does not support it, and
   bug reports about it do not belong in Steadfast's issue tracker.
@@ -45,12 +45,22 @@ Public License version 3 or later, with the additional terms above. There is
 
 ## 2. Other shaders this pack references
 
-Besides Steadfast, two projects are referenced or quoted from in the code. Both
-are credited in the pack's own menu, on a **Special thanks** page under
+Besides Steadfast, three projects are referenced or quoted from in the code. All
+three are credited in the pack's own menu, on a **Special thanks** page under
 `Credits & licence` (the `SPECIAL_THANKS` page in `shaders/lang/*.lang`, one
 entry per project). That credit is deliberately
 **not split up by feature**: it states plainly that this pack references or
 quotes code from the projects named in it.
+
+* **Bliss Shader, by X0nk** - an edit of **Chocapic13's** shaders, and credited
+  as both for that reason: its own `LICENSE.md` is a single line, `© 2020
+  Chocapic13. All rights reserved.`, inherited from the base it edits, so naming
+  the edit alone would leave the holder of that notice unnamed. The pack uses
+  none of its assets, logos or screenshots. What it follows in code is the Nether
+  plumes and the cloud function ported onto this file's own noise and clock, both
+  in `shaders/environment/effects/volumetric_fog.glsl`. Whether that use is
+  permitted by the base's terms is its author's to say: if you are Chocapic13 or
+  X0nk and would like it handled differently, it will be rewritten or removed.
 
 * **Mellow Shader v3.4, by TheCMK** - the temporal antialiasing follows that
   pack's implementation, both its weighting of the history by how far the pixel

@@ -30,9 +30,13 @@
 // buffer holds everything that writes depth, so terrain drawn by another mod
 // casts shadows here just like the pack's own does.
 //
-// It is deliberately only used past the shadow map's reach. Inside that reach
-// the shadow map is both more accurate and already paid for, and applying this
-// on top of it would darken the same shadow twice.
+// It is faded in over the shadow distance rather than applied everywhere, and
+// what that means at this point in the file is the caller's blend and not this
+// file's: inside that distance the shadow map is both more accurate and already
+// paid for, so this contributes nothing there, and past the end of the fade
+// window it is the only shadow the distance has. The two are both partly on
+// across the window itself, which is what keeps the seam from showing. See the
+// note at the call in program/post/copy_and_fog.fsh for how the window is built.
 
 // Whether to cast shadows for terrain the shadow map does not reach.
 //
@@ -91,8 +95,14 @@
 	// reaches it. A ray that merely passes *in front of* something - an entity,
 	// the held block, a tree nearer the camera than the terrain being shaded -
 	// meets that thing hundreds of blocks short, and that is not an occluder.
-	// The window below is what tells the two apart, and it is measured in
-	// blocks, in view space.
+	// The window below is what tells the two apart, and the distance it is
+	// measured over is in blocks, in view space.
+	//
+	// The two constants below are not the window on their own: the test that
+	// uses them combines them with a floor of 0.05 and with one step's worth of
+	// depth, so the base thickness is `max(SSS_THICKNESS_BASE, stepInBlocks)`,
+	// the rate term is `travelled * SSS_THICKNESS_RATE`, and a step's depth is
+	// added separately. See the thickness assignment at the test.
 	//
 	// Sundial measures it in the depth buffer's own units instead, as a fraction
 	// of the distance. That is not portable to this pack's depth buffer: those
@@ -291,8 +301,6 @@ float SssScreenNoise(vec2 fragCoord) {
 			// View space looks down the negative Z axis, so a positive gap is how
 			// much nearer to the camera the surface at this sample is than the ray
 			// is.
-			// View space looks down the negative Z axis, so a surface *nearer to
-			// the camera* than the point on the ray has the larger z.
 			//
 			// The ray is blocked exactly when the surface is in front of it -
 			// when the surface is the nearer of the two - so this has to be the

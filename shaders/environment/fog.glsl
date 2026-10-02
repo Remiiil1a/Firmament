@@ -26,12 +26,14 @@
 	uniform float blindness;
 	uniform float borderFogDistance;
 
-	// How much haze rain adds, from 0 up to the option's value at full rain.
-	// Built in shaders.properties from the mod's rainStrength, which is a quantity
-	// that file can read and the shading stages cannot be sure of - see
-	// PBR_PORTING.md 171. It is listed in voxy.json as well, because the Voxy
-	// patch compiles this file with EXTERNALLY_DEFINED_UNIFORMS and declares the
-	// pack's custom uniforms itself - see PBR_PORTING.md 178.
+	// How much haze rain adds, from 0 up to the option's value at full rain -
+	// uniform.float.rainFogAmount in shaders.properties, which builds it from the
+	// mod's rainStrength and the pack's own rain option. It is computed there
+	// rather than here because of where it has to work as much as what it is; the
+	// reasoning is recorded in PBR_PORTING.md 171. It is listed in voxy.json as
+	// well, because the Voxy patch compiles this file with
+	// EXTERNALLY_DEFINED_UNIFORMS and declares the pack's custom uniforms itself
+	// - see PBR_PORTING.md 178.
 	uniform float rainFogAmount;
 #endif
 
@@ -72,21 +74,33 @@ vec4 FogV2(
 	//
 	// Multiplying that term was the first attempt and it did nothing visible at
 	// any setting, not even at four times: the coefficient behind it is
-	// normalised to the render distance - pow(0.60 / borderFogDistance, 3.0) in
-	// shaders.properties - so at fifty blocks the whole term is around 0.003, and
-	// the cull just below this block throws away anything under 0.015 outright. A
+	// normalised to the render distance, so at fifty blocks the whole term is a
+	// small fraction of one. atmosphereFogCoefficient is
+	// renderDistanceFogTweak * pow(0.60 / borderFogDistance, 3.0) *
+	// mix(1.0, atmosphereFogStrengthNoon, noonFogProgress) * fogInCaveAdjustment
+	// (shaders.properties), and the term is pow(fragDistance, 3.0) times that, so
+	// at fifty blocks it is 125000 * pow(0.60 / D, 3.0) * S with D the border fog
+	// distance in blocks and S the noon strength - about 0.0033 at D = 160 and
+	// S = 0.5, but 0.015 at D = 96. It is not one number, and the figure the
+	// argument was made with is the one at the render distance it was made at.
+	// The cull just below this block then throws away most of what is left: it
+	// zeroes the sum outright at or under 0.01 and only reaches full by 0.015. A
 	// far-distance term scaled up is still a far-distance term.
 	//
 	// What rain does to a view is bend the distance out of sight, and the shape
-	// of that is an optical depth growing with distance - exponential, which is
-	// what Sundial's rain fog is and why it shows in the middle distance rather
-	// than only at the horizon. RAIN_FOG_DISTANCE is the distance at which the
-	// haze is about two thirds of the way to its full strength.
+	// of that is an optical depth growing with distance - exponential. Recorded:
+	// this is said to be what Sundial's rain fog is, and why it shows in the
+	// middle distance rather than only at the horizon; that is a comparison with
+	// another pack and nothing here stands behind it. RAIN_FOG_DISTANCE is the
+	// distance at which the haze is 1 - 1/e, about two thirds of the way to its
+	// full strength.
 	//
 	// Gated by the cave transition, the smoothstepped skylight the pack's own
-	// atmosphere coefficient is gated by as well: rain does not thicken the air
-	// inside a cave, and someone under cover sees the sky darken without the fog
-	// following it in.
+	// atmosphere coefficient is gated by as well - fogInCaveAdjustment in
+	// shaders.properties, which is the smoothstep polynomial applied to a
+	// clamped eyeSkylight and multiplies that coefficient: rain does not thicken
+	// the air inside a cave, and someone under cover sees the sky darken without
+	// the fog following it in.
 	const float RAIN_FOG_DISTANCE = 96.0;
 
 	atmosphereFog += (1.0 - exp(-fragDistance / RAIN_FOG_DISTANCE))
@@ -97,14 +111,16 @@ vec4 FogV2(
 	// It has no sky light, so the transition above already treats the whole
 	// dimension as a cave and picks the cave colour - which is only half the
 	// story. The other half is that the pack switches atmospheric fog off
-	// wherever the eye's sky light is low (fogInCaveAdjustment in
-	// shaders.properties), and in the End that is everywhere: the atmosphere
-	// term is exactly zero, and all that is left is the thin border band at the
-	// render distance. So there was no fog in the End for a colour to be
-	// applied to, and the option that used to do it here could only be seen in
-	// that band, between two colours that are both very nearly black.
+	// wherever the eye's sky light is low: fogInCaveAdjustment in
+	// shaders.properties is a smoothstep of clamp(eyeSkylight / 0.25) and it
+	// multiplies atmosphereFogCoefficient, so the atmosphere term is exactly zero
+	// wherever the eye's sky light is zero, which in the End is everywhere. What
+	// is left there is the thin border band at the render distance. So there was
+	// no fog in the End for a colour to be applied to, and the option that used
+	// to do it here could only be seen in that band, between two colours that are
+	// both very nearly black.
 	//
-	// Batch 333 removed it. See PBR_PORTING.md 189.
+	// Recorded: batch 333 removed it. See PBR_PORTING.md 189.
 
 	if (blindness > 0.0001) {
 		// Blindness is essentially just a very strong fog.
@@ -132,18 +148,38 @@ vec4 FogV2(
 
 	float fogFactor = min(borderFog + atmosphereFog, 1.0);
 
-	if (skyFogStrength > 0.0) {
-		// Zero out low-strength fog to enable an optimization on most close
-		// terrain. This does not work with very closer fog so this is a hack to
-		// disable it (such as when underwater).
-		fogFactor *= smoothstep(0.01, 0.015, fogFactor);
-	}
+	// ⚠️ There used to be a cull here that zeroed the fog outright below 0.01 and
+	// only reached full by 0.015:
+	//
+	//     if (skyFogStrength > 0.0) {
+	//         fogFactor *= smoothstep(0.01, 0.015, fogFactor);
+	//     }
+	//
+	// It was written as an optimization for close terrain, and the guard was meant
+	// to disable it for the three cases that are close fog (blindness, underwater
+	// and lava all set skyFogStrength to 0.0 above). What it did not account for is
+	// the shape of the haze in *light* rain: rainFogAmount is VOLUMETRIC_FOG_RAIN
+	// STRENGTH times the square of rainStrength, so at a third of full rain the
+	// whole rain term is under 0.01 out to about fifteen blocks and over it by
+	// twenty - which is a ring of clear air around the player with the haze
+	// switching on at the edge of it. Reported as a boundary close to the player in
+	// rain, and removed in batch 462.
+	//
+	// What is left is the number itself, which fades in from zero: at the distances
+	// where the cull used to bite, the fog factor is a hundredth or so, which is
+	// invisible in a mix. Removing it costs nothing that can be seen and is one
+	// smoothstep less per pixel.
 
 	return vec4(fogColor, fogFactor);
 }
 
 // Kept around while we move over to FogV2
 // TODO: Move everything to FogV2 and just have one Fog function
+//
+// Not dead yet: this is the wrapper FogV2 needs anyway, since FogV2 returns the
+// fog colour and the fog factor separately and does not add the sky gradient
+// in. Its callers are translucent.glsl, copy_and_fog.fsh and clouds.vsh; lit.fsh
+// is the one that asks FogV2 directly.
 vec4 Fog(
 	vec3 skyGradient,
 	float fragDistance,

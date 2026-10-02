@@ -18,12 +18,18 @@
 // of noise functions. This increases the minimum system requirements to any
 // system supporting OpenGL 4.0 or alternatively GL_ARB_texture_gather.
 //
-// Note: using #if defined instead of #ifdef to prevent this from being picked
-// up as a shader configuration option.
+// Recorded as the reason for the guard style below, and not as something this
+// file shows: the #if !defined / #define pair is written with defined() rather
+// than as #ifndef / #define so that the condition is not read as a shader option
+// being tested. Note what that does and does not settle - the #define inside the
+// block declares the name whatever the test looks like, so the difference is in
+// how the test reads, not in whether the name exists.
 #if !defined(VALUE_NOISE_DERIVATIVES_INCLUDED)
 #define VALUE_NOISE_DERIVATIVES_INCLUDED
 
-// Derivative of the fade function from above, see details below.
+// Derivative of the fade function from valueNoise.glsl, see details below. That
+// file has to be included before this one: gradSmoothNoise2D uses both fade and
+// noiseTextureResolution from it.
 vec2 gradFade(vec2 t) {
 	// 30t^4 - 60t^3 + 30t^2
 	return 30.0 * t * t * (t * (t - 2) + 1);
@@ -86,7 +92,7 @@ vec2 gradFade(vec2 t) {
 //                ) * Fade'(fract(y)).
 //
 // In terms of determining dN/dx, it is no more complex than dN/dy. However,
-// first we must observe an equiavelent form, swapping X and Y appropriately -
+// first we must observe an equivalent form, swapping X and Y appropriately -
 // this is valid because bilinear filtering is symmetrical across axes:
 //
 // N(x, y) = Mix(
@@ -106,7 +112,11 @@ vec2 gradFade(vec2 t) {
 vec2 gradSmoothNoise2D(vec2 at) {
 	const float centerTexelOffset = 0.5 / noiseTextureResolution;
 
-	// Determine the center of this grid cell in the texture
+	// Determine the center of this grid cell in the texture. At this point in
+	// the file at is in cell space, the same space smoothNoise2Dx3 takes, and
+	// corner * (1/64) + 0.5/64 is the same texel-centre mapping that function
+	// applies - a gather at a texel centre returns that texel and the three
+	// neighbours the bilinear filter would have blended with it.
 	vec2 corner = floor(at);
 	vec2 center = corner * (1.0 / noiseTextureResolution) + centerTexelOffset;
 	vec2 offset = at - corner;
@@ -157,7 +167,16 @@ vec2 gradSmoothNoise2D(vec2 at) {
 	// W: Mix(H(x,     y    ), H(x,     y + 1), Fade(fract(y)))
 	vec4 mixes = mix(corners.xwzw, corners.yzyx, fade(offset).xxyy);
 
-	// Finally, use those interpolations to compute the partial derivative:
+	// Finally, use those interpolations to compute the partial derivative.
+	//
+	// mixes.zx is (Z, X) and mixes.wy is (W, Y), so the single subtraction below
+	// is (Z - W, X - Y) and the gradient it is multiplied by is
+	// gradFade(offset) = (Fade'(fract(x)), Fade'(fract(y))). That pairs Z - W
+	// with the x derivative and X - Y with the y one, which is the other way
+	// round from how the two formulas above are written - and it is the right
+	// way round: dN/dx is the difference between the two interpolations taken
+	// along y, which are Z and W, and the Fade' it is multiplied by is
+	// Fade'(fract(x)).
 	// 
 	// dN/dx (x, y) = (
 	//                   Mix(H(x + 1, y), H(x + 1, y + 1), Fade(fract(y)))

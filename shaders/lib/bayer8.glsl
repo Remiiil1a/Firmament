@@ -30,9 +30,7 @@ float Bayer4(vec2 a) {
 	return Bayer2(0.5 * a) * 0.25 + Bayer2(a);
 }
 
-// NB: The result isn't actually in the range of 0 to 1 but rather 0 to 1.3125.
-// 
-// Mathematically equivalent to:
+// The expression below, before the division, is mathematically equivalent to:
 //
 // return dot(
 // 	vec3(
@@ -46,6 +44,14 @@ float Bayer4(vec2 a) {
 // 		Bayer2(a)
 // 	)
 // );
+//
+// That expression is the one with a range wider than the unit interval: its
+// three terms are each in [0, 1) and their weights add to 1.3125, though on the
+// 8x8 tile only 0.984375 of that is actually reached. Dividing by 1.3 brings the
+// whole expression inside [0, 1], so what Bayer8 returns is in the unit interval
+// (its own maximum on the tile is 0.984375 / 1.3, about 0.757). The note this
+// replaced said the result was in [0, 1.3125], which would be true of the dot
+// product above and not of the value returned here.
 float Bayer8(vec2 a) {
 	return (Bayer4(0.5 * a) * 0.25 + Bayer2(a)) / 1.3;
 }

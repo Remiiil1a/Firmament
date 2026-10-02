@@ -82,13 +82,20 @@
 // save the last hit that was at the end of the distance and can use that in the
 // worst case.
 //
-// Given a certain TAPS_PER_REFINEMENT, we can calculate the factor to reduce
-// the velocity by using pow(1 / ACCELERATION_FACTOR, TAPS_PER_REFINEMENT),
-// which ensures that we will take TAPS_PER_REFINEMENT steps given the
-// acceleration factor.
+// Given a certain TAPS_PER_REFINEMENT, we reduce the velocity by a factor that
+// is meant to make this round's taps cover the interval again in that many
+// steps. With the values below the factor is 0.75 * 2^-(4+1) = 0.0234375, and
+// since every step multiplies the velocity back up by ACCELERATION_FACTOR the
+// round's taps are 0.047, 0.094, 0.188, 0.375 and 0.75 of the original step -
+// four of them cover 0.703 of the interval, which is the 0.75 that
+// REFINEMENT_DISTANCE asks for to within the rounding, and the fifth is what
+// would overshoot it. So the formula does hold the round to TAPS_PER_REFINEMENT
+// taps in the sense that matters - it does not run past the interval - and the
+// coverage is REFINEMENT_DISTANCE rather than the whole interval either way.
 //
-// Then, we add one, because we always multiply by ACCELERATION_FACTOR every
-// step, including the one directly after initiating this refinement.
+// Then, we add one to the exponent, because we always multiply by
+// ACCELERATION_FACTOR every step, including the one directly after initiating
+// this refinement.
 //
 // Finally, we multiply in the REFINEMENT_DISTANCE at the very end - a value of
 // 0.75 means that we cover 75% of the original distance in this refinement
@@ -101,6 +108,14 @@ const float refinementDecelerationFactor = (REFINEMENT_DISTANCE
 // thicknessControl impacts the base thickness and increase in thickness over
 // distance during raytracing, effectively the tolerance of determinining
 // whether we are going to accept a hit or not.
+//
+// At this point in the file the two components are what the caller passes: X is
+// the thickness the first step starts with, in meters, and Y is the factor the
+// thickness is multiplied by on every step, on top of the ACCELERATION_FACTOR
+// the velocity itself gets. The caller's own values are in translucent.glsl -
+// (1.0, 1.0) for water and (0.5, 1.0) for the mirror-like surfaces - so in
+// practice the two differ in their first component and the second is 1.0. What
+// the thickness actually ends up being on a given step is capped below.
 //
 // X: initial thickness in meters
 // Y: additional increase in meters per raytracing step not directly related to
@@ -150,22 +165,25 @@ bool Raytrace(
 		// Prevent thickness from getting too large as that will mean far
 		// distances have undesirable stretching.
 		//
-		// The division narrows the tolerance as the ray is refined, which is
-		// what it is for - but it has to be guarded. The first hit a ray makes
-		// has no refinement round behind it yet, and dividing by that zero does
-		// not produce a large number here, it produces an infinite one, so the
-		// cap above stops applying to exactly the hit that needs it most.
+		// Recorded as the failure this cap is for: the division by the
+		// refinement count narrows the tolerance as the ray is refined, and an
+		// unguarded division at the first hit - where no refinement round is
+		// behind the ray yet - does not produce a large number, it produces an
+		// infinite one, so the cap stops applying to exactly the hit that needs
+		// it most. The thickness of an unrefined hit would then be the length of
+		// the step that made it, which doubles every step and is tens of metres
+		// by the fifth. A ray with a tolerance of tens of metres accepts
+		// anything whose depth it happens to pass near, the reflection is then
+		// drawn from a screen position nowhere near the point actually being
+		// reflected, and the result is the stretched, banded reflection that
+		// this whole file exists to avoid.
 		//
-		// What that means in practice: the thickness of an unrefined hit is the
-		// length of the step that made it, which doubles every step and is tens
-		// of metres by the fifth. A ray with a tolerance of tens of metres
-		// accepts anything whose depth it happens to pass near, the reflection
-		// is then drawn from a screen position nowhere near the point actually
-		// being reflected, and the result is the stretched, banded reflection
-		// that this whole file exists to avoid.
-		//
-		// One round rather than none, so that the cap is the cap and each
-		// refinement after it tightens from there.
+		// The max below is that guard, and it says "one round rather than none",
+		// so that the cap is the cap and each refinement after it tightens from
+		// there. Note what it holds at this point in the file: refinementRounds
+		// is only incremented after a hit, so the divisor is 1 for every step
+		// before the first hit as well as for the first hit itself, and the
+		// tightening only starts once a hit has actually been made.
 		float thicknessM = min(
 			velocityAndThickness.w,
 			MAX_THICKNESS / float(max(refinementRounds, uint(1))));
@@ -218,7 +236,18 @@ bool Raytrace(
 		// minZ + thickness > sampledViewZ AND sampledViewZ > maxZ - thickness
 		//
 		// And we can pull the thickness calculations to above.
-		if (minZ > sampledViewZ && sampledViewZ > maxZ) {
+		//
+		// The screen position is checked along with the depth, and it fails the
+		// same way: the depth this reads can be a level-of-detail renderer's own
+		// texture, which holds nothing past the edge of what it drew, and a trace
+		// through that produces a position that is not a number. A hit is a
+		// position the caller will sample a colour buffer at, and sampling at a
+		// coordinate that is not a number is undefined - which is a black pixel.
+		// See the same guard at the end of RefractTrace, which is where it was
+		// first found.
+		if (minZ > sampledViewZ && sampledViewZ > maxZ
+			&& screenPos2D.x >= 0.0 && screenPos2D.x <= 1.0
+			&& screenPos2D.y >= 0.0 && screenPos2D.y <= 1.0) {
 			// This was a successful hit. Save it so that we will at least
 			// return this hit if we don't find a better one.
 			hasHitPos = true;

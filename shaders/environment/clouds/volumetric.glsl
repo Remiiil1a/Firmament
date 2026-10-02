@@ -316,6 +316,12 @@ uniform vec3 cloudLightDirect;
 //   1 - the direct light the layer is given, after everything that shapes it
 //   2 - the fraction of that light which gets through the layer itself
 //   3 - the phase function, ie, how much of it this viewing angle sees
+//
+// Each is written as `vec4(value, 1.0)`, so the value lands in R, G and B alike
+// and alpha is one: there is no per-channel split to read. The three named
+// quantities are all constants or uniforms except the first, so 2 and 3 paint a
+// flat colour by construction and it is 1 that carries the picture. See the
+// `#if defined(CLOUD_DEBUG) && CLOUD_DEBUG > 0` block in BlockyClouds.
 #define CLOUD_DEBUG 0 // [0 1 2 3]
 
 // The rest of the pack's cloud state. Declared only if the planar clouds are off,
@@ -623,6 +629,15 @@ vec4 BlockyClouds(vec3 worldDir, vec3 cameraWorldPos, vec3 lightView) {
 	// How far the sight line travels inside the layer, which for a shallow angle
 	// is a long way - the same reason a real cloud deck thickens towards the
 	// horizon.
+	//
+	// ⚠️ This reads the layer's full thickness divided by |worldDir.y|, and it
+	// does not know where the ray actually entered the layer. That is right for a
+	// ray that crosses the whole slab (and it is why the deck thickens towards
+	// the horizon), but it is wrong for any ray that does not: a ray that enters
+	// through the top has less cloud below it than a full crossing, so the
+	// underside seen when flying above the deck is given the same optical depth
+	// as a ray climbing the full height from below. The value used is thickness
+	// and not the entry/exit spans computed above.
 	float slabLength = float(VOLUMETRIC_CLOUD_THICKNESS)
 		/ max(abs(worldDir.y), 1.0e-4);
 

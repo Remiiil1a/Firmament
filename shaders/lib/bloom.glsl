@@ -78,6 +78,13 @@
 // washes the contrast out; raising it picks out only the genuinely overexposed
 // things - the sun, lava, a torch flame.
 //
+// ⚠️ The default in the option list is 0.0, and at 0.0 this is not a threshold
+// at all: the ramp in BloomContribution below leaves a contribution of exactly
+// 1.0 for every pixel there is, so the blur is of the whole frame and adds a
+// fixed fraction of it everywhere. With the values as shipped (0.0 here, 0.35
+// BLOOM_STRENGTH) that is what the effect does; the "soft knee" and the
+// overexposure framing only begin to apply once this is raised above 0.
+//
 // The fade is a soft knee rather than a hard cut. A hard cut puts a visible
 // edge on every bright surface: pixels just above the threshold bloom and their
 // neighbours just below do not, and what that looks like is a second copy of
@@ -155,26 +162,31 @@ float BloomContribution(vec3 color, float threshold) {
 	return max(soft, brightness - threshold) / max(brightness, 1.0e-5);
 }
 
-// A separable nine-tap Gaussian, taken five times.
+// A nine-tap Gaussian, run once per direction and five fetches per run.
 //
 // The four outer taps of a nine-tap kernel are paired up and each pair is read
 // with one fetch halfway between its two texels, which is what the bilinear
-// filter gives away for free - so this costs five fetches and a couple of
-// multiplies instead of nine fetches. The weights are the ones that pairing
-// produces and they sum to one.
+// filter gives away for free - so one run costs five fetches instead of nine.
+// The weights below are the ones that pairing produces: the centre keeps its own
+// weight and the four paired taps take the centre weight's neighbours, so the
+// nine add up to one across the 0.2270270270, four 0.3162162162 / 0.0702702703
+// and the two halves that the pair fetches stand for.
 //
 // The samples are clamped into the frame rather than allowed to run off it: a
 // buffer read outside its own range wraps, and what that would do here is drag
 // the opposite edge's pixels into the glow along the border.
 //
 // There is no guard for a non-finite value in here, and that is not an
-// oversight. The only thing this ever samples is colortex12 and colortex13,
-// and the only thing that writes those is the pass that reads colortex0 - a
-// buffer in R11F_G11F_B10F, which is an unsigned packed float with no exponent
-// of its own and cannot hold a NaN, an infinity or a negative in the first
-// place. A blur is the worst possible place for one of those to appear, since
-// it would spread it over the whole screen rather than leaving it where it was,
-// so it is worth knowing that the format is what rules it out.
+// oversight. As it stands the only things this ever samples are colortex12 and
+// colortex13, and the only thing that writes those is the pass that reads
+// colortex0 - a buffer in R11F_G11F_B10F, which is an unsigned packed float with
+// no exponent of its own and cannot hold a NaN, an infinity or a negative in the
+// first place. A blur is the worst possible place for one of those to appear,
+// since it would spread it over the whole screen rather than leaving it where it
+// was, so it is worth knowing that the format is what rules it out. Note that
+// this is a claim about what is on the other end of the sampler and not about
+// this function: nothing here checks, and a caller handing it a buffer that can
+// hold a non-finite value would get one spread.
 vec3 BloomBlur(sampler2D source, vec2 screenCoord, vec2 direction, vec2 texelSize) {
 	vec2 first = direction * texelSize * 1.3846153846;
 	vec2 second = direction * texelSize * 3.2307692308;

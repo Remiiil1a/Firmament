@@ -75,17 +75,27 @@ const int colortex8Format = RGBA8;
 // file, which put the parallax code above its own declaration.
 uniform float far;
 
-// Used to covert viewPos to worldPos.
+// The camera's position in the world, in blocks.
+//
+// Nothing here turns a view-space position into a world-space one with it: this
+// file works in camera-relative space, where the camera is the origin, and the
+// geometry was handed to it that way. The one use is the world-position
+// diagnostic below, which is a gradient of the world coordinate and so needs to
+// know where the origin of camera-relative space sits in the world. See
+// cameraRelativePos in main() for the space everything else here is in.
 uniform vec3 cameraPosition;
 
 // The forward half of the camera's matrix pair - world to view - which is the
 // one the geometry here was drawn with.
 //
-// Declared up here, ahead of the includes, because the cloud layer needs it and
-// that is pulled in further down; a shader has to see a declaration before the
-// code that uses it. The macro tells other files that want the same uniform -
-// /environment/lighting/translucent.glsl - that it has already been declared,
-// because a repeated declaration is an error.
+// Declared up here, ahead of the includes, because a shader has to see a
+// declaration before the code that uses it, and because the file that uses it
+// below - /environment/lighting/translucent.glsl, at the #if defined(TRANSLUCENT)
+// further down - declares it too. The macro tells that file the declaration has
+// already been made, because a repeated uniform declaration is an error. (That
+// file is the only include of this program that wants this matrix at all, and
+// nothing here reads it before that include, so moving this line down to where
+// it is used would work as well as leaving it where it is.)
 #define GBUFFER_MODEL_VIEW_DECLARED
 uniform mat4 gbufferModelView;
 
@@ -283,32 +293,34 @@ uniform vec2 windowToNdc;
 	// The interpolated vertex color directly from the vertex buffer.
 	in vec4 tinting;
 
-	// The lightmap texture coordinates, ranging from 0.03125 to 0.96875.
-	// The x / "s" component is the block light, and the y / "t" component is
-	// the sky light. The block light will be negative when this face can be
-	// emissive.
+	// The lightmap texture coordinates. The x / "s" component is the block
+	// light, and the y / "t" component is the sky light. The block light will
+	// be negative when this face can be emissive - see the emissive term in
+	// main, which tests for exactly that.
+	//
+	// Their range is a texel-centre range and not 0 to 1: they are the sixteen
+	// texel centres of the lightmap texture, (i + 0.5) / 16, so the low value is
+	// 0.03125 and the high one 0.96875. That follows arithmetically from the
+	// convention lib/encoding/lightmap.glsl inverts - it subtracts half a texel
+	// and rescales by 16/15 to get 0 to 1 back - rather than from anything in
+	// this file.
 	in vec2 lightMap;
 
 	// Must match the guard in lit.vsh, or one stage would have a varying the
 	// other does not. The entity programs get here through
 	// PBR_MATERIALS_ANY_TEXTURE rather than PBR_ATLAS.
 	#if defined(PBR_ATLAS) || defined(PBR_MATERIALS_ANY_TEXTURE)
-		// xy: the centre of this face's sprite in the block atlas, zw: half of
-		// its size, except that an axis whose extent is nil takes the other
-		// axis's half instead (see the assignment in lit.vsh). Parallax mapping
-		// works in the box these describe, and a sample that would leave that box
-		// has the offset faded by the room the fragment has left and is held at the
-		// box's edge behind that, rather than being wrapped round to the far side of
-		// the sprite; see PbrFadeOffsetToSprite and PbrClampToSprite, and
-		// PbrSpriteLocal for the box itself. A zero half-size, which is what a
-		// non-atlas surface carries, is what PbrSpriteUsable reads as "no box here",
-		// and both of the marches then leave the surface undisplaced.
-		in vec4 spriteBounds;
 
 		// The tangent this geometry actually carries, from lit.vsh, with the
 		// handedness in w. Zero for geometry that has none, which
 		// PbrAttributeFrame detects and falls back on.
 		in vec4 pbrTangent;
+
+		// The sprite this fragment's coordinate belongs to, from lit.vsh: the
+		// middle of it in xy and how far it reaches from that middle in zw, in
+		// the same atlas space texcoord is in. Zero where the program had no
+		// sprite to measure, which the parallax march reads as "no bounds".
+		in vec4 pbrSpriteBounds;
 	#endif
 
 	// Note: using #if defined instead of #ifdef to prevent this from being
@@ -342,7 +354,14 @@ uniform vec2 windowToNdc;
 	// The base material (block/entity/etc) texture
 	uniform sampler2D gtexture;
 
-	// The interpolated texture coordinate directly from the vertex buffer.
+	// The interpolated texture coordinate, taken through the texture matrix.
+	//
+	// "Through the texture matrix" is the part that matters to a reader: this is
+	// a place in the block atlas and not a place on the sprite, which is what
+	// the assignment in lit.vsh makes it, and it is what makes the two weather
+	// varyings below necessary. The coordinate from the vertex buffer is not
+	// carried on under this name anywhere; the unmatrixed one is
+	// weatherSpriteCoord.
 	in vec2 texcoord;
 #endif
 
@@ -394,6 +413,7 @@ uniform vec2 windowToNdc;
 flat in uint perFace;
 
 void main() {
+
 	// End debug: paint everything this program draws in a flat color, so that an
 	// effect whose program is not known can be traced to the program that draws
 	// it by looking at what color it turns. See END_DEBUG in
@@ -418,6 +438,10 @@ void main() {
 	// make identifying one harder.
 	#if defined(DRAWING_LINES) && SELECTION_BOX == SELECTION_BOX_NONE
 		discard;
+		// Paired with a return for the reason the alpha test's own discard gives
+		// further down: the spec guarantees a discarded fragment has no
+		// framebuffer effect, but not that the shader stops running.
+		return;
 	#endif
 
 	#if defined(SUPPRESS_END_FLASH)
@@ -439,6 +463,9 @@ void main() {
 			// out, and nothing worth keeping is.
 			if (EndDimension() && gl_FragCoord.z > 0.99) {
 				discard;
+				// Paired with a return for the reason the alpha test's own discard
+				// gives further down.
+				return;
 			}
 		#endif
 	#endif
@@ -550,9 +577,16 @@ void main() {
 		vec3 pbrNormal = worldNormal;
 		vec2 pbrTexCoord = texcoord;
 
-		// How far the parallax ray was displaced, in texture coordinates. Only
-		// PBR_DEBUG_PARALLAX reads it; see the note on that option.
-		float pbrParallaxOffset = 0.0;
+		#ifdef PBR_PARALLAX
+			// How much of the direct light the height field lets through to the
+			// point it moves this fragment to, where 1.0 is nothing in the way.
+			// The march below fills it in, and the material carries it to
+			// DiffuseLighting, which is the only place that reads it. It is left
+			// at 1.0 whenever the march stands down, and whenever the material is
+			// one this file does not decode at all - a water surface has no
+			// material maps under it to displace.
+			float pbrSelfShadow = 1.0;
+		#endif
 
 		// Water has its own reflection model in TranslucentLighting, which
 		// relies on the unperturbed face normal to decide whether a face can
@@ -583,43 +617,58 @@ void main() {
 
 		// This branch is safe even though it contains texture samples because
 		// every one of them uses explicit gradients (see PbrGradients) - only
-		// the derivatives above had to be taken unconditionally.
+		// the derivatives above had to be taken unconditionally. The parallax
+		// march below is one of those samples: it is a loop of reads at
+		// coordinates of its own, so every read in it takes the gradients rather
+		// than an implicit level of detail.
 		if (pbrMaterial) {
-			pbrTexCoord = PbrParallaxUV(
-				pbrFrame,
-				cameraRelativePos,
-				texcoord,
-				pbrGradients,
-				spriteBounds,
-				pbrParallaxOffset);
+			#ifdef PBR_PARALLAX
+				// Where the eye's ray meets the height field in this material,
+				// which is what the maps below are read at. It is called here, and
+				// not from inside the decode, because it is the one thing in the
+				// material path that needs to know where the eye is and where the
+				// light is - and because the coordinate it returns is the one the
+				// decode, the normal map and the base texture are all to be read
+				// at. See PbrParallaxMapping.
+				pbrTexCoord = PbrParallaxMapping(
+					texcoord,
+					pbrSpriteBounds,
+					pbrFrame,
+					pbrGradients,
+					cameraRelativePos,
+					worldLightVector,
+					pbrSelfShadow);
+			#endif
 
 			pbr = PbrDecode(pbrTexCoord, pbrGradients);
 			pbrNormal = PbrNormal(pbrFrame, pbrTexCoord, pbrGradients);
 
-			#ifdef PBR_PARALLAX_SHADOWING
-				// How much of the sunlight survives the height field, which is
-				// what stops the displaced surface from looking like a flat
-				// layer that merely slides around.
-				pbr.selfShadow = PbrParallaxShadow(
-					pbrTexCoord,
-					pbrFrame,
-					worldLightVector,
-					cameraRelativePos,
-					pbrGradients,
-					spriteBounds);
+			#ifdef PBR_PARALLAX
+				// What the march found standing between this point and the light.
+				// Set after the decode rather than before it, because the decode
+				// starts from PbrNone and would overwrite it.
+				pbr.selfShadow = pbrSelfShadow;
 			#endif
 		}
 
 	#endif
 
+	#if defined(WEATHER)
+		// Whether this particle is rain rather than snow, decided where the
+		// weather coordinate is built below and used by the drop width and the
+		// colour saturation further down. It starts true so that a program which
+		// never reaches that code (one with no texture to sample) keeps the
+		// behaviour it had.
+		bool weatherIsRain = true;
+	#endif
+
 	#if !defined(NO_GTEXTURE)
-		// The coordinate used to sample the base material texture.
-		//
-		// Parallax mapping shifts it along with the material maps, so that the
-		// albedo lines up with the displaced surface rather than staying flat.
-		// Shifting only the normals would make the two disagree, which reads as
-		// the lighting sliding across the texture rather than the surface
-		// having depth.
+		// The coordinate used to sample the base material texture. It is the
+		// fragment's own coordinate unless the material path above displaced it,
+		// which is the case whenever the height field moved the coordinate the
+		// material maps are read at: the albedo has to be read where the material
+		// was read, or the colour and the shape of the same surface come from two
+		// different places and the displacement shows the wrong texture.
 		vec2 surfaceTexCoord = texcoord;
 
 		#ifdef PBR_SURFACE
@@ -630,18 +679,65 @@ void main() {
 			// Rain and snow particles, tiled RAIN_DROP_AMOUNT times across
 			// each quad.
 			//
-			// The tiling has to be done on the sprite's own coordinate, not on
-			// surfaceTexCoord: they differ by the texture matrix, and folding
-			// an atlas coordinate leaves the sprite entirely. Subtracting the
-			// untransformed coordinate and adding the tiled one back, scaled
-			// into atlas space, is the same fold carried out in the space the
+			// The tiling has to be done on the sprite's own coordinate and not
+			// on an atlas one. **At this point in the file** the two differ by
+			// the texture matrix: the value assigned to surfaceTexCoord just
+			// above is texcoord, which lit.vsh has already multiplied by
+			// gl_TextureMatrix[0] and which therefore names a place in the
+			// atlas, while weatherSpriteCoord is gl_MultiTexCoord0 as it arrived
+			// - a place on the sprite. Folding the atlas coordinate would leave
+			// the sprite entirely. Subtracting the untransformed coordinate and
+			// adding the tiled one back, scaled into atlas space by
+			// weatherSpriteScale, is the same fold carried out in the space the
 			// sprite actually lives in. At the default of 1.0 the two folds
 			// agree and this is the identity.
 			vec2 weatherRainCoord = vec2(
 				fract(weatherSpriteCoord.x * RAIN_DROP_AMOUNT),
 				weatherSpriteCoord.y);
 
-			surfaceTexCoord = texcoord + (weatherRainCoord - weatherSpriteCoord) * weatherSpriteScale;
+			vec2 weatherTiledTexCoord = texcoord
+				+ (weatherRainCoord - weatherSpriteCoord) * weatherSpriteScale;
+
+			// Rain, or snow?
+			//
+			// The three options on this page are ways to draw a *rain* drop, and
+			// neither snowflake has any business being redrawn by them: a flake is
+			// not a streak, and thinning one is not "lighter rain", it is a
+			// different particle. Until batch 463 this program applied all three to
+			// whatever the weather program handed it, which is both.
+			//
+			// The test is Sundial's (programs/gbuffers/Weather.frag, its
+			// `rainOrSnow`), and the pack's own tiling and drop width were taken
+			// from that same file - the test is the one part of it that did not
+			// come across. What it reads is the colour of the particle texture:
+			// rain is a pale blue-grey and carries a little colour between its
+			// channels, snow is white and carries none. Both the plain and the
+			// tiled sample are measured, so a pixel that happens to be colourless
+			// in one of them cannot decide it on its own, and the threshold is a
+			// thousandth of a unit - far below the tint that separates the two
+			// textures and far above the noise of an eight-bit one.
+			//
+			// A sample of the base texture is taken here rather than reusing the
+			// one the surface block reads below, and that is not an oversight: the
+			// whole question is which coordinate to read it at, so it has to be
+			// asked before that read. These are the only two samples in the file
+			// with implicit derivatives, and they are taken before any discard,
+			// which is where the rule at the top of the surface block puts them.
+			vec4 weatherPlainSample = texture(gtexture, texcoord);
+			vec4 weatherTiledSample = texture(gtexture, weatherTiledTexCoord);
+
+			float weatherColour = abs(weatherPlainSample.r - weatherPlainSample.g)
+				+ abs(weatherPlainSample.g - weatherPlainSample.b)
+				+ abs(weatherTiledSample.r - weatherTiledSample.g)
+				+ abs(weatherTiledSample.g - weatherTiledSample.b);
+
+			weatherIsRain = weatherColour > 0.001;
+
+			// Snow keeps the coordinate it arrived with, which is also what
+			// RAIN_DROP_AMOUNT of 1.0 produces - the option is the identity at its
+			// default, so a flake is untouched by it rather than merely untouched
+			// at that one setting.
+			surfaceTexCoord = weatherIsRain ? weatherTiledTexCoord : texcoord;
 		#endif
 	#endif
 
@@ -835,20 +931,43 @@ void main() {
 				// Written against alphaTestRef rather than against zero on
 				// purpose: in a program whose alpha test is off the reference is
 				// zero, so the branch cannot be taken there, and nothing changes
-				// for a surface that was never cut out. The parallax test is
-				// here for the same reason - with the option off the displaced
-				// coordinate is the fragment's own to begin with.
-				vec4 baseTexture = texture(gtexture, surfaceTexCoord);
+				// for a surface that was never cut out.
+				// ⚠️ Fetched with the gradients of the undisplaced coordinate,
+				// not with implicit ones. The material maps already protect
+				// themselves this way (PBR_MATERIAL_MAX_LOD in
+				// PbrMaterialGradients) and gtexture does not: a mip level taken
+				// from a coordinate that is not smooth from pixel to pixel can
+				// climb, and a high mip blends across the sprite's edge into the
+				// atlas gutter, whose transparent black is both the black
+				// speckle and the semi-transparent edge. Holding the level to
+				// the one the undisplaced coordinate asks for is what removes it.
+				vec4 baseTexture = textureGrad(gtexture, surfaceTexCoord, dFdx(texcoord), dFdy(texcoord));
 
-				#if defined(PBR_SURFACE) && defined(PBR_PARALLAX)
-					if (baseTexture.a < alphaTestRef) {
-						// Explicit gradients: this fetch is inside a branch, so
-						// an implicit level of detail is not available to it.
+				#if defined(PBR_PARALLAX) && defined(PBR_SURFACE)
+					// The retake the note above describes, and the two conditions
+					// on it are both about asking for it only where there is a
+					// displacement to retake from.
+					//
+					// The comparison is against pbrTexCoord rather than against
+					// surfaceTexCoord because the two are not the same thing in
+					// the program that draws rain: weather tiles the coordinate
+					// after the material path has had its say, and that is not a
+					// displacement - retaking the sample at the untiled coordinate
+					// there would rewrite the rain's own transparency.
+					//
+					// The test itself is written as the alpha the fragment is
+					// about to be drawn with, which is what the alpha test below
+					// compares, rather than against alphaTestRef alone: surfaceColor
+					// is the tint and the light that have been folded in and not
+					// yet the sampled texture, so multiplying by it makes this the
+					// same number the discard will look at.
+					if (pbrTexCoord != texcoord
+						&& baseTexture.a * surfaceColor.a < alphaTestRef) {
 						baseTexture = textureGrad(
 							gtexture,
 							texcoord,
-							pbrGradients.ddxTexCoord,
-							pbrGradients.ddyTexCoord);
+							dFdx(texcoord),
+							dFdy(texcoord));
 					}
 				#endif
 
@@ -916,7 +1035,9 @@ void main() {
 			// option moved, and that is exactly what was reported. When the
 			// width of the sprite is unknown there is nothing to measure a drop
 			// against, so nothing is taken away.
-			surfaceColor.a *= weatherDropTexels > 0.5 ? weatherDropMask : 1.0;
+			surfaceColor.a *= weatherIsRain && weatherDropTexels > 0.5
+				? weatherDropMask
+				: 1.0;
 		#endif
 
 		// Rain colour saturation.
@@ -930,8 +1051,13 @@ void main() {
 		// It is applied to the sampled colour, which the surface tint has
 		// already been folded into, so a coloured tint on the particle is
 		// carried along with it rather than left behind.
+		//
+		// Rain only, like the two options above: a flake keeps the colour the
+		// resource pack gave it.
 		float weatherLuma = dot(surfaceColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-		surfaceColor.rgb = mix(vec3(weatherLuma), surfaceColor.rgb, RAIN_COLOR_SATURATION);
+		surfaceColor.rgb = weatherIsRain
+			? mix(vec3(weatherLuma), surfaceColor.rgb, RAIN_COLOR_SATURATION)
+			: surfaceColor.rgb;
 	#endif
 
 	#endif
@@ -970,7 +1096,13 @@ void main() {
 		// You cannot retrieve implicit derivatives (dFdx / etc) or sample with
 		// mipmapping after this location if any of the materials you render are
 		// subject to alpha testing.
-		if (surfaceColor.a < alphaTestRef) { 
+		// The test is on the alpha this fragment is about to be drawn with, which
+		// is the alpha of the retaken sample where the height field displaced the
+		// coordinate - see the base texture block above, which takes the sample
+		// this test would have thrown away back at the coordinate the fragment
+		// arrived with. A fragment is therefore never discarded for a texel the
+		// ray chose rather than for the one it was drawn from.
+		if (surfaceColor.a < alphaTestRef) {
 			discard;
 			return;
 		}
@@ -1038,9 +1170,17 @@ void main() {
 	// and it is the second of those two that a bloom should not be counting,
 	// because a highlight is a picture of a light rather than a light.
 	//
-	// Left at zero on every path that never calls it - water and glass take
-	// their reflection from TranslucentLighting instead - so the bloom simply
-	// does not take that out. See BLOOM_EXCLUDE_SPECULAR in lib/bloom.glsl.
+	// Left at zero on every path that never calls it. There are three: a program
+	// that closes this block before its end at the #if defined(SKIP_ALPHA_TEST)
+	// guard, which is what every translucent program does and what Colorwheel's
+	// does, and which is also why a translucent leaves here with no material
+	// written for the environment reflection; a program with no PBR materials at
+	// all, where the line that calls DiffuseLighting with this variable is not
+	// compiled and the non-PBR call further down passes a variable nobody reads;
+	// and a fragment whose surfaceColor.a was below 0.01.
+	//
+	// Where the bloom reads this, and what it is allowed to do with it, is
+	// BLOOM_EXCLUDE_SPECULAR in lib/bloom.glsl.
 	vec3 specularInFrame = vec3(0.0);
 
 	// Apply sRGB to linear conversion
@@ -1118,18 +1258,22 @@ void main() {
 			#endif
 
 			// Everything drawn after the deferred pass is left out for a
-			// sharper version of the same reason, and this is the rule the
-			// three programs above already follow - water, Distant Horizons
-			// water and Colorwheel's translucents all define AFTER_DEFERRED and
-			// all write a neutral material here. The translucent entities were
-			// the one that did not, and they are where the third-person player
-			// is drawn: a player is a translucent entity, so the player, its
-			// armour and whatever it holds arrive here rather than at
-			// gbuffers_entities the way a mob does.
+			// sharper version of the same reason. Four programs define
+			// AFTER_DEFERRED - water, Distant Horizons water, Colorwheel's
+			// translucents and the translucent entities - and the first three
+			// were already neutral here through the #if defined(TRANSLUCENT)
+			// above, because all three also define TRANSLUCENT. The translucent
+			// entities were the one that did not, and they are where the
+			// third-person player is drawn: a player is a translucent entity, so
+			// the player, its armour and whatever it holds arrive here rather
+			// than at gbuffers_entities the way a mob does.
 			//
 			// What goes wrong without it is not a wrong reflection but a
 			// reflection of nothing: colortex4 - the picture of the world the
-			// reflections are sampled from - is copied by the deferred pass, and
+			// hand's reflection reads, written each frame by the deferred pass
+			// (/program/post/copy_and_fog.fsh, included by deferred.fsh) and by
+			// then already overwritten with this frame's geometry - is copied
+			// during the deferred pass, and
 			// the deferred pass is over by the time any of this geometry is
 			// drawn. So the surface is in the depth buffer the ray marches and
 			// not in the colour buffer it samples: the ray meets the surface
@@ -1502,65 +1646,11 @@ void main() {
 			pbrGradients,
 			emissive);
 
-		#if PBR_DEBUG == PBR_DEBUG_PARALLAX && defined(PBR_PARALLAX)
-			// A diagnostic rather than a material view; see the option. It draws
-			// the three quantities that decide whether a surface gets parallax at
-			// all, so that a face where the effect is missing can be told apart
-			// from one where it is merely subtle:
-			//
-			//   red   - the offset the ray starts with (before the march);
-			//   green - the displacement the march returned;
-			//   blue  - the distance fade, which is how much of the effect this
-			//           fragment is allowed in the first place.
-			//
-			// Both distances are shown as a fraction of the sprite the fragment
-			// belongs to, not in raw texture coordinates, so that the reading means
-			// the same thing whatever resolution the pack's atlas has. A fixed
-			// scale cannot do that: the same displacement is a large number of
-			// texture coordinate units in a 256-wide atlas and a tiny one in a
-			// 4096-wide atlas, which on a big atlas leaves both channels so dim
-			// that the view looks like it is not reporting anything at all.
-			//
-			// The caps hold the offset to half a sprite, so half a sprite is a full
-			// red. The square root stretches the low end: a tenth of a sprite is a
-			// third of the channel rather than a tenth of it, which is what makes a
-			// small offset readable next to a large one.
-			vec2 parallaxDisplacement = abs(pbrTexCoord - texcoord);
-			float parallaxScale = 256.0;
-
-			#ifdef PBR_ATLAS
-				if (all(greaterThan(spriteBounds.zw, vec2(0.0)))) {
-					parallaxScale =
-						1.0 / max(spriteBounds.zw.x, spriteBounds.zw.y);
-				}
-			#endif
-
-			float parallaxOffsetDebug = sqrt(clamp(
-				pbrParallaxOffset * parallaxScale, 0.0, 1.0));
-			float parallaxResultDebug = sqrt(clamp(
-				max(parallaxDisplacement.x, parallaxDisplacement.y)
-					* parallaxScale,
-				0.0,
-				1.0));
-			float parallaxReachDebug = clamp(
-				PbrParallaxStrength(cameraRelativePos), 0.0, 1.0);
-
-			pbrDebugColor = vec3(
-				parallaxOffsetDebug,
-				parallaxResultDebug,
-				parallaxReachDebug);
-		#elif PBR_DEBUG == PBR_DEBUG_PARALLAX
-			// Parallax mapping is off, so there is nothing to measure and all
-			// three channels of the diagnostic would read zero. A solid magenta
-			// says that instead of saying "no displacement", which is the
-			// difference between a setting that was never turned on and a
-			// surface that genuinely gets none.
-			pbrDebugColor = vec3(1.0, 0.0, 1.0);
-		#endif
 
 		fragmentColor = vec4(pbrDebugColor, 1.0);
 		emitterColor = vec3(0.0);
 	#endif
+
 
 	// The buffers this program writes: the shaded color, the sky light the
 	// deferred pass reads for refraction and reflections, and the light source
@@ -1635,3 +1725,8 @@ void main() {
 
 	/* RENDERTARGETS: 0,2,6,7,8,15 */
 }
+
+
+
+
+

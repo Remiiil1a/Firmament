@@ -18,15 +18,26 @@
 
 // Guarded against a second inclusion: this file is pulled in by the sky drawing
 // itself, by fog, by the water reflections, and by the material reflections
-// added under PBR_REFLECTIONS, and more than one of those can apply to the same
-// program. There is no other guard in this pack's includes because every other
-// one is only ever reached once per file.
+// added under PBR_REFLECTIONS. As the pack stands, every program that wants it
+// names it once - lit.fsh (under TRANSLUCENT or APPLY_FOG), composite1.fsh,
+// composite3.fsh, copy_and_fog.fsh, gbuffers_skytextured.fsh, sky.fsh,
+// clouds.vsh and lit_voxy.fsh - so the guard is what would make a second
+// inclusion harmless rather than something the pack relies on today.
+//
+// It is not the only include guard in the pack: dimension.glsl, the cloud march
+// in /environment/clouds/volumetric.glsl, end_lighting.glsl, motion_blur.glsl,
+// sky/bodies.glsl, sky/stars.glsl, sky/end_palette.glsl, lib/reproject.glsl and
+// lib/bayer8.glsl all carry one, and bayer8.glsl is the one that is genuinely
+// reached twice in a single program - sky.fsh includes it directly and then
+// again through this file.
 #ifndef SKY_GLSL_INCLUDED
 #define SKY_GLSL_INCLUDED
 
 #define MINISHITA 1
 #define GRADIENT 2
-// The atmosphere (sun) color contribution from the sun during the day.
+// Which atmosphere model draws the sky: the physical scattering one in
+// sky/minishita.glsl, or the gradient in sky/gradient.glsl. It chooses the
+// include below, and is tested again in SkyDither. Both names are defined above.
 #define ATMOSPHERE_MODEL MINISHITA // [MINISHITA GRADIENT]
 
 #if ATMOSPHERE_MODEL == GRADIENT
@@ -74,11 +85,11 @@ vec3 SkyColor(vec3 worldDir) {
 
 #include "/lib/bayer8.glsl"
 
-// Returns a darkening or brightening factor for the given fragment / pixel
-// coordinate on the screen.
+// Returns the sky color it was handed, dithered for the given fragment / pixel
+// coordinate on the screen. It is not a factor: the color comes back multiplied.
 //
-// Credit to MakeUp Ultra Fast for the idea of dithering the sky gradient -
-// it really helped fix the otherwise obvious banding.
+// Recorded: credit to MakeUp Ultra Fast for the idea of dithering the sky
+// gradient - it really helped fix the otherwise obvious banding.
 vec3 SkyDither(vec2 fragCoord, vec3 skyColor) {
 	// Intensity of sky dithering.
 	#define SKY_DITHER 0.075 // [0.0 0.025 0.05 0.075 0.1 0.125 0.15]
@@ -86,14 +97,26 @@ vec3 SkyDither(vec2 fragCoord, vec3 skyColor) {
 	float ditherFactor = SKY_DITHER;
 	
 	#if NIGHT_ATMOSPHERE == RETRO && ATMOSPHERE_MODEL == GRADIENT
-		// Workaround for near-black sky colors in combination with filmic
-		// tonemaps. In these cases, the filmic tonemap will exaggerate the
-		// contrast of the black colors, but our adaptive code below will not
-		// dither sufficiently.
+		// Workaround for near-black sky colors under a filmic tonemap: the
+		// tonemap exaggerates the contrast of the black colors, and the adaptive
+		// term added below does not dither them enough on its own.
 		//
-		// This isn't perfect but seems to be an OK workaround for the only case
-		// where this happens, the Retro profile at night, without impacting any
-		// other situation.
+		// ⚠️ The guard tests the night atmosphere and the model, not the tonemap,
+		// so once NIGHT_ATMOSPHERE is RETRO this fires under whichever TONEMAP is
+		// selected. Today that means the Retro profiles, which are what set the
+		// value (shaders.properties, profile.RETRO_MEDIUM and the two that derive
+		// from it), and they select a filmic tonemap alongside it - but the guard
+		// does not say so.
+		//
+		// ⚠️ Both names in the guard come from the model included above. Under
+		// MINISHITA neither NIGHT_ATMOSPHERE nor RETRO is defined, so the first
+		// test reads 0 == 0 and is true, and it is the ATMOSPHERE_MODEL test that
+		// makes the whole condition false. Dropping that second test would turn
+		// this on with the physical model as well.
+		//
+		// Recorded: this is not perfect, but it was judged an OK workaround for
+		// the only case where this happens, the Retro profile at night, without
+		// impacting any other situation.
 		float skyColorLuminance = dot(skyColor, vec3(0.2126, 0.7152, 0.0722));
 		ditherFactor *=
 			1.0 + 3.0 * (1.0 - smoothstep(0.0, 0.5, skyColorLuminance));
@@ -101,6 +124,11 @@ vec3 SkyDither(vec2 fragCoord, vec3 skyColor) {
 
 	// Basically just darkening or brightening the color relative to its
 	// existing brightness, to automatically adapt to colors of any brightness.
+	//
+	// Bayer8 is read here as if it ran 0 to 1. It very nearly does: lib/bayer8.glsl
+	// divides its matrix by 1.3, which leaves a range of about 0 to 1.0096, so the
+	// dither is skewed bright by at most a hundredth of ditherFactor. (The NB
+	// above Bayer8 in that file quotes the undivided range, 0 to 1.3125.)
 	float dither = 1.0 + ditherFactor * (Bayer8(fragCoord) * 2.0 - 1.0);
 	return skyColor * dither;
 }

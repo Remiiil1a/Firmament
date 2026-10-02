@@ -44,11 +44,14 @@ const vec3 END_GIANT_VIOLET = vec3(0.62, 0.42, 1.00);
 // The colour at the chosen tint: the body's own colour, and what the End's air
 // is tinted with where the volumetric fog is drawn there.
 //
-// ⚠️ The End's ambient light in /environment/lighting/end_lighting.glsl is the
-// same violet at a different scale - that one is a light colour, scaled so that
-// its luminance matches the near-neutral colour it replaced, so that fixing the
-// hue did not also make the dimension darker. Same hue, different scale, and
-// deliberately so.
+// ⚠️ The End's ambient light in /environment/lighting/end_lighting.glsl is a
+// violet too, retuned in the same batch 338, but it is not this colour. That one
+// is `vec3(0.78, 0.48, 1.34)` - a light colour, scaled so that its luminance
+// matches the near-neutral colour it replaced, so that fixing the hue did not
+// also make the dimension darker. Read the two as the same violet family and
+// the same intent, not as one value: they differ in hue as well as in scale
+// (this end of the range is 0.62 : 0.42 : 1.00), and end_lighting.glsl explains
+// its own compensation in full.
 vec3 EndPaletteColor() {
 	return mix(END_GIANT_WARM, END_GIANT_VIOLET, END_GIANT_TINT);
 }

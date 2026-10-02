@@ -67,17 +67,32 @@
 // option at all. Batch 332's report claimed the dimension had no light and
 // that this turned it on, and the user corrected it: the End was already lit.
 //
-// For how the number is scaled: the pack's tonemapper is close to the identity
-// below 0.6 in linear light, so a value written here reaches the screen at
-// roughly its own size after being multiplied by the surface's color. A torch
-// lights a surface with 8.0 and the sun with one to three, so 0.35 is a dim
-// light - a readable End that is still clearly a night-like place.
+// For how the number is scaled: with the shipped TONEMAP (TONEMAP_UNCHARTED2,
+// lib/tonemap_uncharted2.glsl, which is exposure_bias 2.0 and a white scale of
+// 1/0.7251) the tonemapper is NOT close to the identity over this range. It is
+// monotone and reaches no shoulder there, but it comes out at a fraction of what
+// goes in, and the LinearToSrgb at the end of postprocessing.fsh lifts it again.
+// Read off that curve, a white surface lit only by this comes out at roughly:
+//
+//     0.1  -> 0.074     0.35 -> 0.229     1.0 -> 0.493     1.5 -> 0.621
+//
+// in linear light, before the sRGB encode. So 0.35 is a dim light and the
+// shipped 1.0 is about half of its own size by the time it is on screen - the
+// numbers below are quoted in the units the option is written in, not in what
+// they look like.
+//
+// Recorded: for the comparison the note was written with, a torch lights a
+// surface with BLOCKLIGHT_STRENGTH, which is 4.0 by default and 8.0 at the top of
+// its range (diffuse.glsl); 8.0 is the figure the original note used, and it is
+// the maximum rather than the default. The sun is given as one to three, which
+// is not read off any one line here.
 //
 // ⚠️ The shipped default is 1.0 as of v0.7, not the 0.35 this note was written
 // around: the user's own settings were taken as the release's defaults, and
 // theirs sits at the top of the range. At 1.0 the End reads as a lit place rather
 // than a dim one, which is the look v0.7 was tuned to. The whole set of retuned
-// defaults is listed in CHANGELOG.md under v0.7.
+// defaults is listed in CHANGELOG.md under v0.7, where this one is named as
+// "End ambient light 1.0" - ten settings in that list.
 #define END_AMBIENT 1.0 // [0.0 0.1 0.2 0.35 0.5 0.7 1.0 1.5]
 
 // The End's light is a violet.
@@ -93,16 +108,24 @@
 // atmosphere". See PBR_PORTING.md 194.
 //
 // ⚠️ The numbers look odd because they are compensated: this is scaled so that
-// its luminance is the same as the old near-neutral colour's - 0.606 either
-// way. Saturating a colour by pulling its green down takes brightness with it,
+// its luminance is the same as the old near-neutral colour's - 0.606 either way
+// on the same Rec709 weights the rest of the pack uses. Saturating a colour by
+// pulling its green down takes brightness with it,
 // and the point of this change was to fix the hue, not to make the dimension
 // darker. Change it and the End's brightness changes too.
+//
+// The arithmetic above is checkable from the two colours alone: at the END_AMBIENT
+// of the time, 0.35, the floor plus 0.35 times the old colour is
+// vec3(0.107 + 0.217, 0.116 + 0.203, 0.120 + 0.287), which is the vec3(0.324,
+// 0.319, 0.407) quoted - a ratio of 0.80 : 0.78 : 1.00.
 const vec3 END_AMBIENT_COLOR = vec3(0.78, 0.48, 1.34);
 
 // The End's own contribution to a surface's ambient light, in linear RGB.
 //
-// Zero everywhere that is not the End, so that nothing but this dimension pays
-// for it.
+// Zero everywhere that is not the End. That zeroes the light, not the cost: the
+// test is one comparison against a uniform and it is evaluated on every pixel of
+// every dimension. What the caller does with a zero is free in the sense that
+// adding nothing changes nothing.
 vec3 EndAmbientLighting(float ambientStrength) {
 	if (!EndDimension()) {
 		return vec3(0.0);
@@ -112,7 +135,8 @@ vec3 EndAmbientLighting(float ambientStrength) {
 		// Part of the debug view: a readout of the value above, drawn as the
 		// color of the End's terrain.
 		//
-		// Red is END_AMBIENT as a fraction of its largest step. That makes this
+		// Red is END_AMBIENT as a fraction of its largest step, 1.5 - the top of
+		// the option's range. That makes this
 		// answer "did the setting arrive" rather than "is there light": a value
 		// that never reached the shader draws nothing at all, while one that
 		// did draws it at a brightness equal to the value. The version before

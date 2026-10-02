@@ -53,9 +53,7 @@
 #endif
 
 // Whether the reflections see the sun and the moon.
-#define WATER_SKY_BODIES_ON 1
-#define WATER_SKY_BODIES_OFF 0
-#define WATER_SKY_BODIES WATER_SKY_BODIES_ON // [WATER_SKY_BODIES_OFF WATER_SKY_BODIES_ON]
+#define WATER_SKY_BODIES
 
 // The cosine of the half-angle the game draws a body's quad at.
 //
@@ -64,9 +62,24 @@
 // and a half degrees, a cosine of 0.96.
 //
 // The two images cover that whole quad, and the body inside them covers a little
-// over a quarter of it - 64 of the 1024 pixels of sun.png are lit, so the sun
-// the sky shows is about nine degrees wide. Setting this to the quad's edge is
-// therefore what makes the sun in the water the same size as the sun in the sky.
+// over a quarter of it. Measured on this pack's own img/sun.png, which is 32x32:
+// the brightest palette entries (255,255,217 / 255,255,170 / 255,213,74) cover
+// exactly 64 pixels in an 8x8 bounding box, a quarter of the quad's width. That
+// puts the sun the sky shows at roughly 2 * 16.7 * 0.25 degrees - about eight and
+// a half, near enough to the nine this comment has always claimed. Setting this
+// to the quad's edge is therefore what makes the sun in the water the same size
+// as the sun in the sky.
+//
+// Counting the halo as well, 88 pixels reach past the near-black surround and the
+// box widens to 10x10, a little under a third - so which figure you get depends
+// on where you draw the body's edge, and the quarter is the one this option was
+// tuned against.
+//
+// (Correction: this comment used to say "64 of the 1024 pixels" of a 1024x1024
+// sun.png. sun.png here is 32x32, so 1024 is the pixel count of the whole image
+// and the 64 is of those - the ratio, and everything drawn from it, is
+// unchanged. The moon sheet is img/moonPhases.png, 256x32, eight 32x32 phases in
+// a row, and both images are opaque edge to edge with alpha 255 throughout.)
 //
 // This is the coarse control. The two below it trim each body on their own, and
 // whether the quad really is sixty at a hundred is not something this pack can
@@ -102,11 +115,19 @@
 // tilted as it climbs.
 //
 // The value is the one that came out of matching the sky by eye, after the
-// spurious flip described in SkyBodyAxes was taken out, and it lands on the same
-// number the pack's own constant implies: everywhere this pack asks how high the
-// sun is it normalises worldSunVector.y by 0.75 rather than 1.0, with a comment
-// reading "worldSunVector.y never actually gets to 1.0", and a sun that tops out
-// at 0.75 has its orbit acos(0.75) = 48.4 degrees off the vertical.
+// spurious flip described in SkyBodyAxes was taken out.
+//
+// ⚠️ It was also argued for by a constant that is not in this pack. The claim was
+// that "everywhere this pack asks how high the sun is it normalises
+// worldSunVector.y by 0.75 rather than 1.0, with a comment reading
+// 'worldSunVector.y never actually gets to 1.0', and a sun that tops out at 0.75
+// has its orbit acos(0.75) = 41.4 degrees off the vertical" - which rounds
+// towards this value. No such normalisation exists here: the only reads of
+// worldSunVector.y in the pack are the horizon fades in this file and stars.glsl,
+// and all of them are smoothsteps over -0.12 to 0.02. The claim that
+// worldSunVector.y never reaches 1.0 is not checkable from the pack either, since
+// the vector is supplied by the game. Treat 48.4 as the by-eye value it is, and
+// do not re-derive it: the arithmetic that was used to justify it does not hold.
 //
 // The option names a direction rather than an axis of rotation, and that only
 // matters past a right angle: a direction and its opposite name the same line
@@ -193,7 +214,7 @@ vec2 SkyBodyQuad(vec3 viewDir, vec3 bodyDir, vec3 right, vec3 up, float halfSize
 // body is does not depend on which frame it is measured in, up to the bob, and
 // they only drive a slow fade either side of the horizon.
 vec3 SkyBodies(vec3 viewDir, vec3 bodyDir, mat3 worldToSpace) {
-#if WATER_SKY_BODIES == WATER_SKY_BODIES_OFF
+#ifndef WATER_SKY_BODIES
 	return vec3(0.0);
 #else
 	// The two bodies are exactly opposite each other, so one dot product gives

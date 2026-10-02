@@ -55,8 +55,16 @@ float pow4(float x) {
 
 // Returns an HDR sky color at the given world-space vector
 vec3 SkyColorModel(vec3 worldDir) {
-	// Cosine/dot product with horizon. Gradually transitions to 0 above the 
+	// Cosine/dot product with horizon. Gradually transitions to 0 above the
 	// horizon, always 1 below the horizon.
+	//
+	// Both variants below produce that same shape. `pow(1.0 - worldDir.y, 2.0)`
+	// is 0 at worldDir.y == 1 (straight up) and 1 at and below worldDir.y == 0;
+	// `1.0 - clamp(worldDir.y, 0.0, 1.0)` is the same curve with clamping
+	// instead of squaring, and its power is applied afterwards by pow4. Either
+	// way the value is high below the horizon, where it mixes in the horizon
+	// colour through baseScatterDay / baseScatterNight - that is what the
+	// "harder horizon" switch changes.
 	#if defined(HARDER_HORIZON_DAY) || defined(HARDER_HORIZON_NIGHT)
 		float dotHorizonHard = clamp(pow(1.0 - worldDir.y, 2.0), 0.0, 1.0);
 		float horizonScatterHard = pow4(dotHorizonHard);
@@ -85,6 +93,12 @@ vec3 SkyColorModel(vec3 worldDir) {
 
 	// Cosine/dot product with the sun or moon. 0.0 to 1.0 for the day/night
 	// variants, no need for negatives in the actual sky equations.
+	//
+	// `dotSun` itself is -1.0 to 1.0, since both vectors are unit length; it is
+	// `dotLightDay` and `dotLightNight` that the 0.0 to 1.0 applies to. Splitting
+	// the sign is also what makes the moon the sun's antipode here: the night
+	// term reads the same vector with the sign flipped rather than a second
+	// uniform.
 	float dotSun = dot(worldDir, worldSunVector);
 	float dotLightDay = max(dotSun, 0.0);
 	float dotLightNight = max(-dotSun, 0.0);

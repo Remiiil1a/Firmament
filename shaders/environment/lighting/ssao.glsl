@@ -29,13 +29,16 @@
 // the usual limits of one: only what is on screen occludes, and thin geometry is
 // missed.
 //
-// It runs in the deferred pass, which is the pass before composite1 resolves the
-// frame over time. That placement is the point of it: the samples here are noisy
-// and the dither that makes them noisy moves every frame, so the temporal filter
-// downstream is what turns the noise into a smooth result. Applying this after
-// the resolve instead would leave every bit of that noise in the picture - see
-// PBR_PORTING.md 55.2, where the first attempt did exactly that and had the
-// variance clamp pull the occlusion back out every frame.
+// It runs in the deferred pass - program/post/copy_and_fog.fsh, which
+// deferred.fsh is a two-line wrapper around - and that is the pass before
+// composite1 resolves the frame over time. That placement is the point of it:
+// the samples here are noisy and the dither that makes them noisy moves every
+// frame, so the temporal filter downstream is what turns the noise into a smooth
+// result. It is drawn by copy_and_fog.fsh rather than here, because this file is
+// a library with no uniforms of its own. Applying this after the resolve instead
+// would leave every bit of that noise in the picture - see PBR_PORTING.md 55.2,
+// where the first attempt did exactly that and had the variance clamp pull the
+// occlusion back out every frame.
 
 // Whether to darken what the sky cannot reach.
 //
@@ -52,12 +55,16 @@
 	// than against a version of the pack that differs in other ways too.
 	#define AO_STRENGTH 1.0 // [0.0 0.25 0.5 0.75 1.0]
 	// Up to 1.0 and no further, and that cap is not a matter of taste. This value
-	// multiplies the frame by mix(1.0, ao, AO_STRENGTH), so a strength above 1.0
-	// turns a fully occluded pixel - where ao is 0 - into a negative one, and a
-	// negative colour is drawn as black. It is the same hole the screen-space
-	// shadows had, reached the same way and just as permanent, because this pass
-	// writes the buffer the temporal history is built from. The list used to run
-	// to 1.5. See PBR_PORTING.md 136.
+	// is the third argument of mix(1.0, ao, AO_STRENGTH) at the point of use, in
+	// copy_and_fog.fsh, and that mix goes negative once ao is below 1 - 1 /
+	// AO_STRENGTH: at 1.5 any pixel whose samples block more than two thirds of
+	// the disk reads as a factor below zero. The list used to run to 1.5.
+	//
+	// ⚠️ What stops that reaching the frame is not this cap but the clamp at the
+	// call site, which bounds the factor to 0 to 1 before multiplying - so the
+	// failure a strength above 1.0 would actually produce is a widening band of
+	// fully black pixels rather than a colour below zero. The call site says so
+	// itself; see the note on that clamp. See PBR_PORTING.md 136.
 
 	// How far a sample is allowed to be from the point it is testing, in blocks.
 	//
@@ -89,9 +96,15 @@
 	//#define AO_DEBUG
 #endif
 
-// The loop bound for the sample count, which is an option and so cannot be the
-// bound itself. Kept outside the option's guard because the function below is
-// inside it and the two are compiled together either way.
+// The loop bound for the sample count, which is an option: the loop runs to this
+// and leaves early once it has taken AO_SAMPLES of them, so the bound stays a
+// constant whatever the setting is. Recorded as the reason rather than asserted,
+// since nothing in this file can show what a driver would do with a bound that
+// changes with an option.
+//
+// It is declared outside the option's guard, which is where it has always been;
+// nothing outside the guard reads it, and the compiler drops it when
+// AMBIENT_OCCLUSION is off.
 const int AO_SAMPLE_LIMIT = 32;
 
 // How far along its own normal a sample is pushed before it is tested, in blocks.

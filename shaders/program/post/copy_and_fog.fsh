@@ -33,6 +33,14 @@
 
 // We must make a copy of colortex0 for forward-rendered reflections and
 // refraction, as we cannot sample a texture we are rendering into.
+//
+// At this point in the file the copy is colortex4, below, and this is the
+// program that declares its format. The note at the top of
+// /program/post/light_bleed.fsh is the other half of this.
+//
+// At this point in the file the copy is colortex4, below, and this is the
+// program that declares its format. The note at the top of
+// /program/post/light_bleed.fsh is the other half of this.
 const int R11F_G11F_B10F = 0;
 const int R8 = 0;
 
@@ -61,9 +69,15 @@ const int colortex5Format = R8;
 #include "/environment/water/absorption_settings.glsl"
 
 // vec4 Fog(...)
+//
+// At this point in the file only the legacy wrapper is asked for: Fog() takes
+// the sky colour, fragDistance, borderFragDistance and skyLightStrength, and
+// returns rgb already multiplied by its fog factor with the transmittance in
+// a - the blend the callers below do. FogV2, which hands the strength back
+// through an out parameter instead, is not called from here.
 #include "/environment/fog.glsl"
 
-// vec3 SkyColor(vec3 ray, float dither)
+// vec3 SkyColor(vec3 worldDir), and SkyDither(vec2 fragCoord, vec3 skyColor)
 #include "/environment/sky.glsl"
 
 // The material model, for the Fresnel term and the option switches its
@@ -149,9 +163,10 @@ uniform float far;
 
 // ScreenSpaceShadow(...), for terrain the shadow map does not reach.
 //
-// Included here, below the uniforms it uses, for the same reason the cloud layer
-// below is: a shader has to see a uniform's declaration before the code that
-// uses it.
+// Included here, below the uniforms it uses - sssShadowDistance and far above,
+// gbufferProjectionInverse among the matrices - for the same reason the cloud
+// layer below is: a shader has to see a uniform's declaration before the code
+// that uses it.
 #include "/lib/sss.glsl"
 
 // AmbientOcclusion(...), for the light the sky cannot reach, and SssScreenNoise,
@@ -178,7 +193,9 @@ uniform sampler2D colortex8;
 // The view-space position of the fragment at the given depth.
 //
 // Note: w must be 1.0 in these homogenous coordinates, as 1.0 means a point in
-// space rather than a vector.
+// space rather than a vector, and this is a point - depth is where the surface
+// is, not a direction. The 1.0 is passed explicitly below and divided out
+// afterwards.
 vec3 ViewPosFromDepth(mat4 inverseProjection, float depth) {
 	vec3 ndcPos = vec3(gl_FragCoord.xy * windowToNdc, depth * 2.0) - 1.0;
 	vec4 viewPosH = inverseProjection * vec4(ndcPos, 1.0);
@@ -235,6 +252,54 @@ void main() {
 	// > centers. For example, the (0.5, 0.5) location is returned for the
 	// > lower-left-most pixel in the window.
 	vec3 background = texelFetch(colortex0, ivec2(gl_FragCoord), 0).rgb;
+
+	float depth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
+
+	// A pixel that nothing drew at all, in a direction that points below the
+	// horizon, is given the sky. Batch 451.
+	//
+	// The game does not cover that part of the view with any geometry. Its sky is
+	// drawn as quads - a star field, the sky's own colour, and the dark plane the
+	// game puts below the horizon - and a ray that leaves the camera almost level
+	// and sinks slowly, which is every ray that crosses a lake to the far side of
+	// it, passes under all of them. What is left in those pixels is the colour the
+	// buffer was cleared to, which is black.
+	//
+	// Nothing ever looked at them until this pack did. The game's own water does
+	// not refract the world behind it, so it never sampled them, and this pack's
+	// water only reaches that far on level-of-detail terrain - where the water's
+	// refraction lands on those black pixels and the surface comes out as a flat
+	// black band under the horizon. Which is exactly what was reported.
+	//
+	// The test is deliberately narrow, because the depth alone cannot make it:
+	// depthtex1 is 1.0 for the sky as well as for an untouched pixel, since the
+	// sky is drawn with depth writing off. The colour is what separates them - the
+	// clear colour is exactly black, and everything drawn before this pass writes
+	// something that is not - so the beacon beam, the glint on a held item, the
+	// End's light flash and the star field are all left alone here whether or not
+	// they wrote depth, and so is anything a future pass draws below the horizon.
+	if (depth >= 1.0 && background == vec3(0.0)) {
+		// The far plane through the inverse projection is a direction rather than
+		// a point, and it is turned into the world's axes the same way the cloud
+		// layer's ray and the fog's own position are, for the reason given at
+		// those two places: the matrix the geometry was drawn with is not quite
+		// the inverse of the one the camera is described by while the view is
+		// bobbing.
+		vec3 viewPosAtFar = ViewPosFromDepth(gbufferProjectionInverse, 1.0);
+		mat3 viewRotation = mat3(gbufferModelView);
+		vec3 worldDir = normalize(vec3(
+			dot(viewPosAtFar, viewRotation * vec3(1.0, 0.0, 0.0)),
+			dot(viewPosAtFar, viewRotation * vec3(0.0, 1.0, 0.0)),
+			dot(viewPosAtFar, viewRotation * vec3(0.0, 0.0, 1.0))));
+
+		// Below the horizon only. Above it the sky quads do cover the view, and a
+		// pixel up there that is black is black sky and not a hole.
+		if (worldDir.y < 0.0) {
+			background = SkyDither(
+				gl_FragCoord.xy,
+				SkyColor(worldDir) + SkyStars(worldDir));
+		}
+	}
 
 	#ifdef AMBIENT_OCCLUSION
 		// Ambient occlusion, applied before the fog below so that the fog is not
@@ -331,6 +396,11 @@ void main() {
 		// The marching below still reads depthtex1 for what is in the way: a
 		// shadow on a water surface is cast by the opaque world, and the water
 		// itself is not part of it.
+		//
+		// At this point in the file that is the marching inside
+		// ScreenSpaceShadow, at the call below - and the comment on the two
+		// uniforms at the top of the file says the same thing about which of
+		// the two depth buffers this pass names as the surface.
 		float sssDepth = texelFetch(depthtex0, ivec2(gl_FragCoord), 0).r;
 
 		if (sssDepth < 1.0) {
@@ -477,7 +547,6 @@ void main() {
 	gl_FragData[0] = vec4(background, 1.0);
 
 	float skylight = texelFetch(colortex2, ivec2(gl_FragCoord), 0).r;
-	float depth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
 
 	vec3 scene = background;
 
@@ -593,17 +662,33 @@ void main() {
 
 	/* DRAWBUFFERS:405 */
 #else
-	// Water absorption is off, so nothing here applies fog and the scene has no
-	// output of its own yet. It still has to be written, because the environment
-	// reflection belongs to the scene rather than to the copy - and in this
-	// configuration the reflection is the only reason this pass runs at all
-	// unless something else asked for it.
+	// This is the branch that does not apply fog: taken when the water
+	// absorption method is not the refraction-assisted one, or when VOXY is
+	// defined, since that is the condition the #if above tests. Nothing here
+	// applies fog and the scene has no fogged output of its own yet. It still
+	// has to be written, because the environment reflection belongs to the
+	// scene rather than to the copy - and in this configuration the reflection
+	// is the only reason this pass runs at all unless something else asked for
+	// it.
 	//
 	// Note that the fog in this configuration was applied by the surface
 	// programs themselves, which means the reflection added here is not fogged
 	// with it. That is the price of adding it after the fact in this
 	// configuration; the refraction-assisted one above gets it right.
 	if (depth < 1.0) {
+		// Declared and never read. There is no side effect to be had here:
+		// ViewPosFromDepth (line 199) only reads gl_FragCoord and its arguments
+		// and returns a value, so calling it and dropping the result computes
+		// nothing that anything can observe, and viewPos goes out of scope with
+		// the block.
+		//
+		// The shape is worth knowing before trusting it. The refraction-assisted
+		// branch above (line 582) opens with the same line and then passes the
+		// result to ApplyFog; here only the declaration survives. The branch
+		// this sits in is taken when the absorption method is not
+		// refraction-assisted, and in that configuration APPLY_FOG is defined by
+		// lit.fsh, so a forgotten fog call here would have compiled and done
+		// nothing. That is a code question: reported in the audit, not touched.
 		vec3 viewPos = ViewPosFromDepth(gbufferProjectionInverse, depth);
 
 	}

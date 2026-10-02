@@ -24,12 +24,21 @@
 // It is here, rather than in composite1, because of what it has to read.
 //
 // A reflection is a lookup into the world that is already drawn, and the world
-// that is already drawn and put together over the last few frames is colortex3,
-// which composite1 writes. A pass cannot read what it is writing, so the
-// reflection cannot live in that pass: it can only read what composite1 leaves
-// behind unused, and what it leaves is colortex4 - the frame as it was drawn,
-// before the temporal resolve averaged the jitter of the last few frames out of
-// it.
+// that is already drawn and put together over the last few frames is colortex3.
+// environment_reflection.glsl declares it and reads it (:42, :325), and this
+// pass gets it through that include rather than declaring it here.
+//
+// composite1 is the pass that writes colortex3, and it also reads it - it is
+// that pass's temporal history - so the reflection cannot live there: a pass
+// cannot read what it is writing, and the resolved frame only becomes available
+// once composite1 has finished. **The buffer this pass adds the reflection to is
+// colortex0**, which is why the comment on the uniform below names it: this pass
+// reads it, adds the reflection, and writes the result back to it. Nothing here
+// reads colortex4.
+//
+// An earlier version of this paragraph said composite1 "leaves colortex4 behind
+// unused" and that the reflection traced over it. That was wrong twice over:
+// colortex4 is not the resolved frame, and the include reads colortex3.
 //
 // That is one of the two reasons a reflection moved at all. The other is this
 // pass's own history, below: the reflection is computed from the depth buffer
@@ -45,8 +54,8 @@
 // composite1 resolves the picture. Both halves are needed: a stable picture to
 // trace over, and a result that has stopped moving.
 
-// The picture the reflection is added to, which is also the buffer this pass
-// writes.
+// The picture the reflection is added to. The pass reads it, adds the
+// reflection, and writes the result back to it as gl_FragData[0].
 uniform sampler2D colortex0;
 
 // The sky light at this pixel, written by the surface programs and not touched
@@ -59,8 +68,8 @@ uniform sampler2D depthtex0;
 
 uniform mat4 gbufferProjectionInverse;
 
-// The reflection this pass produced last frame, and the distance it was computed
-// at, in the alpha channel. See the note on the history below.
+// The reflection this pass produced last frame, and the distance it was
+// computed at, in the alpha channel. See the note on the format above.
 //
 // RGBA16F for the colour, which is the HDR reflection and not a display value,
 // and whose alpha has room for the distance. Not cleared between frames, or
@@ -85,10 +94,10 @@ uniform sampler2D colortex9;
 // its own includes bring it, and a file that some other program includes is not
 // included here. That is what the check script's third rule is for.
 //
-// The last include is where colortex3, depthtex1 and windowToNdc are declared,
-// and it sits above every use of them below. Declaring any of the three here as
-// well would be the same declaration twice in one program, which does not
-// compile.
+// That last include is also where colortex3, depthtex1 and windowToNdc come
+// from, and all three are in scope above every use of them below. Declaring
+// any of the three here as well would be the same declaration twice in one
+// program, which does not compile.
 #include "/environment/sky.glsl"
 #include "/environment/lighting/pbr.glsl"
 #include "/environment/lighting/reflections.glsl"
@@ -112,6 +121,9 @@ uniform mat4 gbufferPreviousModelView;
 
 uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
+
+// The one copy of the previous-frame reprojection, shared with composite1.
+#include "/lib/reproject.glsl"
 
 uniform vec2 windowToScreen;
 
@@ -184,15 +196,12 @@ void main() {
 			// a few blocks, and a half float cannot tell two of those apart.
 			float reflectionDistance = length(reflectionViewPos);
 
-			#if TAA == TAA_ON
+			#ifdef TAA
 				// Where this surface point was on screen last frame.
 				//
 				// Only in the anti-aliasing mode: the reflection rides on the
-				// scene's temporal state rather than duplicating it, and in
-				// DENOISE there is no reprojected history to ride on - the scene
-				// averages each pixel with itself, so there is no way to place the
-				// reflection's own history and it is left with the current frame.
-				// See TAA_DENOISE in lib/taa.glsl.
+				// scene's temporal state rather than duplicating it, and there is
+				// no other mode left for it to ride on.
 				// Rebuilt from the reflection's own view position rather than
 				// reused from the scene's resolve: that one is the point this
 				// pixel shows, and this is the point the ray starts from, which
@@ -204,12 +213,10 @@ void main() {
 				vec3 reflectionWorldPos =
 					reflectionCameraRelativePos + cameraPosition;
 
-				vec4 previousReflectionClipPos = gbufferPreviousProjection
-					* (gbufferPreviousModelView
-						* vec4(reflectionWorldPos - previousCameraPosition, 1.0));
+				Reprojection reflectionReprojection =
+					ReprojectWorldPosition(reflectionWorldPos, screenCoord);
 				vec2 previousReflectionCoord =
-					(previousReflectionClipPos.xy / previousReflectionClipPos.w)
-						* 0.5 + 0.5;
+					reflectionReprojection.previousCoord;
 
 				// Both halves of what makes a sample untrustworthy, as in the
 				// scene's resolve: the pixel was not on screen last frame, or the
@@ -228,10 +235,8 @@ void main() {
 				// is not a number is permanent - the next frame reads this frame's
 				// output back - so it grows instead of fading. See
 				// PBR_PORTING.md 129.
-				bool reflectionOffScreen =
-					!(all(greaterThanEqual(previousReflectionCoord, vec2(0.0)))
-						&& all(lessThanEqual(previousReflectionCoord, vec2(1.0))))
-					|| previousReflectionClipPos.w <= 0.0;
+				bool reflectionOffScreen = reflectionReprojection.offScreen
+					|| reflectionReprojection.behindCamera;
 
 				// Sampled only where there is a coordinate to sample with. A
 				// texture() at a coordinate that is not a number has no defined
@@ -268,8 +273,7 @@ void main() {
 				// splits its weight the same way and for the same reason: a long
 				// history is what averages a per-frame sample out, and a long
 				// history is also what smears anything that moves.
-				vec2 reflectionVelocity = (screenCoord - previousReflectionCoord)
-					* vec2(viewWidth, viewHeight);
+				vec2 reflectionVelocity = reflectionReprojection.velocityPixels;
 				float reflectionStillness =
 					exp(-dot(reflectionVelocity, reflectionVelocity));
 

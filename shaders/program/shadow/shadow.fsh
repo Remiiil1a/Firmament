@@ -23,11 +23,20 @@ uniform float alphaTestRef;
 
 // TODO: Pick a better format. R16 is not in OpenGL 3, R16_SNORM is but might
 // not be the best option.
+//
+// The value stored is waterHeight, above - the R channel is all of it, and the
+// 1.0s written into the other three channels of gl_FragData[0] below are there
+// because a vec4 has four of them, not because anything reads them.
 const int R16_SNORM = 0;
 const int shadowcolor0Format = R16_SNORM;
 
 // The material table, for STAINED_GLASS, and the option that turns the tint
 // below on and off. Uniforms: none
+//
+// AmbientOcclusion is where the surface of this program ends: what the table
+// exposes here is STAINED_GLASS and, under COLORED_SHADOWS_PORTAL,
+// NETHER_PORTAL. The option itself is a bare #define in that file, which is
+// what makes it a switch - see the note at the top of /lib/sss.glsl.
 #include "/environment/materialIDs.glsl"
 
 // The material list above is what decides which blocks tint the light, and the

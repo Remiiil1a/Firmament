@@ -37,8 +37,16 @@
 	#endif
 #endif
 
-// Note: using #if defined for most of these instead of #ifdef to prevent them
-// from being picked up as shader configuration options.
+// Note: **the conditionals below** use #if defined instead of #ifdef on purpose:
+// Iris recognises a boolean option only where it is checked with #ifdef or
+// #ifndef, so a name that is only ever met through #if defined never becomes one
+// and never reaches the settings screen. That is what is wanted for the
+// *conditions* - they are the pack's own internal switches, not user choices.
+//
+// It does not apply to the #define on line 36: an option is *declared* by a
+// #define line wherever that line is written, and CLIP_WATER_TO_COVER_SCREEN has
+// one. What keeps it out of the menu is that no screen.* line names it, which is
+// the only thing keeping it out.
 #if defined(HAS_BLOCK_ATTRIBUTES)
 	// Block identification
 	in vec4 mc_Entity;
@@ -61,24 +69,33 @@
 // PbrAttributeFrame in pbr.glsl.
 in vec4 at_tangent;
 
-// The two varyings below are needed by whatever program reads material maps,
-// which is the block atlas programs and the entity programs that opted in
-// through PBR_MATERIALS_ANY_TEXTURE. Only the atlas path has sprites to stay
-// inside of, so only it needs the attribute that describes them.
-#if defined(PBR_ATLAS) || defined(PBR_MATERIALS_ANY_TEXTURE)
-	#ifdef PBR_ATLAS
-		// The centre of this face's sprite in the block atlas. This is what
-		// parallax mapping uses to keep its displaced samples inside the sprite
-		// they started in - see the note in lit.fsh.
-		in vec4 mc_midTexCoord;
-	#endif
+#ifdef PBR_ATLAS
+	// Where this face's sprite sits in the block atlas, on the vertex buffer's
+	// own side of the texture matrix: the middle of the sprite, in the same space
+	// gl_MultiTexCoord0 arrives in.
+	//
+	// It is the middle of the *quad's* texture and not of the whole sprite - the
+	// two are the same for the full-sprite quads a block model is made of, and
+	// for a quad that covers part of its sprite, such as the side of a slab, this
+	// is the middle of the part it covers. Either way the distance from it to any
+	// corner of the quad is half of what the quad covers, which is what the
+	// fragment stage wants: the displacement may move the coordinate anywhere the
+	// quad is drawn, and no further.
+	//
+	// Iris and OptiFine supply this for every gbuffers vertex stage, and the pack
+	// reads it under PBR_ATLAS - which is what marks a program whose coordinates
+	// are meant to index an atlas. That is the block atlas for the block
+	// programs, and gbuffers_entities, which takes the same route as an
+	// experiment on whether the loaders build material maps beside an entity's
+	// own texture. The entity program that takes PBR_MATERIALS_ANY_TEXTURE
+	// instead has no atlas to sit in and writes a zero half extent below.
+	in vec2 mc_midTexCoord;
+#endif
 
-	// xy is that centre, zw is the distance from it to this vertex, or the other
-	// axis's distance when this one is nil (see the assignment in main for why
-	// that case exists), which for a block face (whose corners are the corners of
-	// one sprite) is half of the sprite's size. An entity has no sprite to
-	// describe: see the assignment below for what it carries instead, and why.
-	out vec4 spriteBounds;
+// The varying below is needed by whatever program reads material maps, which is
+// the block atlas programs and the entity programs that opted in through
+// PBR_MATERIALS_ANY_TEXTURE.
+#if defined(PBR_ATLAS) || defined(PBR_MATERIALS_ANY_TEXTURE)
 
 	// The tangent on its way to the material decoding, in world space and with
 	// the handedness in w.
@@ -88,20 +105,54 @@ in vec4 at_tangent;
 	// the fragment is. The fragment stage still has to check for the degenerate
 	// case, which is the only reason this is passed on rather than assumed.
 	out vec4 pbrTangent;
+
+	// The sprite this vertex's coordinate belongs to, in the atlas space texcoord
+	// is in: the middle of the sprite in xy, and how far it reaches from that
+	// middle in zw.
+	//
+	// This is what tells the parallax march which rectangle the coordinate it is
+	// walking belongs to. Past the edge of a sprite the atlas holds a neighbouring
+	// block's sprite, or the black the material atlases are built with, and a
+	// sample taken there reads the material of a block that is not there - which
+	// shows up as a band of the neighbouring block along the edge of every face.
+	// The fragment stage wraps the coordinate back into this rectangle rather than
+	// shortening the displacement to stay inside it, because the pattern a block
+	// face is drawn with tiles with itself across block boundaries: see
+	// PbrParallaxWrap.
+	//
+	// A program that has no such attribute to read writes a zero half extent
+	// instead, which the fragment stage takes as "there are no bounds here" -
+	// see PBR_MATERIALS_ANY_TEXTURE below.
+	out vec4 pbrSpriteBounds;
 #endif
 
 #if !defined(COLORWHEEL)
 	// The interpolated vertex color directly from the vertex buffer.
 	out vec4 tinting;
 
-	// The lightmap texture coordinates, ranging from 0.03125 to 0.96875.
-	// The x / "s" component is the block light, and the y / "t" component is
-	// the sky light.
+	// The lightmap texture coordinates. The x / "s" component is the block
+	// light and the y / "t" component is the sky light, as in vanilla.
+	//
+	// Their range is a texel-centre range and not 0 to 1: the light levels are
+	// the sixteen texel centres of the lightmap texture, (i + 0.5) / 16, so the
+	// low value is 0.03125 and the high one 0.96875. That is the convention
+	// lib/encoding/lightmap.glsl inverts - it subtracts half a texel and
+	// rescales by 16/15 to get 0 to 1 back - and it follows from that
+	// function's arithmetic rather than from anything in this file.
+	//
+	// This is the value as it arrives; see the assignment in main for the
+	// texture matrix that is applied to it on the way.
 	out vec2 lightMap;
 #endif
 
 #if !defined(NO_GTEXTURE)
-	// The interpolated texture coordinate directly from the vertex buffer.
+	// The interpolated texture coordinate, taken through the texture matrix.
+	//
+	// "Through the texture matrix" is the part that matters to a reader: this is
+	// a place in the block atlas and not a place on the sprite, which is what
+	// the assignment in main makes it, and it is what makes the two weather
+	// varyings below necessary. The coordinate from the vertex buffer is not
+	// carried on under this name anywhere.
 	out vec2 texcoord;
 #endif
 
@@ -141,7 +192,9 @@ in vec4 at_tangent;
 flat out uint perFace;
 
 // Temporal anti-aliasing: the sub-pixel offset this frame is rendered with.
-// Uniforms: frameCounter, viewWidth, viewHeight
+// Uniforms: frameCounter, viewWidth, viewHeight, and taaJitter, which is not
+// declared here - shaders.properties computes it and declares it as a custom
+// uniform - but is what TaaJitter() returns.
 #include "/lib/taa.glsl"
 
 #if defined(HAS_WAVING_FOLIAGE)
@@ -153,7 +206,14 @@ flat out uint perFace;
 	#include "/environment/wind.glsl"
 
 	void WaveFoliage(uint materialID, inout vec4 cameraRelativePos) {
-		// at_midBlock is the offset to the center of the block.
+		// at_midBlock.xyz is the offset from this vertex to the centre of its
+		// block in 1/64 block units - not in blocks, and not the distance in
+		// blocks. The attribute the loader supplies is a vec4 whose w is the
+		// block's own light level (Iris 1.7 and later); the declaration above
+		// takes only the xyz, so that component is not readable here and
+		// nothing here wants it. Read these numbers as 1/64-block offsets and
+		// the test below is "is this vertex at the top of its block's column".
+		//
 		// So if these are the top vertices, then the offset to the center
 		// will be negative as the center is below these vertices.
 		bool topOfFoliage = at_midBlock.y < 0.0;
@@ -182,6 +242,11 @@ uint FetchMaterialID(vec3 worldNormal) {
 				//
 				// For now, use the same lighting as glass by treating all
 				// unknown translucents as glass.
+				//
+				// "Translucents" here means what the #if above says: this
+				// branch is compiled for TRANSLUCENT and TRANSLUCENT_LIGHTING,
+				// and for a program that defines neither, GENERIC keeps its
+				// own material ID.
 				return GLASS;
 			}
 
@@ -238,9 +303,11 @@ vec3 FetchWorldNormal() {
 		return gl_Normal;
 	#else
 		// Otherwise, get the view-space normal and then convert to world-space
-		// by multiplying with the inverse view matrix. For example, on some
-		// versions of Minecraft normals on entities are in view-space, but this
-		// is no longer the case with Minecraft 1.21 and up.
+		// by multiplying with the inverse view matrix. What gl_NormalMatrix is
+		// defined in is the loader's business, not something this file can
+		// check; the reason this branch exists is that it is not world space,
+		// and the `NORMALS_ARE_IN_WORLD_SPACE` branch above is how a program
+		// says it is.
 		//
 		// We pass up on that optimization opportunity since entities are
 		// generally not vertex shader bound and mods can do whatever they want,
@@ -253,10 +320,13 @@ vec3 FetchWorldNormal() {
 		//
 		// Otherwise, we apply the wrong transformation when the view matrix
 		// is not just a rotation, translation, uniform scaling, or combination,
-		// notably when under the nausea effect. However, it seems like that
-		// "correct" matrix gives the same result for nausea, so perhaps Iris or
-		// Minecraft do not handle this properly; therefore, we have no need to
-		// pay the extra cost for that approach.
+		// notably when under the nausea effect. **Recorded observation, not
+		// something this pack can demonstrate**: it was found that the
+		// "correct" matrix seemed to give the same result under nausea - which
+		// would mean Iris or Minecraft do not handle this properly - and on that
+		// basis the extra cost was not paid. The identity above is arithmetic
+		// and holds; the observation about nausea is the part that would need
+		// re-measuring before anyone relies on it.
 		vec4 homogenousNormal = vec4(gl_NormalMatrix * gl_Normal, 0.0);
 		return (gbufferModelViewInverse * homogenousNormal).xyz;
 	#endif
@@ -357,76 +427,6 @@ void main() {
 	#endif
 
 	#if defined(PBR_ATLAS) || defined(PBR_MATERIALS_ANY_TEXTURE)
-		#ifdef PBR_ATLAS
-			// mc_midTexCoord is in the same space as gl_MultiTexCoord0, so it takes
-			// the same transform to land in the atlas.
-			vec2 spriteCenter = (gl_TextureMatrix[0] * mc_midTexCoord).xy;
-			// A vertex that lies on the sprite's own centre line reports its distance
-			// as zero, and that zero is not the sprite's size. The door is where this
-			// happens: one sprite of 16x32 covered by two faces of 1x1 apiece, so the
-			// upper face has two of its vertices on the sprite's horizontal centre
-			// line. Interpolated, that zero collapses the box the marches run in - the
-			// near edge of the box is the centre minus the half, which for a fragment
-			// on that side of the line is that fragment's own coordinate, so the local
-			// coordinate is a constant 0 (1 on the other side) and the axis stops
-			// being a scale at all: the ray's travel along it shrinks to nothing on
-			// the line, and what is left of the division there is rounding noise
-			// rather than a position.
-			//
-			// The other axis is asked instead. Sundial reaches the same answer from
-			// the same attribute (Terrain.vert: a component of mc_midTexCoord equal to
-			// the vertex's own swaps in the other one). It is not exact - on that door
-			// the rescued half is 8px where the truth is 16px, so the box comes out
-			// half the height it ought to be and the vertical displacement is
-			// compressed smoothly, by at most a third, toward the middle of the
-			// sprite - but it stays inside the sprite, which is the property the box
-			// exists for and the one a substitute taken from a sprite that is wide and
-			// short would not have.
-			//
-			// That a face whose four vertices are the four corners of its sprite is
-			// bit for bit unaffected is the reason this is safe to do blind: its
-			// distance to the centre is half the sprite in every component, at least
-			// half a texel, which is 6.1e-5 even in an 8192-wide atlas against the
-			// 1e-6 below - the rounding noise on a value of this size is around 1e-7,
-			// so the threshold sits between the two with room on both sides. Neither
-			// assignment is reached there, so what is written out is the number that
-			// was written out before and every reader of it (PbrSpriteLocal,
-			// PbrFadeOffsetToSprite, PbrClampToSprite, PbrSpriteUsable, the height
-			// field shadow and the diagnostic view) is left on the same value.
-			vec2 spriteHalfSize = abs(texcoord - spriteCenter);
-
-			// Both are read before either is written, so that each axis takes the
-			// other's own distance rather than one that has already been replaced. A
-			// vertex on the centre line in both axes at once is left with the zero it
-			// reported: PbrSpriteUsable reads that as "no box here", and the face is
-			// drawn with no displacement rather than with a wrong one.
-			vec2 halfSize = spriteHalfSize;
-
-			if (spriteHalfSize.x < 1.0e-6) {
-				halfSize.x = spriteHalfSize.y;
-			}
-
-			if (spriteHalfSize.y < 1.0e-6) {
-				halfSize.y = spriteHalfSize.x;
-			}
-
-			spriteBounds = vec4(spriteCenter, halfSize);
-		#else
-			// An entity is not drawn from a sprite sheet: its texture coordinate
-			// already indexes its own texture, and there is no sprite for a
-			// displaced sample to fall out of. The zero half-size is what says
-			// that - PbrSpriteUsable reads it as "nothing usable here", and both
-			// of the marches leave a face without bounds undisplaced rather than
-			// running one in coordinates that describe no box. On the entity
-			// path that is exactly what is wanted.
-			//
-			// Leaving it unassigned instead is what made the player's armour and
-			// held item see-through: an uninitialized varying interpolates to
-			// whatever the driver left in it, the clamp then boxes the albedo
-			// lookup into an arbitrary square of the skin, and the lookup lands
-			// on the transparent parts of it.
-			spriteBounds = vec4(0.5, 0.5, 0.0, 0.0);
-		#endif
 
 		// The geometry's tangent, brought into world space exactly the way
 		// FetchWorldNormal brings the normal there - the two attributes arrive
@@ -462,6 +462,33 @@ void main() {
 		#endif
 
 		pbrTangent = vec4(worldTangent, at_tangent.w);
+
+		#ifdef PBR_ATLAS
+			// Both points taken through the texture matrix, because the matrix is
+			// what turns the vertex buffer's coordinates into the atlas
+			// coordinates the fragment stage samples with - and because taking
+			// the two through the same matrix is what makes their difference
+			// meaningful whatever the matrix happens to be. gl_MultiTexCoord0 is
+			// written out rather than read from texcoord so that a program with
+			// NO_GTEXTURE, which has no texcoord, still has bounds.
+			vec2 spriteCoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
+			vec2 spriteMid = (gl_TextureMatrix[0] * vec4(mc_midTexCoord, 0.0, 1.0)).xy;
+
+			// Every corner of a rectangular quad is the same distance from the
+			// middle of it, so this is one value across the whole face and
+			// interpolating it costs nothing but the two registers. The parallax
+			// march reads it as the half extent of the sprite the coordinate
+			// belongs to.
+			pbrSpriteBounds = vec4(spriteMid, abs(spriteMid - spriteCoord));
+		#else
+			// This program reads material maps without a block atlas under them -
+			// an entity's own texture is the material's texture - and has no mid
+			// texture coordinate to measure a sprite from. A zero half extent is
+			// how it says so; see PbrSpriteBoundsUsable, which is also where the
+			// consequence is written down: the parallax depth is a fraction of a
+			// sprite, so a program with no sprite gets no displacement.
+			pbrSpriteBounds = vec4(0.0);
+		#endif
 	#endif
 
 	vec3 worldNormal = FetchWorldNormal();
@@ -486,11 +513,13 @@ void main() {
 	//
 	// Geometry that carries no tangent at all - Minecraft's entity format, some
 	// mods - is given one derived from the face normal instead. It has to be
-	// given something: the encoder normalizes what it hands over, and
-	// normalizing a zero vector is undefined. Any tangent in the face's plane
-	// is as good as any other for geometry that did not author one, so the one
-	// both stages can arrive at on their own is the one to use, which is what
-	// OrthonormalBasisOf returns.
+	// given something: EncodePerFace normalizes the tangent it is handed
+	// (face.glsl, in the "express the tangent as a linear combination" step),
+	// and normalizing a zero vector is undefined - so what this owes the
+	// encoder is a tangent that is not zero, not one that is already unit
+	// length. Any tangent in the face's plane is as good as any other for
+	// geometry that did not author one, so the one both stages can arrive at on
+	// their own is the one to use, which is what OrthonormalBasisOf returns.
 	// Named apart from the worldTangent inside the PBR_ATLAS block above: that
 	// block's own variable is in this same scope whenever the option is on, and
 	// a second declaration of the same name would not compile.
@@ -616,17 +645,22 @@ void main() {
 			// And, if flat, this face must also be high enough that it is not
 			// just the flat center of flowing water as well.
 			//
-			// at_midBlock is the distance to the center of the block multiplied
-			// by 64. Because the top face of still water is above the center,
-			// this is negative as the center of the block is below. So, this
-			// actually means: is this vertex more than 23/64th of a block above
-			// its center?
+			// at_midBlock.xyz is the offset from the vertex to the centre of
+			// its block in 1/64 block units. (The loader's attribute is a vec4
+			// whose w is the block's light level; the declaration above takes
+			// only the xyz, so that component is not readable here.) Because
+			// the top face of still water is above the
+			// center, this is negative as the center of the block is below.
+			// So, this actually means: is this vertex more than 23/64th of a
+			// block above its center?
 			//
-			// If you look at still water in vanilla, the surface lies 2 pixels
-			// below the top of a nearby solid block. 2/16 is 0.875, which would
-			// be 24 / 64 (0.375) + half (0.5). So, 23/64 just allows for some
-			// imprecision, but without allowing a still center of flowing water
-			// which is below this threshold (3 pixels below, a 20/64 offset).
+			// The numbers, in those units. Vanilla's still water has its top
+			// face 2/16 of a block below the top of the block, which is 24/64
+			// above the centre - so a threshold of 24/64 would be the exact
+			// value. Flowing water whose centre is not raised sits at 20/64.
+			// 23/64 is one unit under the exact value: enough room for the
+			// side faces of still water to pass, and still above the 20/64 of
+			// a flat flowing centre.
 			&& at_midBlock.y < -23.0
 		) {
 			// Then use clipping to stretch this face downward across the
@@ -635,3 +669,4 @@ void main() {
 		}
 	#endif
 }
+

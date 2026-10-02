@@ -15,24 +15,35 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Applies parallax mapping to a smooth water surface. Given a position in 2D
-// world space, a time in seconds, and the vector of the intersection with the
-// surface in this presumed world space (negative Z), it returns a shifted
-// version of worldPos that gives depth to the water surface.
+// world space, a time in seconds, and the view ray's direction in the frame
+// described below, it returns a shifted version of worldPos that gives depth to
+// the water surface.
 //
-// The only oddity is viewVector - we treat it here as if it is in world space,
-// but you probably want to actually pass it in tangent space. They happen to be
-// the same when looking at water from the top which is the most common, but
-// when looking at it from the bottom, the tangent space vector keeps Z negative
-// while in world space, Z is actually positive - which breaks this function.
-// From the side, you probably do not want to apply parallax mapping as water
-// surfaces are strictly horizontal in the current code structure.
+// The only oddity is viewVector and which frame it is in. There is no matrix
+// here and nothing converts anything, so the frame is whatever the caller
+// passes. `posStep` below only ever uses `viewVector.xy / abs(viewVector.z)`,
+// so the frame has to be one whose Z points out of the water surface, with
+// `ddxWorldPos` / `ddyWorldPos` expressed in its X and Y. The current caller,
+// parallaxWaterNormal in translucent.glsl, passes `facing * incident.xzy`,
+// where `incident` is the view-space incident vector (the normalized
+// camera-relative position). That swizzle moves view-space Z into the third
+// component, so this component's sign is the difference between seeing the
+// surface from above and from below: view space looks down -Z, so a surface
+// above the camera gives a negative Z here and one below gives a positive Z.
+// The `abs` in `posStep` discards that distinction, so a down-facing surface
+// is traced with the same step as an up-facing one.
 //
-// This function relies solely on a previously-defined WaterHeight function of
-// the form:
+// The side case is handled by the caller, not here: parallaxWaterNormal gates
+// parallax off with `clamp(..., 0.0, float(verticalNormal))`, and it can also
+// make the surface non-horizontal itself by folding world Y into the XZ
+// coordinate it passes in. The water plane handed to this function is 2D, so
+// nothing in this file can express a surface that is not.
 //
-// float WaterHeight(vec2 worldPos, float time);
-//
-// The height returned from that function MUST be in the range 0.0 to 1.0.
+// This function relies solely on a previously-defined WaterHeight function. It
+// calls the five-argument approximate form,
+// `WaterHeightApproximate(worldPos, ddxWorldPos, ddyWorldPos, time)`, which is
+// `WaterHeight(..., true)` in both surface files. The height returned from that
+// function MUST be in the range 0.0 to 1.0.
 vec2 WaterSurfaceParallaxMapping(
 	vec2 worldPos,
 	vec2 ddxWorldPos,
@@ -40,11 +51,14 @@ vec2 WaterSurfaceParallaxMapping(
 	float time,
 	vec3 viewVector
 ) {
-	// We are tracing through a surface that is 1 meter thick. One factor that
+	// We are tracing through a surface of height range 0.0 to 1.0, which the
+	// water height function is required to return. That is not automatically
+	// one block: the range is whatever the height function's own amplitudes sum
+	// to, and nothing here multiplies by a block size. One factor that
 	// is slightly modified from traditional parallax mapping is that we work
-	// with a height function rather than a depth function. As a result, our
-	// entry into the surface is a height of 1.0 and we continually lower our
-	// height as we trace into the surface.
+	// with a height function rather than a depth function. As a result, the
+	// trace starts at a height of 1.0 and continually lowers that height as it
+	// goes, rather than starting at depth 0.0 and increasing it.
 	//
 	// For a traditional depth approach, we would have started at a depth of 0.0
 	// and have went "deeper" into the surface by increasing the current depth
@@ -81,8 +95,12 @@ vec2 WaterSurfaceParallaxMapping(
 		// height.
 		// 
 		// Since we are doing multiple iterations, scale the step length such
-		// that we trace from surface top to surface bottom over the course of
-		// all iterations.
+		// that an unscaleable step would cross the whole height range over the
+		// course of all iterations. What actually crosses the range is the sum
+		// of the four scaled steps, and each is scaled by how far above the
+		// surface the trace still is, so the loop usually stops well short of
+		// the bottom - that shortfall is why the loop breaks on the intersection
+		// test below rather than running all four iterations.
 		float stepLength = 1.0 / ITERATIONS;
 
 		// The critical improvement over standard parallax techniques is that at
@@ -90,8 +108,8 @@ vec2 WaterSurfaceParallaxMapping(
 		// surface.
 		//
 		// Essentially, as we approach the surface, we slow down. If we are only
-		// 0.1 meters above the surface at the very start, this means that we
-		// will use our 4 iterations to step through that 0.1 meter distance,
+		// 0.1 units above the surface at the very start, this means that we
+		// will use our 4 iterations to step through that 0.1 unit distance,
 		// rather than blowing right past it.
 		// 
 		// Since the surface is smooth at the nearby distances we are applying

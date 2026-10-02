@@ -40,6 +40,10 @@ void main() {
 	materialID = DecodeMaterialID(mc_Entity.x);
 
 	// TODO: Deduplicate this, copied from lit.fsh
+	//
+	// At this point in the file this is water-surface detection for the shadow
+	// map's waterHeight output. It was copied from lit.fsh, which uses the same
+	// test for its own water effects, so the two have to be changed together.
 	if (materialID == WATER &&
 		// Only water faces that are facing directly up or down are eligible
 		// for standard water effects. Otherwise, we will fall back to vanilla
@@ -48,17 +52,26 @@ void main() {
 		// If flat, this face must also be high enough that it is not just
 		// the flat center of flowing water as well.
 		//
-		// at_midBlock is the distance to the center of the block multiplied
-		// by 64. Because the top face of still water is above the center,
-		// this is negative as the center of the block is below. So, this
-		// actually means: is this vertex more than 23/64th of a block above
-		// its center?
+		// At this point in the file at_midBlock.y (the third component of the
+		// loader's attribute; the declaration above takes only the three xyz,
+		// so nothing here can read the fourth) is the offset from the middle
+		// of the block to this vertex, in 1/64 block units. The attribute is a
+		// vec4 because its w carries the block's light level, which this file
+		// does not use. The top face of still
+		// water sits above the middle of the block, so its offset is negative -
+		// the middle is below the surface. So, this actually means: is this
+		// vertex more than 23/64th of a block above its center?
 		//
 		// If you look at still water in vanilla, the surface lies 2 pixels
-		// below the top of a nearby solid block. 2/16 is 0.875, which would
-		// be 24 / 64 (0.375) + half (0.5). So, 23/64 just allows for some
-		// imprecision, but without allowing a still center of flowing water,
-		// which is below this threshold (3 pixels below, a 20/64 offset).
+		// below the top of a nearby solid block. Those 2 pixels are 2/16 of a
+		// block, so the surface stands 14/16 = 0.875 of a block above the
+		// block's floor, which is 24/64 above its center - the half block plus
+		// 8/64. So 23/64 (0.359375 as an offset from the center) just allows
+		// for some imprecision, without allowing a still center of flowing
+		// water, which is below this threshold (3 pixels below the block top,
+		// a 20/64 offset). Read the two as offsets-from-center throughout:
+		// 0.875 is a height above the floor, 0.359375 an offset from the
+		// middle.
 		at_midBlock.y < -23.0
 	) {
 		float y = cameraRelativePos.y;
@@ -73,6 +86,12 @@ void main() {
 
 	// Prevent some blocks from casting shadows for aesthetic reasons.
 	// See the definition in block.properties for more details.
+	//
+	// Everything at the vertex ends up at -1.0, which is outside the clip
+	// volume, so the triangle is culled and nothing is written to the map for
+	// it - with all three vertices gone, the primitives are gone with them.
+	// The buffer's own depth is therefore unchanged where the glass was, and a
+	// fragment that the map holds as lit stays lit.
 	if (materialID == GLASS) {
 		gl_Position = vec4(-1.0);
 	}

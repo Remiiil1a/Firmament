@@ -32,6 +32,11 @@
 
 // Returns a vec2 containing the minimum depth (x) and maximum depth (y) at the
 // given position in the depth buffer.
+//
+// In the gather path that is the min and max of the four texels around `at`.
+// In the fallback path both components are the single nearest texel, so
+// MIN_DEPTH and MAX_DEPTH return the same value there and the distinction the
+// callers draw between them collapses.
 vec2 depthRange(sampler2D depthBuffer, vec2 at) {
 	#if defined(REFRACTION_REJECT_MODE_GATHER)
 		// We need to be careful with exactly HOW we determine if the hit is
@@ -52,6 +57,9 @@ vec2 depthRange(sampler2D depthBuffer, vec2 at) {
 		// below is a greater-than check. Since depth is nonlinear, we cannot do
 		// any sort of weighting or linear interpolation without significant
 		// complexity. This looks good enough as-is.
+		//
+		// The maximum comes back along with it in .y for the depth the caller
+		// reports for the hit; that is the deepest of the four texels.
 		float minDepth = min(
 			min(refractDepthX4.x, refractDepthX4.y),
 			min(refractDepthX4.z, refractDepthX4.w)
@@ -150,12 +158,33 @@ vec3 RefractTrace(
 	// edge of water sometimes. If that is the case, reject the hit and just use
 	// the original background position (as if we did not refract at all)
 	//
-	// Note: Use if defined(...) to avoid this getting picked up as a
-	// configurable option.
+	// Note: written as `defined(...)` rather than `#ifdef` purely to keep it
+	// from being picked up as a configurable option by tooling that scans for
+	// `#ifdef`/`#ifndef` of a plain name - it is not an Iris option either way,
+	// since `#if defined(X)` never declares one.
 	vec2 refractDepthRange = depthRange(depthBuffer, refractedPos2D);
 	float refractDepth = MAX_DEPTH(refractDepthRange);
 
 	if (gl_FragCoord.z > MIN_DEPTH(refractDepthRange)) {
+		refractedPos2D = backgroundPos2D;
+		refractDepth = backgroundDepth;
+	}
+
+	// A position that is not a number is not a position, and it is worth checking
+	// because of where the depth this trace reads comes from: past the edge of
+	// what a level-of-detail renderer has drawn, its own depth texture holds
+	// whatever it was never given, and a trace through that produces a coordinate
+	// that is not a number. The sample of the colour buffer is then taken at a
+	// coordinate that is not a number, which is undefined - and undefined is what
+	// the flat black band under the horizon on that terrain was.
+	//
+	// The test is written as comparisons rather than as a check for a number,
+	// because a NaN fails every comparison: asking whether the position lies
+	// inside the buffer therefore answers no for a NaN and for a position
+	// genuinely outside it alike. Either way the fragment's own position is the
+	// answer, which is what a rejected hit above uses as well.
+	if (!(refractedPos2D.x >= 0.0 && refractedPos2D.x <= 1.0
+		&& refractedPos2D.y >= 0.0 && refractedPos2D.y <= 1.0)) {
 		refractedPos2D = backgroundPos2D;
 		refractDepth = backgroundDepth;
 	}
@@ -165,6 +194,10 @@ vec3 RefractTrace(
 
 // Samples the given texture at a given position, with the right sampling mode
 // to avoid bleeding from texels that are not behind the refractive surface.
+//
+// This samples the color buffer, not the depth buffer - `RefractTrace` is what
+// established, via the depth check above, that the texels around `at` are
+// behind the refractive surface.
 vec4 RefractionSafeSample(sampler2D colorBuffer, vec2 at) {
 	#if defined(REFRACTION_REJECT_MODE_GATHER)
 		// Bilinear interpolation is safe because we previously confirmed that

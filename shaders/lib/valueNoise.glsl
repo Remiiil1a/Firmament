@@ -21,8 +21,15 @@
 
 // Simple 2D value noise
 
-// We only need 64x64 at most and could probably get away with 32x32 or 48x48 if
-// needed. The smaller the better as that helps maximize memory cache hit rate.
+// How big the noise texture is. The sampler itself is noisetex, supplied by the
+// shader mod rather than shipped in this pack, so the size is stated here and
+// everything else in this file and in valueNoiseDerivatives.glsl derives its
+// texel arithmetic from these two constants - there is no image in the pack to
+// cross-check the 64 against.
+//
+// Recorded as the reason for the size, and not something the code shows: 64x64
+// is what is needed at most and 32x32 or 48x48 would probably do, and smaller is
+// better because it helps the texture stay in cache.
 const int noiseTextureResolution = 64;
 const float noisePixel = 1.0 / noiseTextureResolution;
 
@@ -30,6 +37,10 @@ const float noisePixel = 1.0 / noiseTextureResolution;
 	uniform sampler2D noisetex;
 #endif
 
+// One texel of the noise texture, weighted by noiseChannel - which is not a
+// channel selector but three weights, one per component of the fetched texel.
+// Note that pos here is a raw texture coordinate, not the cell-space coordinate
+// smoothNoise2Dx3 below takes; that function is the one that scales.
 float noise(vec3 noiseChannel, in vec2 pos) {
 	return dot(texture(noisetex, pos).xyz, noiseChannel);
 }
@@ -44,28 +55,28 @@ vec2 fade(vec2 t) {
 // Very efficient value noise function taking full advantage of texture sampling
 // hardware.
 //
-// Despite the memory bandwith cost associated with texture sampling, the
-// relatively small size of the texture we are sampling (64x64, 16384 bytes) as
-// well as the inherent nature of coherent noise (meaning that we usually are
-// sampling similar broad areas of the texture) allows it to stay in cache.
-// 
-// Furthermore, bilinear filtering hardware in the GPU means that the normal
-// process of sampling value noise - that is, hashing the 4 cell corners and
-// then interpolating between them - is entirely hardware-accelerated.
-//
-// These two combined factors mean that a texture-free version, even when using
-// a very fast hash function and optimized coordinate interpolation, ends up
-// being many more shader instructions, and when an L1 cache read can happen as
-// fast as a multiply, it also ends up being a fair bit slower!
-//
-// In practice, noise using texture lookups is noticably faster - 80 FPS -> 90
-// FPS in a water-heavy scene.
+// Recorded as the reasoning behind the approach, and not as something this file
+// can show: despite the memory bandwidth cost associated with texture sampling,
+// the relatively small size of the texture we are sampling as well as the
+// inherent nature of coherent noise (meaning that we usually are sampling
+// similar broad areas of the texture) was taken to keep it in cache. And the
+// bilinear filtering hardware in the GPU means that the normal process of
+// sampling value noise - hashing the 4 cell corners and then interpolating
+// between them - is entirely hardware-accelerated. Those two together were the
+// argument that a texture-free version, even with a very fast hash function and
+// optimized coordinate interpolation, ends up many more shader instructions and
+// a fair bit slower; the measurement recorded at the time was 80 FPS to 90 FPS
+// in a water-heavy scene. Neither the instruction count nor that FPS figure is
+// verifiable from the code.
 //
 // Input: Coordinates scaled to the cell size - adding 1.0 to any coordinate
 //        moves by the size of exactly 1 cell. The lower-left cell in the +X/+Y
 //        quadrant covers the input coordinates (0.0, 0.0) to (1.0, 1.0).
 //
-// Output: 3 coherent noise values in the range [0.0, 1.0]
+// Output: 3 coherent noise values in the range [0.0, 1.0] - they are the three
+//         components of the texel the bilinear filter produced, and that filter
+//         cannot leave the range its inputs are in. Which component is which
+//         noise field is a property of the texture, not of this code.
 vec3 smoothNoise2Dx3(vec2 at) {
 	// Determine the corner of the grid cell this coordinate lies in.
 	vec2 corner = floor(at);
@@ -113,16 +124,24 @@ vec3 smoothNoise2Dx3(vec2 at) {
 	return texture(noisetex, at).xyz;
 }
 
-// Same as the function above, but only returns a single value noise result.
+// Same as the function above, but only returns a single value noise result -
+// the texel's x component, which the bilinear filter has already blended with
+// the three texels around it, so this is still a coherent field and not a point
+// sample of the texture.
 float smoothNoise2D(vec2 at) {
-	// TODO: This could be even faster if we used a 1-component texture instead
-	// of sampling an RGB/RGBA texture and throwing away the other components.
+	// TODO: This is the x component of an RGB/RGBA texel with the other
+	// components thrown away, and the derivative variant below reads the same
+	// component back with textureGather. A one-component texture would carry the
+	// same field in a quarter of the memory, but nothing here can change which
+	// texture the mod binds.
 	return smoothNoise2Dx3(at).x;
 }
 
 // Same as the function above, but instead of returning the x component, it
 // allows you to create your own noise channels dynamically - the noiseChannel
-// parameter contains the weights of each noise channel.
+// parameter contains the weights of each noise channel, so this is the same dot
+// product as noise() at the top of the file, applied to a filtered sample
+// instead of a point sample.
 float smoothNoise2D(vec3 noiseChannel, vec2 at) {
 	return dot(smoothNoise2Dx3(at), noiseChannel);
 }

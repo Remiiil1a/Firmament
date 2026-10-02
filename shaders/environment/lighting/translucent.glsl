@@ -32,7 +32,9 @@
 #ifdef WATER_PARALLAX
 	#include "/environment/water/parallax.glsl"
 
-	// Distance in meters to apply parallax mapping to the water surface.
+	// Distance in blocks out to which parallax mapping is applied to the water
+	// surface. Blocks are the unit of the length(cameraRelativePos) it is
+	// compared against below, and of the `far` that caps it.
 	#define WATER_PARALLAX_DISTANCE 48.0 // [8.0 16.0 24.0 32.0 48.0 64.0]
 #endif
 
@@ -154,8 +156,10 @@ vec3 parallaxWaterNormal(
 	// the height into the coordinate as well makes the same two-dimensional field
 	// vary down the face, which is what gives falling water a surface.
 	//
-	// Sundial's water surface does the same thing for the same reason: its sample
-	// coordinate is position.xz + vec2(position.y). Absolute height, not the
+	// Recorded: Sundial's water surface is said to do the same thing for the same
+	// reason, its sample coordinate being position.xz + vec2(position.y) - a
+	// comparison with another pack, which nothing here stands behind. What this
+	// line is careful about is taking the absolute height, not the
 	// camera-relative one, so that the pattern does not slide when the camera
 	// itself moves up or down.
 	if (sideways) {
@@ -211,6 +215,39 @@ vec3 parallaxWaterNormal(
 		ddyWorldPos,
 		timeSeconds);
 
+	// A wave normal that is not a direction is replaced by the flat surface,
+	// which is the one value in here that cannot be wrong.
+	//
+	// Three things above can produce one: the derivative frame, whose
+	// determinants are held off zero but which is still the one place in this
+	// calculation that divides by a quantity the view can drive to nothing; the
+	// noise functions, which are handed a coordinate built out of a world
+	// position and a view direction and are undefined for one that is not a
+	// number; and the parallax march, which is a division by the vertical part of
+	// the view direction and is skipped rather than guarded where that part is
+	// small. Whichever of them does it, the answer is the same, and it is the
+	// surface without its waves.
+	//
+	// The test is written as a comparison against half a unit rather than as a
+	// check for a number, because there is no check for a number to write that
+	// catches one: every comparison a NaN takes part in is false, so asking
+	// whether the value is too small answers yes for a NaN, for zero, and for
+	// nothing else. This is the same way the ambient occlusion in
+	// program/post/copy_and_fog.fsh tests its factor.
+	//
+	// This is in the tangent space WaterNormal returns - the in-plane components
+	// and the one out of the plane - so the flat surface is the third axis, and
+	// both ways out of this function below turn it into the face's own normal
+	// without knowing they were handed it.
+	//
+	// Recorded with the guard above: this was written to fix the flat black clump
+	// reported on level-of-detail water and it did not, because that was the
+	// absorption path and not a normal at all. It stays as the boundary guard it
+	// is; the note in absorption_refraction.glsl is where the clump was settled.
+	if (!(dot(waterNormal, waterNormal) > 0.5)) {
+		waterNormal = vec3(0.0, 0.0, 1.0);
+	}
+
 	// A face that is not horizontal needs a frame of its own. WaterNormal returns
 	// the normal in tangent space, where Z points out of the surface and X and Y
 	// point along it - and for water lying flat on the ground those two happen to
@@ -251,6 +288,46 @@ vec3 parallaxWaterNormal(
 	uniform vec3 viewOffsetPixelX;
 	uniform vec3 viewOffsetPixelY;
 #endif
+
+// The reciprocal of one of the two determinants the derivative trace below
+// divides by, held away from zero.
+//
+// Those determinants are the volume of the box the ray direction and the
+// surface's own two edges span between them, so they are zero exactly when the
+// ray lies in the surface's plane - which is the horizon of a water surface.
+// The game's own water does not reach its horizon: its horizon is past the end
+// of the rendered world, and no fragment of it is ever seen edge-on. Water on
+// level-of-detail terrain does reach it, and a lake seen at a glancing angle has
+// that horizon on screen as a band across the picture.
+//
+// What a zero there produces is an infinite barycentric coordinate. The
+// derivative is that coordinate times a stretch vector, and an infinite
+// derivative whose components are of opposite signs is not an infinite sum but a
+// NaN - an infinite minus an infinite. A NaN wave normal makes a NaN reflection,
+// a NaN reflection is a NaN colour, and a NaN written to the frame is a flat
+// black pixel: not a dark colour but the absence of one, uniformly black with no
+// texture or noise left in it.
+//
+// ⚠️ Recorded, because this was written to fix that and did not: the flat black
+// clump reported on level-of-detail water was NOT this. It was the water
+// absorption path - see the note in
+// environment/water/absorption_refraction.glsl and batch 447. This guard stands
+// on the argument above alone, as a guard against a black pixel from a
+// different cause, and the report is what showed the difference between a
+// theory that fits the evidence and the thing itself.
+//
+// Both edges are unit length by construction - they are the face's tangent and
+// bitangent - and the ray direction is close to it, so one is the magnitude a
+// surface seen face on gives and the floor below is one part in a million of
+// that. Holding the determinant off zero leaves the derivative finite; it then
+// comes out far larger than any real surface gives, which is the honest reading
+// of a surface seen edge-on, and the wave functions' own antialiasing takes the
+// waves out of it. What is left there is flat water.
+float SafeDeterminantReciprocal(float determinant) {
+	return 1.0 / (determinant >= 0.0
+		? max(determinant, 1.0e-6)
+		: min(determinant, -1.0e-6));
+}
 
 // This function is a method of computing the partial derivative of the world
 // space position with respect to the screen space position (screen space
@@ -349,14 +426,14 @@ void dWorldPosdxdy(
 	// Intersection for the trace along the screen in the X direction, in
 	// barycentric coordinates.
 	vec3 pdx = cross(offsetX, edge2);
-	float invdetdx = 1.0f / dot(pdx, edge1);
+	float invdetdx = SafeDeterminantReciprocal(dot(pdx, edge1));
 	float dudx = invdetdx * dot(pdx, viewPos);
 	float dvdx = invdetdx * dot(offsetX, q);
 
 	// Intersection for the trace along the screen in the Y direction, in
 	// barycentric coordinates.
 	vec3 pdy = cross(offsetY, edge2);
-	float invdetdy = 1.0f / dot(pdy, edge1);
+	float invdetdy = SafeDeterminantReciprocal(dot(pdy, edge1));
 	float dudy = invdetdy * dot(pdy, viewPos);
 	float dvdy = invdetdy * dot(offsetY, q);
 
@@ -383,10 +460,17 @@ void dWorldPosdxdy(
 // TranslucentLighting, which is where this is applied, so there is one place it
 // could have been and one place it is - see the note at the application below.
 //
-// It does not go above one. A Fresnel term is a fraction of the incoming light and
-// cannot exceed all of it, so a setting that asked for more would be answered with
-// the same picture as 1.0 - a slider whose top half does nothing, which is worse
-// than a shorter slider. See PBR_PORTING.md 148.
+// It does not go above one. A Fresnel term is a fraction of the incoming light
+// and cannot exceed all of it, so a setting that asked for more would not be
+// answered with a brighter reflection - the factor goes straight into mix() and
+// into the alpha below, and neither of those saturates: mix() extrapolates past
+// the reflected colour, and the alpha comes back above one. A list that reached
+// further would be a list of broken pictures, which is worse than a shorter
+// slider. See PBR_PORTING.md 148.
+//
+// Note that the declaration here reads 0.5 while profile.EDIT_DEFAULT in
+// shaders.properties sets 1.0, so the profile restores the full reflection this
+// option is a way out of.
 #define WATER_REFLECTION_STRENGTH 0.5 // [0.0 0.1 0.25 0.5 0.75 1.0]
 
 vec4 TranslucentLighting(
@@ -418,9 +502,19 @@ vec4 TranslucentLighting(
 	fragmentColor.rgb *= fragmentColor.a;
 	vec3 normal = worldNormal;
 
-	// We can get the view-space incident vector (needed for reflection and
-	// refraction) from normalizing the view position as the incident vector
-	// from our view is necessarily the direction of the fragment in view space!
+	// The direction from the camera to this fragment: normalize() of the
+	// camera-relative position, because the camera sits at the origin of that
+	// space and this fragment's position in it is the vector to it.
+	//
+	// ⚠️ That is world axes, not view space. cameraRelativePos has the camera's
+	// translation taken out and the rotation left in, so normalizing it gives a
+	// world-space direction - and everything built on it here is world-space
+	// work: reflect() against the world-space normal below, the refracted
+	// direction at the bottom, the sky reflection. That is deliberate, and it is
+	// said again where the reflection is taken: view space is warped by nausea
+	// and these calculations give wacky results there. The two places that need
+	// view space convert into it explicitly, by multiplying by
+	// mat3(gbufferModelView).
 	vec3 incident = normalize(cameraRelativePos);
 
 	// The frame of this face, which the world-space derivatives below are taken
@@ -476,7 +570,7 @@ vec4 TranslucentLighting(
 		// mapping for moving waves.
 		//
 		// If we wanted to be physically-based, the F0 for water should be
-		// around 0.02 per Shlick's approximation, but that makes it too
+		// around 0.02 per Schlick's approximation, but that makes it too
 		// see-through.
 		float F0 = materialID == WATER ? 0.1 : 0.0;
 
@@ -556,7 +650,7 @@ vec4 TranslucentLighting(
 		// sideways or downwards if the normal vector is upwards. This means the
 		// dot product is always negative so adding it is really a subtraction.
 		//
-		// Otherwise, this follows the physically-based Shlick's approximation
+		// Otherwise, this follows the physically-based Schlick's approximation
 		// for the fresnel factor:
 		// https://en.wikipedia.org/wiki/Schlick's_approximation
 		float fresnel = F0 + (1.0 - F0) * pow(1.0 + dot(incident, normal), 5.0);
@@ -703,7 +797,7 @@ vec4 TranslucentLighting(
 
 		#ifdef SCREENSPACE_REFLECTIONS
 			// Note: We don't have a separate terrain reflection strength. As it
-			// turns it, in the same places that sky reflections look bad, the
+			// turns out, in the same places that sky reflections look bad, the
 			// limitations of SSR makes terrain reflections look bad too.
 			// 
 			// As a result, reflections are reserved for outdoors, not caves and
@@ -713,7 +807,7 @@ vec4 TranslucentLighting(
 
 			// Controls the base thickness and increase in thickness over
 			// distance during raytracing, effectively the tolerance of
-			// determinining whether we are going
+			// determining whether we are going
 			// to accept a hit or not.
 			//
 			// X: initial thickness in meters
@@ -763,16 +857,28 @@ vec4 TranslucentLighting(
 				float hitPosMax = max(hitPosAbs.x, hitPosAbs.y);
 				float visibility = min(1.0, (1.0 - hitPosMax) / 0.10);
 
-				// When we are looking upwards and there is an upwards-facing
-				// water face, the Z-component of the normal  in view-space is
-				// positive, and when we are looking downwards, it is negative.
+				// The fade is wanted only when the player is looking down at the
+				// water rather than level with it or up at its underside, so
+				// the reflection is left alone to the edge of the screen for a
+				// level or upward view and taken out there for a downward one.
 				//
-				// Essentially, this means that we only fade out the reflections
-				// at the edge when it is necessary, ie, we are looking downward
-				// at the water instead of level or upwards.
+				// The quantity that decides it is meant to be the Z-component of
+				// the face normal in view space, which is positive for an
+				// upward-facing face the camera is looking down on: view space
+				// looks along -Z, so a face turned back towards the camera has a
+				// positive Z. See the warning below for what the line actually
+				// computes.
 				//
-				// This transformation is just getting the Z component of
-				// the normal in view space.
+				// ⚠️ What this line computes is not the view-space Z of the normal,
+				// and it is worth writing down because the intent above needs that
+				// quantity. gbufferModelView[2].xyz is the matrix's third COLUMN -
+				// which is the world Z axis carried into view space - and it is
+				// being dotted with a WORLD-space normal, so it is not
+				// (mat3(gbufferModelView) * worldNormal).z, which would be the
+				// matrix's third ROW against the same normal. For a camera turned
+				// in yaw the two come out with opposite signs; for a camera with
+				// only pitch they agree, because a rotation about x is symmetric.
+				// Written down as what the line does, not fixed: reported instead.
 				float viewNormalZ = dot(gbufferModelView[2].xyz, worldNormal);
 				visibility = mix(1.0, visibility, clamp(viewNormalZ, 0.0, 1.0));
 
@@ -887,8 +993,8 @@ vec4 TranslucentLighting(
 					length(cameraRelativePosW.xz)
 				);
 
-				// Note: Using sky light strength of here, not of where we are
-				// reflecting - this could look odd with caves reflecting, but
+				// Note: Using the sky light strength here, not the one where we
+				// are reflecting - this could look odd with caves reflecting, but
 				// I have not noticed any issue and loading the sky light
 				// texture would not be free.
 				vec4 fogForWater = Fog(
@@ -962,7 +1068,7 @@ vec4 TranslucentLighting(
 			//   and cost of doing so are not acceptable in screen space.
 			// 
 			// These combined factors mean that actually simulating physically
-			// based refraction is a NOT the goal. Instead, the effect we are
+			// based refraction is NOT the goal. Instead, the effect we are
 			// going for is warping the background based on how deep the water
 			// is, such that a given fragment moves around fairly uniformly
 			// around where it would otherwise be, rather than offsetting the
@@ -1025,6 +1131,49 @@ vec4 TranslucentLighting(
 				refractedScreenPos.xy
 			).rgb;
 
+			// ⚠️ When the trace reports that it reached the sky, what it hands back
+			// is the position the ray *left* the water at - and on Voxy terrain that
+			// position cannot be trusted. The depth marched there is Voxy's own
+			// texture (`opaqueDepth` is vxDepthTexOpaque there, see
+			// /program/world/lit_voxy.fsh), which holds data only where Voxy drew
+			// opaque geometry. At the outer margin of its rendered region it holds
+			// nothing, so the ray marches the whole 32-block budget and the "exit"
+			// lands wherever the refracted direction points - far up the screen for
+			// water looked at along the surface. The water is then coloured by
+			// whatever is at that position, terrain included, and because that
+			// position slides quickly across the picture as the view turns, what it
+			// reads is dragged along with the camera; the resolve in composite1 then
+			// accumulates the darker end of it until it is black.
+			//
+			// That this case is the reported one is not a guess: batch 450 painted
+			// the water path by the trace's own answer, and the band came back in
+			// the colour that meant "the trace reached the sky".
+			//
+			// The light arriving along a ray that left the water into the sky is the
+			// sky in that direction, and this program has the direction
+			// (`refractedDir`, above) rather than only the screen position. So the
+			// sky is taken from the direction: the same colour the copy would hold
+			// over open water, with nothing in it that can be dragged.
+			//
+			// It is then taken at full water depth rather than as bare sky. That is
+			// the same assumption the sky branch of the absorption makes - "we went
+			// through a lot of water" - and it is what keeps this from reading as a
+			// hole in the water with the sky showing through it: the bare sky is
+			// several times brighter than any water surface, so the far water came
+			// out pale. The factor is WaterAbsorption(1.0), exp(-16, -3, -1), the
+			// pack's own full-depth water colour - red gone, a deep blue-green,
+			// which is what the water beside it looks like. The sky's own shape is
+			// kept rather than replaced by a flat colour, so the sun, the moon and
+			// the stars still come through, only muted. Batch 461.
+			#if defined(EXTERNALLY_DEFINED_UNIFORMS)
+				if (refractedScreenPos.z >= 1.0) {
+					dstColor = SkyDither(
+						gl_FragCoord.xy,
+						SkyColor(refractedDir) + SkyStars(refractedDir))
+						* vec3(0.0, 0.05, 0.37);
+				}
+			#endif
+
 			#if WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED
 				// The world-space upwards vector (0, 1, 0), transformed into
 				// view space.
@@ -1055,7 +1204,7 @@ vec4 TranslucentLighting(
 			#endif
 
 			// To apply the refraction, sample the background texture at the
-			// refracted position. The sampled color becomes are new background,
+			// refracted position. The sampled color becomes our new background,
 			// and as a result, we replicate the blending equation with it as
 			// the "destination color" in terms of OpenGL blending.
 			//
@@ -1067,7 +1216,7 @@ vec4 TranslucentLighting(
 			//
 			//   fragmentColor = (fragmentColor * 1) + (dstColor * srcAlpha)
 			//
-			// Which simpifies to the following:
+			// Which simplifies to the following:
 			fragmentColor.rgb += srcAlpha * dstColor;
 
 			// Finally, make the fragment opaque based on the above blending

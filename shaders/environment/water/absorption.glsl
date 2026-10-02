@@ -14,8 +14,17 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Quick approximation for water absorption based on a linear 
-// depth value from 0.0 to 1.0 (1.0 = deepest, 0.0 = no water)
+// Quick approximation for water absorption based on a linear
+// depth value from 0.0 to 1.0 (1.0 = deepest, 0.0 = no water).
+//
+// The 0.0 to 1.0 range is what both callers pass rather than anything this
+// function enforces: it never clamps, and it scales `depth` straight into the
+// exponent, so a caller that handed it raw metres would get a far harsher
+// falloff than any normalised depth describes. The two paths that arrive here
+// are normalised by their own arithmetic, and not to the same physical depth -
+// environment/water/absorption_refraction.glsl reaches 1.0 at 15 blocks below
+// the surface, environment/lighting/diffuse.glsl at the skylight level that
+// stands for full attenuation.
 vec3 WaterAbsorption(float depth) {
 	// Tweaking these factors allows you to change the "character" of
 	// the water pretty heavily. It would be pretty cool to bake this
@@ -28,6 +37,9 @@ vec3 WaterAbsorption(float depth) {
 	#define WATER_CHARACTER BALANCED // [COLD BALANCED TROPICAL]
 	// Additional brightness reduction of underwater...
 	// 1.0 = no reduction, 0.0 = full reduction.
+	// This is a plain scale factor on the exponential above, and it is only
+	// reached when depth > 0.0, so at the surface the ternary picks 1.0 and
+	// this setting does nothing.
 	#define DARK_UNDERWATER 1.0 // [0.33 0.5 0.66 0.75 0.8 1.0]
 
 	return exp(depth * WATER_CHARACTER) * (depth > 0.0 ? DARK_UNDERWATER : 1.0);

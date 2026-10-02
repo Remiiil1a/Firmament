@@ -18,24 +18,34 @@
 
 // The color of the light that each family of light-emitting blocks gives off.
 //
-// Steadfast has one block light color for the whole world, which is a warm
+// Recorded: Steadfast had one block light color for the whole world, a warm
 // orange - a reasonable average, and completely wrong for a soul lantern or a
-// redstone torch. This replaces that average with the real color, but only on
-// the faces of the block that is doing the glowing, because that is the only
-// place where Minecraft tells us which light source we are looking at: its
-// light map stores how much light arrived at a position, not what color it was
-// or where it came from.
+// redstone torch. The same history is written out at BlockLightTint in
+// /environment/lighting/diffuse.glsl, which replaced that average for the light
+// that falls on everything else. This file replaces it on the faces of the block
+// that is doing the glowing, which is the only place where Minecraft tells us
+// which light source we are looking at: its light map stores how much light
+// arrived at a position, not what color it was or where it came from.
 //
 // The colors below are therefore not just the block's own texture tinted - a
 // torch's texture is mostly a brown stick, and its light is not brown. They are
 // chosen to match what the block actually lights its surroundings with.
 //
 // Where the light lands on everything else is approximated by the light bleed
-// in /program/post/light_bleed.fsh, which spreads the colors written here
-// across nearby surfaces.
+// in /program/post/light_bleed.fsh, which spreads the colors written here across
+// nearby surfaces. The route is one call: LightSourceSurfaceColor is called once
+// in the pack, in /program/world/lit.fsh, in the block self-emission section, and
+// what it returns is written into the light source mask that pass reads. That
+// pass holds no palette of its own and does not include this file, so these are
+// the only colors in it.
 
 // Whether light-emitting blocks take their real color, rather than being tinted
-// by their own texture. Also the master switch for the light bleed pass.
+// by their own texture. Also what decides whether the light bleed pass is
+// switched on: program.composite2.enabled in shaders.properties is
+// COLORED_LIGHTS || INDIRECT_BOUNCE, and composite2.fsh is the pass. Note that
+// the pass's own code carries no guard of ours - with this off and
+// INDIRECT_BOUNCE on it still runs, and what changes is the mask it reads, since
+// LightSourceSurfaceColor returns the plain texture color when this is off.
 #define COLORED_LIGHTS
 
 // How far the color of a light source replaces the color of its texture.
@@ -84,10 +94,16 @@ vec3 BlockLightColor(uint materialID) {
 // The color a light source's own surface should be lit with, given the color of
 // its texture.
 //
-// The brightness of the texture is kept and only its hue is replaced. Glowing
-// the whole face in a flat color instead would turn a torch into an orange
-// rectangle, losing the shape of the flame that makes it read as a torch at
-// all.
+// Only the texture's brightness survives: the color is the light's own, taken
+// from BlockLightColor above, and the texture contributes nothing but its
+// luminance (so its saturation goes too, not only its hue). Glowing the whole
+// face in a flat color instead would turn a torch into an orange rectangle,
+// losing the shape of the flame that makes it read as a torch at all.
+//
+// The caller is what makes this the emitter's own face rather than every
+// surface: lit.fsh uses the result only where the light map says the block is
+// emitting, and only the emitter's own color is carried into the light source
+// mask.
 vec3 LightSourceSurfaceColor(uint materialID, vec3 surfaceColor) {
 	#ifndef COLORED_LIGHTS
 		return surfaceColor;

@@ -54,8 +54,10 @@
 // does not include this one.
 #include "/environment/sky/end_palette.glsl"
 
-// How crowded the starfield is. Each step doubles roughly how many stars are
-// drawn, and 0.0 leaves an empty sky.
+// How crowded the starfield is. The star threshold is 0.04 * this, so the count
+// is directly proportional to it and 0.0 leaves an empty sky. The steps below
+// are not a constant ratio: each one raises the count by between about 1.3x and
+// 2x, so this is a fine control rather than a sequence of doublings.
 #define END_STAR_DENSITY 2.0 // [0.0 0.25 0.5 0.75 1.0 1.5 2.0 3.0]
 
 // How bright the stars are. Apart from the body below, they are the only thing
@@ -192,8 +194,10 @@ vec3 EndStarfield(vec3 worldDir) {
 	// holds for every star and not just the average one. See PBR_PORTING.md 196.
 	//
 	// ⚠️ The clamp is what keeps the inequality true if the size option is ever
-	// pushed past about 4.2: past that the margin stops growing and the slicing
-	// would come back. The steps offered stop well short of it.
+	// pushed past 0.46 / 0.11, which is 4.18: past that the margin stops growing
+	// (it is pinned at 0.46) while the largest radius keeps growing with the
+	// option, and the slicing would come back. The steps offered stop at 2.5,
+	// well short of it.
 	float margin = min(0.11 * END_STAR_SIZE, 0.46);
 	vec3 starPos = margin + EndSkyHash3(cell) * (1.0 - 2.0 * margin);
 
@@ -212,7 +216,9 @@ vec3 EndStarfield(vec3 worldDir) {
 	vec3 tint = mix(cool, warm, EndSkyHash(cell + 5.1));
 
 	// 1.6 puts the brightest stars above white, which is what makes them read
-	// as points of light rather than as white dots.
+	// as points of light rather than as white dots. The color it puts above
+	// white is the blue channel (1.15, 1.10 or 1.0 depending on the tint), which
+	// is the "hot" end of the range; the red channel sits at 1.0 or just under.
 	return tint * (star * magnitude * 1.6 * END_STAR_BRIGHTNESS);
 }
 

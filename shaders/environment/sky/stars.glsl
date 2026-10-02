@@ -15,10 +15,13 @@
 // cells is laid over the view direction, most cells are empty, and every cell
 // that is not holds one point with its own position, brightness and colour.
 //
-// This costs 27 cell hashes per sky fragment. The empty cells - the large
-// majority - cost one hash and nothing else, which is why the density can stay
-// this low without the loop being the expensive part.
-
+// This costs 27 cell hashes per sky fragment, and up to twice that many hash
+// evaluations - `StarHash(c)` is always called once per cell, and `StarHash(c +
+// 31.7)` is called for the cells that pass the density test as well. The empty
+// cells - the large majority - cost one hash and nothing else, which is why the
+// density can stay this low without the loop being the expensive part.
+//
+// At the default STAR_DENSITY of 0.08 that majority is about 92% of cells.
 #ifndef SKY_STARS_GLSL_INCLUDED
 #define SKY_STARS_GLSL_INCLUDED
 
@@ -29,9 +32,7 @@
 
 // Draw stars at all. Named values rather than 0 and 1, so that the menu shows
 // it as the switch every other toggle in the pack is, rather than as a number.
-#define STARS_ON 1
-#define STARS_OFF 0
-#define STARS STARS_ON // [STARS_OFF STARS_ON]
+#define STARS
 
 // The peak brightness of a single star, before the tonemapper. This is the one
 // knob that decides whether the field reads as a sky or as a light show.
@@ -44,7 +45,7 @@
 #define STAR_DENSITY 0.08 // [0.01 0.02 0.03 0.05 0.08 0.12]
 
 // A star's radius, in cells. At the default of 48 cells this is under a fifth
-// of a degree - a couple of pixels on a 1080p screen - which is what a star
+// of a degree - about 3.4 pixels across at 1080p - which is what a star
 // should be. Past that it stops reading as a point.
 #define STAR_RADIUS 0.15 // [0.05 0.1 0.15 0.25 0.35 0.45]
 
@@ -63,7 +64,7 @@ vec3 StarHash(vec3 cell) {
 // Takes a unit world direction, the same one SkyColor() is given, so that the
 // stars and the sky agree about where the sky is.
 vec3 SkyStars(vec3 worldDir) {
-#if STARS == STARS_OFF
+#ifndef STARS
 	return vec3(0.0);
 #else
 	// Stars belong to the night. They fade in with the sun rather than
@@ -95,7 +96,8 @@ vec3 SkyStars(vec3 worldDir) {
 				vec3 c = cell + offset;
 
 				// Whether this cell holds a star at all. This is what makes the
-				// loop cheap: the other 95% of the sky stops here.
+				// loop cheap: the other 92% of the cells stop here at the
+				// default STAR_DENSITY of 0.08.
 				vec3 h = StarHash(c);
 				if (h.x >= STAR_DENSITY) {
 					continue;

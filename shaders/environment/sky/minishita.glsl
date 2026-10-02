@@ -72,7 +72,7 @@
 //   Minecraft uniquely requires that fog non-obstructively hide the edge of
 //   the render distance, which physically-based models do not guarantee.
 //
-// These simplications allow the following simplifications:
+// These simplifications allow the following simplifications:
 //
 // * Instead of requiring an implementation of multiple scattering for accurate
 //   sky color, we can just add in a hardcoded nice-looking blue color.
@@ -81,10 +81,10 @@
 //   ray, 1 sample towards the light from each view sample) if we pick good
 //   sample positions.
 // * There is no need to model Rayleigh and Mie scattering with separate scale
-//   heights for trasmittance calculations, because Mie scattering has a minimal
-//   attenuation contribution due to the low amount of of atmospheric pollution.
+//   heights for transmittance calculations, because Mie scattering has a minimal
+//   attenuation contribution due to the low amount of atmospheric pollution.
 // * Where the above simplifications give odd colors, we can work around it with
-//   some styization (ie, multiply a few things with magic numbers).
+//   some stylization (ie, multiply a few things with magic numbers).
 //
 // Normally, basic Nishita scattering is quite expensive to implement due to the
 // total number of light samples that result from standard sample counts. The
@@ -92,11 +92,15 @@
 // tables to work around this, at the cost of a more complex implementation.
 //
 // These assumptions allow us to get the same (or better!) performance and a
-// similiar level of quality while remining straightforward and self-contained.
+// similar level of quality while remaining straightforward and self-contained.
 //
 // A corresponding copy of much of this code also exists in custom uniforms for
 // computing the light source colors. If you modify this file, you must also
-// ensure to keep that implementation in-sync.
+// ensure to keep that implementation in-sync. Checked and true: the block
+// starting at `variable.float.mieG` in shaders.properties repeats
+// CornetteShanks, RayleighPhase and the specialised ray-sphere intersection
+// with the same constants (mieG = g = 0.76, lightMu = 1.0), so an edit to either
+// side really does have to be mirrored.
 //
 // The shader-side implementation of this model follows below.
 
@@ -147,7 +151,7 @@ float RayleighPhase(float mu) {
 }
 
 // Ray-sphere intersection calculation that returns the distance of the forward
-// and reverse intersection of a line with with a unit sphere centered at
+// and reverse intersection of a line with a unit sphere centered at
 // (0, 0, 0).
 //
 // The line origin must lie within the sphere, and the direction must be a unit
@@ -508,7 +512,7 @@ vec3 SkyColorModel(vec3 worldDir) {
 	float depthLightMoon2 = OpticalDepthLight(samplePos2, -worldSunVector, dM2);
 
 	// The stylized scale values mitigate some of the artifacts of our
-	// simplications, including selecting a single light sample at t = 0.15 an
+	// simplifications, including selecting a single light sample at t = 0.15 and
 	// using the same scale height for Mie and Rayleigh scattering.
 	//
 	// These are not physically-based, but these were selected because I thought
@@ -543,7 +547,11 @@ vec3 SkyColorModel(vec3 worldDir) {
 	// Then, to prepare for changing the color while maintaining luminance,
 	// calculate the luminance of the atmosphere color.
 	//
-	// Cost: 12 FLOPs (2x3 mul, 2x2 fma, 2x mul)
+	// Cost: 14 FLOPs (2x3 mul for the two products, then 2 Rec709 dots of
+	// 3 mul + 2 add each - so 6 + 8). This was written as 12 with a breakdown of
+	// "2x3 mul, 2x2 fma, 2x mul", which counts the two dot products as 2 fma and
+	// 1 mul each; there is no fma here for the compiler to find, the dots are
+	// written out as dot() and cost 5 each.
 	vec3 day = tmSun * scatterSun;
 	vec3 night = tmMoon * scatterMoon;
 	float luminanceDay = dot(day, vec3(0.2126, 0.7152, 0.0722));

@@ -47,8 +47,9 @@ Steadfast 的附加条款要求修改版的名称以 `(edit of coderbot's Steadf
   四分之一分辨率绘制、由阴影贴图点亮，所以树冠漏下来的光柱是它投出来的。介质是
   一团锁在世界坐标里的噪声，随云用的同一阵风漂移，因此**不会跟着镜头滑动**；
   下雨会让它变厚。
-* **雨与雪粒子**：可以把雨滴贴图在每一格雨柱里横向平铺、也可以保留或收窄每颗
-  雨滴的宽度，颜色还能抽掉或推浓。
+* **雨粒子**：可以把雨滴贴图在每一格雨柱里横向平铺、也可以保留或收窄每颗
+  雨滴的宽度，颜色还能抽掉或推浓。雪由同一个程序绘制，但**这三项都不作用于它**：
+  粒子是雨还是雪按粒子贴图自身读出来，雪花保持资源包原本的样子。
 * **水里的日月**：包内带着游戏自己的 `sun.png` 与八张月相，所以水面上的日轮和
   月相就是天上正在显示的那个。两个天体各有一项对着天空的尺寸微调，它们绕哪根轴
   转也是独立设置项。
@@ -68,7 +69,7 @@ Steadfast 的附加条款要求修改版的名称以 `(edit of coderbot's Steadf
 
 ## 安装
 
-1. 把 `Firmament-v0.7-edit-of-coderbot-Steadfast.zip` 放进 `.minecraft/shaderpacks/`，
+1. 把 `Firmament-v0.8-edit-of-coderbot-Steadfast.zip` 放进 `.minecraft/shaderpacks/`，
    **不要解压**。
 2. 在 **视频设置 → 光影** 里选中它。
 3. 光影选项里 `材质（PBR）→ 材质格式` 跟着资源包走：用资源包就保持 `LabPBR`，
@@ -78,7 +79,8 @@ Steadfast 的附加条款要求修改版的名称以 `(edit of coderbot's Steadf
 
 * **远景阴影只到深度缓冲能到的地方**：背对镜头、屏幕外、被挡住的地形不投影，
   草与栅栏这类薄物体也容易漏。
-* **TAA 没有运动矢量**——自身会移动的东西靠"丢弃与当前帧不符的历史"处理，
+* **TAA 的重投影里没有"物体"运动**——上一帧的相机参与了重投影，但没有任何东西告诉它
+  实体、粒子或正在下落的方块是怎么动的，所以那类东西靠"丢弃与当前帧不符的历史"处理，
   而不是靠跟踪。
 * **Voxy 的顶点由模组发射**，不经过本包的顶点着色器，因此不参与 TAA 的亚像素抖动。
 * **反射在画不对的地方一律不画。** 隔着水、冰或玻璃看到的物体没有环境反射，
@@ -94,14 +96,15 @@ Steadfast 的附加条款要求修改版的名称以 `(edit of coderbot's Steadf
 |---|---|
 | **Steadfast 0.8.0** | coderbot——原光影，以及全部基础渲染、配置与风格 |
 | **Firmament 修改** | Remiiil1a——方向、测试、调参；代码由 **DeepSeek V4.1 Flash**（AI）编写 |
-| **参考了其代码** | 参考 **TheCMK** 的 **Mellow Shader v3.4**（MIT）与 **geforcelegend** 的 **Sundial Lite**（GPLv3） |
+| **参考了其代码** | 参考 **TheCMK** 的 **Mellow Shader v3.4**（MIT）、**geforcelegend** 的 **Sundial Lite**（GPLv3），以及 **X0nk** 的 **Bliss Shader**（**Chocapic13** 光影的改版） |
 | **labPBR 标准** | shaderLABS 社区——材质通道布局与约定 |
 
-两个被参考的项目**没有任何素材被搬到这里**——没有贴图、没有 logo、没有截图；
+三个被参考的项目**没有任何素材被搬到这里**——没有贴图、没有 logo、没有截图；
 它们与本包没有隶属关系，也没有为本包背书。它们的名字不是本包名称与标识的一部分。
 
-两个被参考的项目在光影菜单里有各自独立的条目：
-**「制作与许可 → 特别鸣谢」**。
+三个被参考的项目在光影菜单里有各自独立的条目：
+**「制作与许可 → 特别鸣谢」**。Bliss 与 **Chocapic13** 一并署名——它是 Chocapic13 光影的改版，
+而它自己的许可文件里放的正是 Chocapic13 的声明，不是它自己的。
 
 ## 许可
 
@@ -112,6 +115,9 @@ Steadfast 的附加条款要求修改版的名称以 `(edit of coderbot's Steadf
 * Mellow Shader 版权归 TheCMK 所有 (c) 2026，**MIT**（`LICENSE-MELLOW-MIT.txt`）。
 * Sundial Lite 版权归 geforcelegend 所有，**GPLv3**——与本包同一份许可，
   副本即 `LICENSE.md`。
+* Bliss Shader 是 **X0nk** 对 **Chocapic13** 光影的改版。它的 `LICENSE.md` 只有一行
+  `© 2020 Chocapic13. All rights reserved.`，由所改的基底继承而来；本包从它那里参考了
+  什么、这处在什么状态，写在 **`NOTICE.md`** 里。
 * 本包不提供任何担保。完整摘要见 **`NOTICE.md`**，
   每个版本改了什么见 **`CHANGELOG.md`**；一版一份的详细日志是 `RELEASE_NOTES-*.md`，
   它们**保存在项目里，不随包发行**。

@@ -131,6 +131,12 @@ const float GRADIENT_STRENGTH = 0.15;
 
 // Define each wave as a set of intuitive measurements which the compiler can
 // convert to more direct scaling and offset values, for easy tweaking.
+// Beware the parallel definition in caustics_noise.glsl: `CausticNoiseWave`
+// repeats the field names `tileSize`, `shearAngle`, `speed`, `heading` and
+// `weight` with the same meanings, and adds an `exponent`. The two files are
+// never included together, so the names do not collide, but the caustics file's
+// comments were copied from this one and its constants are scaled - a
+// "Tile Dimensions" or "Speed" figure quoted there is not this struct's value.
 struct NoiseWave {
 	// The size of each tile in the grid on the X axis and the Y axis in meters.
 	//
@@ -391,12 +397,18 @@ const float rippleMagnitude[4] = float[](
 // So, our goal here is to fade away noise layers to their average values when
 // the ratio climbs too high. To implement that, we determine a metric for
 // approximating this ratio of noise pixels to screen pixels (explained in the
-// implementation), and then as use that to determine a fade-out factor for the
+// implementation), and then use that to determine a fade-out factor for the
 // layer.
+//
+// The noise texture is 64x64 - see `noiseTextureResolution` in
+// lib/valueNoise.glsl, which is the constant this comment's "64x64" means.
 //
 // We fade out to the average value of noise, which is 0.5. This is a bit basic
 // as we could do some fancy mipmapping or integrating (ie, averaging over the
 // covered area) of the noise texture for a better result, but it is OK for now.
+// 0.5 is the midpoint of the noise texture's own 0.0 to 1.0 range rather than a
+// measured mean, so it is exact for unbiased value noise and approximate for
+// whatever the texture actually contains.
 //
 // References:
 //
@@ -526,7 +538,19 @@ vec2 antialiasGradient(float aa, vec2 gradient) {
 // This function is responsible for adding together each wave layer into the
 // final heightmap.
 //
-// Inputs: horizontal world position in meters, time in seconds
+// Inputs: world position on the water plane in meters plus the world-space
+// screen derivatives of it, time in seconds, and `approximate`.
+//
+// On the space of `worldPos`: the X and Z are world space, but for a face that
+// is standing up the caller has already folded world Y into both of them - see
+// parallaxWaterNormal in translucent.glsl, which does
+// `waterWorldPos += vec2(cameraRelativePos.y + cameraPosition.y)` when the face
+// is sideways. So worldPos.y contributes to the noise coordinate on a vertical
+// face, and "in meters" is the units of the input, not a promise that the two
+// components are both horizontal.
+//
+// `approximate` truncates the ripple loop to NUM_BIG_RIPPLES; see the comment
+// on that loop below.
 float WaterHeight(
 	vec2 worldPos,
 	vec2 ddxWorldPos,
@@ -730,6 +754,12 @@ vec2 WaterNGradientAnalytic(
 //
 // But, for something widely-distributed in production, it makes sense to use
 // the more efficient analytical method to get maximum performance.
+// This is a real runtime path and not only a debugging tool: `PREFER_FDM_GRADIENT`
+// above is commented out, so `USE_FDM_GRADIENT` is defined either by that
+// developer switch or, at the top of this file, when
+// MC_GL_ARB_texture_gather is missing - in which case the analytic derivatives
+// are not included at all and this is what the pack runs on. Selection is the
+// `#if defined(USE_FDM_GRADIENT)` in WaterNormal at the bottom of the file.
 vec2 WaterNGradientFDM(
 	vec2 worldPos,
 	vec2 ddxWorldPos,
@@ -740,6 +770,10 @@ vec2 WaterNGradientFDM(
 	// you can go the better, but at some point we run out of floating-point
 	// precision or hit limitations of the underlying sampling going on in the
 	// wave funciton. Play around with this as needed.
+	//
+	// Units: this is an offset added to a `worldPos` that is in meters, so it is
+	// a distance in meters too - 5 cm. It is not a fraction of the wave height,
+	// which is why it is a fixed constant and not scaled by the wave size.
 	const float delta = 0.05;
 
 	vec2 ddxPos = ddxWorldPos;
@@ -754,9 +788,13 @@ vec2 WaterNGradientFDM(
 // Returns the normal map for the water surface computed from the gradient of
 // the water surface heightmap.
 //
-// Inputs: horizontal world position in meters, time in seconds
+// Same input contract as WaterHeight above: world position with the caller's
+// possible folding of world Y into it, world-space screen derivatives, time in
+// seconds.
+//
 // Output: normal vector in tangent space (X/Y = in-plane, Z = up out of the
-// plane)
+// plane). Z is a constant 1.0 before the normalize, so this is a perturbed
+// normal whose tilt is bounded by the size of the gradient.
 vec3 WaterNormal(
 	vec2 worldPos,
 	vec2 ddxWorldPos,

@@ -36,9 +36,9 @@
 uniform sampler2D colortex10;
 
 // The blend weights this pass produces, read by composite6. Four channels - left,
-// up, right, down, in that order. Written on every pixel, so like the edge buffer
-// it carries nothing from one frame to the next; a pixel with no edge on it is
-// written as no blend at all.
+// right, up and down, in that order: the horizontal test fills .rg and the
+// vertical one fills .ba. Every pixel is written, so like the edge buffer it
+// carries nothing from one frame to the next. A pixel with no edge on it is
 const int RGBA8 = 0;
 const int colortex11Format = RGBA8;
 

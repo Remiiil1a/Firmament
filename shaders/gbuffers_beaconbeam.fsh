@@ -19,6 +19,58 @@
 #version 150 compatibility
 #define UNLIT_BRIGHTNESS 5.0
 
+// The beam's soft edge is not drawn. Only its opaque part is.
+//
+// The game draws the beam as two quads over the same length of its axis: a
+// narrow one at full alpha, which is the rod, and a slightly wider one drawn
+// with a vertex colour below one, which is the soft light around the rod. The
+// test for that second one is the fragment's own alpha, and dropping it is what
+// this define does - see the test in program/world/unlit.fsh, which is the body
+// this program shares with four others.
+//
+// The reason is where in the frame this program runs. The water, the ice, the
+// glass and the translucent entities are all drawn by programs that run *after*
+// the deferred pass; this one is drawn before it, because the game issues the
+// beam's draw in its block-entity phase and a pack cannot move a draw from one
+// phase to another. Everything this program leaves in colortex0 is copied into
+// colortex4 by that pass, and colortex4 is the buffer the water's reflection and
+// refraction read: it is meant to hold the world as it is *behind* the water.
+// A beam standing in front of water was therefore inside the water's own colour,
+// sampled as though it were the lake bed behind the surface, and then tinted by
+// the water's absorption - which is what the report describes: the beam's outer
+// band coming out of the water looking like a strip of water, whether or not the
+// beam was over water at all. The wider quad is the one that showed it, because
+// it is the one drawn below full alpha; and neither quad can be told from the
+// world in that copy, because the beam writes no depth for the copy to compare
+// against.
+//
+// The other translucent things the pack draws - water, ice, glass, and the
+// translucent entities - are drawn by programs that run *after* that pass, so
+// their pixels never enter colortex4 at all, and the water beside them is
+// composited against them in the ordinary way. That is the whole of why this is
+// something that happens to the beam and to nothing else that stands out in a
+// picture.
+//
+// Which leaves two ways to answer it, and this is the one taken: the band is not
+// drawn, so there is nothing to be copied and nothing to be seen through the
+// water. The alternative - keeping the band and having the beam composited
+// after the water, over a colour and depth buffer of its own - is a pass and a
+// buffer rather than a correction, and it is not what was asked for here.
+//
+// Iris has a `beacon.beam.depth` directive for shaders.properties, and it is not
+// the answer either: it is documented as writing the *inner* geometry of the
+// beam into the depth textures and as not applying to this outer translucent
+// geometry, which is the quad in question. It would also make the beam's pixels
+// look like opaque surfaces to the deferred pass's screen-space shadows, and
+// those multiply what they find; a light beam is not something to darken. Left
+// alone, reported rather than set.
+//
+// Recorded: Sundial-Lite's beacon program drops the beam's translucent half too
+// (its gbuffers_beaconbeam.fsh discards under `color.w < 0.999`). That is a
+// comparison with another pack and this file does not stand behind it; the
+// argument for the change is above, and it stands on its own.
+#define DROP_TRANSLUCENT_FRAGMENTS
+
 // One of the programs that could be drawing the End's light flash - see the
 // note in gbuffers_spidereyes.fsh. Painted, not dropped. White in the debug
 // view.
