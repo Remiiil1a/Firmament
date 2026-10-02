@@ -89,7 +89,7 @@ profile.comment=\
 
 screen.EFFECTS=Effects & post-processing
 screen.EFFECTS_LIGHT_SETTINGS=Light effects
-screen.WEATHER_SETTINGS=Rain and snow particles
+screen.WEATHER_SETTINGS=Rain particles
 screen.FOG_SETTINGS=Fog
 screen.FOG_SHAPE_SETTINGS=Shape and time
 screen.EFFECTS_CAMERA_SETTINGS=Camera effects
@@ -522,7 +522,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 468 - README: TAA has no OBJECT motion vectors]
+option.PBR_DEBUG=Material debug view [build 469 - weather page is Rain particles; rain-only wording everywhere]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \

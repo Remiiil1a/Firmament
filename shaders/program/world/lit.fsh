@@ -366,7 +366,7 @@ uniform vec2 windowToNdc;
 #endif
 
 #if defined(WEATHER)
-	// Rain and snow particles.
+	// Rain particle options. Snow is drawn by the same program and none of the three apply to it - see the note where the weather coordinate is chosen, below.
 	//
 	// Declared behind this guard rather than in a shared file, for the reason
 	// WAVING_FOLIAGE is declared beside its own: only this program draws
@@ -676,7 +676,7 @@ void main() {
 		#endif
 
 		#if defined(WEATHER)
-			// Rain and snow particles, tiled RAIN_DROP_AMOUNT times across
+			// Rain particles, tiled RAIN_DROP_AMOUNT times across
 			// each quad.
 			//
 			// The tiling has to be done on the sprite's own coordinate and not
