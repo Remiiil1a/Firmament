@@ -254,6 +254,18 @@ float SssScreenNoise(vec2 fragCoord) {
 		float stepInScreen = screenLength / float(SSS_STEPS);
 		float stepInDepth = (farDepth - originDepth) * reach / float(SSS_STEPS);
 
+		// How far one step of the march travels in blocks, which is the unit the
+		// thickness window below is measured in.
+		//
+		// Every input is settled before this point: farViewPos at its own
+		// assignment above, viewPos is read-only, reach was clamped a few lines
+		// up, and SSS_STEPS is a compile-time count. So the whole expression is
+		// the same number on every step of the loop, and it was written inside
+		// the loop, which cost an sqrt and a division per sample to arrive at a
+		// value it already had.
+		float stepInBlocks = length(farViewPos - viewPos)
+			* reach / float(SSS_STEPS);
+
 		float dither = SssScreenNoise(gl_FragCoord.xy);
 		float occluded = 0.0;
 
@@ -331,11 +343,17 @@ float SssScreenNoise(vec2 fragCoord) {
 			// two and leaves the ray reporting itself almost unblocked even when
 			// the whole of it is underground. Measured from the driver's seat: the
 			// shadows came out faint enough to be invisible.
-			float stepInBlocks = length(farViewPos - viewPos)
-				* reach / float(SSS_STEPS);
-			float tolerance = max(0.05, travelled * SSS_THICKNESS_RATE);
+			// The rate term of the thickness window. It is one product of the
+			// same two values wherever it appears - the tolerance below, the
+			// window itself, and the softness at the end - so it is worked out
+			// once here rather than three times. The 0.02 that used to be
+			// written out at the softness is the same float as
+			// SSS_THICKNESS_RATE, so naming the constant there changes nothing
+			// but makes the sharing visible.
+			float depthTolerance = travelled * SSS_THICKNESS_RATE;
+			float tolerance = max(0.05, depthTolerance);
 			float thickness = max(SSS_THICKNESS_BASE, stepInBlocks)
-				+ stepInBlocks + travelled * SSS_THICKNESS_RATE;
+				+ stepInBlocks + depthTolerance;
 
 			// How much this sample counts as an occluder: fully in the middle of
 			// the band where the surface it found is plausibly the thing blocking
@@ -346,7 +364,7 @@ float SssScreenNoise(vec2 fragCoord) {
 			// where the steps land. Dividing the band into a hard core and a soft
 			// edge is what the reference packs do, and it is also what lets the
 			// same code work whether the band is wide or narrow.
-			float softness = max(0.25, travelled * 0.02);
+			float softness = max(0.25, depthTolerance);
 			float hit = smoothstep(tolerance, tolerance + softness, gap)
 				* (1.0 - smoothstep(thickness - softness, thickness, gap));
 
