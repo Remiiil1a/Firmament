@@ -134,6 +134,18 @@ bool Raytrace(
 	uint refinementRounds = uint(0);
 	bool hasHitPos = false;
 
+	// The divisor the thickness cap is built from, carried alongside the count
+	// rather than re-derived from it on every step.
+	//
+	// Deriving it costs a conversion, a max and a division per step, and it can
+	// only change at the one place refinementRounds does - which, for a ray that
+	// never hits anything, is never: that is the whole of the loop for most
+	// pixels. Carrying it is the same arithmetic on the same values, because it
+	// holds exactly what the expression below evaluated to at every point: the
+	// max is only there to say "one round rather than none", so the divisor is
+	// the count once the count has passed one and one until then.
+	float refinementDivisor = 1.0;
+
 	// Initial velocity and thickness
 	//
 	// Stored together in case the shader compiler likes a single vec4
@@ -186,7 +198,7 @@ bool Raytrace(
 		// tightening only starts once a hit has actually been made.
 		float thicknessM = min(
 			velocityAndThickness.w,
-			MAX_THICKNESS / float(max(refinementRounds, uint(1))));
+			MAX_THICKNESS / refinementDivisor);
 
 		// The range of Z values we will permit lies between where we started
 		// and where we are advancing to.
@@ -262,6 +274,10 @@ bool Raytrace(
 			// Refine for a certain number of steps at the end before declaring
 			// a successful hit, to improve the accuracy of reflections.
 			refinementRounds += uint(1);
+
+			// The one place the carried divisor changes, so that it stays equal
+			// to float(max(refinementRounds, uint(1))) for every step after this.
+			refinementDivisor = float(max(refinementRounds, uint(1)));
 
 			// If we've already refined sufficiently, return this result as-is.
 			if (refinementRounds >= uint(MAX_REFINEMENT_ROUNDS)) {
