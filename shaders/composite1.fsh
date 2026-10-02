@@ -313,6 +313,19 @@ void main() {
 
 	for (int ti = -1; ti <= 1; ti++) {
 		for (int tj = -1; tj <= 1; tj++) {
+			// The centre of the 3x3 is this pixel, whose depth is already in
+			// anchorDepth: it was read from this very texel above, and the clamp
+			// below is an identity on this pixel's own coordinate. Reading it again
+			// could only compare that value with itself, and the test below is
+			// strict, so the iteration cannot change anything - it is skipped rather
+			// than paid for. Written against the loop counters, so that the eight
+			// that remain keep the order they had: with a strict test it is the
+			// first of two equally near neighbours that wins, and which one that is
+			// decides the coordinate the history is reprojected from.
+			if (ti == 0 && tj == 0) {
+				continue;
+			}
+
 			ivec2 at = clamp(pixel + ivec2(ti, tj), ivec2(0), screenSize - 1);
 			float candidate = texelFetch(depthtex0, at, 0).r;
 
@@ -391,6 +404,17 @@ void main() {
 
 	for (int x = -1; x <= 1; x++) {
 		for (int y = -1; y <= 1; y++) {
+			// The centre of the 3x3 is this pixel, whose colour was read once at the
+			// top of the pass. Fetching it here would return that same texel - same
+			// texture, same level, same coordinate, since the clamp below is an
+			// identity on this pixel's own coordinate - under the same test, so it
+			// is folded in after the loop (see the note there) and the iteration is
+			// skipped rather than paid for. The loop counters make the test constant,
+			// so no branch survives compilation.
+			if (x == 0 && y == 0) {
+				continue;
+			}
+
 			ivec2 offsetPixel = clamp(pixel + ivec2(x, y),
 				ivec2(0), screenSize - 1);
 			vec3 neighbor = texelFetch(colortex0, offsetPixel, 0).rgb;
@@ -409,6 +433,27 @@ void main() {
 			neighborhoodCount += 1.0;
 			neighborhoodMaximum = max(neighborhoodMaximum, neighbor);
 		}
+	}
+
+	// The centre's own contribution, which the loop above skips. This pixel is
+	// one of its own nine neighbours, and currentUsable is the very test the loop
+	// applies to a neighbour - the same expression, on the value that loop would
+	// have read - so both sums, the count and the maximum are made of the same
+	// nine values, and of the same number of them, as before.
+	//
+	// ⚠️ What is not the same, and cannot be while the fetch is saved, is the
+	// order the sum is added up in: the centre was the fifth of nine addends and
+	// is now the ninth, and floating-point addition is not associative. Both sums,
+	// and what is derived from them - the mean, the variance, and the two bounds
+	// the history is clamped to - can therefore differ in their last few bits.
+	// The maximum is not in that list: colortex0 is R11F_G11F_B10F, an unsigned
+	// format with no negative zero in it, so the largest of the nine is the
+	// largest of the nine whichever order they arrive in.
+	if (currentUsable) {
+		neighborhoodSum += current;
+		neighborhoodSquareSum += current * current;
+		neighborhoodCount += 1.0;
+		neighborhoodMaximum = max(neighborhoodMaximum, current);
 	}
 
 	// No usable neighbour at all would leave the maximum at its starting

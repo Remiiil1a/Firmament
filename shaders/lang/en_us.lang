@@ -522,7 +522,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 471 - content unchanged since 469; the marker is bumped so a freshly packed file can be told apart]
+option.PBR_DEBUG=Material debug view [build 472 - composite1 reads each of the two centre texels once instead of twice]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
