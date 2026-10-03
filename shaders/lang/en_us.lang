@@ -80,7 +80,7 @@ profile.comment=\
 	sun and shadows, no directional shading from sunlight (like internal \
 	shaders), and the vanilla water texture.\n\n\
 	\
-	§b🔥 High§r / §a» Medium§r / §e↓ Low§r / §c▶ Toaster§r - The performance \
+	§b🔥 High§r / §a» Medium§r / §e↓ Low§r / §c▶ Toaster§r - The performance tiers. These apply to this edit's default configuration only; the original Steadfast style profiles below are kept as they were and are NOT covered by them. The \
 	ladder, and these four are not styles: they are the same look at four costs, \
 	so picking one only changes what a frame costs.\n\n\
 	§b🔥 High§r: Medium, plus the volumetric fog marched at full resolution \
@@ -542,7 +542,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 478]
+option.PBR_DEBUG=Material debug view [build 479]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
