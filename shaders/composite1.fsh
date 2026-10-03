@@ -67,7 +67,6 @@ uniform sampler2D depthtex0;
 
 uniform mat4 gbufferProjectionInverse;
 uniform mat4 gbufferModelViewInverse;
-uniform mat4 gbufferModelView;
 uniform mat4 gbufferPreviousProjection;
 uniform mat4 gbufferPreviousModelView;
 
@@ -340,23 +339,8 @@ void main() {
 	vec3 anchorNdc = vec3(anchorCoord * 2.0 - 1.0, anchorDepth * 2.0 - 1.0);
 	vec4 anchorViewH = gbufferProjectionInverse * vec4(anchorNdc, 1.0);
 	vec3 anchorViewPos = anchorViewH.xyz / anchorViewH.w;
-	// Rebuilt through the matrix the geometry was drawn with, not through its
-	// inverse: that inverse is not exact while the view is bobbing (see the note in
-	// /program/world/lit.fsh), and the error it carries here does not stay in one
-	// pixel - it moves where this pixel's history is read from, every step. It was
-	// harmless while this pass only ran with the temporal resolve off; it is the
-	// factory default now, so it is not.
-	//
-	// Dotting against the matrix's own basis vectors is its transpose, which for a
-	// rotation is its inverse. A position also needs the camera's own position added
-	// back, which is what the inverse's translation column was: cameraPosition.
-	mat3 viewRotation = mat3(gbufferModelView);
 	vec3 anchorWorldPos =
-		vec3(
-			dot(anchorViewPos, viewRotation * vec3(1.0, 0.0, 0.0)),
-			dot(anchorViewPos, viewRotation * vec3(0.0, 1.0, 0.0)),
-			dot(anchorViewPos, viewRotation * vec3(0.0, 0.0, 1.0)))
-		+ cameraPosition;
+		(gbufferModelViewInverse * vec4(anchorViewPos, 1.0)).xyz + cameraPosition;
 
 	// ⚠️ The held item is not reprojected like the world, because it does not move
 	// like the world: it is attached to the camera, so it stays put relative to it
@@ -683,15 +667,7 @@ void main() {
 
 			// Note: w must be 0.0 in homogenous coordinates, as 1.0 means a
 			// point in space rather than a vector.
-			// The direction is taken through the matrix the geometry was drawn with, not
-			// through its inverse: gbufferModelViewInverse is not quite its inverse while the
-			// view is bobbing, and the error is invisible on a smooth sky gradient but slides a
-			// hashed star grid against the terrain. See the note in /program/world/lit.fsh.
-			mat3 viewRotation = mat3(gbufferModelView);
-			vec3 worldDir = normalize(vec3(
-				dot(viewVec, viewRotation * vec3(1.0, 0.0, 0.0)),
-				dot(viewVec, viewRotation * vec3(0.0, 1.0, 0.0)),
-				dot(viewVec, viewRotation * vec3(0.0, 0.0, 1.0))));
+			vec3 worldDir = (gbufferModelViewInverse * vec4(viewVec, 0.0)).xyz;
 
 			resolved = SkyDither(gl_FragCoord.xy, SkyColor(worldDir))
 				* max(0.0, 1.0 - 10.0 * blindness);

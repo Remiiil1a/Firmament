@@ -47,7 +47,7 @@
 	in vec4 tinting;
 	in vec2 texcoord;
 
-	uniform mat4 gbufferModelView;
+	uniform mat4 gbufferModelViewInverse;
 	uniform mat4 gbufferProjectionInverse;
 	uniform vec2 windowToNdc;
 	uniform float blindness;
@@ -86,15 +86,7 @@
 
 		// Note: w must be 0.0 in homogenous coordinates, as 1.0 means a point in
 		// space rather than a vector.
-		// The direction is taken through the matrix the geometry was drawn with, not
-		// through its inverse: gbufferModelViewInverse is not quite its inverse while the
-		// view is bobbing, and the error is invisible on a smooth sky gradient but slides a
-		// hashed star grid against the terrain. See the note in /program/world/lit.fsh.
-		mat3 viewRotation = mat3(gbufferModelView);
-		vec3 worldDir = normalize(vec3(
-			dot(viewVec, viewRotation * vec3(1.0, 0.0, 0.0)),
-			dot(viewVec, viewRotation * vec3(0.0, 1.0, 0.0)),
-			dot(viewVec, viewRotation * vec3(0.0, 0.0, 1.0))));
+		vec3 worldDir = (gbufferModelViewInverse * vec4(viewVec, 0.0)).xyz;
 
 		// Asked for through SkyColor rather than directly, so that the END_DEBUG
 		// view is visible here too - this is the path the End's own sky takes,
