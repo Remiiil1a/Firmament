@@ -24,7 +24,7 @@
 #include "/environment/sky/stars.glsl"
 #include "/environment/clouds/cirrus.glsl"
 
-uniform mat4 gbufferModelViewInverse;
+uniform mat4 gbufferModelView;
 uniform mat4 gbufferProjectionInverse;
 uniform vec2 windowToNdc;
 uniform float blindness;
@@ -40,7 +40,15 @@ void main() {
 
 	// Note: w must be 0.0 in homogenous coordinates, as 1.0 means a point in
 	// space rather than a vector.
-	vec3 worldSpaceVector = (gbufferModelViewInverse * vec4(viewVec, 0.0)).xyz;
+	// The direction is taken through the matrix the geometry was drawn with, not
+	// through its inverse: gbufferModelViewInverse is not quite its inverse while the
+	// view is bobbing, and the error is invisible on a smooth sky gradient but slides a
+	// hashed star grid against the terrain. See the note in /program/world/lit.fsh.
+	mat3 viewRotation = mat3(gbufferModelView);
+	vec3 worldSpaceVector = normalize(vec3(
+		dot(viewVec, viewRotation * vec3(1.0, 0.0, 0.0)),
+		dot(viewVec, viewRotation * vec3(0.0, 1.0, 0.0)),
+		dot(viewVec, viewRotation * vec3(0.0, 0.0, 1.0))));
 
 	// Dithering 
 	vec2 ditherCoord = gl_FragCoord.xy;
