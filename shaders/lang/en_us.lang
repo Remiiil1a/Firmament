@@ -1,4 +1,4 @@
-  ❌ [the bloom threshold is 0 by default (and the shipped default is 0.0 as of v0.7, which turns the core off and leaves the ring and the glow)] 命中 0 次（应为 1） option.STEADFAST=Steadfast Shaders
+option.STEADFAST=Steadfast Shaders
 option.STEADFAST.comment=Made by coderbot16, the original developer of Iris. \
 	Closed alpha - please do not redistribute in public!
 value.STEADFAST.BY_CODERBOT=by coderbot16
@@ -41,7 +41,6 @@ profile.FIRMAMENT_MEDIUM=§2✎ Firmament§r - §a» Medium§r
 profile.FIRMAMENT_LOW=§2✎ Firmament§r - §e↓ Low§r
 profile.FIRMAMENT_HIGH=§2✎ Firmament§r - §b🔥 High§r
 profile.FIRMAMENT_TOASTER=§2✎ Firmament§r - §c▶ Toaster§r
-profile.MINISHITA_HIGH=§aMinishita (WIP)§r style - §b🔥 High§r
 profile.MINISHITA_HIGH=§aMinishita (WIP)§r style - §b🔥 High§r
 profile.MINISHITA_MEDIUM=§aMinishita (WIP)§r style - §a» Medium§r
 profile.MINISHITA_LOW=§aMinishita (WIP)§r style - §e↓ Low§r
@@ -426,13 +425,6 @@ option.PBR_SSR_STEPS.comment=How many steps the reflection trace may take; \
 	them better, and the cost is paid whether or not anything is found - the \
 	first setting to lower if reflections are too expensive.
 
-	world traced into its reflection.\n\n\
-	Above this the reflection is the sky term alone: a rough surface scatters the \
-	reflected ray over too wide a range of directions for one sharp sample to \
-	stand in for, so it would be shown a mirror image it should not have.\n\n\
-	Raising it reflects the world in rougher surfaces at a higher cost, and those \
-	reflections will be sharper than they should be - there is no blur behind \
-	this, only a direction.
 
 option.PBR_DEFAULT_MATERIAL=Default material
 option.PBR_DEFAULT_MATERIAL.comment=Whether blocks the pack gives no usable \
@@ -509,7 +501,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 482]
+option.PBR_DEBUG=Material debug view [build 483]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1020,6 +1012,7 @@ option.WATER_CAUSTICS.comment=The moving pattern of light that sunlit water \
 	casts onto the terrain below it, brightened where the light is focused. It \
 	comes from the shadow map, so it reaches only as far as the shadow distance \
 	and fades out there.
+option.WATER_CAUSTICS_DISTANCE=Water caustics distance
 
 to whatever comes through it.\n\n\
 Absorption on its own can only take colour away, so it gives water its deep \
@@ -1043,6 +1036,8 @@ option.WATER_ABSORPTION_METHOD.comment=How light is absorbed by water. \
 	turns it off, which to use when the water looks wrong with a resource pack or \
 	mod that draws its own water.
 
+option.DARK_UNDERWATER=Underwater darkening
+
 value.WATER_AA.OFF=Off
 value.WATER_AA.LOW=Low
 value.WATER_AA.BALANCED=Balanced
@@ -1057,6 +1052,8 @@ value.WATER_CHARACTER.TROPICAL=Tropical
 
 value.WATER_ABSORPTION_METHOD.NO_ABSORPTION=No absorption
 value.WATER_ABSORPTION_METHOD.REFRACTION_ASSISTED=Refraction assisted
+
+option.MINISHITA_LIGHTING=Physical lighting
 
 option.DAY_SKY_LIGHTING=Day sky lighting
 option.DAY_SKY_LIGHTING.comment=Daytime direct and ambient sky lighting: \
@@ -1109,6 +1106,9 @@ option.REAL_TIME_SHADOWS.comment=Whether terrain, entities and block entities \
 	cast shadows through the shadow map. Off leaves only static light-map \
 	shadows: much cheaper, but nothing moving casts anything and you cannot stand \
 	behind the sun.
+
+option.REAL_TIME_ENTITY_SHADOWS=Real-time entity shadows
+option.REAL_TIME_BLOCK_ENTITY_SHADOWS=Real-time block entity shadows
 
 option.COLORED_SHADOWS=Coloured shadows
 option.COLORED_SHADOWS.comment=Whether light through stained glass arrives \
@@ -1293,11 +1293,16 @@ option.NIGHT_DESATURATION_EFFECT.comment=Drains colour out of a surface as the \
 	surface from its own sky and block light rather than to the whole screen, so \
 	a torch in a dark room stays coloured.
 
+option.TONEMAP=Tonemap
+option.SKY_DITHER=Sky colour dithering (removes banding)
+
 option.SATURATED_TONEMAP=Saturated tonemap
 option.SATURATED_TONEMAP.comment=A tonemapping curve that keeps colour as \
 	things brighten instead of washing them towards white, so sunsets, stained \
 	glass and light sources stay colourful at the cost of some detail in the \
 	brightest highlights.
+
+option.ATMOSPHERE_MODEL=Atmosphere model
 
 option.DAY_ATMOSPHERE=Day atmosphere
 option.DAY_ATMOSPHERE.comment=The day's sky and sunlight preset: sky gradient, \
@@ -1460,6 +1465,8 @@ option.WATER_REFLECTION_STRENGTH.comment=How much of the water's reflection to \
 	because a Fresnel term is the fraction of light reflected and cannot exceed \
 	all of it, so a larger setting gives the same picture as 1.0. Water only; ice \
 	and glass keep every bit of theirs.
+
+option.WATER_SKY_BODIES=Sun and moon reflections
 
 option.WATER_SUN_SIZE=Sun reflection trim
 option.WATER_SUN_SIZE.comment=How much larger or smaller the sun is in the \

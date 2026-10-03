@@ -1,6 +1,5 @@
-  ❌ [也是那个参考 demo 的形态。\n\n**⚠️ v0.7 起这就是默认值（0.0）。**] 命中 0 次（应为 1） option.STEADFAST=Steadfast Shaders
+option.STEADFAST=Steadfast Shaders
 option.STEADFAST.comment=由 coderbot16 制作，他是 Iris 的原始开发者。封闭测试版，请勿公开传播！
-	这是一个封闭测试版 - §c§l请不要公开分发！
 value.STEADFAST.BY_CODERBOT=by coderbot16
 
 option.FIRMAMENT=Firmament (edit of coderbot's Steadfast)
@@ -24,7 +23,6 @@ profile.FIRMAMENT_MEDIUM=§2✎ Firmament§r - §a» 中§r
 profile.FIRMAMENT_LOW=§2✎ Firmament§r - §e↓ 低§r
 profile.FIRMAMENT_HIGH=§2✎ Firmament§r - §b🔥 高§r
 profile.FIRMAMENT_TOASTER=§2✎ Firmament§r - §c▶ 土豆§r
-profile.MINISHITA_HIGH=§a物理(WIP)§r style - §b🔥 高§r
 profile.MINISHITA_HIGH=§a物理(WIP)§r style - §b🔥 高§r
 profile.MINISHITA_MEDIUM=§a物理(WIP)§r style - §a» 中§r
 profile.MINISHITA_LOW=§a物理(WIP)§r style - §e↓ 低§r
@@ -246,7 +244,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 482]
+option.PBR_DEBUG=材质调试视图 [build 483]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
