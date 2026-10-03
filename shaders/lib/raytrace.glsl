@@ -134,17 +134,6 @@ bool Raytrace(
 	uint refinementRounds = uint(0);
 	bool hasHitPos = false;
 
-	// The divisor the thickness cap is built from, carried alongside the count
-	// rather than re-derived from it on every step.
-	//
-	// Deriving it costs a conversion, a max and a division per step, and it can
-	// only change at the one place refinementRounds does - which, for a ray that
-	// never hits anything, is never: that is the whole of the loop for most
-	// pixels. Carrying it is the same arithmetic on the same values, because it
-	// holds exactly what the expression below evaluated to at every point: the
-	// max is only there to say "one round rather than none", so the divisor is
-	// the count once the count has passed one and one until then.
-	float refinementDivisor = 1.0;
 
 	// Initial velocity and thickness
 	//
@@ -177,28 +166,31 @@ bool Raytrace(
 		// Prevent thickness from getting too large as that will mean far
 		// distances have undesirable stretching.
 		//
-		// Recorded as the failure this cap is for: the division by the
-		// refinement count narrows the tolerance as the ray is refined, and an
-		// unguarded division at the first hit - where no refinement round is
-		// behind the ray yet - does not produce a large number, it produces an
-		// infinite one, so the cap stops applying to exactly the hit that needs
-		// it most. The thickness of an unrefined hit would then be the length of
-		// the step that made it, which doubles every step and is tens of metres
-		// by the fifth. A ray with a tolerance of tens of metres accepts
-		// anything whose depth it happens to pass near, the reflection is then
-		// drawn from a screen position nowhere near the point actually being
-		// reflected, and the result is the stretched, banded reflection that
-		// this whole file exists to avoid.
+		// 鈿狅笍 This line is where this pack used to differ from Steadfast, and that
+		// difference is the whole of why water lost its reflection in a band under the
+		// horizon when the surface is viewed level. Upstream divides by the refinement
+		// count outright. Before the first hit that count is zero, so upstream's divisor
+		// is an infinity, min() keeps the step's own thickness, and the tolerance is
+		// therefore as wide as the step - which is what catches the surface the ray
+		// steps over at a grazing angle. This pack guarded the division with
+		// max(count, 1), which pinned the tolerance at MAX_THICKNESS for every step
+		// before the first hit; against steps of hundreds of metres that is nothing,
+		// and the ray passed over its own reflection. See PBR_PORTING.md batch 489.
 		//
-		// The max below is that guard, and it says "one round rather than none",
-		// so that the cap is the cap and each refinement after it tightens from
-		// there. Note what it holds at this point in the file: refinementRounds
-		// is only incremented after a hit, so the divisor is 1 for every step
-		// before the first hit as well as for the first hit itself, and the
-		// tightening only starts once a hit has actually been made.
-		float thicknessM = min(
-			velocityAndThickness.w,
-			MAX_THICKNESS / refinementDivisor);
+		// The guard had a reason, kept here so that dropping it is a decision rather
+		// than an accident: an unrefined hit then carries a tolerance as long as the
+		// step that made it, so it can accept a surface it merely passed near, and the
+		// reflection is drawn from a screen position away from the point actually being
+		// reflected. That is the stretched, banded reflection. Water is where the trade
+		// is made the other way, because a missing reflection is the more visible of
+		// the two and because the user confirmed in game which one this was.
+		//
+		// Written as a test rather than as a division by zero: min(w, infinity) is w,
+		// so saying that costs one comparison and does not depend on how the driver
+		// answers a division the language leaves undefined.
+		float thicknessM = refinementRounds == uint(0)
+			? velocityAndThickness.w
+			: min(velocityAndThickness.w, MAX_THICKNESS / float(refinementRounds));
 
 		// The range of Z values we will permit lies between where we started
 		// and where we are advancing to.
@@ -275,9 +267,6 @@ bool Raytrace(
 			// a successful hit, to improve the accuracy of reflections.
 			refinementRounds += uint(1);
 
-			// The one place the carried divisor changes, so that it stays equal
-			// to float(max(refinementRounds, uint(1))) for every step after this.
-			refinementDivisor = float(max(refinementRounds, uint(1)));
 
 			// If we've already refined sufficiently, return this result as-is.
 			if (refinementRounds >= uint(MAX_REFINEMENT_ROUNDS)) {
