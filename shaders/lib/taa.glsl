@@ -76,7 +76,11 @@
 // The two numbers are frozen. TAA_ON was 1 before a second mode existed at all,
 // and Iris keeps the value an option was set to, so renumbering it would silently
 // change what an existing configuration means.
-//#define TAA
+//
+// On by default since the v1.0.0 presets: the factory default is the Medium
+// tier, which is defined as this pack's own defaults with SMAA off and this on.
+// See the FIRMAMENT_* profiles in shaders.properties.
+#define TAA
 
 // How much of the accumulated history each frame keeps, for a pixel that did not
 // move since the previous frame.
@@ -86,26 +90,26 @@
 // own. Raising it leaves less noise and resolves more detail, because a longer
 // history is the only thing that can average a per-frame sample out at all -
 // with a still camera the frame is a weighted average over roughly
-// 1 / (1 - TAA_STRENGTH) frames, which is 4 at the default 0.75.
+// 1 / (1 - TAA_STRENGTH) frames, which is about 6.7 at the default 0.85.
 //
 // It is no longer also the weight for a pixel that *did* move: composite1 keeps
 // less of the history where the pixel moved - historyWeight is this value times
 // mix(0.7, 1.0, stillness) - so raising this does not buy ghosting behind
 // anything that moves on its own.
-#define TAA_STRENGTH 0.75 // [0.5 0.65 0.75 0.85 0.9 0.95]
+#define TAA_STRENGTH 0.85 // [0.5 0.65 0.75 0.85 0.9 0.95]
 
 // The radius of the sub-pixel jitter, in pixels.
 //
 // The sample is placed at `taaJitterX / viewWidth * TAA_JITTER` and the same in
 // Y, and shaders.properties builds those from taaJitterX/Y, which each swing
 // across the full range -1 to 1. The pixel offset is therefore half this option
-// times that range: 0.5 (the default) puts the sample between the pixel centre
-// and its edge, and 1.0 covers the whole pixel. Lower values trade smoothing
+// times that range: 1.0 (the default) covers the whole pixel, and 0.5 puts the
+// sample between the pixel centre and its edge. Lower values trade smoothing
 // for less visible flicker, and 0 turns the jitter off entirely - the resolve
 // then has no sub-pixel offset to average, so the anti-aliasing is effectively
 // disabled without the pass being skipped (what is left of it is the temporal
 // averaging of the dither, which does not need a spatial offset).
-#define TAA_JITTER 0.5 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5]
+#define TAA_JITTER 1.0 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5]
 
 // How many standard deviations of the current frame's neighbourhood the
 // history is allowed to fall outside of.
@@ -115,7 +119,7 @@
 // smudge: a sample only survives if it looks like a plausible value for this
 // pixel. Too tight and the image flickers, because legitimate history gets
 // thrown away every frame; too loose and moving objects smear.
-#define TAA_CLAMP 0.5 // [0.5 0.75 1.0 1.25 1.5 2.0 3.0]
+#define TAA_CLAMP 1.0 // [0.5 0.75 1.0 1.25 1.5 2.0 3.0]
 
 
 // How much to sharpen the resolved image, to counter the softening that

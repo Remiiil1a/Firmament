@@ -21,6 +21,14 @@ option.THANKS_BLISS.comment=本包在实现中引用或参考了 X0nk 的 Bliss 
 value.THANKS_BLISS.BY_X0NK=by X0nk
 
 profile.EDIT_DEFAULT=§2✎ EDIT默认 style§r
+profile.FIRMAMENT_MEDIUM=§2✎ Firmament§r - §a» 中§r
+profile.FIRMAMENT_LOW=§2✎ Firmament§r - §e↓ 低§r
+profile.FIRMAMENT_HIGH=§2✎ Firmament§r - §b🔥 高§r
+profile.FIRMAMENT_TOASTER=§2✎ Firmament§r - §c▶ 土豆§r
+profile.FIRMAMENT_MEDIUM.comment=出厂默认档。本包自己的观感，时间抗锯齿（TAA）打开、SMAA 关闭。在当前级别的显卡上看不出让掉了什么——只有在帧率不够时才需要看「低」和「土豆」。
+profile.FIRMAMENT_LOW.comment=在「中」的基础上，关掉两个每像素最贵的屏幕空间效果：反射步进（PBR 屏幕空间反射）与远处的屏幕空间阴影，并把金属反射强度减半。在实测的那台机器上约合每帧 0.4～0.6 ms。代价：金属与水面的反射略弱，远处表面在地平线附近不再投出细致的接触阴影。
+profile.FIRMAMENT_HIGH.comment=在「中」的基础上，把体积雾改为全分辨率渲染（而非四分之一）。光柱更锐利，雾与几何相接处的边缘更干净，代价是那一趟约十六倍的开销。环境光遮蔽仍与默认档一样保持关闭。
+profile.FIRMAMENT_TOASTER.comment=地板档，给跑不动上面几档的机器：体积雾与光柱、体积云、实时阴影、泛光、PBR 材质、水面反射与焦散、屏幕空间阴影、彩色光、时间抗锯齿全部关闭，阴影贴图减半、射程缩短。本包自己的观感、水面与天空保留。
 profile.MINISHITA_HIGH=§a物理(WIP)§r style - §b🔥 高§r
 profile.MINISHITA_HIGH=§a物理(WIP)§r style - §b🔥 高§r
 profile.MINISHITA_MEDIUM=§a物理(WIP)§r style - §a» 中§r
@@ -252,7 +260,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 474]
+option.PBR_DEBUG=材质调试视图 [build 475]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图

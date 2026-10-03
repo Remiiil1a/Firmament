@@ -47,7 +47,11 @@
 // temporal resolve off, that noise does not shimmer - the jitter is what made it
 // move - but it is still a fixed dither rather than a smooth gradient. See the
 // note on that in PBR_PORTING.md 140.
-#define SMAA
+//
+// Off by default since the v1.0.0 presets: the factory default is the Medium
+// tier, which is defined as this pack's own defaults with this off and the
+// temporal resolve on instead. See the FIRMAMENT_* profiles in shaders.properties.
+//#define SMAA
 
 // The #ifdef below is not decoration, and this is worth spelling out because the
 // option it guards is invisible without it.

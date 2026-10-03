@@ -38,6 +38,14 @@ option.THANKS_BLISS.comment=This pack references or quotes code from Bliss Shade
 value.THANKS_BLISS.BY_X0NK=by X0nk
 
 profile.EDIT_DEFAULT=§2✎ EDIT default style§r
+profile.FIRMAMENT_MEDIUM=§2✎ Firmament§r - §a» Medium§r
+profile.FIRMAMENT_LOW=§2✎ Firmament§r - §e↓ Low§r
+profile.FIRMAMENT_HIGH=§2✎ Firmament§r - §b🔥 High§r
+profile.FIRMAMENT_TOASTER=§2✎ Firmament§r - §c▶ Toaster§r
+profile.FIRMAMENT_MEDIUM.comment=The factory default. This pack's own look with the temporal resolve (TAA) on and SMAA off. Nothing is given up that you would notice on a current GPU - see Low and Toaster only if the frame rate is short.
+profile.FIRMAMENT_LOW.comment=Medium, minus the two screen-space effects that cost the most per pixel: the reflection trace (PBR screen-space reflections) and the screen-space shadows in the distance, and with the metal reflection softened to half. On the machine this was measured on, that is around 0.4 to 0.6 ms a frame. What you lose: metal and water reflect a little less, and distant surfaces stop casting the fine contact shadow at the horizon.
+profile.FIRMAMENT_HIGH.comment=Medium, with the volumetric fog marched at full resolution instead of a quarter of it - sharper shafts and a cleaner edge where the fog meets geometry, at about sixteen times the cost of that one pass. Ambient occlusion stays off, as it is in the default.
+profile.FIRMAMENT_TOASTER.comment=The floor, for a machine that cannot run the rest: volumetric fog and light shafts, the volumetric clouds, real-time shadows, bloom, PBR materials, water reflections and caustics, the screen-space shadows, coloured lights and the temporal resolve are all off, the shadow map is halved and its reach shortened. The pack's own look, water and sky stay.
 profile.MINISHITA_HIGH=§aMinishita (WIP)§r style - §b🔥 High§r
 profile.MINISHITA_HIGH=§aMinishita (WIP)§r style - §b🔥 High§r
 profile.MINISHITA_MEDIUM=§aMinishita (WIP)§r style - §a» Medium§r
@@ -522,7 +530,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 474]
+option.PBR_DEBUG=Material debug view [build 475]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
