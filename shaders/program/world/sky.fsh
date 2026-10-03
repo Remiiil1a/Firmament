@@ -29,10 +29,6 @@ uniform mat4 gbufferProjectionInverse;
 uniform vec2 windowToNdc;
 uniform float blindness;
 
-// Moves the sky dither pattern across the screen rapidly to reveal excessive
-// dithering
-// #define SKY_DITHER_DEBUG
-
 void main() {
 	// Project back to view space from the fragment coordinates. For this case,
 	// it is easier to start off with a position on the far plane and then
@@ -49,9 +45,6 @@ void main() {
 	// Dithering 
 	vec2 ditherCoord = gl_FragCoord.xy;
 
-	#ifdef SKY_DITHER_DEBUG
-		ditherCoord += 500.0 * cos(frameTimeCounter);
-	#endif
 
 	// The flat-colour sky quads - the star field, and the dark plane the game
 	// draws below the horizon - arrive here with a single colour and no texture,

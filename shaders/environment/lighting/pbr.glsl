@@ -901,13 +901,6 @@ const float PBR_WETNESS_DARKENING = 0.66;
 	#define PBR_SURFACE
 
 
-	// Iris reports the PBR format that the resource pack declares in its
-	// texture.properties. It cannot be declared from the shader side, so this
-	// is purely informational - if the pack says nothing, we still sample and
-	// rely on the neutral defaults below.
-	#if defined(MC_TEXTURE_FORMAT_LAB_PBR_1_3) || defined(MC_TEXTURE_FORMAT_LAB_PBR)
-		#define LABPBR_1_3
-	#endif
 #endif
 
 // The decoded material properties of a fragment.

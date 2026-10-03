@@ -212,8 +212,6 @@ option.PBR_SSR.comment=材质的反射是否可以包含世界而不只是天空
 option.PBR_SSR_STEPS=反射追踪步数
 option.PBR_SSR_STEPS.comment=反射追踪最多走多少步，只有材质反射使用这一项。步数越多越容易命中、命中后也细化得更好，而代价无论是否命中都要付出——反射开销太高时，这是第一个该调低的选项。
 
-option.PBR_SSR_ROUGHNESS=粗糙度上限
-option.PBR_SSR_ROUGHNESS.comment=表面粗糙到这个值之前，反射里才会加入世界内容。\n\n超过这个值就只剩天空项：粗糙表面会把反射方向散射到过宽的范围，单次锐利采样无法代表它，硬要追踪就会给它一个不该有的镜面倒影。\n\n调高可以让更粗糙的表面也映出世界，代价更高，而且那些反射会比应有的更锐利——这里背后没有模糊，只有一个方向。
 
 option.PBR_DEFAULT_MATERIAL=默认材质
 option.PBR_DEFAULT_MATERIAL.comment=资源包没有提供可用高光数据的方块，是否退回为普通电介质处理；否则它们会被解码成「无反射且完全粗糙」。关闭可以完全忠于资源包的原始数据。
@@ -248,7 +246,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 480]
+option.PBR_DEBUG=材质调试视图 [build 481]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -676,7 +674,6 @@ option.VOLUMETRIC_CLOUD_CELL_SIZE= 云的大小
 option.VOLUMETRIC_CLOUD_CELL_SIZE.comment=单个云格的边长，同时也是噪声图案被拉伸到的尺度。调小会碎成一块块小方块、间隙变多；调大就是大块大团的云，也更省性能，因为视线要跨过的格子更少。
 
 option.REAL_TIME_ENTITY_SHADOWS= 实体实时阴影
-option.SKY_DITHER_DEBUG= 天空色阶抖动调试
 option.DARK_UNDERWATER= 深水暗化效果
 option.Steadfast Shaders= 稳态光影总开关
 option.ATMOSPHERE_MODEL= 大气渲染模型
@@ -696,7 +693,6 @@ option.WATER_ABSORPTION_METHOD.comment=水如何吸收光。默认通过折射�
 option.PREFER_FDM_GRADIENT= 优先梯度雾效
 option.PREFER_FDM_GRADIENT.comment=用一种更粗、更省的方法计算水面之前有多少雾。除非准确的那一路本身出了问题，否则保持关闭。
 option.REAL_TIME_BLOCK_ENTITY_SHADOWS= 方块实体实时阴影
-option.DEBUG_FOG_OPTIMIZATION= 雾效优化调试
 option.MINISHITA_LIGHTING= 物理光照模型
 option.WATER_CAUSTICS_DISTANCE= 水体焦散渲染距离
 option.SKY_DITHER= 天空色彩抖动（消除色带）

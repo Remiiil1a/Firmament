@@ -1616,12 +1616,6 @@ void main() {
 				SkyColor(normalize(cameraRelativePos)));
 			fragmentColor.rgb += sky * skyFogStrength;
 		} else {
-			// Tints terrain receiving lit.fsh fog that did not require the sky
-			// color
-			// #define DEBUG_FOG_OPTIMIZATION
-			#ifdef DEBUG_FOG_OPTIMIZATION
-				fragmentColor.rb = vec2(0.0);
-			#endif
 		}
 
 		// We also fade away the background (effectively, because we need to

@@ -426,8 +426,6 @@ option.PBR_SSR_STEPS.comment=How many steps the reflection trace may take; \
 	them better, and the cost is paid whether or not anything is found - the \
 	first setting to lower if reflections are too expensive.
 
-option.PBR_SSR_ROUGHNESS=Roughness limit
-option.PBR_SSR_ROUGHNESS.comment=How rough a surface may be and still have the \
 	world traced into its reflection.\n\n\
 	Above this the reflection is the sky term alone: a rough surface scatters the \
 	reflected ray over too wide a range of directions for one sharp sample to \
@@ -511,7 +509,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 480]
+option.PBR_DEBUG=Material debug view [build 481]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
