@@ -80,15 +80,32 @@ profile.comment=\
 	sun and shadows, no directional shading from sunlight (like internal \
 	shaders), and the vanilla water texture.\n\n\
 	\
-	§b🔥 High§r / §a» Medium§r / §e↓ Low§r / §c▶ Toaster§r - Pre-tuned \
-	tradeoffs between quality and performance allowing you to adapt Steadfast \
-	to your device..\n\n\
+	§b🔥 High§r / §a» Medium§r / §e↓ Low§r / §c▶ Toaster§r - The performance \
+	ladder, and these four are not styles: they are the same look at four costs, \
+	so picking one only changes what a frame costs.\n\n\
+	§b🔥 High§r: Medium, plus the volumetric fog marched at full resolution \
+	instead of a quarter of it, and the PBR parallax displacement on. Both are \
+	things the default leaves off for what they cost, not for what they look \
+	like.\n\n\
+	§a» Medium§r: the factory default. This pack's own look with the temporal \
+	resolve (TAA) on and SMAA off. Nothing is given up that you would notice on a \
+	current GPU.\n\n\
+	§e↓ Low§r: Medium, minus the two screen-space effects that cost the most per \
+	pixel - the PBR reflection trace and the screen-space shadows in the distance \
+	- and with the metal diffuse response softened. About 0.4 to 0.6 ms a frame \
+	on the machine this was measured on. Metal and water reflect a little less, \
+	and distant surfaces stop casting the fine contact shadow at the horizon.\n\n\
+	§c▶ Toaster§r: the floor, for a machine that cannot run the rest. Volumetric \
+	fog and light shafts, the volumetric clouds, real-time shadows, bloom, PBR \
+	materials, water reflections and caustics, the screen-space shadows, coloured \
+	lights and the temporal resolve are all off, the shadow map is halved and its \
+	reach shortened. The pack's own look, water and sky stay.\n\n\
 	\
-	§2✎ EDIT default style§r: The configuration this edit ships with.. \
-	Steadfast's own look, with the material options switched on at the values \
-	they were tuned to. The colour grading, the atmosphere model, the tonemap \
-	and the sky are Steadfast's own defaults, so this is also the way back to \
-	them after trying one of the styles above..
+	§2✎ Firmament§r - §a» Medium§r: The configuration this edit ships with, and \
+	the same thing as Medium above.. Steadfast's own look, with the material \
+	options switched on at the values they were tuned to. The colour grading, the \
+	atmosphere model, the tonemap and the sky are Steadfast's own defaults, so \
+	this is also the way back to them after trying one of the styles above..
 
 screen.EFFECTS=Effects & post-processing
 screen.EFFECTS_LIGHT_SETTINGS=Light effects
@@ -525,7 +542,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 477]
+option.PBR_DEBUG=Material debug view [build 478]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
