@@ -340,8 +340,23 @@ void main() {
 	vec3 anchorNdc = vec3(anchorCoord * 2.0 - 1.0, anchorDepth * 2.0 - 1.0);
 	vec4 anchorViewH = gbufferProjectionInverse * vec4(anchorNdc, 1.0);
 	vec3 anchorViewPos = anchorViewH.xyz / anchorViewH.w;
+	// Rebuilt through the matrix the geometry was drawn with, not through its
+	// inverse: that inverse is not exact while the view is bobbing (see the note in
+	// /program/world/lit.fsh), and the error it carries here does not stay in one
+	// pixel - it moves where this pixel's history is read from, every step. It was
+	// harmless while this pass only ran with the temporal resolve off; it is the
+	// factory default now, so it is not.
+	//
+	// Dotting against the matrix's own basis vectors is its transpose, which for a
+	// rotation is its inverse. A position also needs the camera's own position added
+	// back, which is what the inverse's translation column was: cameraPosition.
+	mat3 viewRotation = mat3(gbufferModelView);
 	vec3 anchorWorldPos =
-		(gbufferModelViewInverse * vec4(anchorViewPos, 1.0)).xyz + cameraPosition;
+		vec3(
+			dot(anchorViewPos, viewRotation * vec3(1.0, 0.0, 0.0)),
+			dot(anchorViewPos, viewRotation * vec3(0.0, 1.0, 0.0)),
+			dot(anchorViewPos, viewRotation * vec3(0.0, 0.0, 1.0)))
+		+ cameraPosition;
 
 	// ⚠️ The held item is not reprojected like the world, because it does not move
 	// like the world: it is attached to the camera, so it stays put relative to it
