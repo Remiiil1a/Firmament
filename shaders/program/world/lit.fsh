@@ -1615,7 +1615,6 @@ void main() {
 				gl_FragCoord.xy, 
 				SkyColor(normalize(cameraRelativePos)));
 			fragmentColor.rgb += sky * skyFogStrength;
-		} else {
 		}
 
 		// We also fade away the background (effectively, because we need to

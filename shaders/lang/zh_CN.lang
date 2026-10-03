@@ -246,7 +246,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 481]
+option.PBR_DEBUG=材质调试视图 [build 482]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -573,9 +573,6 @@ option.WATER_SURFACE= 水面纹理样式
 option.WATER_SURFACE.comment=水面用哪种模型。「噪声」按程序生成波浪，其他水面选项都建立在它之上；「基础」是完全无浪的平面，最省，水出问题时就选它。
 option.WATER_CAUSTICS= 开启水底焦散光影
 option.WATER_CAUSTICS.comment=阳光下的水面投在下方地形上的移动光纹，光聚焦处更亮。它取自阴影贴图，所以最远只到阴影距离，再远就淡出。
-option.WATER_SCATTER= 水体散射强度
-option.WATER_SCATTER_MAGNITUDE= 水体散射倍率
-option.WATER_SCATTER_LUMINANCE= 水体散射亮度
 option.WATER_CHARACTER= 水体色调风格
 option.WATER_CHARACTER.comment=水随深度多快地把不同颜色的光吸收掉，这决定一片水看起来是热带、是寒带、还是都不像。选寒带先把红色拿走，剩下北方深水的蓝绿；选热带几乎只留蓝色，浅而暖的水因此发亮；居中则介于两者之间。
 
@@ -634,7 +631,6 @@ value.NIGHT_ATMOSPHERE.RETRO=复古夜景
 
 option.DAY_SKY_LIGHTING= 白昼天空光照模式
 option.DAY_SKY_LIGHTING.comment=白天的直射与天空环境光风格，对应三种大气预设：「半自然」太阳接近白色、阴影自然，「奇幻」偏暖偏饱和，「复古」压平。
-option.ORANGER_BLOCKLIGHT= 方块光源橙色调强化
 option.SHADOW_SOFTNESS= 阴影柔和度
 option.SHADOW_SOFTNESS.comment=四个阴影采样点之间的间距，越大越柔和、越模糊。数值很小时采样点互相重叠，多出来的采样没有意义。
 option.SHADOW_DISTORT_FACTOR= 阴影形变系数

@@ -509,7 +509,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 481]
+option.PBR_DEBUG=Material debug view [build 482]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1021,18 +1021,12 @@ option.WATER_CAUSTICS.comment=The moving pattern of light that sunlit water \
 	comes from the shadow map, so it reaches only as far as the shadow distance \
 	and fades out there.
 
-option.WATER_SCATTER=Water scattering
-option.WATER_SCATTER.comment=The light the water itself scatters back out, added \
 to whatever comes through it.\n\n\
 Absorption on its own can only take colour away, so it gives water its deep \
 blue-green but cannot make a lit body of water glow. This is the other half. \
 Zero leaves the water exactly as it was, which is why that is the default: \
 raising it is a change to the water's colour, so it is a choice.
-option.WATER_SCATTER_MAGNITUDE=Water scattering magnitude
-option.WATER_SCATTER_MAGNITUDE.comment=The same effect's scale, kept apart so \
 that the slider above can stay in the range a person thinks in.
-option.WATER_SCATTER_LUMINANCE=Water scattering brightness
-option.WATER_SCATTER_LUMINANCE.comment=How bright the scattered light is at full \
 depth under a full sky. Zero leaves the effect switched off whatever the sliders \
 above say.
 option.WATER_CHARACTER=Water colour
