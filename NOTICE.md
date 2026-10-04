@@ -180,6 +180,23 @@ full.
 * A settings menu reorganised into two levels, with every option reachable and
   the shipped profile named the same in both languages.
 
+**Fixed in v0.4**
+
+* A sky that turned solid white for a few seconds in a thunderstorm. The test
+  that recognizes the game's star quads also matched the game's own sky colour
+  quad whenever all three of its channels came out equal, which is what rain
+  drives the sky colour to.
+* Screen-space shadows counted a surface behind the ray as an occluder, which is
+  the opposite of a shadow; they also changed with the step count.
+* Parallax mapping on water now stops at the edge of the vanilla render
+  distance, so it no longer steps where this pack's water meets a distant
+  terrain renderer's.
+* The cloud layer no longer jumps when the sun and the moon change hands, which
+  it used to do through the phase and the transmittance.
+* The shipped profile no longer shows Chinese in an English menu.
+* Options that had several values but rendered as click-to-cycle are sliders
+  again.
+
 **Added in v0.5**
 
 * A screen vignette, **on by default**: the corners of the frame lose a little
@@ -379,23 +396,6 @@ full.
   pack's own entry had a stray line written into its first line, on the same
   line as its key, which left the key unmatchable. Both first lines are
   restored from Steadfast verbatim.
-
-**Fixed in v0.4**
-
-* A sky that turned solid white for a few seconds in a thunderstorm. The test
-  that recognizes the game's star quads also matched the game's own sky colour
-  quad whenever all three of its channels came out equal, which is what rain
-  drives the sky colour to.
-* Screen-space shadows counted a surface behind the ray as an occluder, which is
-  the opposite of a shadow; they also changed with the step count.
-* Parallax mapping on water now stops at the edge of the vanilla render
-  distance, so it no longer steps where this pack's water meets a distant
-  terrain renderer's.
-* The cloud layer no longer jumps when the sun and the moon change hands, which
-  it used to do through the phase and the transmittance.
-* The shipped profile no longer shows Chinese in an English menu.
-* Options that had several values but rendered as click-to-cycle are sliders
-  again.
 
 ## 5. Files
 
