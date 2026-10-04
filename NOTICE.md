@@ -102,11 +102,18 @@ quotes code from the projects named in it.
 
 Versions are counted as: **v0.1** is the material work, **v0.2** is everything
 from the cloud layer onward, and **v0.3** is the distant-terrain, temporal
-antialiasing and water work after it, **v0.4** is the sky, the reflected sun and
-moon, and the settings work after it, **v0.5** is the work after that, and
+antialiasing and water work after it, **v0.4** is the sky, the reflected sun
+and moon, and the settings work after it, **v0.5** is the work after that, and
 **v0.6** is bloom, volumetric fog, the rain and snow particles and the sun and
-moon's own images, and **v0.7** is the End's own sky - the body, the gravitational lensing behind it and the nebula band it sits in - with the Nether's smoke plumes and the four styles for the block selection outline. What each release changed is listed in `CHANGELOG.md` in the
-short form, and in the `RELEASE_NOTES-*.md` files in full.
+moon's own images, **v0.7** is the End's own sky - the body, the gravitational
+lensing behind it and the nebula band it sits in - with the Nether's smoke
+plumes and the four styles for the block selection outline, **v0.8** is motion
+vectors and the temporal filter rebuilt on them, with the parallax occlusion
+mapping and its self-shadowing beside it, and **v1.0.0** is the four
+performance tiers, with the water reflection, the option labels and the
+profile handling corrected alongside them. What each release changed is listed
+in `CHANGELOG.md` in the short form, and in the `RELEASE_NOTES-*.md` files in
+full.
 
 **Added in v0.1**
 
@@ -267,6 +274,112 @@ short form, and in the `RELEASE_NOTES-*.md` files in full.
   is now inset by its own radius, which also lifts the ceiling on its size.
 * The Overworld's sun and moon are no longer drawn in the End's water; the End's
   own body is reflected there, and the body brightness setting applies in it.
+
+**Added in v0.8**
+
+* Motion vectors, and the temporal filter rebuilt on them: the reprojection of
+  the previous frame now lives in one place rather than three, and the filter
+  anchors on the nearest depth in a pixel's own neighbourhood, which is what
+  stops a silhouette from dragging the history of whatever stands behind it.
+  The held item is left out of the camera's translation, because it does not
+  move with the world.
+* Parallax occlusion mapping, with the height taken from the material the pack
+  already reads: a surface whose normal map carries a height in its alpha
+  channel is displaced along the view ray, so the albedo and the material maps
+  are read where the surface appears to be rather than where the geometry is.
+  How deep the surface is, how far it may be displaced on screen, the step
+  count and how many of them are refined are settings, with a switch and a
+  distance of its own, on a page under **Materials (PBR)**.
+* Two ways to read the height field: filtered the way the other material maps
+  are, which reads as a surface with a rounded profile, or the height's own
+  texel, which shows the field at the resolution it actually has. Which one a
+  surface wants depends on what it is, so it is a setting. The height field
+  also shadows itself, with a strength of its own, darkening the parts of a
+  displaced surface that stand behind the parts in front of them where the
+  light arrives at a glancing angle.
+
+**Fixed in v0.8**
+
+* A black blot the temporal filter used to grow and drag across the terrain: a
+  history that could not be stored came back as an ordinary black pixel, and
+  once a pixel's whole neighbourhood was black the filter held it there. What
+  stopped it was not another threshold - those had all been tried - but the
+  history's format, changed, with a flag on every pixel for whether its
+  history may be believed at all.
+* Parallax on surfaces seen nearly edge-on, where the displacement was
+  measured in the wrong units at a glancing angle; the sample spiral now
+  starts from a jittered point and gathers towards the near end of the height
+  range, which is where the detail is.
+* Two bands across water: the faint one the beacon beam left, drawn as it was
+  into the buffer the water refracts before the beam was finished, and the
+  black one on level-of-detail water at the edge of what the level-of-detail
+  mod draws, where the water took its refraction from the position the
+  refracted ray left the water at; a ray that left the water into the sky is
+  now given the sky of the direction it left in.
+* Rain drops no longer redraw snow: the three weather settings that shape a
+  rain drop were being applied to snow as well, which is drawn by the same
+  program, so which of the two a particle is is now read from the particle
+  texture, and a flake is left as the resource pack draws it.
+* The haze no longer begins at a boundary around the player in rain: haze
+  below a hundredth of a unit was culled outright, and in light or moderate
+  rain the whole rain term is under that out to about fifteen blocks, so the
+  rain had a ring of clear air around the player. The cull is gone, and the
+  haze fades in from nothing.
+
+**Added in v1.0.0**
+
+* Four performance tiers - **Low**, **Medium**, **High** and **Toaster** - one
+  of them the factory setting. **Medium** is the pack's own look: the temporal
+  resolve on, SMAA off, everything else as it was, and what a fresh install
+  gets. **High** adds the volumetric fog at full resolution and PBR parallax
+  on top of Medium. **Low** gives up the screen-space shadows and the
+  screen-space reflections and softens the metal diffuse. **Toaster** turns
+  almost everything off - shadows, volumetric clouds, light shafts, bloom,
+  SMAA, the temporal resolve, coloured light, the water's and glass's
+  reflections, caustics, PBR materials and their reflections - for a machine
+  that would not otherwise run the pack at all. A tier is one click rather
+  than thirty.
+
+**Changed in v1.0.0**
+
+* The temporal resolve is on by default and was retuned: strength 0.85, jitter
+  radius 1.0, history clamp 1.0. SMAA is off by default.
+* A tier now sets every option it should and gives every one of them back:
+  Iris applies the options a profile names and leaves the others where they
+  are, so the default tier now names sixteen more of them - the screen-space
+  shadows, bloom, coloured shadows, glass reflections, the sun and moon on
+  water, the PBR sub-options, motion blur and full-resolution volumetric fog
+  among them - and each tier is a complete configuration again.
+* The shipped profile is the Medium tier and is named as one, and the shared
+  tier tooltip was rewritten to say, tier by tier, what each one gives up. A
+  profile chosen by an older version no longer matches a name, so the list
+  reads Custom once until a tier is picked.
+* Nine options that had a Chinese label and no English one now have both -
+  among them the physical lighting model, underwater darkening, tonemapping,
+  the two entity-shadow settings, the caustics distance and the sun and moon
+  on water.
+
+**Fixed in v1.0.0**
+
+* Water reflects again when you look along the surface: a band just under the
+  horizon lost its reflection where the water was seen level, because of a
+  guard the pack had added to the reflection marcher's depth tolerance that
+  Steadfast does not have. The guard was deliberate - it is what keeps a
+  reflection from being stretched away from the point it came from - and the
+  trade is now made Steadfast's way.
+* Two profile faults: one value outside its option's allowed list made the
+  loader reject a whole profile of Steadfast's own family, everything
+  inheriting it included, and the water reflection strength in the shipped
+  profile read 1.0 where the pack's own default is 0.5, so the current state
+  could never match the default profile and resetting the options showed
+  Custom instead of a tier. They agree now, and a reset lands on Medium.
+* Two broken lines in the options' language files: the Chinese tier tooltip
+  had lost the backslash that continued it, so the rest of its description and
+  the whole performance ladder after it became text nothing read, and the
+  pack's own entry had a stray line written into its first line, on the same
+  line as its key, which left the key unmatchable. Both first lines are
+  restored from Steadfast verbatim.
+
 **Fixed in v0.4**
 
 * A sky that turned solid white for a few seconds in a thunderstorm. The test
