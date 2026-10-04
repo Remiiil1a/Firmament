@@ -16,6 +16,92 @@ report problems in this project, not in Steadfast's.
 
 ---
 
+## v1.0.0 - 2026-10-04
+
+The first official release: four ready-made performance tiers, and a first pass
+over the pack's dead weight.
+
+### Added
+
+* **Four performance tiers - Low, Medium, High and Toaster - and one of them is
+  the factory setting.** **Medium** is the pack's own look: the temporal resolve
+  on, SMAA off, everything else as it was, and it is what a fresh install gets.
+  **High** adds the volumetric fog drawn at full resolution and PBR parallax on
+  top of Medium. **Low** gives up the screen-space shadows and the screen-space
+  reflections and softens the metal diffuse. **Toaster** turns almost everything
+  off - shadows, volumetric clouds, light shafts, bloom, SMAA, the temporal
+  resolve, coloured light, the water's and glass's reflections, caustics, PBR
+  materials and their reflections - for a machine that would otherwise not run
+  the pack at all. The list reads `✎ Firmament - ↓ Low`, the other three in the
+  same shape, and a tier is one click rather than thirty.
+* **A gallery in both READMEs.** Four screenshots - the Overworld at sunset, PBR
+  materials close up, the End, and under water - taken by the pack's author. The
+  textures in them are **SPBR by ShulkerSakura**, built on Poudingue's *Vanilla
+  Normals Renewed* and licensed GPLv3, and the captions say so: they are that
+  resource pack's work and not this pack's. The pictures are kept in the
+  repository and deliberately **not** shipped inside the download.
+
+### Changed
+
+* **The temporal resolve is on by default, and it was retuned**: strength
+  `0.85`, jitter radius `1.0`, history clamp `1.0`. `SMAA` is off by default. It
+  is on because Medium is the pack's own look rather than its cheapest setting,
+  and the tiers below Medium are where a machine that cannot afford the look
+  goes.
+* **A tier now sets every option it should, and gives every one of them back.**
+  Iris applies the options a profile names and leaves the others where they are,
+  so a tier that did not name an option could not turn it back on once it had
+  been switched off by hand. The default tier names sixteen more of them now -
+  the screen-space shadows, bloom, coloured shadows, glass reflections, the sun
+  and moon on water, the PBR sub-options, motion blur and full-resolution
+  volumetric fog among them - so each tier is a complete configuration, and
+  choosing Medium again puts everything Low changed back where it was.
+* **The shipped profile is the Medium tier and is named as one.** The old
+  `EDIT default` entry is gone. A profile chosen by an older version of the pack
+  no longer matches a name, so the list reads Custom once; pick a tier and it is
+  remembered again.
+* **The shared tier tooltip was rewritten.** It says, tier by tier, what each one
+  gives up; it says that these four cover this edit's default configuration only,
+  with Steadfast's own style profiles below them kept as they were and not
+  covered by them; and it gives Steadfast's unfinished **Physical** style the
+  line upstream never wrote for it.
+* **Dead options and dead code are gone**, with the text of features removed
+  earlier: an unused `LABPBR_1_3` define, two debug switches no menu ever exposed
+  and the empty branch they left behind, the orphan labels of the water
+  scattering v0.5 removed and of `PBR_SSR_ROUGHNESS` and `ORANGER_BLOCKLIGHT`, a
+  duplicated profile definition, and a line whose key contained a space and could
+  therefore never match anything. Nothing a player can reach changed.
+* **Nine options that had a Chinese label and no English one now have both** -
+  among them the physical lighting model, underwater darkening, tonemapping, the
+  two entity-shadow settings, the caustics distance and the sun and moon on
+  water.
+
+### Fixed
+
+* **Water reflects again when you look along the surface.** A band just under
+  the horizon lost its reflection where the water was seen level: the pack had
+  added a guard to the reflection marcher's depth tolerance that upstream
+  Steadfast does not have, and removing it restores upstream's behaviour. The
+  guard was deliberate - it is what keeps a reflection from being stretched away
+  from the point it actually came from - and the trade is now made upstream's
+  way.
+* **Resetting the shader options showed Custom instead of a tier.** The water
+  reflection strength in the shipped profile read `1.0` while the pack's own
+  default is `0.5`, so the current state could never match the default profile
+  and the menu had nothing to name. They agree now, and a reset lands on Medium.
+* **A profile in Steadfast's own family could refuse to apply.** One of its
+  values is outside the option's allowed list - a letter missing from
+  `SEMI_NATURAL` - and an invalid value makes the loader reject the whole
+  profile, the family that inherits it included. Corrected.
+* **The Chinese tooltip for the tiers was cut off in the middle of a
+  sentence.** A continuation line had lost the backslash that continues it, so
+  the value ended there and everything after it - the rest of the description and
+  the whole performance ladder - became text nothing read. The line is back and
+  the tooltip runs to the end.
+* **The pack's own entry in the shader options had stopped working.** A
+  checker's output had been written into the first line of both language files,
+  on the same line as the entry's key, which left the key unmatchable. Both first
+  lines are restored verbatim from Steadfast.
 ## v0.8 - 2026-10-02
 
 ### Added
