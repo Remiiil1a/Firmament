@@ -18,6 +18,30 @@ to end with `(edit of coderbot's Steadfast)`.
 **This is not an official Steadfast release and coderbot does not support it.**
 Bug reports about it do not belong in Steadfast's issue tracker.
 
+## Gallery
+
+Screenshots taken with [SPBR](https://github.com/ShulkerSakura/SPBR) by ShulkerSakura, a
+vanilla PBR and parallax resource pack built on [Vanilla Normals
+Renewed](https://github.com/Poudingue/Vanilla-Normals-Renewed) by Poudingue and licensed
+under the GPLv3. **The textures in these images are theirs, not part of this pack.** The
+screenshots are kept in the repository and are not part of the download.
+
+![Sunset](assets/Sunset.jpg)
+
+**Sunset**
+
+![Texture](assets/Texture.jpg)
+
+**Texture**
+
+![The End](assets/The_End.jpg)
+
+**The End**
+
+![Underwater](assets/Underwater.jpg)
+
+**Underwater**
+
 ## What this edit adds
 
 * **Materials (PBR)** - normal, specular, parallax, subsurface and emissive maps

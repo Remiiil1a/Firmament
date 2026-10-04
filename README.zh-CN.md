@@ -19,6 +19,29 @@ Steadfast 的附加条款要求修改版的名称以 `(edit of coderbot's Steadf
 **本包不是 Steadfast 的官方发行版，coderbot 不为它提供支持。**
 关于本包的问题请不要提交到 Steadfast 的 issue 区。
 
+## 图集
+
+图片使用 [SPBR](https://github.com/ShulkerSakura/SPBR)（作者 ShulkerSakura）拍摄。那是一个带视差的
+原版 PBR 资源包，基于 Poudingue 的 [Vanilla Normals
+Renewed](https://github.com/Poudingue/Vanilla-Normals-Renewed)，以 GPLv3 授权。
+**这些图里的贴图是他们的作品，不属于本包。** 图片保存在代码仓库里，不随下载包发行。
+
+![日落湖面](assets/Sunset.jpg)
+
+**日落湖面**
+
+![材质](assets/Texture.jpg)
+
+**材质**
+
+![末地](assets/The_End.jpg)
+
+**末地**
+
+![水下](assets/Underwater.jpg)
+
+**水下**
+
 ## 这个修改版加了什么
 
 * **材质（PBR）**：读取 labPBR 资源包的法线、高光、视差、次表面与自发光贴图，
