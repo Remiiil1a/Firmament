@@ -92,7 +92,7 @@ Renewed](https://github.com/Poudingue/Vanilla-Normals-Renewed)，以 GPLv3 授�
 
 ## 安装
 
-1. 把 `Firmament-v0.8-edit-of-coderbot-Steadfast.zip` 放进 `.minecraft/shaderpacks/`，
+1. 把 `Firmament-v1.0.0-edit-of-coderbot-Steadfast.zip` 放进 `.minecraft/shaderpacks/`，
    **不要解压**。
 2. 在 **视频设置 → 光影** 里选中它。
 3. 光影选项里 `材质（PBR）→ 材质格式` 跟着资源包走：用资源包就保持 `LabPBR`，
