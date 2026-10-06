@@ -117,9 +117,11 @@ uniform float blindness;
 //     dot slides out from behind the bright one, and how far it slides is the
 //     disagreement itself.
 //
-// A white dot marks the direction the End's giant is placed at (worldSunVector as the
-// pack builds it) and a cyan one the same direction built the exact 4x4 way, so that
-// what ships and what a fix would place can be read against the anchors side by side.
+// Two more marks are drawn about 7 degrees off the End's giant, where they can be seen
+// at all: white for the direction it is placed at today, and cyan for the same direction
+// built the exact 4x4 way, displaced by that difference magnified 25 times, so a gap too
+// small to see becomes a swing to watch. What ships and what a fix would place can
+// therefore be read against the anchors side by side.
 //
 // The bright and the dim dot of each pair are expected to sit exactly on top of one
 // another: gbufferModelViewInverse is the exact inverse of gbufferModelView, so the
@@ -707,11 +709,13 @@ void main() {
 			#ifdef END_SHAKE_PROBE
 				// TEMPORARY (b501). See the note on the option near the top of this file.
 				//
-				// Three pairs of dots at three fixed world directions, plus a white dot at
-				// the direction the giant is placed at. In each pair the bright dot is the
-				// direction through the matrix the geometry was drawn with and the dim one
-				// through the shader mod's inverse of it, so where the two matrices agree
-				// the dim dot is hidden exactly behind the bright one.
+				// Three pairs of dots at three fixed world directions, plus two marks beside
+				// the giant: white for the direction it is placed at today and cyan for the
+				// same direction built the exact 4x4 way, with their difference magnified.
+				// In each pair the bright dot is the direction through the matrix the
+				// geometry was drawn with and the dim one through the shader mod's inverse
+				// of it, so where the two matrices agree the dim dot is hidden exactly
+				// behind the bright one.
 				vec3 sky = SkyDither(gl_FragCoord.xy, SkyColor(worldDir));
 
 				mat3 drawnBy = mat3(gbufferModelView);
@@ -737,19 +741,42 @@ void main() {
 				sky += vec3(0.0, 4.0, 0.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, geometryY));
 				sky += vec3(0.0, 0.0, 4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, geometryZ));
 
-				float axisAngle = acos(clamp(dot(geometryDir, normalize(worldSunVector)), -1.0, 1.0));
-				sky += vec3(4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.6, PROBE_RADIUS * 1.2, axisAngle));
-				// The same direction built the exact way - the FULL 4x4 with w = 1, which is
-				// the one form that also takes back out the translation the mod's w = 1
-				// sunPosition carries. It is written here rather than in shaders.properties
-				// because GLSL spells that fourth column unambiguously. The white dot is
-				// what the pack ships today, so the two stand apart by exactly the residual
-				// a fix would remove: whether the cyan one is steady while the white one
-				// wobbles is the reading that decides it (BATCH_LOG.md b502).
-				vec3 sunExact = normalize((gbufferModelViewInverse
+				// The direction the giant is placed at today, and the same direction built the
+				// exact way: the FULL 4x4 with w = 1, the one form that also takes back out
+				// the translation the mod's w = 1 sunPosition carries. The 4x4 is written
+				// here rather than in shaders.properties because GLSL spells that fourth
+				// column unambiguously.
+				//
+				// The two dots are drawn a few degrees off the body, because the body's core
+				// is the brightest thing in this sky and would swallow a dot drawn on it.
+				// The white one marks what the pack ships. The cyan one is the same mark
+				// moved by the distance between those two directions MAGNIFIED, so that a
+				// gap far too small to see at its own size becomes a swing to watch: stand
+				// still and it keeps its distance, walk and it swings by the gap times
+				// PROBE_AMPLIFY. How far it swings is the reading (BATCH_LOG.md b502/b503).
+				vec3 shipped = normalize(worldSunVector);
+				vec3 exact = normalize((gbufferModelViewInverse
 					* vec4(sunPosition, 1.0)).xyz);
-				float sunExactAngle = acos(clamp(dot(geometryDir, sunExact), -1.0, 1.0));
-				sky += vec3(0.0, 4.0, 4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.6, PROBE_RADIUS * 1.2, sunExactAngle));
+				float gap = acos(clamp(dot(shipped, exact), -1.0, 1.0));
+				vec3 gapAxis = cross(shipped, exact);
+				gapAxis = (dot(gapAxis, gapAxis) > 1.0e-12)
+					? normalize(gapAxis)
+					: normalize(cross(shipped, vec3(0.0, 1.0, 0.0)));
+				vec3 bodySide = cross(shipped, vec3(0.0, 1.0, 0.0));
+				bodySide = (dot(bodySide, bodySide) > 1.0e-6)
+					? normalize(bodySide)
+					: normalize(cross(shipped, vec3(0.0, 0.0, 1.0)));
+				const float PROBE_BODY_OFFSET = 0.12;   // radians: about 7 degrees
+				const float PROBE_AMPLIFY = 25.0;
+				vec3 shippedMark = normalize(shipped * cos(PROBE_BODY_OFFSET)
+					+ bodySide * sin(PROBE_BODY_OFFSET));
+				float swing = gap * PROBE_AMPLIFY;
+				vec3 exactMark = normalize(shippedMark * cos(swing)
+					+ cross(gapAxis, shippedMark) * sin(swing));
+				float shippedAngle = acos(clamp(dot(geometryDir, shippedMark), -1.0, 1.0));
+				float exactAngle = acos(clamp(dot(geometryDir, exactMark), -1.0, 1.0));
+				sky += vec3(4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.6, PROBE_RADIUS * 1.2, shippedAngle));
+				sky += vec3(0.0, 4.0, 4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.6, PROBE_RADIUS * 1.2, exactAngle));
 
 				resolved = sky * max(0.0, 1.0 - 10.0 * blindness);
 			#else
