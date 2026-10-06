@@ -158,7 +158,7 @@ bool EndDimension() {
 // EXTERNALLY_DEFINED_UNIFORMS and is therefore told it is not in the Nether at
 // all, so the fog stopped at the boundary between their chunks and the game's.
 // What replaced it is the volumetric plume field, which is drawn over the
-// finished frame and so cannot have that seam. See NETHER_PLUMES_PLAN.md.
+// finished frame and so cannot have that seam. See BATCH_LOG.md 201.
 bool NetherDimension() {
 	return dimension == -1 || biome_category == NETHER_BIOME_CATEGORY;
 }

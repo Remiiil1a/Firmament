@@ -74,7 +74,7 @@ uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
 
 // The one copy of the previous-frame reprojection. See /lib/reproject.glsl, and
-// MOTION_VECTORS_TAA_PLAN.md for why this is a file and not three.
+// BATCH_LOG.md 210 for why this is a file and not three.
 #include "/lib/reproject.glsl"
 
 uniform vec2 windowToScreen;
@@ -307,7 +307,7 @@ void main() {
 	// (closestToCamera5taps in dimensions/composite5.fsh) and Sundial
 	// (getClosestDepth in Composite7.frag) each arrived at this separately, and
 	// that agreement is the strongest thing the survey found. See
-	// MOTION_VECTORS_TAA_PLAN.md 4.2.
+	// BATCH_LOG.md 210.3.
 	vec2 anchorCoord = screenCoord;
 	float anchorDepth = depth;
 

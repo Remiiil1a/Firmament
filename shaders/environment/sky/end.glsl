@@ -239,7 +239,7 @@ vec3 EndStarfield(vec3 worldDir) {
 // ⚠️ Whether that direction is genuinely fixed in the End is *believed, not
 // verified*: worldSunVector is built from the mod's sunPosition, which advances
 // with the world clock, so the body may well drift across the sky over a day.
-// Nobody has watched a full day in the End. See END_BODY_PLAN.md section 1.3.
+// Nobody has watched a full day in the End. See BATCH_LOG.md 190.1.
 //
 // The body is built in several layers, and each has its own option so that the
 // look can be worked on a layer at a time:
