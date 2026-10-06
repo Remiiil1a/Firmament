@@ -776,7 +776,21 @@ vec4 TranslucentLighting(
 		// water and not the sky it sits in.
 		#ifdef END_GIANT
 			if (materialID == WATER && EndSkyDimension()) {
-				vec3 endAxis = normalize(worldSunVector);
+				// The same axis the sky itself is drawn with: the FULL 4x4 inverse with
+				// w = 1, which is the one form that also takes back out the translation the
+				// mod's w = 1 sunPosition carries, so that the residual the 3x3 form leaves
+				// behind is not in the reflection either (BATCH_LOG.md b504 and b506). It
+				// costs one 4x4 transform, on End water pixels only, in a branch that
+				// already evaluates the lens and the body below.
+				//
+				// ⚠️ The patch's own program has no sunPosition - see the note above - so it
+				// keeps the worldSunVector form.
+				#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
+					vec3 endAxis = normalize((gbufferModelViewInverse
+						* vec4(sunPosition, 1.0)).xyz);
+				#else
+					vec3 endAxis = normalize(worldSunVector);
+				#endif
 
 				// The lens is evaluated again for its ring, so that the Einstein
 				// ring glints on the water too. It is about twenty ALU, on water
