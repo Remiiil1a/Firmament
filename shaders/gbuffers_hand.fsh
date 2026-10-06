@@ -56,7 +56,7 @@
 //
 // This is not the option to reach for if a held item looks see-through. That was
 // the environment reflection being computed for the hand at all, which is fixed
-// in lit.fsh - see PBR_PORTING.md §21.
+// in lit.fsh - see BATCH_LOG.md §21.
 #define PBR_HAND_ITEM_MATERIALS
 #ifdef PBR_HAND_ITEM_MATERIALS
 	// The switch itself is in lit.fsh, where the material is decided.

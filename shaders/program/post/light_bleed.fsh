@@ -157,7 +157,7 @@ uniform float viewHeight;
 // deciding how much of what surrounds it arrives - and without that this is a
 // wide blur of the frame, close enough to the color bleed above it that turning
 // it on changes very little. Worth turning on to look at; not worth paying for
-// by default until the directional half exists. See PBR_PORTING.md 168.5 and
+// by default until the directional half exists. See BATCH_LOG.md 168.5 and
 // 169.
 //
 // The #ifdef below, and not #if defined, is what makes this a switch at all.

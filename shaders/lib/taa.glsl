@@ -56,7 +56,7 @@
 // **Why Off is still the default: a black blot.** Recorded here as the history
 // of the decision, not as a diagnosis: it was reported, reproduced by the user,
 // and chased through many batches before the chain that carries it was found -
-// see PBR_PORTING.md 136 onwards, and the guards in composite1.fsh that came
+// see BATCH_LOG.md 136 onwards, and the guards in composite1.fsh that came
 // out of it. What is established is only the shape of the experiment: with this
 // pass on, a small black region appears in the frame every now and then and
 // grows; with it off, none appears at all, over versions of testing. That is a
@@ -71,7 +71,7 @@
 // **Anti-aliasing does not need it.** SMAA is the supported answer and is on the
 // effect menu; what is lost by leaving this off is the temporal averaging of the
 // dither, so the screen-space shadows, the ambient occlusion and the godrays
-// keep their noise. See the recorded note at PBR_PORTING.md 163.
+// keep their noise. See the recorded note at BATCH_LOG.md 163.
 //
 // The two numbers are frozen. TAA_ON was 1 before a second mode existed at all,
 // and Iris keeps the value an option was set to, so renumbering it would silently
@@ -145,7 +145,7 @@
 //
 // Which side the blot is on is the whole reading: the left means the source is
 // upstream, the right means it is this pass's history, and both means the source
-// is upstream and the history is keeping it. See PBR_PORTING.md 133.
+// is upstream and the history is keeping it. See BATCH_LOG.md 133.
 //
 // Recorded: this is a #define in the file and not an option in the effect menu,
 // so nothing in the GUI can turn it on - TAA_DEBUG appears under

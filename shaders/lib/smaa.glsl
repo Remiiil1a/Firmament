@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Added 2026-09-22 by Remiiil1a for Firmament - SMAA, as an alternative to the
-// temporal anti-aliasing in lib/taa.glsl. See PBR_PORTING.md 140.
+// temporal anti-aliasing in lib/taa.glsl. See BATCH_LOG.md 140.
 //
 // SMAA is a morphological anti-aliasing: it finds the edges already in the
 // finished image, works out what shape each one makes from a precomputed table
@@ -46,7 +46,7 @@
 // ambient occlusion and of the godrays is left exactly as it was drawn. With the
 // temporal resolve off, that noise does not shimmer - the jitter is what made it
 // move - but it is still a fixed dither rather than a smooth gradient. See the
-// note on that in PBR_PORTING.md 140.
+// note on that in BATCH_LOG.md 140.
 //
 // Off by default since the v1.0.0 presets: the factory default is the Medium
 // tier, which is defined as this pack's own defaults with this off and the

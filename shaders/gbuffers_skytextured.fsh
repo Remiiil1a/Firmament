@@ -66,7 +66,7 @@
 			// sampling img/sun.png and the phase row with this same texcoord
 			// instead, and what it drew was a large, half-transparent body: the
 			// coordinate this program is handed is not the sprite's own. See
-			// PBR_PORTING.md 185.
+			// BATCH_LOG.md 185.
 			vec4 srgb = tinting * texture(gtexture, texcoord);
 			vec4 fragmentColor = SrgbToLinear(srgb);
 			fragmentColor.rgb *= UNLIT_BRIGHTNESS;

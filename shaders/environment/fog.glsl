@@ -30,10 +30,10 @@
 	// uniform.float.rainFogAmount in shaders.properties, which builds it from the
 	// mod's rainStrength and the pack's own rain option. It is computed there
 	// rather than here because of where it has to work as much as what it is; the
-	// reasoning is recorded in PBR_PORTING.md 171. It is listed in voxy.json as
+	// reasoning is recorded in BATCH_LOG.md 171. It is listed in voxy.json as
 	// well, because the Voxy patch compiles this file with
 	// EXTERNALLY_DEFINED_UNIFORMS and declares the pack's custom uniforms itself
-	// - see PBR_PORTING.md 178.
+	// - see BATCH_LOG.md 178.
 	uniform float rainFogAmount;
 #endif
 
@@ -120,7 +120,7 @@ vec4 FogV2(
 	// to do it here could only be seen in that band, between two colours that are
 	// both very nearly black.
 	//
-	// Recorded: batch 333 removed it. See PBR_PORTING.md 189.
+	// Recorded: batch 333 removed it. See BATCH_LOG.md 189.
 
 	if (blindness > 0.0001) {
 		// Blindness is essentially just a very strong fog.

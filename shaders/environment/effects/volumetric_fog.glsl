@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Added 2026-09-25 by Remiiil1a for Firmament - the medium the light shafts are
-// drawn in, and the options for it. See PBR_PORTING.md 169.
+// drawn in, and the options for it. See BATCH_LOG.md 169.
 
 // Which of the game's three media the camera is standing in, for the density
 // below.
@@ -24,7 +24,7 @@
 // in shaders.properties, and it is the one every stage is given. isEyeInWater
 // itself is the mod's, and the composite stage does not have it - which is what
 // left the underwater medium reading as air and the fog painted the grey
-// underwater light. PBR_PORTING.md 174 is where that was found.
+// underwater light. BATCH_LOG.md 174 is where that was found.
 #if !defined(EXTERNALLY_DEFINED_UNIFORMS)
 	uniform int isEyeInWaterFog;
 #endif
@@ -67,7 +67,7 @@ uniform float volumetricFogRainFactor;
 // between them with isEyeInWaterFog, so the water is excluded by where this is
 // applied rather than by a second test here. Putting the test in both places
 // would mean either one of them could be removed without anything looking
-// wrong - which is how the two would drift apart. See PBR_PORTING.md 197.
+// wrong - which is how the two would drift apart. See BATCH_LOG.md 197.
 vec3 VolumetricFogTint() {
 	if (EndDimension()) {
 		return EndPaletteColor();
@@ -185,7 +185,7 @@ vec3 VolumetricFogTint() {
 // fog itself moving - and the shadow map is realigned in whole texels as the
 // player walks. Giving the medium patches of its own, fixed to the world and
 // drifting with the pack's wind, is what makes it read as fog instead. It is
-// what Sundial does, and PBR_PORTING.md 172 is where that was worked out.
+// what Sundial does, and BATCH_LOG.md 172 is where that was worked out.
 //
 // At 0.6 the patches show; at 1.0 the medium is all holes and blobs.
 #define VOLUMETRIC_FOG_NOISE 0.6 // [0.0 0.2 0.4 0.6 0.8 1.0]
@@ -221,11 +221,11 @@ vec3 VolumetricFogTint() {
 // It drives two things, and the second is the one that shows. The factor is
 // built in shaders.properties, because rainStrength is a quantity that file can
 // read and a shader cannot be sure of - the trap shadowDistance set in
-// PBR_PORTING.md 171. It multiplies this medium's density, and it is also what
+// BATCH_LOG.md 171. It multiplies this medium's density, and it is also what
 // environment/fog.glsl scales the pack's own atmospheric fog by: a thicker
 // medium barely shows in rain, because rain is what hides the shafts the medium
 // scatters, while the distance fading out is what a viewer sees. Sundial does
-// the same at its atmosphere's optical depth - see PBR_PORTING.md 177.
+// the same at its atmosphere's optical depth - see BATCH_LOG.md 177.
 #define VOLUMETRIC_FOG_RAIN_STRENGTH 0.5 // [0.0 0.5 1.0 1.5 2.0 3.0]
 
 // Whether to march and store the fog at the full resolution of the frame.
@@ -242,7 +242,7 @@ vec3 VolumetricFogTint() {
 // are what it sharpens.
 //
 // The #ifdef, and not #if defined, is what makes it a switch in the menu at all
-// - see PBR_PORTING.md 169.1, where that cost a round trip. The pass reads the
+// - see BATCH_LOG.md 169.1, where that cost a round trip. The pass reads the
 // same macro to know which buffer it is looking at.
 //#define VOLUMETRIC_FOG_FULL_RES
 
@@ -366,7 +366,7 @@ float VolumetricFogNoise(vec3 at) {
 float VolumetricFogDensity(vec3 worldPosition) {
 	// The #ifdef, and not #if defined, is what makes UNDERWATER_GODRAYS a
 	// switch in the menu rather than a constant - the same mistake was made
-	// with INDIRECT_BOUNCE in b311 and it is written down in PBR_PORTING.md
+	// with INDIRECT_BOUNCE in b311 and it is written down in BATCH_LOG.md
 	// 169.1 because it cost a round trip twice.
 	#ifdef UNDERWATER_GODRAYS
 		// Water is not air: the same medium, several times as thick.
@@ -411,7 +411,7 @@ float VolumetricFogDensity(vec3 worldPosition) {
 	// zero - at noon, and part way up again through the night. Doing it there
 	// rather than here because the sun's position is one of the quantities the
 	// property file can read and a shader cannot be sure of - the same trap
-	// shadowDistance set in PBR_PORTING.md 171.
+	// shadowDistance set in BATCH_LOG.md 171.
 	return VOLUMETRIC_FOG_DENSITY * denseness * layer
 		* volumetricFogTimeFactor * volumetricFogRainFactor
 		* mix(1.0, patches, VOLUMETRIC_FOG_NOISE);

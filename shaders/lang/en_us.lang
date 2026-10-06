@@ -501,7 +501,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 497]
+option.PBR_DEBUG=Material debug view [build 499]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -620,7 +620,7 @@ option.TAA.comment=Averages the per-frame noise away over time. This is not \
 	edge anti-aliasing - SMAA does that, and better. It solves the screen-space \
 	shadows, the ambient occlusion and the godrays scattering their samples \
 	differently every frame at a given pixel: averaging one surface point over \
-	time is the only thing that removes that noise. Off by default, on the \
+	time is the only thing that removes that noise. On by default, on the \
 	anti-aliasing page.
 
 option.TAA_STRENGTH=Anti-aliasing strength

@@ -43,7 +43,7 @@
 // The lesson, which is what the next attempt at the void has to be built on:
 // a void that reads as a void has to be a function of where the geometry is,
 // not of which of its faces happens to be pointing at the camera. See
-// PBR_PORTING.md 189.
+// BATCH_LOG.md 189.
 
 // Uniforms: none. This only needs to know which dimension it is in.
 #include "/environment/dimension.glsl"
@@ -55,7 +55,7 @@
 //
 // Turned on as of batch 332. It sat at 0.0 until then because an early trial
 // of it was reported as having no visible effect and the cause was assumed to
-// be elsewhere; see PBR_PORTING.md 188 for why that reading was wrong - the
+// be elsewhere; see BATCH_LOG.md 188 for why that reading was wrong - the
 // trial was at 0.14, which is only about 1.8x the ambient floor and genuinely
 // is hard to see, and the note about the debug view being "ten times brighter"
 // is that same 0.14 against a debug value of 1.0. There was never a defect in
@@ -105,7 +105,7 @@
 // sky light: the neutral floor is a large part of the total there rather than a
 // small correction, so the coloured light added on top of it is the minority.
 // The user's report was that the option "does not give the End a violet
-// atmosphere". See PBR_PORTING.md 194.
+// atmosphere". See BATCH_LOG.md 194.
 //
 // ⚠️ The numbers look odd because they are compensated: this is scaled so that
 // its luminance is the same as the old near-neutral colour's - 0.606 either way
@@ -142,7 +142,7 @@ vec3 EndAmbientLighting(float ambientStrength) {
 		// did draws it at a brightness equal to the value. The version before
 		// batch 332 returned a flat red and so could not tell those two apart -
 		// which is exactly what let an unresolved "no effect" stand for a
-		// hundred batches. See PBR_PORTING.md 188.
+		// hundred batches. See BATCH_LOG.md 188.
 		//
 		// Note that the result still passes through the fragment's own color,
 		// so it reads as a tint over the texture rather than as a clean bar.

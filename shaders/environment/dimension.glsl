@@ -241,6 +241,6 @@ vec3 EndDebugColor() {
 // The version test kept around it reads !defined(MC_VERSION) || MC_VERSION >=
 // 12109, so it holds the removal back only on a version that reports itself as
 // older than 1.21.9: with MC_VERSION undefined the removal does run. See
-// PBR_PORTING.md 189.
+// BATCH_LOG.md 189.
 
 #endif /* DIMENSION_INCLUDED */

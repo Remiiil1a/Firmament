@@ -37,7 +37,7 @@
 //
 // Batch 338 removed the two older bodies - a single star and a black hole,
 // chosen between by an END_BODY option - and the body is now always this one.
-// See PBR_PORTING.md 194.
+// See BATCH_LOG.md 194.
 //
 // The End has no sky light of its own, so its terrain is lit by the pack's
 // direct light at the small fraction that dimension leaves it with, plus the
@@ -79,7 +79,7 @@
 // came out with a straight edge sliced off it, and the steps stopped short of
 // that. Batch 339 removed the cause instead of ducking it - the star is now
 // placed inset from the walls by its own radius, which costs nothing and makes
-// the ceiling go away. See the inset in EndStarfield and PBR_PORTING.md 196.
+// the ceiling go away. See the inset in EndStarfield and BATCH_LOG.md 196.
 #define END_STAR_SIZE 2.0 // [0.5 0.75 1.0 1.25 1.5 2.0 2.5]
 
 // How far the field is moved towards violet.
@@ -191,7 +191,7 @@ vec3 EndStarfield(vec3 worldDir) {
 	// Insetting fixes it for nothing at all: a disc of radius r placed at least
 	// r from every wall cannot reach one. The margin is the largest radius any
 	// star can have, which is the one with magnitude 1.0, so the inequality
-	// holds for every star and not just the average one. See PBR_PORTING.md 196.
+	// holds for every star and not just the average one. See BATCH_LOG.md 196.
 	//
 	// ⚠️ The clamp is what keeps the inequality true if the size option is ever
 	// pushed past 0.46 / 0.11, which is 4.18: past that the margin stops growing
@@ -254,7 +254,7 @@ vec3 EndStarfield(vec3 worldDir) {
 // replaced most of it with the lens and the band, and batch 338 removed the
 // disc entirely at the user's request: the photosphere, the chromosphere and
 // the surface detail are gone, so what is left is the small hot centre inside
-// the ring. See PBR_PORTING.md 190, 192 and 194.
+// the ring. See BATCH_LOG.md 190, 192 and 194.
 
 // Whether to draw the body and its lens at all.
 //
@@ -270,7 +270,7 @@ vec3 EndStarfield(vec3 worldDir) {
 // all, and the switch never appears in the menu.
 //
 // Batch 334 shipped exactly that mistake. It is the first thing
-// _check_shader_sources.ps1 now checks for. See PBR_PORTING.md 191.
+// _check_shader_sources.ps1 now checks for. See BATCH_LOG.md 191.
 //
 // To flip the default to "off", comment this one line out - and do not leave a
 // second copy of it behind as a reminder, because the option has to be declared
@@ -297,7 +297,7 @@ vec3 EndStarfield(vec3 worldDir) {
 // this is the brightest thing in the dimension and the tonemapper needs
 // something to compress - and deliberately *narrow*, because it is now the only
 // part of the body that carries its own light. Batch 334's core was wide enough
-// to blow out the whole disc and take its shading with it; see PBR_PORTING.md
+// to blow out the whole disc and take its shading with it; see BATCH_LOG.md
 // 192.
 //
 // ⚠️ The shipped default is 0.0 as of v0.7, which is the setting that turns this
@@ -317,7 +317,7 @@ vec3 EndStarfield(vec3 worldDir) {
 // ⚠️ Moved to environment/sky/end_palette.glsl in batch 340, because the End's
 // volumetric fog has to agree with it and that is drawn in a different program.
 // The option and the two ends of its range live there now, and there is one copy
-// of each on purpose. See PBR_PORTING.md 197.
+// of each on purpose. See BATCH_LOG.md 197.
 
 // Gravitational lensing: how hard the body bends the sky behind it.
 //
@@ -524,7 +524,7 @@ vec3 EndNebula(vec3 worldDir) {
 		// diverging ratio above: a Lorentzian has a height that can be chosen,
 		// and the ratio does not. Written as a square rather than as pow(x, 2.0)
 		// because the base is negative on the inside of the ring and pow with a
-		// negative base is undefined - which is what PBR_PORTING.md 139 was.
+		// negative base is undefined - which is what BATCH_LOG.md 139 was.
 		float ringOffset = (theta - einstein) / max(END_GIANT_SIZE * 0.07, 1.0e-4);
 		ringGlow = 1.0 / (1.0 + ringOffset * ringOffset);
 

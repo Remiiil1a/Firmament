@@ -1218,7 +1218,7 @@ void main() {
 			// halves of that reflection were measured to leave a held item
 			// looking like a window onto whatever is behind it, and refusing
 			// both is what the neutral material below does; see §21 of
-			// PBR_PORTING.md for the test that settled it.
+			// BATCH_LOG.md for the test that settled it.
 			//
 			// So an item made of metal has to keep some of what a metal in the
 			// world gives up, or it has nothing left to show. With the

@@ -114,7 +114,7 @@
 //
 // This is the same arrangement the pack's rainStrength uniform has with the same
 // file, and it is what the source checker's rules about the Voxy chain exist to
-// catch. They caught this one; see PBR_PORTING.md 147.
+// catch. They caught this one; see BATCH_LOG.md 147.
 //
 // What it is for: without it, level-of-detail terrain is the one place in the
 // world that cannot see the lightmap, so it is the one place whose block light has
@@ -171,7 +171,7 @@
 // camera or a light bulb is drawn from.
 //
 // Every pow() below has a guarded base, and the guards are the lesson from
-// PBR_PORTING.md 139 rather than something this curve can reach. Worth being
+// BATCH_LOG.md 139 rather than something this curve can reach. Worth being
 // exact about, because it reads the other way round: the resolved temperature is
 // clamped to 1000 K and up and then scaled by 0.01, so t is never below 10, and
 // the branch that tests t - 60 is only taken when t is above 66. Every max()
@@ -271,7 +271,7 @@ vec3 BlockLightTint(vec2 lightMapCoord) {
 		// not given the lightmap - which is no program at all now that Voxy's
 		// terrain asks for it, and is kept because a path that cannot be taken is
 		// cheaper to keep than to rediscover. What it used to be is in
-		// PBR_PORTING.md 146: the fallback was a warm orange of the pack's own,
+		// BATCH_LOG.md 146: the fallback was a warm orange of the pack's own,
 		// written here to undo a regression where this returned white, and 147
 		// replaced it with the lightmap itself for the programs that can have one.
 		//

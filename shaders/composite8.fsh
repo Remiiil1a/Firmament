@@ -16,7 +16,7 @@
 
 // Added 2026-09-25 by Remiiil1a for Firmament - bloom's second pass: reduce the
 // bright parts again, to a quarter of the screen.
-// See PBR_PORTING.md 166.
+// See BATCH_LOG.md 166.
 
 #version 150 compatibility
 

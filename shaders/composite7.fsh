@@ -16,7 +16,7 @@
 
 // Added 2026-09-25 by Remiiil1a for Firmament - bloom's first pass: keep the
 // part of the frame that blooms and drop it to half resolution.
-// See PBR_PORTING.md 166.
+// See BATCH_LOG.md 166.
 
 #version 150 compatibility
 

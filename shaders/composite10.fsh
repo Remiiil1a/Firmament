@@ -16,7 +16,7 @@
 
 // Added 2026-09-25 by Remiiil1a for Firmament - bloom's fourth pass: the
 // vertical half of the blur, and the last pass that touches the buffer.
-// See PBR_PORTING.md 166.
+// See BATCH_LOG.md 166.
 
 #version 150 compatibility
 

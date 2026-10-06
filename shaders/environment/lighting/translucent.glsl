@@ -466,7 +466,7 @@ void dWorldPosdxdy(
 // into the alpha below, and neither of those saturates: mix() extrapolates past
 // the reflected colour, and the alpha comes back above one. A list that reached
 // further would be a list of broken pictures, which is worse than a shorter
-// slider. See PBR_PORTING.md 148.
+// slider. See BATCH_LOG.md 148.
 //
 // Note that the declaration here reads 0.5 while profile.EDIT_DEFAULT in
 // shaders.properties sets 1.0, so the profile restores the full reflection this
@@ -760,7 +760,7 @@ vec4 TranslucentLighting(
 		// the sky, and water is where a body is supposed to glare. There is no
 		// End equivalent of SkyBodies, so the option appeared to do nothing
 		// there, and the user reported both halves of that: the reflection was
-		// too weak, and the brightness option did not work. See PBR_PORTING.md
+		// too weak, and the brightness option did not work. See BATCH_LOG.md
 		// 197.
 		//
 		// ⚠️ The multiplier is WATER_BODY_BRIGHTNESS - 1.0 rather than

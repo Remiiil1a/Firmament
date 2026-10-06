@@ -214,7 +214,7 @@ const float PBR_DEFAULT_F0 = 0.04;
 // pack saying "this part of my texture emits", and it is how a pack makes an ore
 // vein, a rune or a lamp's glass glow. An ore is not a light source in the game,
 // so a rule that asked for one would mean the channel could never do the thing it
-// exists for. See PBR_PORTING.md 164.
+// exists for. See BATCH_LOG.md 164.
 //
 // Off is the older behaviour, kept as the escape hatch rather than as a default:
 // a pack, or a texture a mod generated, that paints emission where it did not
@@ -1946,7 +1946,7 @@ PbrSurface PbrDecode(vec2 texCoord, PbrGradients gradients) {
 		// never touched the channel has to read as "does not emit" rather than
 		// as a lamp. That is the whole reason the useful range stops one short
 		// of the top, and it is why this is a multiply and not a subtraction.
-		// See PBR_PORTING.md 165.
+		// See BATCH_LOG.md 165.
 		//
 		// The albedo supplies the color; this only supplies the amount.
 		//

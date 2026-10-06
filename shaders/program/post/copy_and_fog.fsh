@@ -28,7 +28,7 @@
 // writes, after the fog, the reflections and the water absorption.
 //
 // Which side the blot is on is the reading: the left means the geometry drew it,
-// the right means this pass made it. See PBR_PORTING.md 135.
+// the right means this pass made it. See BATCH_LOG.md 135.
 //#define DEFERRED_DEBUG
 
 // We must make a copy of colortex0 for forward-rendered reflections and
@@ -327,7 +327,7 @@ void main() {
 		// surface program to reach them left behind - and occlusion measured
 		// around that would be noise rather than shading. Skipping them says so
 		// plainly: there is no ambient occlusion on Voxy's terrain yet. See
-		// PBR_PORTING.md 128 for what giving it one would take.
+		// BATCH_LOG.md 128 for what giving it one would take.
 		vec4 aoMaterial = texelFetch(colortex7, ivec2(gl_FragCoord), 0);
 		bool aoHasNormal = dot(aoMaterial.xyz, aoMaterial.xyz) > 0.5;
 
@@ -349,7 +349,7 @@ void main() {
 			// Checked at the point of use as well as inside: this factor is
 			// multiplied into the frame, and the resolve that follows writes its
 			// own result back for the next frame to read - so a factor that is not
-			// a number does not fade, it spreads. See PBR_PORTING.md 130.
+			// a number does not fade, it spreads. See BATCH_LOG.md 130.
 			//
 			// One bound rather than a test for each, for the reason the same guard
 			// inside ssao.glsl gives: a NaN fails every comparison, so "is it
@@ -367,7 +367,7 @@ void main() {
 				// built from, so such a pixel would stay. The option's own list no
 				// longer goes above 1.0, which is what makes this unreachable in
 				// practice - and this is what makes it unreachable if the list
-				// changes again. See PBR_PORTING.md 136.
+				// changes again. See BATCH_LOG.md 136.
 				background *= clamp(mix(1.0, ao, AO_STRENGTH), 0.0, 1.0);
 			#endif
 		}
@@ -518,7 +518,7 @@ void main() {
 				// reach, on terrain several dozen blocks away. Without a cap the
 				// whole colour of the pixel is multiplied by zero and drawn flat
 				// black, with no texture and no noise left in it. See
-				// PBR_PORTING.md 136.
+				// BATCH_LOG.md 136.
 				//
 				// Capping the weight rather than the result leaves every pixel
 				// that is not shadowed exactly as it was: mix(1.0, 1.0, anything)
@@ -532,7 +532,7 @@ void main() {
 				// into one number by the time this pass runs. At a quarter of its
 				// colour a dim surface is not in shadow, it is gone, and a region
 				// of it was reported still to grow. The option's own note has the
-				// rest; see PBR_PORTING.md 154.
+				// rest; see BATCH_LOG.md 154.
 				background *= mix(1.0, lit, min(sssWeight, SSS_DARK_LIMIT));
 			}
 		}
@@ -617,7 +617,7 @@ void main() {
 		// Left half, what the surface programs left in colortex0; right half, what
 		// this pass is about to write. One look says whether the dark blot that
 		// grows over the terrain comes from the geometry or from here - see the
-		// note on DEFERRED_DEBUG at the top of this file, and PBR_PORTING.md 135.
+		// note on DEFERRED_DEBUG at the top of this file, and BATCH_LOG.md 135.
 		//
 		// windowToNdc rather than windowToScreen: this pass declares the first and
 		// not the second, and a coordinate multiplied by it is 1.0 at the middle of

@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Added 2026-09-22 by Remiiil1a for Firmament. See PBR_PORTING.md 128.
+// Added 2026-09-22 by Remiiil1a for Firmament. See BATCH_LOG.md 128.
 
 // Ambient occlusion.
 //
@@ -36,7 +36,7 @@
 // frame, so the temporal filter downstream is what turns the noise into a smooth
 // result. It is drawn by copy_and_fog.fsh rather than here, because this file is
 // a library with no uniforms of its own. Applying this after the resolve instead
-// would leave every bit of that noise in the picture - see PBR_PORTING.md 55.2,
+// would leave every bit of that noise in the picture - see BATCH_LOG.md 55.2,
 // where the first attempt did exactly that and had the variance clamp pull the
 // occlusion back out every frame.
 
@@ -64,7 +64,7 @@
 	// call site, which bounds the factor to 0 to 1 before multiplying - so the
 	// failure a strength above 1.0 would actually produce is a widening band of
 	// fully black pixels rather than a colour below zero. The call site says so
-	// itself; see the note on that clamp. See PBR_PORTING.md 136.
+	// itself; see the note on that clamp. See BATCH_LOG.md 136.
 
 	// How far a sample is allowed to be from the point it is testing, in blocks.
 	//
@@ -258,7 +258,7 @@ const float AO_TAU = 6.28318531;
 			// It matters here more than it looks. The occlusion is a factor
 			// multiplied into the frame, and the pass after this one writes its
 			// own result back for the next frame to read, so a factor that is not
-			// a number does not fade - it spreads. See PBR_PORTING.md 130.
+			// a number does not fade - it spreads. See BATCH_LOG.md 130.
 			if (!(dot(scenePos, scenePos) < 1.0e18)) {
 				tested += 1.0;
 				continue;

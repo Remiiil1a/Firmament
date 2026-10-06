@@ -36,7 +36,7 @@
 // an ordinary program is given every uniform it declares.
 //
 // So: when this chain starts reading a new uniform, add it to that array in the
-// same change. See PBR_PORTING.md 124.
+// same change. See BATCH_LOG.md 124.
 #define EXTERNALLY_DEFINED_UNIFORMS
 #define NO_HELD_BLOCK_LIGHTING
 

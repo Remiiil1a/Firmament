@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Added 2026-09-22 by Remiiil1a for Firmament - SMAA's first pass: find the
-// edges. See PBR_PORTING.md 140.
+// edges. See BATCH_LOG.md 140.
 
 #version 150 compatibility
 
@@ -103,7 +103,7 @@ layout(location = 0) out vec4 smaaEdges;
 // The clamp is not decoration. LinearToSrgb is a pow(), and a pow() with a
 // negative base is undefined in GLSL and comes out as a NaN on the drivers this
 // pack has been tested on - which is the failure that made a black blot on
-// reflective surfaces in PBR_PORTING.md 139. colortex0 is an unsigned format and
+// reflective surfaces in BATCH_LOG.md 139. colortex0 is an unsigned format and
 // cannot hold a negative number, so a negative cannot arrive here today; the clamp
 // is what keeps that from being the only thing standing between this pass and a
 // NaN, and it costs one instruction.

@@ -12,7 +12,7 @@ it. The full licence texts are in the files listed at the bottom.
 
 This pack is a **modified version** of Steadfast 0.8.0. The modifications were
 made by Remiiil1a, dated 2026-09-13 and 2026-09-14; what they consist of is
-listed in section 4 and documented in `PBR_PORTING.md` in the project this was
+listed in section 4 and documented in `BATCH_LOG.md` in the project this was
 built in. The per-file notices in the source name the version each file was
 **first** modified for - further changes to those files are recorded in
 `RELEASE_NOTES-v0.3.md` rather than being written back into the notices.
@@ -413,11 +413,11 @@ Two further things are **not shipped inside the pack**. They are kept with the
 project the pack is built in:
 
 * `RELEASE_NOTES-*.md` - what changed in each release, one file per version.
-* `PBR_PORTING.md` - the working notes behind every change this edit makes:
-  options, verification checklist, known limits, and the changes that were tried
-  and then reverted, with the reason.
+* `BATCH_LOG.md` (formerly `PBR_PORTING.md`) - the working notes behind every
+  change this edit makes: options, verification checklist, known limits, and the
+  changes that were tried and then reverted, with the reason.
 
-The comments in the shaders that point at one of `PBR_PORTING.md`'s sections are
+The comments in the shaders that point at one of `BATCH_LOG.md`'s sections are
 pointing at that copy.
 
 If a distributor removes any of the files in this list, the result is not

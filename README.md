@@ -91,8 +91,9 @@ screenshots are kept in the repository and are not part of the download.
   the ones the sky is showing. Each body is trimmed against the sky's size
   separately, and the axis they orbit about is a setting of its own - the two
   rise in the east, set in the west, and cross the sky at an angle.
-* **Temporal antialiasing** - off by default and experimental, with the history
-  weighted by motion when it is on.
+* **Temporal antialiasing** - on by default, with the history weighted by how far
+  the pixel moved: strength `0.85`, jitter radius `1.0` and a history clamp of
+  `1.0`.
 * **Clouds** - a layer of cube-shaped cells in place of Minecraft's flat cloud
   boxes, with scattering inside the cloud, and its phase, transmittance and
   height falloff as settings.

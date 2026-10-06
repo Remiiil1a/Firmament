@@ -503,7 +503,7 @@ float BlockyCloudTransmittance(vec3 worldPos, vec3 lightView) {
 	// edge, which is the look the layer is made of. An earlier build averaged four
 	// samples spread across the sun's ray instead, which softened that edge out to
 	// about a cell's width. That was done to steady a shadow the layer cast on the
-	// ground, and the ground shadow is gone (see PBR_PORTING.md §12.10), so the
+	// ground, and the ground shadow is gone (see BATCH_LOG.md §12.10), so the
 	// softening only cost the look; this is the version before it.
 	float tau = 0.0;
 

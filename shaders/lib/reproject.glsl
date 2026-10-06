@@ -24,7 +24,8 @@
 // anti-aliasing mode, in composite3 for the reflection's own history, and in the
 // motion blur - and three copies of a reprojection is three places to fix the next
 // time one of them is found to be wrong. They are one function now; see
-// PBR_PORTING.md 211 and MOTION_VECTORS_TAA_PLAN.md. (The batch number is recorded
+// BATCH_LOG.md 211. (The plan written for it, MOTION_VECTORS_TAA_PLAN.md, was
+// removed in the 2026-10-02 cleanup of old notes. The batch number is recorded
 // as it stands and is not evidence either way for the count; what the code shows
 // is the three callers listed at the bottom of this note.)
 //
@@ -33,8 +34,8 @@
 // vertex and none per entity - so a thing that moved relative to the world cannot
 // be reprojected from here. Motion relative to the world is dealt with by
 // rejecting history that does not match the current frame, not by tracking it.
-// That is a limit of the interface rather than of this file, and the plan records
-// it as one.
+// That is a limit of the interface rather than of this file, and it was recorded
+// as one when this was planned.
 //
 // ⚠️ What it does NOT need, and must not be given:
 //
@@ -48,7 +49,7 @@
 //    frame's jitter direction. It does not settle - under a still camera it
 //    becomes an oscillation of about the jitter times 1 / (1 - TAA_STRENGTH), and
 //    it reads as the whole picture shaking. It was tried and reverted; see
-//    PBR_PORTING.md 119, and the full note where the anti-aliasing mode calls
+//    BATCH_LOG.md 119, and the full note where the anti-aliasing mode calls
 //    this.
 //
 // ⚠️ This file declares no uniforms of its own, on purpose: the programs that
@@ -130,7 +131,7 @@ Reprojection ReprojectWorldPosition(vec3 worldPosition, vec2 screenCoord) {
 	// not a number spreads outward through the Catmull-Rom taps until it covers
 	// the screen. It is intermittent because it needs the reprojection to land on
 	// a w of zero, which is why it reads as a black blot that comes and goes as
-	// the view turns. See PBR_PORTING.md 129.
+	// the view turns. See BATCH_LOG.md 129.
 	//
 	// What this does and does not do: a NaN coordinate sets offScreen, so a caller
 	// that tests offScreen is safe from it. A caller that uses previousCoord

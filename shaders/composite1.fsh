@@ -253,7 +253,7 @@ void main() {
 	//
 	// One bound rather than three tests, because a NaN fails every comparison:
 	// "is this inside the range I can use" is false of it, which is why the
-	// negation is the check. See PBR_PORTING.md 131.
+	// negation is the check. See BATCH_LOG.md 131.
 	bool currentUsable = dot(current, current) < 1.0e18;
 
 	vec3 resolved;
@@ -289,7 +289,7 @@ void main() {
 	// - several times the sub-pixel error it was meant to remove - and it reads as
 	// the whole picture shaking. It grows with TAA_JITTER, so that option is what
 	// makes it visible first, and it is why the subtraction was reverted in
-	// PBR_PORTING.md 119.
+	// BATCH_LOG.md 119.
 	//
 	// The jitter belongs to the current frame's sampling, not to the history's
 	// indexing: the frames that carry it are the ones being averaged, and the
@@ -387,7 +387,7 @@ void main() {
 	// number spreads outward through the Catmull-Rom taps until it covers the
 	// screen. It is intermittent because it needs the reprojection to land on a
 	// w of zero, which is why it reads as a black blot that appears and goes away
-	// again as the view turns. See PBR_PORTING.md 129.
+	// again as the view turns. See BATCH_LOG.md 129.
 	bool offScreen = reprojection.offScreen;
 	bool behindCamera = reprojection.behindCamera;
 
@@ -531,7 +531,7 @@ void main() {
 	// takes the current frame here instead of the history, so it stops
 	// accumulating for as long as it stays black - a little of the dither is left
 	// in the darkest parts of the image, which is the price of a blot that
-	// otherwise never stops. See PBR_PORTING.md 159.
+	// otherwise never stops. See BATCH_LOG.md 159.
 	if (history == vec3(0.0)) {
 		history = current;
 	}
@@ -552,7 +552,7 @@ void main() {
 	// back to, and a negative colour is drawn as black. It reads as sparse dark
 	// speckles along the edge of the highlight, which is where it was found - and
 	// only on the resolved side of the split view, which is what says it is this
-	// pass and not the geometry. See PBR_PORTING.md 134.
+	// pass and not the geometry. See BATCH_LOG.md 134.
 	vec3 historyLower = max(neighborhoodMean - TAA_CLAMP * deviation, vec3(0.0));
 	vec3 historyUpper = neighborhoodMean + TAA_CLAMP * deviation;
 
@@ -618,7 +618,7 @@ void main() {
 	// zero - black, finite, and inside every bound the clamp below can put on it.
 	// That is a black pixel in the history that the current frame does not have,
 	// and the Catmull-Rom fetch hands it to the pixels beside it, which is a blot
-	// that starts somewhere and grows. See PBR_PORTING.md 158.
+	// that starts somewhere and grows. See BATCH_LOG.md 158.
 	//
 	// Zero rather than anything else: a weight of zero means this pixel is taken
 	// from the current frame and not from the history at all, which is the one

@@ -87,7 +87,7 @@
 //
 // This used to be 0.995, the edge of a disc drawn by this file with a wide glow
 // painted around it, because there was no image to sample. Both of those are
-// gone with the reason for them; PBR_PORTING.md 179 and 180 have the history.
+// gone with the reason for them; BATCH_LOG.md 179 and 180 have the history.
 #define WATER_BODY_SIZE 0.96 // [0.9995 0.998 0.995 0.99 0.985 0.975 0.96 0.94 0.92 0.90 0.85 0.80]
 
 // How much larger or smaller than the sky's own quad each body is drawn in the

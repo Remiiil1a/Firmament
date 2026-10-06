@@ -56,7 +56,7 @@ uniform sampler2D colortex13;
 //
 // This used to be a mask that the final pass blurred towards the sun's position
 // on screen, and it is now built by a march through the air instead - see
-// /program/post/volumetric_fog.fsh, and PBR_PORTING.md 169 for why. What it
+// /program/post/volumetric_fog.fsh, and BATCH_LOG.md 169 for why. What it
 // carries changed with it: a colour rather than a single channel, because a
 // blur towards a point on the screen can only ever produce a brightness, while
 // light actually scattered inside a volume has the colour of the light that

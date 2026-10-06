@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Added 2026-09-22 by Remiiil1a for Firmament - SMAA's third pass: blend across
-// the edges. See PBR_PORTING.md 140.
+// the edges. See BATCH_LOG.md 140.
 
 #version 150 compatibility
 

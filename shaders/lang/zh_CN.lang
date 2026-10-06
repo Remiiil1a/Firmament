@@ -244,7 +244,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 497]
+option.PBR_DEBUG=材质调试视图 [build 499]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -328,7 +328,7 @@ option.MOTION_BLUR_AMOUNT.comment=模糊的长度，是像素实际位移的多�
 option.MOTION_BLUR_SAMPLES=采样率
 option.MOTION_BLUR_SAMPLES.comment=沿运动取多少个采样点，决定模糊有多顺滑。每个采样点是全屏每像素的一次纹理取样，也就是本项的开销。「动态模糊」关闭时无效。
 
-option.TAA.comment=把每帧抖动的噪声在时间上平均掉。这不是边缘抗锯齿——那件事由 SMAA 负责，而且做得更好。它解决的是屏幕空间阴影、环境光遮蔽和光柱每帧在同一像素上抖出不同采样的问题：只有把同一个表面点在时间上平均才能去掉这些噪声。默认关闭，在「抗锯齿」页里。
+option.TAA.comment=把每帧抖动的噪声在时间上平均掉。这不是边缘抗锯齿——那件事由 SMAA 负责，而且做得更好。它解决的是屏幕空间阴影、环境光遮蔽和光柱每帧在同一像素上抖出不同采样的问题：只有把同一个表面点在时间上平均才能去掉这些噪声。默认开启，在「抗锯齿」页里。
 
 option.TAA_STRENGTH=抗锯齿强度
 option.TAA_STRENGTH.comment=每帧保留多少已累积的历史，只作用于没有移动的像素。它决定噪声能抹掉多少——远处屏幕空间阴影和天空的抖动，历史越长留下的越少。移动中的像素只保留七成，所以调高不会带来运动物体的拖影。

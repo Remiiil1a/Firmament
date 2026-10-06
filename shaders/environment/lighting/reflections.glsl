@@ -88,7 +88,7 @@
 		const float K = 49.0 / 46656.0;
 
 		// The base is clamped to zero, and that is not tidiness: it is the fix
-		// for a black blot on reflective surfaces. See PBR_PORTING.md 139.
+		// for a black blot on reflective surfaces. See BATCH_LOG.md 139.
 		//
 		// VdotH is the cosine of an angle, so it cannot be more than one - but
 		// the number the callers pass is a dot product between a unit normal

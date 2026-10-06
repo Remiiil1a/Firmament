@@ -71,11 +71,11 @@
 	// came from this effect. Turning the whole effect off did not stop the blot,
 	// so that theory is dead and the default is back where the pack's look is. The
 	// option stays, because the argument above is about what this code multiplies
-	// and not about the blot. See PBR_PORTING.md 155.
+	// and not about the blot. See BATCH_LOG.md 155.
 	//
 	// The correct fix for the argument above is to attenuate the sunlight alone,
 	// which needs the surface programs to keep the direct and indirect parts
-	// apart. See PBR_PORTING.md 154.
+	// apart. See BATCH_LOG.md 154.
 	#define SSS_DARK_LIMIT 0.9 // [0.0 0.25 0.4 0.5 0.6 0.7 0.8 0.9]
 
 	// How many steps the ray takes, spread evenly across the ray's length on

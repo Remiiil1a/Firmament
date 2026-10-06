@@ -175,7 +175,7 @@ bool Raytrace(
 		// steps over at a grazing angle. This pack guarded the division with
 		// max(count, 1), which pinned the tolerance at MAX_THICKNESS for every step
 		// before the first hit; against steps of hundreds of metres that is nothing,
-		// and the ray passed over its own reflection. See PBR_PORTING.md batch 489.
+		// and the ray passed over its own reflection. See BATCH_LOG.md batch 489.
 		//
 		// The guard had a reason, kept here so that dropping it is a decision rather
 		// than an accident: an unrefined hit then carries a tolerance as long as the

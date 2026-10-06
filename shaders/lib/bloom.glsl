@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Added 2026-09-25 by Remiiil1a for Firmament - screen-space bloom.
-// See PBR_PORTING.md 166.
+// See BATCH_LOG.md 166.
 
 // Bloom: the glow that spills out of anything brighter than the screen can
 // show.

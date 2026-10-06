@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Added 2026-09-22 by Remiiil1a for Firmament - the environment reflection, in a
-// pass of its own, and resolved over time. See PBR_PORTING.md 121 and 123.
+// pass of its own, and resolved over time. See BATCH_LOG.md 121 and 123.
 
 #version 150 compatibility
 
@@ -234,7 +234,7 @@ void main() {
 				// greater than one and would pass an outside test. A history that
 				// is not a number is permanent - the next frame reads this frame's
 				// output back - so it grows instead of fading. See
-				// PBR_PORTING.md 129.
+				// BATCH_LOG.md 129.
 				bool reflectionOffScreen = reflectionReprojection.offScreen
 					|| reflectionReprojection.behindCamera;
 
@@ -307,7 +307,7 @@ void main() {
 			// pixel it belonged to was blacked out on screen, every frame, for
 			// as long as the geometry kept producing one. That is what a black
 			// blot on a reflective surface that comes and goes with the view
-			// angle was. See PBR_PORTING.md 139 for where the NaN came from.
+			// angle was. See BATCH_LOG.md 139 for where the NaN came from.
 			//
 			// Zero rather than something clever. A reflection that cannot be
 			// trusted is not a reflection, and adding nothing is the only

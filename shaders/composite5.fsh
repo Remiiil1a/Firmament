@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Added 2026-09-22 by Remiiil1a for Firmament - SMAA's second pass: how much to
-// blend where. See PBR_PORTING.md 140.
+// blend where. See BATCH_LOG.md 140.
 
 #version 150 compatibility
 

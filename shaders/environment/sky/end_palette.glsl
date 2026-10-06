@@ -17,7 +17,7 @@
 // fog "stay consistent with the body's colour", and this is how that is
 // guaranteed rather than hoped for: two copies of a colour are two colours the
 // moment one of them is edited, and the copy in the other program is the one
-// nobody would think to look at. See PBR_PORTING.md 197.
+// nobody would think to look at. See BATCH_LOG.md 197.
 
 #ifndef END_PALETTE_GLSL_INCLUDED
 #define END_PALETTE_GLSL_INCLUDED

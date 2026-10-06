@@ -17,7 +17,7 @@
 // Added 2026-09-25 by Remiiil1a for Firmament - the march through the medium.
 // Replaces the screen-space shafts this pack used to draw; see
 // /environment/effects/volumetric_fog.glsl for what that means and
-// PBR_PORTING.md 169 for why.
+// BATCH_LOG.md 169 for why.
 
 // One ray per half-resolution pixel, from the eye to whatever the depth buffer
 // shows, accumulating the light the medium scatters towards the eye on the way.
@@ -77,7 +77,7 @@ uniform int frameCounter;
 // own - see where it is worked out. shadowDistance is deliberately not used
 // here: it is one of the mod's uniforms, but not one the composite stage is
 // given, and declaring it to use it fails to compile with "undefined variable
-// shadowDistance" on the driver. PBR_PORTING.md 171 records it.
+// shadowDistance" on the driver. BATCH_LOG.md 171 records it.
 
 uniform float viewWidth;
 uniform float viewHeight;
@@ -102,7 +102,7 @@ uniform float viewHeight;
 // density that reads them lives, and an include expands into this same source:
 // declaring one in both places is two declarations of one uniform, which the
 // driver rejects with "declaration ... conflicts with previous declaration".
-// PBR_PORTING.md 176 records it.
+// BATCH_LOG.md 176 records it.
 uniform vec3 underwaterFogColor;
 
 // Three channels and no alpha: the scattered light is a colour, and the fading
@@ -171,7 +171,7 @@ void main() {
 	// left branch, which the tint is not on. The water column has an absorption
 	// colour of its own and the pack already fades its light towards it, so
 	// tinting the air inside the water as well would have the pack contradicting
-	// its own underwater lighting. Added in batch 340; see PBR_PORTING.md 197.
+	// its own underwater lighting. Added in batch 340; see BATCH_LOG.md 197.
 	vec3 mediumColor = isEyeInWaterFog == 1
 		? underwaterFogColor
 		: fogSunColor * VolumetricFogTint();
@@ -179,7 +179,7 @@ void main() {
 	// The cloud transmittance that used to be worked out here was taken back out
 	// in b318: read once per pixel, at one point along the ray, it made the
 	// shafts wander and flicker as the clouds drifted, and what it bought was not
-	// worth that. See PBR_PORTING.md 175. The clouds still shade the terrain
+	// worth that. See BATCH_LOG.md 175. The clouds still shade the terrain
 	// exactly as they did - this was only ever the fog's own copy of it.
 
 	vec3 scatter = vec3(0.0);
