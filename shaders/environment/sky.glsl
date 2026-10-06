@@ -60,13 +60,19 @@
 // The End's own sky, which is not an atmosphere at all.
 #include "sky/end.glsl"
 
-// The color of the sky in the given direction, in linear RGB.
+// The color of the sky in the given direction, in linear RGB, with the End's giant axis
+// handed in by the caller.
 //
-// This is the single entry point every program uses - the sky itself, fog, and
-// water reflections all ask for the sky through it - which is what keeps them
-// agreeing with each other, and what means the End's sky only has to be chosen
-// in one place.
-vec3 SkyColor(vec3 worldDir) {
+// This is the single entry point every program uses - the sky itself, fog, and water
+// reflections all ask for the sky through it - which is what keeps them agreeing with
+// each other, and what means the End's sky only has to be chosen in one place.
+//
+// The axis is a parameter because it is the one quantity in the End's sky that cannot be
+// rebuilt from a direction: it is the mod's sunPosition turned into world space, and the
+// exact way to do that needs the full 4x4 inverse with w = 1, which only some callers
+// have declared (BATCH_LOG.md b502 and b504). SkyColor below passes the pack's own
+// worldSunVector, which is that rotation to within the residual b504 removed.
+vec3 SkyColorWithEndAxis(vec3 worldDir, vec3 endAxis) {
 	#ifdef END_DEBUG
 		// See END_DEBUG in /environment/dimension.glsl. Replaces the sky with
 		// what the dimension checks returned, so that they can be read off the
@@ -76,11 +82,15 @@ vec3 SkyColor(vec3 worldDir) {
 		return SkyColorModel(worldDir);
 	#else
 		if (EndSkyDimension()) {
-			return EndSkyColor(worldDir);
+			return EndSkyColorWithAxis(worldDir, endAxis);
 		}
 
 		return SkyColorModel(worldDir);
 	#endif
+}
+
+vec3 SkyColor(vec3 worldDir) {
+	return SkyColorWithEndAxis(worldDir, normalize(worldSunVector));
 }
 
 #include "/lib/bayer8.glsl"

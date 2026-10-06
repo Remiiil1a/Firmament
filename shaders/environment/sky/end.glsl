@@ -597,8 +597,14 @@ vec3 EndNebula(vec3 worldDir) {
 	}
 #endif /* END_GIANT */
 
-// The color of the End's sky in the given direction, in linear RGB.
-vec3 EndSkyColor(vec3 worldDir) {
+// The color of the End's sky in the given direction, in linear RGB, with the axis the
+// giant is placed at handed in.
+//
+// The axis is the one quantity here that cannot be built from a direction: it comes from
+// the mod's sunPosition, and turning that into a world direction exactly takes the full
+// 4x4 inverse with w = 1 (see BATCH_LOG.md b502 and b504). The programs that draw the sky
+// have the uniforms for that and this file does not, so it arrives as a parameter.
+vec3 EndSkyColorWithAxis(vec3 worldDir, vec3 giantAxis) {
 	// The direction is normalized here rather than taken as given, because
 	// every size the body below is drawn at is an angle measured from it.
 	//
@@ -617,8 +623,6 @@ vec3 EndSkyColor(vec3 worldDir) {
 	vec3 sky = vec3(0.0035, 0.0030, 0.0060);
 
 	#ifdef END_GIANT
-		vec3 giantAxis = normalize(worldSunVector);
-
 		// Everything behind the body is sampled where the body's gravity has
 		// put it rather than where it looks like it is, and it is brighter for
 		// having been stretched getting there. This is the whole of the
@@ -647,4 +651,13 @@ vec3 EndSkyColor(vec3 worldDir) {
 	#endif
 
 	return sky;
+}
+
+// The same, with the axis taken from the pack's own worldSunVector. That form is correct
+// to within the residual b504 took out of the sky - the translation column the mod's
+// w = 1 sunPosition carries, left behind divided by 100 - so this is what a caller that
+// does not have the uniforms for the exact form gets, and what the sky was drawn with
+// before b504.
+vec3 EndSkyColor(vec3 worldDir) {
+	return EndSkyColorWithAxis(worldDir, normalize(worldSunVector));
 }

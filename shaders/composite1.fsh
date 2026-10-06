@@ -117,11 +117,11 @@ uniform float blindness;
 //     dot slides out from behind the bright one, and how far it slides is the
 //     disagreement itself.
 //
-// Two more marks are drawn about 7 degrees off the End's giant, where they can be seen
-// at all: white for the direction it is placed at today, and cyan for the same direction
-// built the exact 4x4 way, displaced by that difference magnified 25 times, so a gap too
-// small to see becomes a swing to watch. What ships and what a fix would place can
-// therefore be read against the anchors side by side.
+// Two more marks are drawn about 7 degrees off the End's giant, where they can be seen at
+// all: white for the axis the sky is drawn with since b504 (the exact 4x4 form) and cyan
+// for the 3x3 form it replaced, displaced by the difference between them magnified 25
+// times, so a gap far too small to see becomes a swing to watch. Stand still and the two
+// keep their distance; walk and the cyan one swings by whatever that residual was.
 //
 // The bright and the dim dot of each pair are expected to sit exactly on top of one
 // another: gbufferModelViewInverse is the exact inverse of gbufferModelView, so the
@@ -706,6 +706,19 @@ void main() {
 			// point in space rather than a vector.
 			vec3 worldDir = (gbufferModelViewInverse * vec4(viewVec, 0.0)).xyz;
 
+			// The axis the End's giant is placed along, which is the mod's sunPosition
+			// turned into a world direction. That takes the FULL 4x4 inverse with w = 1:
+			// sunPosition is built with w = 1, so the translation column is part of what
+			// it holds, and only that form takes it back out. The 3x3 form the pack's
+			// worldSunVector uses leaves that column behind divided by 100 - a residual
+			// that swings once per step, which the End's lens magnifies into the wobble
+			// b504 removed (BATCH_LOG.md b502 has the source citations).
+			//
+			// ⚠️ This is the AXIS, not the ray: the ray above keeps w = 0.0, which is what
+			// a direction wants. The two are not interchangeable.
+			vec3 giantAxisExact = normalize((gbufferModelViewInverse
+				* vec4(sunPosition, 1.0)).xyz);
+
 			#ifdef END_SHAKE_PROBE
 				// TEMPORARY (b501). See the note on the option near the top of this file.
 				//
@@ -716,7 +729,8 @@ void main() {
 				// geometry was drawn with and the dim one through the shader mod's inverse
 				// of it, so where the two matrices agree the dim dot is hidden exactly
 				// behind the bright one.
-				vec3 sky = SkyDither(gl_FragCoord.xy, SkyColor(worldDir));
+				vec3 sky = SkyDither(gl_FragCoord.xy,
+					SkyColorWithEndAxis(worldDir, giantAxisExact));
 
 				mat3 drawnBy = mat3(gbufferModelView);
 				vec3 geometryDir = normalize(vec3(
@@ -741,22 +755,17 @@ void main() {
 				sky += vec3(0.0, 4.0, 0.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, geometryY));
 				sky += vec3(0.0, 0.0, 4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, geometryZ));
 
-				// The direction the giant is placed at today, and the same direction built the
-				// exact way: the FULL 4x4 with w = 1, the one form that also takes back out
-				// the translation the mod's w = 1 sunPosition carries. The 4x4 is written
-				// here rather than in shaders.properties because GLSL spells that fourth
-				// column unambiguously.
+				// Since b504 the sky is drawn with the exact form, so the white mark is that
+				// one and the cyan mark is the 3x3 form it replaced, displaced by the
+				// difference between them MAGNIFIED: the cyan one swinging while the white
+				// one is steady is what shows the term b504 removed was the swinging one.
 				//
-				// The two dots are drawn a few degrees off the body, because the body's core
-				// is the brightest thing in this sky and would swallow a dot drawn on it.
-				// The white one marks what the pack ships. The cyan one is the same mark
-				// moved by the distance between those two directions MAGNIFIED, so that a
-				// gap far too small to see at its own size becomes a swing to watch: stand
-				// still and it keeps its distance, walk and it swings by the gap times
-				// PROBE_AMPLIFY. How far it swings is the reading (BATCH_LOG.md b502/b503).
-				vec3 shipped = normalize(worldSunVector);
-				vec3 exact = normalize((gbufferModelViewInverse
-					* vec4(sunPosition, 1.0)).xyz);
+				// Both are drawn a few degrees off the body, because the body's core is the
+				// brightest thing in this sky and would swallow a dot drawn on it. Stand
+				// still and the two keep their distance; walk and the cyan one swings by
+				// the gap times PROBE_AMPLIFY (BATCH_LOG.md b503/b504).
+				vec3 shipped = giantAxisExact;
+				vec3 exact = normalize(worldSunVector);
 				float gap = acos(clamp(dot(shipped, exact), -1.0, 1.0));
 				vec3 gapAxis = cross(shipped, exact);
 				gapAxis = (dot(gapAxis, gapAxis) > 1.0e-12)
@@ -780,7 +789,8 @@ void main() {
 
 				resolved = sky * max(0.0, 1.0 - 10.0 * blindness);
 			#else
-				resolved = SkyDither(gl_FragCoord.xy, SkyColor(worldDir))
+				resolved = SkyDither(gl_FragCoord.xy,
+					SkyColorWithEndAxis(worldDir, giantAxisExact))
 					* max(0.0, 1.0 - 10.0 * blindness);
 			#endif
 		}
