@@ -70,6 +70,10 @@ uniform mat4 gbufferModelViewInverse;
 uniform mat4 gbufferPreviousProjection;
 uniform mat4 gbufferPreviousModelView;
 
+// The matrix the geometry was drawn with, for the anchor dots of the temporary
+// END_SHAKE_PROBE above. Nothing else in this pass reads it.
+uniform mat4 gbufferModelView;
+
 uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
 
@@ -99,6 +103,31 @@ uniform float blindness;
 // The environment reflection used to be applied by this pass. It now has a pass
 // of its own, one later, because the buffer it has to read is the resolved image
 // - which is the buffer this pass writes. See composite3.fsh.
+
+// TEMPORARY DIAGNOSTIC (b501): the End's sky and the view bob.
+//
+// Draws, over the End's sky, three pairs of dots at three fixed world directions.
+// The bright dot of each pair is that direction taken through the matrix the
+// geometry was drawn with; the dim one is the same direction taken through the
+// shader mod's inverse of that matrix. They are one direction computed two ways:
+//
+//   * while the two matrices agree, the dim dot sits exactly behind the bright
+//     one and is never seen;
+//   * where they disagree - which is what the view bob is suspected of - the dim
+//     dot slides out from behind the bright one, and how far it slides is the
+//     disagreement itself.
+//
+// A white dot marks the direction the End's giant is placed at (worldSunVector), and
+// a cyan one the same direction built through the geometry's matrix, so that the body,
+// its lens, and the two ways of placing them, can all be read against the anchors.
+// so that the body and its lens can be compared against the same anchors.
+//
+// The dots are welded to the terrain by construction, which is what makes them
+// anchors: they are built the way the geometry was built.
+//
+// Remove this option, its pick in screen.DEBUG_VIEWS and its two lang entries
+// once the question is answered. See BATCH_LOG.md b501.
+//#define END_SHAKE_PROBE
 
 // The sky light the reflection is faded out by, written by the surface programs
 // and not touched since.
@@ -669,8 +698,56 @@ void main() {
 			// point in space rather than a vector.
 			vec3 worldDir = (gbufferModelViewInverse * vec4(viewVec, 0.0)).xyz;
 
-			resolved = SkyDither(gl_FragCoord.xy, SkyColor(worldDir))
-				* max(0.0, 1.0 - 10.0 * blindness);
+			#ifdef END_SHAKE_PROBE
+				// TEMPORARY (b501). See the note on the option near the top of this file.
+				//
+				// Three pairs of dots at three fixed world directions, plus a white dot at
+				// the direction the giant is placed at. In each pair the bright dot is the
+				// direction through the matrix the geometry was drawn with and the dim one
+				// through the shader mod's inverse of it, so where the two matrices agree
+				// the dim dot is hidden exactly behind the bright one.
+				vec3 sky = SkyDither(gl_FragCoord.xy, SkyColor(worldDir));
+
+				mat3 drawnBy = mat3(gbufferModelView);
+				vec3 geometryDir = normalize(vec3(
+					dot(viewVec, drawnBy * vec3(1.0, 0.0, 0.0)),
+					dot(viewVec, drawnBy * vec3(0.0, 1.0, 0.0)),
+					dot(viewVec, drawnBy * vec3(0.0, 0.0, 1.0))));
+				vec3 inverseDir = normalize(worldDir);
+
+				const float PROBE_RADIUS = 0.011;   // radians: about 0.63 degrees
+
+				float geometryX = acos(clamp(dot(geometryDir, vec3(1.0, 0.0, 0.0)), -1.0, 1.0));
+				float geometryY = acos(clamp(dot(geometryDir, vec3(0.0, 1.0, 0.0)), -1.0, 1.0));
+				float geometryZ = acos(clamp(dot(geometryDir, vec3(0.0, 0.0, 1.0)), -1.0, 1.0));
+				float inverseX = acos(clamp(dot(inverseDir, vec3(1.0, 0.0, 0.0)), -1.0, 1.0));
+				float inverseY = acos(clamp(dot(inverseDir, vec3(0.0, 1.0, 0.0)), -1.0, 1.0));
+				float inverseZ = acos(clamp(dot(inverseDir, vec3(0.0, 0.0, 1.0)), -1.0, 1.0));
+
+				sky += vec3(0.5, 0.0, 0.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, inverseX));
+				sky += vec3(0.0, 0.5, 0.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, inverseY));
+				sky += vec3(0.0, 0.0, 0.5) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, inverseZ));
+				sky += vec3(4.0, 0.0, 0.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, geometryX));
+				sky += vec3(0.0, 4.0, 0.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, geometryY));
+				sky += vec3(0.0, 0.0, 4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, geometryZ));
+
+				float axisAngle = acos(clamp(dot(geometryDir, normalize(worldSunVector)), -1.0, 1.0));
+				sky += vec3(4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.6, PROBE_RADIUS * 1.2, axisAngle));
+				// The direction the giant is placed at, built the geometry's way rather than
+				// the shader mod's: sunPosition arrives in the camera's own frame, so which
+				// matrix turns it into a world direction is part of what is in question.
+				vec3 sunByGeometry = normalize(vec3(
+					dot(sunPosition, drawnBy * vec3(1.0, 0.0, 0.0)),
+					dot(sunPosition, drawnBy * vec3(0.0, 1.0, 0.0)),
+					dot(sunPosition, drawnBy * vec3(0.0, 0.0, 1.0))));
+				float sunByGeometryAngle = acos(clamp(dot(geometryDir, sunByGeometry), -1.0, 1.0));
+				sky += vec3(0.0, 4.0, 4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.6, PROBE_RADIUS * 1.2, sunByGeometryAngle));
+
+				resolved = sky * max(0.0, 1.0 - 10.0 * blindness);
+			#else
+				resolved = SkyDither(gl_FragCoord.xy, SkyColor(worldDir))
+					* max(0.0, 1.0 - 10.0 * blindness);
+			#endif
 		}
 	#endif
 
