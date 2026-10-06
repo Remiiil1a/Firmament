@@ -906,9 +906,12 @@ vec4 TranslucentLighting(
 
 				#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
 					// The hit's position in world axes, read out against the axes of
-					// the matrix the geometry was drawn with, for the reason given in
-					// program/world/lit.fsh: gbufferModelViewInverse is not quite the
-					// inverse of that matrix while the view is bobbing.
+					// the matrix the geometry was drawn with: what is wanted is a
+					// position relative to the camera, so the rotation applies and the
+					// translation does not. The two forms agree anyway - that inverse is
+					// exact, so its 3x3 block is that matrix's transpose (BATCH_LOG.md
+					// b502) - which makes this the paired way round to write it rather
+					// than a correction of an error.
 					mat3 viewAxes = mat3(gbufferModelView);
 					cameraRelativePosW = vec3(
 						dot(hitViewPos, viewAxes * vec3(1.0, 0.0, 0.0)),

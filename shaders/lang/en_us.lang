@@ -501,7 +501,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 501]
+option.PBR_DEBUG=Material debug view [build 502]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -940,7 +940,7 @@ option.END_SHAKE_PROBE.comment=Temporary diagnostic for the End's sky and the vi
 	direction taken through the matrix the geometry was drawn with, the dim one through the \
 	shader mod's inverse of it. While the two agree the dim dot hides behind the bright one; \
 	where they disagree it slides out from behind it, and how far it slides is the disagreement. \
-	A white dot marks the direction the End's giant is placed at and a cyan one the same direction built the geometry's way. Look at a dot while walking.
+	A white dot marks the direction the End's giant is placed at as the pack builds it today, and a cyan one the same direction built the exact 4x4 way. Walk while watching a dot: if the white one slides against the anchors while the cyan one is steady, that residual is the bug.
 option.END_DEBUG=End detection debug view
 option.END_DEBUG.comment=Replaces the sky with what the checks for "is this \
 	the End" returned: red is the dimension uniform, green the biome category, \

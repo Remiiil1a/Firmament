@@ -117,9 +117,15 @@ uniform float blindness;
 //     dot slides out from behind the bright one, and how far it slides is the
 //     disagreement itself.
 //
-// A white dot marks the direction the End's giant is placed at (worldSunVector), and
-// a cyan one the same direction built through the geometry's matrix, so that the body,
-// its lens, and the two ways of placing them, can all be read against the anchors.
+// A white dot marks the direction the End's giant is placed at (worldSunVector as the
+// pack builds it) and a cyan one the same direction built the exact 4x4 way, so that
+// what ships and what a fix would place can be read against the anchors side by side.
+//
+// The bright and the dim dot of each pair are expected to sit exactly on top of one
+// another: gbufferModelViewInverse is the exact inverse of gbufferModelView, so the
+// two routes are the same rotation (BATCH_LOG.md b502). If they are seen apart, think
+// of a nausea or portal effect first - that is the one case in which a non-uniform
+// scale is applied to that matrix.
 // so that the body and its lens can be compared against the same anchors.
 //
 // The dots are welded to the terrain by construction, which is what makes them
@@ -733,15 +739,17 @@ void main() {
 
 				float axisAngle = acos(clamp(dot(geometryDir, normalize(worldSunVector)), -1.0, 1.0));
 				sky += vec3(4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.6, PROBE_RADIUS * 1.2, axisAngle));
-				// The direction the giant is placed at, built the geometry's way rather than
-				// the shader mod's: sunPosition arrives in the camera's own frame, so which
-				// matrix turns it into a world direction is part of what is in question.
-				vec3 sunByGeometry = normalize(vec3(
-					dot(sunPosition, drawnBy * vec3(1.0, 0.0, 0.0)),
-					dot(sunPosition, drawnBy * vec3(0.0, 1.0, 0.0)),
-					dot(sunPosition, drawnBy * vec3(0.0, 0.0, 1.0))));
-				float sunByGeometryAngle = acos(clamp(dot(geometryDir, sunByGeometry), -1.0, 1.0));
-				sky += vec3(0.0, 4.0, 4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.6, PROBE_RADIUS * 1.2, sunByGeometryAngle));
+				// The same direction built the exact way - the FULL 4x4 with w = 1, which is
+				// the one form that also takes back out the translation the mod's w = 1
+				// sunPosition carries. It is written here rather than in shaders.properties
+				// because GLSL spells that fourth column unambiguously. The white dot is
+				// what the pack ships today, so the two stand apart by exactly the residual
+				// a fix would remove: whether the cyan one is steady while the white one
+				// wobbles is the reading that decides it (BATCH_LOG.md b502).
+				vec3 sunExact = normalize((gbufferModelViewInverse
+					* vec4(sunPosition, 1.0)).xyz);
+				float sunExactAngle = acos(clamp(dot(geometryDir, sunExact), -1.0, 1.0));
+				sky += vec3(0.0, 4.0, 4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.6, PROBE_RADIUS * 1.2, sunExactAngle));
 
 				resolved = sky * max(0.0, 1.0 - 10.0 * blindness);
 			#else

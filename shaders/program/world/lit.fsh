@@ -483,18 +483,21 @@ void main() {
 	// The fragment's position relative to the camera, in world axes.
 	//
 	// Read out of the view-space position against the world's axes taken from
-	// gbufferModelView, rather than by putting the view position through
-	// gbufferModelViewInverse.
+	// gbufferModelView: what is wanted here is a position relative to the camera, so
+	// it is the matrix's axes and not its translation that it is dotted against.
 	//
-	// The two should be the same rotation of each other, and the second is what
-	// the pack has always done, but they are not quite the same while the view is
-	// bobbing: that inverse is not quite the inverse of the matrix the vertices
-	// went through, and the small error it carries is what made the reflections
-	// shiver as the player walked - the screen-space reflection stopped doing it
-	// once its direction came from the view position instead (see the note in
-	// /program/post/copy_and_fog.fsh). Dotting the view position against the
-	// world's axes is the transpose of that matrix, which for a rotation is its
-	// inverse, and it cannot disagree with the geometry by construction.
+	// This is the same rotation as gbufferModelViewInverse's 3x3 block rather than a
+	// different one: that inverse is the exact inverse of that matrix, so its 3x3
+	// block IS that matrix's transpose and the two cannot disagree, with the view
+	// bobbing or without it. (BATCH_LOG.md b502 carries the source citations; this
+	// file used to give a different reason, which was wrong.) It is written this way
+	// so that the position and the matrix it was drawn with stay visibly paired.
+	//
+	// The history is still worth keeping: the reflections used to shiver as the
+	// player walked because their DIRECTION was built by putting a view-space
+	// position through the inverse with w = 1, which mixes a translation into a
+	// direction. They stopped once the direction came from the view position instead
+	// (see the note in /program/post/copy_and_fog.fsh).
 	mat3 viewRotation = mat3(gbufferModelView);
 	vec3 cameraRelativePos = vec3(
 		dot(viewPos, viewRotation * vec3(1.0, 0.0, 0.0)),
