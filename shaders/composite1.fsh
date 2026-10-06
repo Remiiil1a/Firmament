@@ -70,10 +70,6 @@ uniform mat4 gbufferModelViewInverse;
 uniform mat4 gbufferPreviousProjection;
 uniform mat4 gbufferPreviousModelView;
 
-// The matrix the geometry was drawn with, for the anchor dots of the temporary
-// END_SHAKE_PROBE above. Nothing else in this pass reads it.
-uniform mat4 gbufferModelView;
-
 uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
 
@@ -108,39 +104,6 @@ uniform float blindness;
 //
 // Draws, over the End's sky, three pairs of dots at three fixed world directions.
 // The bright dot of each pair is that direction taken through the matrix the
-// geometry was drawn with; the dim one is the same direction taken through the
-// shader mod's inverse of that matrix. They are one direction computed two ways:
-//
-//   * while the two matrices agree, the dim dot sits exactly behind the bright
-//     one and is never seen;
-//   * where they disagree - which is what the view bob is suspected of - the dim
-//     dot slides out from behind the bright one, and how far it slides is the
-//     disagreement itself.
-//
-// Two more marks are drawn about 7 degrees off the End's giant, where they can be seen at
-// all: white for the axis the sky is drawn with since b504 (the exact 4x4 form) and cyan
-// for the 3x3 form it replaced, displaced by the difference between them magnified 25
-// times, so a gap far too small to see becomes a swing to watch. Stand still and the two
-// keep their distance; walk and the cyan one swings by whatever that residual was.
-//
-// The bright and the dim dot of each pair are expected to sit exactly on top of one
-// another: gbufferModelViewInverse is the exact inverse of gbufferModelView, so the
-// two routes are the same rotation (BATCH_LOG.md b502). If they are seen apart, think
-// of a nausea or portal effect first - that is the one case in which a non-uniform
-// scale is applied to that matrix.
-// so that the body and its lens can be compared against the same anchors.
-//
-// The dots are welded to the terrain by construction, which is what makes them
-// anchors: they are built the way the geometry was built.
-//
-// Remove this option, its pick in screen.DEBUG_VIEWS and its two lang entries
-// once the question is answered. See BATCH_LOG.md b501.
-//#define END_SHAKE_PROBE
-
-// The sky light the reflection is faded out by, written by the surface programs
-// and not touched since.
-uniform sampler2D colortex2;
-
 // Declared once, unconditionally and outside the conditional below: Iris reads
 // this directive from the raw source text, so having one in each branch of an
 // #if would leave it unclear which one applies. The list names the buffers in
@@ -719,80 +682,9 @@ void main() {
 			vec3 giantAxisExact = normalize((gbufferModelViewInverse
 				* vec4(sunPosition, 1.0)).xyz);
 
-			#ifdef END_SHAKE_PROBE
-				// TEMPORARY (b501). See the note on the option near the top of this file.
-				//
-				// Three pairs of dots at three fixed world directions, plus two marks beside
-				// the giant: white for the direction it is placed at today and cyan for the
-				// same direction built the exact 4x4 way, with their difference magnified.
-				// In each pair the bright dot is the direction through the matrix the
-				// geometry was drawn with and the dim one through the shader mod's inverse
-				// of it, so where the two matrices agree the dim dot is hidden exactly
-				// behind the bright one.
-				vec3 sky = SkyDither(gl_FragCoord.xy,
-					SkyColorWithEndAxis(worldDir, giantAxisExact));
-
-				mat3 drawnBy = mat3(gbufferModelView);
-				vec3 geometryDir = normalize(vec3(
-					dot(viewVec, drawnBy * vec3(1.0, 0.0, 0.0)),
-					dot(viewVec, drawnBy * vec3(0.0, 1.0, 0.0)),
-					dot(viewVec, drawnBy * vec3(0.0, 0.0, 1.0))));
-				vec3 inverseDir = normalize(worldDir);
-
-				const float PROBE_RADIUS = 0.011;   // radians: about 0.63 degrees
-
-				float geometryX = acos(clamp(dot(geometryDir, vec3(1.0, 0.0, 0.0)), -1.0, 1.0));
-				float geometryY = acos(clamp(dot(geometryDir, vec3(0.0, 1.0, 0.0)), -1.0, 1.0));
-				float geometryZ = acos(clamp(dot(geometryDir, vec3(0.0, 0.0, 1.0)), -1.0, 1.0));
-				float inverseX = acos(clamp(dot(inverseDir, vec3(1.0, 0.0, 0.0)), -1.0, 1.0));
-				float inverseY = acos(clamp(dot(inverseDir, vec3(0.0, 1.0, 0.0)), -1.0, 1.0));
-				float inverseZ = acos(clamp(dot(inverseDir, vec3(0.0, 0.0, 1.0)), -1.0, 1.0));
-
-				sky += vec3(0.5, 0.0, 0.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, inverseX));
-				sky += vec3(0.0, 0.5, 0.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, inverseY));
-				sky += vec3(0.0, 0.0, 0.5) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, inverseZ));
-				sky += vec3(4.0, 0.0, 0.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, geometryX));
-				sky += vec3(0.0, 4.0, 0.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, geometryY));
-				sky += vec3(0.0, 0.0, 4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.45, PROBE_RADIUS, geometryZ));
-
-				// Since b504 the sky is drawn with the exact form, so the white mark is that
-				// one and the cyan mark is the 3x3 form it replaced, displaced by the
-				// difference between them MAGNIFIED: the cyan one swinging while the white
-				// one is steady is what shows the term b504 removed was the swinging one.
-				//
-				// Both are drawn a few degrees off the body, because the body's core is the
-				// brightest thing in this sky and would swallow a dot drawn on it. Stand
-				// still and the two keep their distance; walk and the cyan one swings by
-				// the gap times PROBE_AMPLIFY (BATCH_LOG.md b503/b504).
-				vec3 shipped = giantAxisExact;
-				vec3 exact = normalize(worldSunVector);
-				float gap = acos(clamp(dot(shipped, exact), -1.0, 1.0));
-				vec3 gapAxis = cross(shipped, exact);
-				gapAxis = (dot(gapAxis, gapAxis) > 1.0e-12)
-					? normalize(gapAxis)
-					: normalize(cross(shipped, vec3(0.0, 1.0, 0.0)));
-				vec3 bodySide = cross(shipped, vec3(0.0, 1.0, 0.0));
-				bodySide = (dot(bodySide, bodySide) > 1.0e-6)
-					? normalize(bodySide)
-					: normalize(cross(shipped, vec3(0.0, 0.0, 1.0)));
-				const float PROBE_BODY_OFFSET = 0.12;   // radians: about 7 degrees
-				const float PROBE_AMPLIFY = 25.0;
-				vec3 shippedMark = normalize(shipped * cos(PROBE_BODY_OFFSET)
-					+ bodySide * sin(PROBE_BODY_OFFSET));
-				float swing = gap * PROBE_AMPLIFY;
-				vec3 exactMark = normalize(shippedMark * cos(swing)
-					+ cross(gapAxis, shippedMark) * sin(swing));
-				float shippedAngle = acos(clamp(dot(geometryDir, shippedMark), -1.0, 1.0));
-				float exactAngle = acos(clamp(dot(geometryDir, exactMark), -1.0, 1.0));
-				sky += vec3(4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.6, PROBE_RADIUS * 1.2, shippedAngle));
-				sky += vec3(0.0, 4.0, 4.0) * (1.0 - smoothstep(PROBE_RADIUS * 0.6, PROBE_RADIUS * 1.2, exactAngle));
-
-				resolved = sky * max(0.0, 1.0 - 10.0 * blindness);
-			#else
-				resolved = SkyDither(gl_FragCoord.xy,
-					SkyColorWithEndAxis(worldDir, giantAxisExact))
-					* max(0.0, 1.0 - 10.0 * blindness);
-			#endif
+			resolved = SkyDither(gl_FragCoord.xy,
+				SkyColorWithEndAxis(worldDir, giantAxisExact))
+				* max(0.0, 1.0 - 10.0 * blindness);
 		}
 	#endif
 
