@@ -19,9 +19,10 @@
 #include "/lib/srgb.glsl"
 
 // Which dimension this is, for the two checks below.
-// Uniforms: dimension, biome_category - as uniforms here; the file itself
-// supplies both as constants in a program that declares
-// EXTERNALLY_DEFINED_UNIFORMS.
+// Uniforms: dimension, biome_category - as uniforms here; in a program that
+// declares EXTERNALLY_DEFINED_UNIFORMS the file reads the pack's own
+// voxyDimension uniform instead, which shaders.properties builds out of
+// biome_category (BATCH_LOG.md b509).
 #include "/environment/dimension.glsl"
 
 uniform sampler2D gtexture;
