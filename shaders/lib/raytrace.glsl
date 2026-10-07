@@ -218,8 +218,11 @@ bool Raytrace(
 		vec3 absNdcPos = abs(ndcPos);
 		float maxNdc = max(max(absNdcPos.x, absNdcPos.y), absNdcPos.z);
 		if (maxNdc > 1.0) {
-			// We escaped the screen, reject the raytracing.
-			return false;
+			// We escaped the screen. Keep whatever was found rather than rejecting the
+			// trace: a hit that has already been located is better than the sky the
+			// caller falls back to, and this line used to throw it away - which is the
+			// only place in this file that destroyed a hit (batch 515).
+			return hasHitPos;
 		}
 
 		// Use the depth buffer and matrices to get the view Z coordinate for
@@ -227,7 +230,12 @@ bool Raytrace(
 		// depth buffer, but otherwise we can remain in NDC space as much as
 		// possible as we need the NDC position to get the view position.
 		vec2 screenPos2D = ndcPos.xy * 0.5 + 0.5;
-		ndcPos.z = texture(depthBuffer, screenPos2D).x * 2.0 - 1.0;
+
+		// The depth buffer's own value, kept before it is turned into a view Z: it is what
+		// says whether there is a surface here at all. One is the far plane, and a "hit"
+		// on the far plane is a hit on the sky.
+		float sampledDepth = texture(depthBuffer, screenPos2D).x;
+		ndcPos.z = sampledDepth * 2.0 - 1.0;
 		vec4 homogenousPos = gbufferProjectionInverse * vec4(ndcPos, 1.0);
 		float sampledViewZ = homogenousPos.z / homogenousPos.w;
 
@@ -279,14 +287,29 @@ bool Raytrace(
 		behindSurface = viewPos.z < sampledViewZ;
 		bool crossedSurface = behindSurface && !wasBehindSurface;
 
+		// ⚠️ And two more things an accepted sample has to be, neither of which this marcher
+		// asked before batch 515. Sundial, Mellow and Bliss all ask both:
+		//
+		//  - it has to BE a surface. The far plane's depth is one, and with a tolerance as
+		//    wide as the step the window reaches it once the ray is a third of the way to
+		//    the far plane: the "hit" is then a sky pixel, which the caller fogs back to
+		//    sky colour - a flat strip of nothing where a reflection should be.
+		//  - it has to be BEYOND the surface the ray started on. The window's near bound
+		//    reaches behind the start, and under a water fragment the depth buffer holds
+		//    the bed a few metres below, so the fragment can accept its own pixel region
+		//    and reflect the lake bed into itself, which is no reflection at all.
+		vec3 candidateViewPos = vec3(homogenousPos.xy / homogenousPos.w, sampledViewZ);
+
 		if ((minZ > sampledViewZ && sampledViewZ > maxZ || crossedSurface)
+			&& sampledDepth < 1.0
+			&& length(candidateViewPos) > length(viewPos)
 			&& screenPos2D.x >= 0.0 && screenPos2D.x <= 1.0
 			&& screenPos2D.y >= 0.0 && screenPos2D.y <= 1.0) {
 			// This was a successful hit. Save it so that we will at least
 			// return this hit if we don't find a better one.
 			hasHitPos = true;
 			hitPos = screenPos2D;
-			hitViewPos = vec3(homogenousPos.xy / homogenousPos.w, sampledViewZ);
+			hitViewPos = candidateViewPos;
 
 			// Undo the last raymarch and decelerate so we can try to trace a
 			// more precise hit.
