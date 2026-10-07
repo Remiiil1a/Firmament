@@ -50,9 +50,12 @@
 #define END_SKY END_SKY_AUTO // [END_SKY_AUTO END_SKY_ALWAYS END_SKY_OFF]
 
 #if defined(EXTERNALLY_DEFINED_UNIFORMS)
-	// A program whose uniforms come from somewhere else cannot be given new
-	// ones, so it is told it is not in the End. That is Voxy's terrain, which
-	// draws into its own buffers and does not use this pack's sky.
+	// A program whose uniforms come from somewhere else cannot be given the
+	// shader mod's own dimension uniform: Voxy's terrain draws into its own
+	// buffers, and Iris hands that pipeline a fixed set of uniforms which does
+	// not include `dimension`. It IS told which dimension it is in - through one
+	// of this pack's own uniforms, which that pipeline does carry. See
+	// VoxyDimensionValue below and BATCH_LOG.md b507.
 	//
 	// ⚠️⚠️ Batches 348 and 349 both tried to give this an answer, and both are
 	// recorded here so that neither is tried again.
@@ -95,18 +98,33 @@
 	// notice before adding one: a folder holding two files disables the other
 	// forty. Reverted in batch 352.
 	//
-	// ⚠️ So this is not "untested". A future attempt has to bring the whole
-	// program set with it, or find a mechanism that does not go through
-	// shaders/world1 at all - and both routes through voxy.json are closed
-	// above.
+	// ⚠️ So this is not "untested". Batches 348, 349 and 351 all tried, and all three are
+	// recorded above so that none of them is tried again.
 	//
-	// ⚠️ And END_BIOME_CATEGORY is defined below this block, so even if Voxy
-	// could be asked, the category could not be used here.
-	const int dimension = 0;
+	// ✅ Batch 507 found the way out that the note above asks for: not through
+	// shaders/world1, and not by asking for a STANDARD uniform - but by asking for one
+	// of this pack's OWN, which is what the forty names already in voxy.json are.
+	// `voxyDimension` is computed in shaders.properties, where `dimension` is real, and
+	// arrives here as -1.0 the Nether, 1.0 the End, 0.0 anywhere else. The three
+	// questions below read it instead of the constant, and the constant is gone.
+	//
+	// ⚠️ It must NOT be declared here: the names in voxy.json are declared BY the patch,
+	// and declaring one again is the duplicate-declaration mistake batch 291's first
+	// version made with `lightmap`.
+	//
+	// ⚠️ And END_BIOME_CATEGORY is defined below this block, so the category cannot be
+	// compared here: 0 is what this branch has for it, and 0 is not the End's.
+	float VoxyDimensionValue() {
+		return voxyDimension > 0.5 ? 1 : (voxyDimension < -0.5 ? -1 : 0);
+	}
+	#define DIMENSION_IS_END (VoxyDimensionValue() == 1)
+	#define DIMENSION_IS_NETHER (VoxyDimensionValue() == -1)
 	const int biome_category = 0;
 #else
 	uniform int dimension;
 	uniform int biome_category;
+	#define DIMENSION_IS_END (dimension == 1)
+	#define DIMENSION_IS_NETHER (dimension == -1)
 #endif
 
 // The End's biome category, which is the value of the game's own biome category
@@ -137,7 +155,7 @@
 // draw, and turning a sky off should not also turn off the dimension's light or
 // bring back an effect that does not work under a shader.
 bool EndDimension() {
-	return dimension == 1 || biome_category == END_BIOME_CATEGORY;
+	return DIMENSION_IS_END || biome_category == END_BIOME_CATEGORY;
 }
 
 // Whether this is the Nether.
@@ -155,12 +173,15 @@ bool EndDimension() {
 // distance is the wrong shape for this dimension, and the user's verdict on it
 // was that the Nether's atmosphere came out strange - worst of all against
 // Distant Horizons and Voxy, whose terrain is compiled with
-// EXTERNALLY_DEFINED_UNIFORMS and is therefore told it is not in the Nether at
-// all, so the fog stopped at the boundary between their chunks and the game's.
+// EXTERNALLY_DEFINED_UNIFORMS, which until b507 that path was told it was not in
+// the Nether at all, so the fog stopped at the boundary between their chunks and
+// the game's. (b507 gave that path the dimension, so a haze there could work
+// today; it was still taken out, because a haze uniform in distance is the wrong
+// shape for this dimension - see BATCH_LOG.md 343.)
 // What replaced it is the volumetric plume field, which is drawn over the
 // finished frame and so cannot have that seam. See BATCH_LOG.md 201.
 bool NetherDimension() {
-	return dimension == -1 || biome_category == NETHER_BIOME_CATEGORY;
+	return DIMENSION_IS_NETHER || biome_category == NETHER_BIOME_CATEGORY;
 }
 
 // Whether to draw the End's sky. Same question, plus the option that can force
@@ -182,7 +203,7 @@ bool EndSkyDimension() {
 // that it answers "is this the End" rather than "would the sky be drawn".
 vec3 EndDebugColor() {
 	return vec3(
-		dimension == 1 ? 1.0 : 0.0,
+		DIMENSION_IS_END ? 1.0 : 0.0,
 		biome_category == END_BIOME_CATEGORY ? 1.0 : 0.0,
 		EndDimension() ? 1.0 : 0.0);
 }
