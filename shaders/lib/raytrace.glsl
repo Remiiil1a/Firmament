@@ -147,12 +147,6 @@ bool Raytrace(
 		return false;
 	}
 
-	// Whether the ray had already gone behind the surface the depth buffer holds at the
-	// screen position it last sampled. The ray starts ON the water, and the buffer this
-	// traces through holds what is behind the water rather than the water itself, so the
-	// ray starts in front of it.
-	bool behindSurface = false;
-
 	for (uint i = uint(0); i < uint(RAYMARCH_STEPS); i++){
 		// Each step, accelerate by a certain factor to avoid oversampling
 		// near the end of the ray march.
@@ -255,31 +249,7 @@ bool Raytrace(
 		// coordinate that is not a number is undefined - which is a black pixel.
 		// See the same guard at the end of RefractTrace, which is where it was
 		// first found.
-		//
-		// ⚠️ And the hit this window cannot see, which is what batch 489 left open. At a
-		// grazing angle the acceleration above makes the far steps hundreds of metres
-		// long, and a distant hill or wall is then stepped clean over: the sample at the
-		// end of that step reads the depth of whatever is BEHIND it, which is outside
-		// the window, so no hit is recorded and the caller falls back to the sky. That is
-		// the missing band of reflection under the horizon when the water is viewed
-		// level. Widening the window does not catch it either - the surface is not near
-		// the sample, it is BETWEEN two of them.
-		//
-		// So the two samples' answers to "is the ray behind the surface here" are
-		// compared as well. Both are view-space Z and both are negative, so the ray is
-		// behind the surface when its own Z is the more negative of the two. If it is
-		// behind it now and was in front of it at the previous sample, the surface lies
-		// between the two samples, and that is a hit wherever it happens - and only
-		// there, so this does not accept a surface the ray merely passed near, which is
-		// what the guard removed in batch 489 was protecting against. The hit is recorded
-		// at this sample's screen position and the refinement below backs it up and
-		// closes in on the crossing, exactly as it does for a window hit.
-		// See BATCH_LOG.md b513.
-		bool wasBehindSurface = behindSurface;
-		behindSurface = viewPos.z < sampledViewZ;
-		bool crossedSurface = behindSurface && !wasBehindSurface;
-
-		if ((minZ > sampledViewZ && sampledViewZ > maxZ || crossedSurface)
+		if (minZ > sampledViewZ && sampledViewZ > maxZ
 			&& screenPos2D.x >= 0.0 && screenPos2D.x <= 1.0
 			&& screenPos2D.y >= 0.0 && screenPos2D.y <= 1.0) {
 			// This was a successful hit. Save it so that we will at least
