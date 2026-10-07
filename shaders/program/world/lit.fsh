@@ -1449,7 +1449,7 @@ void main() {
 					gbufferProjectionInverse,
 					handViewPos,
 					handViewReflected,
-					vec2(0.5, 1.0),
+					0.5,
 					handHitPos,
 					handHitViewPos
 				) && length(handHitViewPos) > length(handViewPos)) {

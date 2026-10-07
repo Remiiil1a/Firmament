@@ -16,295 +16,184 @@
 
 // Modified 2026-09-13 by Remiiil1a for Firmament - v0.1 (edit of coderbot's Steadfast).
 
-// This is an improved ray marching implementation inspired by a few ideas from
-// Chocapic13's shaders:
+// Screen-space ray marching, for the reflections and the refraction.
 //
-// - Rapidly accelerate the ray through the scene to quickly find an initial hit
-//   and then upon a hit step more slowly through the previous ray interval.
-//   This enables aggressive undersampling to avoid spending steps on empty
-//   space, which is very common in open-water scenes.
-// - Yet, starting off slow permits good local reflections as well
+// ⚠️ Rewritten in batch 514, and the reason is worth keeping. The version this replaces
+// was Steadfast's: it doubled every step and accepted a hit when the depth sampled at the
+// END of a step fell inside a window that widened with the step. At a grazing angle -
+// water seen level - the far steps are hundreds of metres long,
+// so a distant hill or wall is stepped clean over: the sample at the end of that step
+// reads the depth of whatever is BEHIND it, which is outside the window, and no hit is
+// recorded. The caller then silently falls back to the sky, and that is the missing band
+// of water reflection just under the horizon.
 //
-// It also has a few of my own improvements on top of those:
+// Batch 489 widened the window to match upstream and batch 513 added a crossing test, and
+// the band survived both, because the fault is in the step schedule rather than in the
+// test: a surface that lies BETWEEN two samples cannot be found by looking harder at the
+// samples. So the structure here is now the one Sundial-Lite uses, which does not have
+// the fault:
 //
-// - Modify the thickness in a similar fashion to the ray velocity, so that
-//   nearby reflections have a slow thickness in meters and far ones have a high
-//   thickness. This avoids ugly local results while not making faraway ones too
-//   noisy.
-// - If we run out of steps while refining, return the last valid hit to avoid
-//   returning MISS when we actually have a fairly good hit saved.
+// - The ray is projected and the distance to where it leaves the screen is solved for, and
+//   the step budget is spread EVENLY over exactly that much of the ray. No step is wasted
+//   off screen, and no step is long enough to swallow a surface.
+// - A hit is a place where the ray is BEHIND the surface the depth buffer holds there:
+//   one comparison of two numbers that came out of the same buffer, with no window and no
+//   tolerance of its own.
+// - That sample is then bisected (MAX_REFINEMENT_ROUNDS) to find where the ray and the
+//   surface actually meet, and only then is a thickness asked for, as confirmation that
+//   the two met rather than the ray passing near - which is the thing the window in the
+//   old version was trying, and failing, to express.
 //
-// Combined, this gives decent-quality reflections using simple, intuitive ray
-// marching and a small number of steps, independent of screen resolution.
+// Sundial-Lite is GPLv3 like this pack; the credit is in NOTICE.md and in BATCH_LOG.md
+// batch 514.
+//
+// The march runs in the space the depth buffer is read in: screen position in x and y and
+// the buffer's own 0..1 depth in z. That is what makes the comparison above meaningful.
+// It is also why stepping along the projected line is not an approximation: both the
+// position and the depth of a straight line in view space are projective functions of the
+// distance along it, so its image under the perspective divide is still a straight line.
 
-// The maximum permitted thickness (meters) of a reflection hit.
-//
-// Thickness allows for inherent imprecision and means that even if we do not
-// have an exact perfect match, we can accept a fragment for the reflection.
-//
-// If this is too low, you will have holes and noise, and if this is too high,
-// you will have ugly stretchy reflections.
-#define MAX_THICKNESS 8.0
-
-// More steps give extra opportunities for refinements and similar, but also
-// come at a potential performance cost for rays that travel very far without
-// making a hit or escaping the frustum.
-//
-// Even if we make a hit, we'll still take a lot of steps to refine
-//
-// Overridable, so that a caller can set its own budget before including this
-// file. The water reflections trace the water and nothing else, and the material
-// reflections trace every smooth pixel of the screen; asking both of them for
-// the same number of steps would be wrong for one of them.
+// How many steps the march is given before it gives up. Overridable, so that a caller can
+// set its own budget before including this file: the water reflections trace the water and
+// nothing else, and the material reflections trace every smooth pixel of the screen, so
+// asking both of them for the same number of steps would be wrong for one of them.
 #ifndef RAYMARCH_STEPS
 	#define RAYMARCH_STEPS 24
 #endif
 
-// How much to accelerate each step - this allows us to cover long distances
-// with simple raymarching without excessive steps or excessive oversampling,
-// in fact, it allows fairly aggressive undersampling, and if we overshoot
-// (see below) we can retrace at a slower velocity.
-#define ACCELERATION_FACTOR 2.0
+// How many times the hit is halved on its way to the meeting point. Each round re-reads
+// the depth buffer once, so this is the budget the accuracy is bought with: five rounds
+// put the hit inside a thirty-second of a step.
+#define MAX_REFINEMENT_ROUNDS 5
 
-// How many rounds of recursive refinement to attempt. Each refinement round
-// results in us retracing the last traced interval at a slower speed, and may
-// take multiple individual steps (see TAPS_PER_REFINEMENT).
-//
-// With 4 rounds of 4 taps, we're spending up to 20 steps on refinement: 1 step
-// each refinement round on hitting and rolling back, and 4 steps on checking
-// within that interval.
-#define MAX_REFINEMENT_ROUNDS 4
+// The smallest thickness a hit may be confirmed with, in the depth buffer's own units.
+// The step's own depth is normally larger than this and is what the test uses; this is the
+// floor for the steps that are almost parallel to the screen and so have almost no depth
+// in them.
+#define MIN_REFLECTION_THICKNESS 0.002
 
-// During each refinement round, we elect to dedicate a certain number of steps
-// (TAPS_PER_REFINEMENT) to that individual round, and cover a certain
-// percentage of the original step distance (REFINEMENT_DISTANCE) that lead us
-// to the intersection. We deliberately do not cover the whole distance, as we
-// save the last hit that was at the end of the distance and can use that in the
-// worst case.
-//
-// Given a certain TAPS_PER_REFINEMENT, we reduce the velocity by a factor that
-// is meant to make this round's taps cover the interval again in that many
-// steps. With the values below the factor is 0.75 * 2^-(4+1) = 0.0234375, and
-// since every step multiplies the velocity back up by ACCELERATION_FACTOR the
-// round's taps are 0.047, 0.094, 0.188, 0.375 and 0.75 of the original step -
-// four of them cover 0.703 of the interval, which is the 0.75 that
-// REFINEMENT_DISTANCE asks for to within the rounding, and the fifth is what
-// would overshoot it. So the formula does hold the round to TAPS_PER_REFINEMENT
-// taps in the sense that matters - it does not run past the interval - and the
-// coverage is REFINEMENT_DISTANCE rather than the whole interval either way.
-//
-// Then, we add one to the exponent, because we always multiply by
-// ACCELERATION_FACTOR every step, including the one directly after initiating
-// this refinement.
-//
-// Finally, we multiply in the REFINEMENT_DISTANCE at the very end - a value of
-// 0.75 means that we cover 75% of the original distance in this refinement
-// round.
-#define TAPS_PER_REFINEMENT 4
-#define REFINEMENT_DISTANCE 0.75
-const float refinementDecelerationFactor = (REFINEMENT_DISTANCE
-	* pow(1 / ACCELERATION_FACTOR, TAPS_PER_REFINEMENT + 1));
+// The longest trace, in metres. The screen edge normally ends the march long before this;
+// it is here so that a ray almost parallel to the screen cannot ask for a step the size of
+// the world.
+#define MAX_TRACE_DISTANCE 512.0
 
-// thicknessControl impacts the base thickness and increase in thickness over
-// distance during raytracing, effectively the tolerance of determinining
-// whether we are going to accept a hit or not.
+// Where along the ray its projection leaves the screen, as a distance in metres.
 //
-// At this point in the file the two components are what the caller passes: X is
-// the thickness the first step starts with, in meters, and Y is the factor the
-// thickness is multiplied by on every step, on top of the ACCELERATION_FACTOR
-// the velocity itself gets. The caller's own values are in translucent.glsl -
-// (1.0, 1.0) for water and (0.5, 1.0) for the mirror-like surfaces - so in
-// practice the two differ in their first component and the second is 1.0. What
-// the thickness actually ends up being on a given step is capped below.
-//
-// X: initial thickness in meters
-// Y: additional increase in meters per raytracing step not directly related to
-//    distance
+// The ray is a line in clip space: `origin` is where it starts and `direction` is its
+// direction, and because the clip space is linear in the distance travelled, the parameter
+// that lands on an edge IS that distance. Each of the four edges is solved for in turn, and
+// a solution that is behind the start, or not a number at all (which is what a direction
+// parallel to an edge gives), is passed over rather than allowed to win the minimum.
+float RaytraceScreenEdgeLength(vec4 origin, vec4 direction) {
+	vec2 atRight = (vec2(1.0) * origin.w - origin.xy) / (direction.xy - vec2(1.0) * direction.w);
+	vec2 atLeft = (vec2(-1.0) * origin.w - origin.xy) / (direction.xy + vec2(1.0) * direction.w);
+
+	float t = MAX_TRACE_DISTANCE;
+	t = min(t, atRight.x > 0.0 ? atRight.x : MAX_TRACE_DISTANCE);
+	t = min(t, atRight.y > 0.0 ? atRight.y : MAX_TRACE_DISTANCE);
+	t = min(t, atLeft.x > 0.0 ? atLeft.x : MAX_TRACE_DISTANCE);
+	t = min(t, atLeft.y > 0.0 ? atLeft.y : MAX_TRACE_DISTANCE);
+	return t;
+}
+
 bool Raytrace(
 	sampler2D depthBuffer,
 	mat4 gbufferProjection,
 	mat4 gbufferProjectionInverse,
 	vec3 viewPos,
 	vec3 reflectDirection,
-	vec2 thicknessControl,
+	float thicknessScale,
 	out vec2 hitPos,
 	out vec3 hitViewPos
 ) {
-	// State variables for refinement
-	uint refinementRounds = uint(0);
-	bool hasHitPos = false;
-
-
-	// Initial velocity and thickness
-	//
-	// Stored together in case the shader compiler likes a single vec4
-	// better than a vec3 + float.
-	vec4 velocityAndThickness = vec4(reflectDirection, thicknessControl);
-
-	// If the reflection is towards the viewer, immediately reject it since no
-	// good reflection is really feasible here.
+	// If the reflection is towards the viewer, immediately reject it since no good
+	// reflection is really feasible here.
 	if (dot(viewPos, reflectDirection) < 0.0) {
 		return false;
 	}
 
-	// Whether the ray had already gone behind the surface the depth buffer holds at the
-	// screen position it last sampled. The ray starts ON the water, and the buffer this
-	// traces through holds what is behind the water rather than the water itself, so the
-	// ray starts in front of it.
-	bool behindSurface = false;
+	// The ray as a line in clip space. `P * (viewPos, 1)` is where it starts and
+	// `P * (reflectDirection, 0)` is its direction; the second one's parameter is the same
+	// distance in metres as the first one's, which is what makes the length limit a number
+	// of metres rather than an arbitrary number.
+	vec4 originProj = gbufferProjection * vec4(viewPos, 1.0);
+	vec4 directionProj = gbufferProjection * vec4(reflectDirection, 0.0);
 
-	for (uint i = uint(0); i < uint(RAYMARCH_STEPS); i++){
-		// Each step, accelerate by a certain factor to avoid oversampling
-		// near the end of the ray march.
-		//
-		// We also expand the thickness accordingly, as using a constant
-		// thickness means that no thickness is actually ideal.
-		//
-		// But varying it means that we can use a very restrictive thickness
-		// when doing small steps and then widen it when doing large strides.
-		//
-		// Starting small and then increasing prevents tree fragments above you
-		// from being reflected in water in front of you.
-		velocityAndThickness *= vec4(
-			vec3(ACCELERATION_FACTOR),
-			ACCELERATION_FACTOR * thicknessControl.y);
+	vec4 endProj = originProj + directionProj * RaytraceScreenEdgeLength(originProj, directionProj);
 
-		// Prevent thickness from getting too large as that will mean far
-		// distances have undesirable stretching.
-		//
-		// 鈿狅笍 This line is where this pack used to differ from Steadfast, and that
-		// difference is the whole of why water lost its reflection in a band under the
-		// horizon when the surface is viewed level. Upstream divides by the refinement
-		// count outright. Before the first hit that count is zero, so upstream's divisor
-		// is an infinity, min() keeps the step's own thickness, and the tolerance is
-		// therefore as wide as the step - which is what catches the surface the ray
-		// steps over at a grazing angle. This pack guarded the division with
-		// max(count, 1), which pinned the tolerance at MAX_THICKNESS for every step
-		// before the first hit; against steps of hundreds of metres that is nothing,
-		// and the ray passed over its own reflection. See BATCH_LOG.md batch 489.
-		//
-		// The guard had a reason, kept here so that dropping it is a decision rather
-		// than an accident: an unrefined hit then carries a tolerance as long as the
-		// step that made it, so it can accept a surface it merely passed near, and the
-		// reflection is drawn from a screen position away from the point actually being
-		// reflected. That is the stretched, banded reflection. Water is where the trade
-		// is made the other way, because a missing reflection is the more visible of
-		// the two and because the user confirmed in game which one this was.
-		//
-		// Written as a test rather than as a division by zero: min(w, infinity) is w,
-		// so saying that costs one comparison and does not depend on how the driver
-		// answers a division the language leaves undefined.
-		float thicknessM = refinementRounds == uint(0)
-			? velocityAndThickness.w
-			: min(velocityAndThickness.w, MAX_THICKNESS / float(refinementRounds));
+	// Into the space the depth buffer lives in.
+	vec4 originCoord = vec4(originProj.xy / originProj.w * 0.5 + 0.5,
+		originProj.z / originProj.w * 0.5 + 0.5, 0.0);
+	vec4 endCoord = vec4(endProj.xy / endProj.w * 0.5 + 0.5,
+		endProj.z / endProj.w * 0.5 + 0.5, 0.0);
 
-		// The range of Z values we will permit lies between where we started
-		// and where we are advancing to.
-		//
-		// Note that these view-space Z values are negative, so the thickness
-		// +/- is widening the range, not narrowing it. See below for a more
-		// detailed explanation on how this works.
-		float minZ = viewPos.z + thicknessM;
-		viewPos += velocityAndThickness.xyz;
-		float maxZ = viewPos.z - thicknessM;
+	// A ray that starts outside the depth range has no on-screen path to march over.
+	// Only the start is checked: the end of a ray that leaves the screen while still
+	// climbing has a depth of nearly one, and rejecting that would throw away exactly the
+	// long, level traces this marcher exists for. NaNs are caught below instead, by tests
+	// written so that a NaN fails them.
+	if (!(originCoord.z > 0.0 && originCoord.z < 1.0)) {
+		return false;
+	}
 
-		// Convert view position to NDC (-1.0 to 1.0) coordinates.
-		vec4 clipPos = gbufferProjection * vec4(viewPos, 1.0);
-		vec3 ndcPos = clipPos.xyz / clipPos.w;
+	vec4 stepSize = (endCoord - originCoord) / float(RAYMARCH_STEPS - 1);
 
-		// Check if the NDC coordinates still lie within the screen.
-		// If any coordinate goes below -1 or above 1, it's definitely
-		// outside of the screen.
-		vec3 absNdcPos = abs(ndcPos);
-		float maxNdc = max(max(absNdcPos.x, absNdcPos.y), absNdcPos.z);
-		if (maxNdc > 1.0) {
-			// We escaped the screen, reject the raytracing.
-			return false;
+	// The tolerance a hit is confirmed with: one step of depth, or the floor, whichever is
+	// larger, scaled by the caller - water tolerates more than a mirror does, because a
+	// missing reflection is more visible there than a stretched one.
+	float minimumThickness = max(MIN_REFLECTION_THICKNESS, abs(stepSize.z)) * thicknessScale;
+
+	// One step in, so that the surface the ray starts on cannot be taken as its own hit.
+	vec4 sampleCoord = originCoord + stepSize;
+
+	for (int i = 0; i < RAYMARCH_STEPS; i++) {
+		// Past the edge of the screen, or off the near end of the depth range: stop. What
+		// was found is kept - the version this replaces returned a miss here, which threw
+		// away hits that had already been found. The tests are written as negated
+		// comparisons so that a coordinate that is not a number fails them rather than
+		// slipping through and being sampled.
+		if (!(abs(sampleCoord.x * 2.0 - 1.0) <= 1.0)
+			|| !(abs(sampleCoord.y * 2.0 - 1.0) <= 1.0)
+			|| !(sampleCoord.z >= 0.0 && sampleCoord.z <= 1.0)) {
+			break;
 		}
 
-		// Use the depth buffer and matrices to get the view Z coordinate for
-		// this 2D screen position. We need the screen position to sample the
-		// depth buffer, but otherwise we can remain in NDC space as much as
-		// possible as we need the NDC position to get the view position.
-		vec2 screenPos2D = ndcPos.xy * 0.5 + 0.5;
-		ndcPos.z = texture(depthBuffer, screenPos2D).x * 2.0 - 1.0;
-		vec4 homogenousPos = gbufferProjectionInverse * vec4(ndcPos, 1.0);
-		float sampledViewZ = homogenousPos.z / homogenousPos.w;
+		float sampleDepth = texture(depthBuffer, sampleCoord.xy).x;
 
-		// Intersections are odd because the Z values are all negative. What we
-		// want is:
-		// abs(minZ) - thickness < abs(sampledViewZ) < abs(maxZ) + thickness
-		//
-		// But what that really means is:
-		// -minZ - thickness < -sampledViewZ < -maxZ + thickness
-		//
-		// This can be expanded as:
-		// -(minZ + thickness) < -sampledViewZ
-		// AND -sampledViewZ < -(maxZ - thickness)
-		//
-		// Using the rules of inequalities, we can rewrite this as:
-		// minZ + thickness > sampledViewZ AND sampledViewZ > maxZ - thickness
-		//
-		// And we can pull the thickness calculations to above.
-		//
-		// The screen position is checked along with the depth, and it fails the
-		// same way: the depth this reads can be a level-of-detail renderer's own
-		// texture, which holds nothing past the edge of what it drew, and a trace
-		// through that produces a position that is not a number. A hit is a
-		// position the caller will sample a colour buffer at, and sampling at a
-		// coordinate that is not a number is undefined - which is a black pixel.
-		// See the same guard at the end of RefractTrace, which is where it was
-		// first found.
-		//
-		// ⚠️ And the hit this window cannot see, which is what batch 489 left open. At a
-		// grazing angle the acceleration above makes the far steps hundreds of metres
-		// long, and a distant hill or wall is then stepped clean over: the sample at the
-		// end of that step reads the depth of whatever is BEHIND it, which is outside
-		// the window, so no hit is recorded and the caller falls back to the sky. That is
-		// the missing band of reflection under the horizon when the water is viewed
-		// level. Widening the window does not catch it either - the surface is not near
-		// the sample, it is BETWEEN two of them.
-		//
-		// So the two samples' answers to "is the ray behind the surface here" are
-		// compared as well. Both are view-space Z and both are negative, so the ray is
-		// behind the surface when its own Z is the more negative of the two. If it is
-		// behind it now and was in front of it at the previous sample, the surface lies
-		// between the two samples, and that is a hit wherever it happens - and only
-		// there, so this does not accept a surface the ray merely passed near, which is
-		// what the guard removed in batch 489 was protecting against. The hit is recorded
-		// at this sample's screen position and the refinement below backs it up and
-		// closes in on the crossing, exactly as it does for a window hit.
-		// See BATCH_LOG.md b513.
-		bool wasBehindSurface = behindSurface;
-		behindSurface = viewPos.z < sampledViewZ;
-		bool crossedSurface = behindSurface && !wasBehindSurface;
+		// The whole of the hit test. Both are depths from the same buffer, so the ray is
+		// behind the surface exactly when its own depth is the larger of the two - and
+		// `sampleDepth < 1.0` is what asks whether there is a surface there at all.
+		if (sampleCoord.z > sampleDepth && sampleDepth < 1.0) {
+			// Walk the sample back to where the ray and the surface meet: every round
+			// halves the step and goes whichever way the last comparison pointed.
+			vec4 refined = sampleCoord;
+			float refinedDepth = sampleDepth;
+			float scale = 0.5;
+			for (int j = 0; j < MAX_REFINEMENT_ROUNDS; j++) {
+				refined += sign(refinedDepth - refined.z) * scale * stepSize;
+				refinedDepth = texture(depthBuffer, refined.xy).x;
+				scale *= 0.5;
+			}
 
-		if ((minZ > sampledViewZ && sampledViewZ > maxZ || crossedSurface)
-			&& screenPos2D.x >= 0.0 && screenPos2D.x <= 1.0
-			&& screenPos2D.y >= 0.0 && screenPos2D.y <= 1.0) {
-			// This was a successful hit. Save it so that we will at least
-			// return this hit if we don't find a better one.
-			hasHitPos = true;
-			hitPos = screenPos2D;
-			hitViewPos = vec3(homogenousPos.xy / homogenousPos.w, sampledViewZ);
+			// Accept when the two really did meet: within a step of depth of each other,
+			// on a surface that exists, on the screen, and ahead of the start rather than
+			// behind it.
+			if (abs(refined.z - refinedDepth) < minimumThickness
+				&& refinedDepth < 1.0
+				&& all(lessThan(abs(refined.xy * 2.0 - 1.0), vec2(1.0)))
+				&& dot(stepSize.xy, refined.xy - originCoord.xy) > 0.0) {
+				hitPos = refined.xy;
 
-			// Undo the last raymarch and decelerate so we can try to trace a
-			// more precise hit.
-			viewPos -= velocityAndThickness.xyz;
-			velocityAndThickness *= refinementDecelerationFactor;
-
-			// Refine for a certain number of steps at the end before declaring
-			// a successful hit, to improve the accuracy of reflections.
-			refinementRounds += uint(1);
-
-
-			// If we've already refined sufficiently, return this result as-is.
-			if (refinementRounds >= uint(MAX_REFINEMENT_ROUNDS)) {
+				// Back to view space, which is where the callers shade the hit.
+				vec4 homogenousPos = gbufferProjectionInverse
+					* vec4(refined.xy * 2.0 - 1.0, refinedDepth * 2.0 - 1.0, 1.0);
+				hitViewPos = homogenousPos.xyz / homogenousPos.w;
 				return true;
 			}
 		}
+
+		sampleCoord += stepSize;
 	}
 
-	// No hit on this iteration, return the valid hit if we had one.
-	return hasHitPos;
+	return false;
 }

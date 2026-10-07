@@ -80,7 +80,18 @@ quotes code from the projects named in it.
   space, its first sample is dithered both per pixel and per frame, and an
   occlusion only counts when it falls within a thickness window of the ray -
   which is itself measured as a fraction of the distance, in the depth buffer's
-  own units, as Sundial measures it. Sundial Lite is licensed under the **GNU
+  own units, as Sundial measures it.
+  **The reflection and refraction trace in `lib/raytrace.glsl` follows the same
+  structure** (batch 514): the ray is projected, the distance to where its
+  projection leaves the screen is solved for, the step budget is spread evenly
+  over exactly that much of the ray, a hit is where the ray is **behind** the
+  surface the depth buffer holds at that sample - one comparison, no window - and
+  that sample is halved towards the meeting point before any thickness is asked
+  for. The marcher this replaced was Steadfast's, which accelerated its steps and
+  tested a widening window at the end of each one; at a grazing angle its far
+  steps crossed distant geometry without noticing, and the reflection fell back to
+  the sky - the missing band under the horizon that batches 489 and 513 could not
+  remove. Sundial Lite is licensed under the **GNU
   General Public License, version 3** - the same licence as this pack, whose copy
   is `LICENSE.md` - so no separate licence file is included for it.
 * **No assets are reused from either.** No textures, no logos, no screenshots,
