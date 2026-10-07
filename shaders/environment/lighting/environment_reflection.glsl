@@ -253,7 +253,7 @@ vec3 EnvironmentReflection(
 					gbufferProjectionInverse,
 					viewPos,
 					mat3(gbufferModelView) * worldReflected,
-					0.5,
+					vec2(0.5, 1.0),
 					hitPos,
 					hitViewPos
 				)) {

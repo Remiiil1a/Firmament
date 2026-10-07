@@ -819,16 +819,22 @@ vec4 TranslucentLighting(
 			vec2 hitPos;
 			vec3 hitViewPos;
 
-			// How far the ray and a surface it meets may be apart in depth and still be
-			// taken as a hit, as a multiple of one step. The march itself measures this in
-			// the depth buffer's own units, so this is a scale rather than a distance.
+			// Controls the base thickness and increase in thickness over
+			// distance during raytracing, effectively the tolerance of
+			// determining whether we are going
+			// to accept a hit or not.
 			//
+			// X: initial thickness in meters
+			// Y: additional increase in meters per raytracing step not directly
+			//    related to distance
+			vec2 thicknessControl;
+
 			// The mirror-like reflection of a solid surface - ice, glass, a
 			// window pane - makes it harder to hide the stretching that the
 			// thickness causes, so those use a low thickness. The wavy
 			// reflection of water easily hides it, and a stretched reflection of
 			// something still looks better than no reflection at all.
-			float reflectionThickness = materialID == WATER ? 1.0 : 0.5;
+			thicknessControl = vec2(materialID == WATER ? 1.0 : 0.5, 1.0);
 			
 			vec3 reflectedView = mat3(gbufferModelView) * reflected;
 
@@ -838,7 +844,7 @@ vec4 TranslucentLighting(
 				inverseProjectionMatrix,
 				viewPos,
 				reflectedView,
-				reflectionThickness,
+				thicknessControl,
 				hitPos,
 				hitViewPos);
 
@@ -854,7 +860,7 @@ vec4 TranslucentLighting(
 						inverseProjectionMatrixDistant, 
 						viewPos,
 						reflectedView,
-						reflectionThickness,
+						thicknessControl,
 						hitPos,
 						hitViewPos);
 				}
