@@ -899,22 +899,24 @@ vec4 TranslucentLighting(
 				// What the ray hit, in the world axes of this frame, and where the
 				// colour buffer it is read from has that point.
 				//
-				// colortex4 holds the frame before this one, drawn with the camera
-				// where it was then. Reading it at this frame's screen position -
-				// which is what the pack did until now - therefore reads the colour
-				// of whatever stood a small distance away from the point that was
-				// actually hit. Standing still, that distance is nothing; walking,
-				// the view bobs back and forth several times a second, and the
-				// reflection slides with it. That is why a glass pane or a calm
-				// water surface shivers as the player walks, why it does it in time
-				// with the step, and why flying - which has no bob - is free of it.
+				// ⚠️ The hit is sampled where THIS frame put it (batch 516). The block that
+				// used to stand here reprojected the hit into the PREVIOUS frame's screen
+				// position first, on the strength of the claim that colortex4 holds the
+				// frame before this one. That claim is false for water, and
+				// copy_and_fog.fsh says so itself: the buffer is not cleared between frames
+				// because ONE reader runs before that pass writes it - the hand's
+				// reflection, in lit.fsh, during the gbuffers stage - and everything that
+				// reads it later in the frame gets the copy that pass wrote, every frame.
+				// Water is drawn AFTER deferred, so it is one of the later readers: what
+				// stands in front of it is this frame's picture.
 				//
-				// The cure is the one every temporal effect uses: put the hit point
-				// back where the previous frame had it. Its position in this frame
-				// is exact (the ray is traced against this frame's depth buffer),
-				// so moving it into the previous frame's screen is a matter of
-				// taking the camera's own movement back out of it and projecting it
-				// with the matrices that frame was drawn with.
+				// Reprojecting then reads the right picture at the wrong place: the whole
+				// reflection moves by one frame of camera motion, and a thin thing like a
+				// ridge or a shoreline slides off the reflection of itself onto whatever
+				// this frame has behind it - usually sky. That is a missing reflection that
+				// no change to the trace can fix, which is what batches 489, 513, 514 and
+				// 515 all tried to do. The hand's reflection is the reader that does see a
+				// frame-old buffer, and its reprojection lives with it, in lit.fsh.
 				vec3 cameraRelativePosW;
 				vec2 reflectionPos;
 
@@ -925,42 +927,21 @@ vec4 TranslucentLighting(
 					// translation does not. The two forms agree anyway - that inverse is
 					// exact, so its 3x3 block is that matrix's transpose (BATCH_LOG.md
 					// b502) - which makes this the paired way round to write it rather
-					// than a correction of an error.
+					// than a correction of an error. The fog below is what reads it.
 					mat3 viewAxes = mat3(gbufferModelView);
 					cameraRelativePosW = vec3(
 						dot(hitViewPos, viewAxes * vec3(1.0, 0.0, 0.0)),
 						dot(hitViewPos, viewAxes * vec3(0.0, 1.0, 0.0)),
 						dot(hitViewPos, viewAxes * vec3(0.0, 0.0, 1.0)));
-
-					// World position = camera position + that, so the position
-					// relative to where the camera was a frame ago is this plus how
-					// far the camera has moved since.
-					vec3 previousRelativePos = cameraRelativePosW
-						+ cameraPosition - previousCameraPosition;
-					vec4 previousClipPos = gbufferPreviousProjection
-						* (gbufferPreviousModelView * vec4(previousRelativePos, 1.0));
-					vec2 previousPos = previousClipPos.xy
-						/ previousClipPos.w * 0.5 + 0.5;
-
-					// A point the previous frame did not have on screen has no
-					// colour to offer, and its projection is not to be trusted
-					// either: those pixels keep this frame's position, which is
-					// wrong in the way above but not wrong in a new way. They are
-					// mostly the ones at the edge of the screen, where the fade
-					// below is taking the reflection out anyway.
-					bool previousOnScreen = previousClipPos.w > 0.0
-						&& previousPos.x > 0.0 && previousPos.x < 1.0
-						&& previousPos.y > 0.0 && previousPos.y < 1.0;
-
-					reflectionPos = previousOnScreen ? previousPos : hitPos;
 				#else
-					// A program with externally supplied uniforms has no previous
-					// frame to read (see voxy.json), so it keeps reading this
-					// frame's position and with it the wobble this fix removes.
+					// A program with externally supplied uniforms has no previous frame
+					// to read (see voxy.json), which is the only case the branch above
+					// used to treat differently - so the two now agree.
 					cameraRelativePosW = (gbufferModelViewInverse
 						* vec4(hitViewPos, 1.0)).xyz;
-					reflectionPos = hitPos;
 				#endif
+
+				reflectionPos = hitPos;
 
 				// Water that stands up is rough, and a rough surface does not show
 				// a mirror: it shows a wide, soft average of whatever it faces.
