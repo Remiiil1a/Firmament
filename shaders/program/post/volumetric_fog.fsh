@@ -248,11 +248,16 @@ void main() {
 
 				float plume = NetherPlumeDensity(worldPos, clearArea);
 
-				// ⚠️ The exp() is the shape of the glow rather than a falloff on
-				// it: brightest where the smoke is thinnest, so a column reads as
-				// something with light behind it. See NETHER_PLUME_ABSORPTION.
+				// ⚠️ Inverted in batch 520. This used to be exp(-density), which is
+				// brightest where the smoke is THINNEST and leaves a dense column with a
+				// dark core - the shape the reference pack has, and the reason its plumes
+				// read as outlined ropes. Here the core is the bright part and the edges
+				// fall away, which is also what makes the churn legible: what rolls past is
+				// a lit mass rather than a moving outline. The 0.25 keeps the brightest a
+				// column can get at about what that curve gave it, so the change is about
+				// where the light sits and not about how much of it there is.
 				vec3 emission = NETHER_PLUME_COLOR
-					* (exp(-NETHER_PLUME_ABSORPTION * plume) * plume
+					* ((1.0 - exp(-NETHER_PLUME_ABSORPTION * plume)) * 0.25 * plume
 						* NETHER_PLUME_OPTICAL * NETHER_PLUME_DENSITY);
 
 				// The ceiling smoke goes in plainly instead. It has no inside and

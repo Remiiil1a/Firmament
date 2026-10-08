@@ -299,6 +299,19 @@ vec3 VolumetricFogTint() {
 #define NETHER_PLUME_BASE 32.0
 #define NETHER_PLUME_TOP 100.0
 
+// How fast the plumes churn, and how much a column's own density offsets its churn.
+//
+// ⚠️ The clock both of these scale is the pack's wind - windTheta - which is the one the
+// leaves and the clouds move on. The reference pack drives its erosion from
+// frameTimeCounter at a flat rate instead, so what differs here is not how much motion
+// there is but where it comes from: this smoke moves on the world's wind, and it does not
+// move as a single sheet - see the third term of erosionAt below.
+//
+// ⚠️ 0.0 on BOTH is the null case: the erosion then lands exactly where it landed before
+// batch 520, which is how to tell the new terms apart from everything else on screen.
+#define NETHER_PLUME_CHURN 1.0
+#define NETHER_PLUME_RISE 12.0
+
 // How far around the eye the smoke is held off, in blocks.
 //
 // ⚠️ Not a detail. Without it the player stands inside a column and the screen
@@ -494,10 +507,26 @@ float VolumetricFogDensity(vec3 worldPosition) {
 		// makes world height slow (48 to one), and the extra factor here sets how
 		// many blocks a slice lasts - about twenty. A single uniform scale cannot do
 		// both that and the four-block features the horizontal axes want.
+		// ⚠️ The clock is the pack's wind, as the note above says, and this is what turns
+		// it into motion in the units the erosion is sampled in. At the shipped
+		// NETHER_PLUME_CHURN that is about 0.55 slices a second, where one slice is
+		// about twenty blocks - so the field works through a slice in about half a
+		// minute. Before batch 520 the coefficient here was a flat 0.05, which is
+		// 0.36 blocks a second: the field did move, and it moved too slowly to see.
+		float churnPhase = windTheta.w * (0.05 + NETHER_PLUME_CHURN * 0.2);
+
+		// ⚠️ And the third term is what makes a column ROLL rather than slide. The denser
+		// a column is, the further up it the erosion is sampled, so every column churns at
+		// its own rate instead of the whole world sharing one sheet of noise going past.
+		// That, and not the speed, is what separates this from the reference pack's
+		// rigidly scrolled field - and it is what makes the motion read as boiling rather
+		// than as a texture being panned.
 		vec3 erosionAt = vec3(
 			squashed.x * 0.22,
 			squashed.z * 0.22,
-			squashed.y * 2.4 + windTheta.w * 0.05);
+			squashed.y * 2.4
+				+ churnPhase
+				+ NETHER_PLUME_RISE * columns * 0.35);
 
 		float erosion = VolumetricFogNoise(erosionAt) * 0.7 + 0.3;
 
