@@ -147,6 +147,12 @@ bool Raytrace(
 		return false;
 	}
 
+	// Whether the ray had already gone behind the surface the depth buffer holds at the
+	// screen position it last sampled. The ray starts ON the water, and the buffer this
+	// traces through holds what is behind the water rather than the water itself, so the
+	// ray starts in front of it.
+	bool behindSurface = false;
+
 	for (uint i = uint(0); i < uint(RAYMARCH_STEPS); i++){
 		// Each step, accelerate by a certain factor to avoid oversampling
 		// near the end of the ray march.
@@ -206,14 +212,28 @@ bool Raytrace(
 		vec4 clipPos = gbufferProjection * vec4(viewPos, 1.0);
 		vec3 ndcPos = clipPos.xyz / clipPos.w;
 
-		// Check if the NDC coordinates still lie within the screen.
-		// If any coordinate goes below -1 or above 1, it's definitely
-		// outside of the screen.
-		vec3 absNdcPos = abs(ndcPos);
-		float maxNdc = max(max(absNdcPos.x, absNdcPos.y), absNdcPos.z);
-		if (maxNdc > 1.0) {
-			// We escaped the screen, reject the raytracing.
-			return false;
+		// Whether the ray has left the screen: the SIDEWAYS and VERTICAL bounds only, and
+		// that "only" is the whole of batch 518.
+		//
+		// The depth bound used to be part of this test (the maximum was taken over all
+		// three components), and the band of missing reflection under the horizon is what
+		// it cost. A grazing ray passes beyond the far plane while its screen position is
+		// still climbing towards the horizon, and everything it is going to hit - the far
+		// shore, the mountains behind it - is NEARER than the far plane. Those hits are
+		// found by the samples AFTER the crossing, where the tolerance has widened to the
+		// step and the ray is behind what its screen path passes over. Aborting at the
+		// crossing means those samples are never taken, the trace returns no hit at all,
+		// and the caller silently falls back to the sky - which is why that band is sky
+		// coloured, why it is there while standing still, and why batch 515 did not
+		// remove it: 515 kept the hit a trace had already found, and these traces have
+		// not found one yet when they cross.
+		//
+		// The ray is still stopped when it leaves the screen, and when the projection
+		// stops being meaningful because the point has gone behind the camera (its w is
+		// no longer positive).
+		if (abs(ndcPos.x) > 1.0 || abs(ndcPos.y) > 1.0 || !(clipPos.w > 0.0)) {
+			// Keep whatever was found rather than rejecting the trace (batch 515).
+			return hasHitPos;
 		}
 
 		// Use the depth buffer and matrices to get the view Z coordinate for
@@ -221,7 +241,12 @@ bool Raytrace(
 		// depth buffer, but otherwise we can remain in NDC space as much as
 		// possible as we need the NDC position to get the view position.
 		vec2 screenPos2D = ndcPos.xy * 0.5 + 0.5;
-		ndcPos.z = texture(depthBuffer, screenPos2D).x * 2.0 - 1.0;
+
+		// The depth buffer's own value, kept before it is turned into a view Z: it is what
+		// says whether there is a surface here at all. One is the far plane, and a "hit"
+		// on the far plane is a hit on the sky.
+		float sampledDepth = texture(depthBuffer, screenPos2D).x;
+		ndcPos.z = sampledDepth * 2.0 - 1.0;
 		vec4 homogenousPos = gbufferProjectionInverse * vec4(ndcPos, 1.0);
 		float sampledViewZ = homogenousPos.z / homogenousPos.w;
 
@@ -249,14 +274,53 @@ bool Raytrace(
 		// coordinate that is not a number is undefined - which is a black pixel.
 		// See the same guard at the end of RefractTrace, which is where it was
 		// first found.
-		if (minZ > sampledViewZ && sampledViewZ > maxZ
+		//
+		// ⚠️ And the hit this window cannot see, which is what batch 489 left open. At a
+		// grazing angle the acceleration above makes the far steps hundreds of metres
+		// long, and a distant hill or wall is then stepped clean over: the sample at the
+		// end of that step reads the depth of whatever is BEHIND it, which is outside
+		// the window, so no hit is recorded and the caller falls back to the sky. That is
+		// the missing band of reflection under the horizon when the water is viewed
+		// level. Widening the window does not catch it either - the surface is not near
+		// the sample, it is BETWEEN two of them.
+		//
+		// So the two samples' answers to "is the ray behind the surface here" are
+		// compared as well. Both are view-space Z and both are negative, so the ray is
+		// behind the surface when its own Z is the more negative of the two. If it is
+		// behind it now and was in front of it at the previous sample, the surface lies
+		// between the two samples, and that is a hit wherever it happens - and only
+		// there, so this does not accept a surface the ray merely passed near, which is
+		// what the guard removed in batch 489 was protecting against. The hit is recorded
+		// at this sample's screen position and the refinement below backs it up and
+		// closes in on the crossing, exactly as it does for a window hit.
+		// See BATCH_LOG.md b513.
+		bool wasBehindSurface = behindSurface;
+		behindSurface = viewPos.z < sampledViewZ;
+		bool crossedSurface = behindSurface && !wasBehindSurface;
+
+		// ⚠️ And two more things an accepted sample has to be, neither of which this marcher
+		// asked before batch 515. Sundial, Mellow and Bliss all ask both:
+		//
+		//  - it has to BE a surface. The far plane's depth is one, and with a tolerance as
+		//    wide as the step the window reaches it once the ray is a third of the way to
+		//    the far plane: the "hit" is then a sky pixel, which the caller fogs back to
+		//    sky colour - a flat strip of nothing where a reflection should be.
+		//  - it has to be BEYOND the surface the ray started on. The window's near bound
+		//    reaches behind the start, and under a water fragment the depth buffer holds
+		//    the bed a few metres below, so the fragment can accept its own pixel region
+		//    and reflect the lake bed into itself, which is no reflection at all.
+		vec3 candidateViewPos = vec3(homogenousPos.xy / homogenousPos.w, sampledViewZ);
+
+		if ((minZ > sampledViewZ && sampledViewZ > maxZ || crossedSurface)
+			&& sampledDepth < 1.0
+			&& length(candidateViewPos) > length(viewPos)
 			&& screenPos2D.x >= 0.0 && screenPos2D.x <= 1.0
 			&& screenPos2D.y >= 0.0 && screenPos2D.y <= 1.0) {
 			// This was a successful hit. Save it so that we will at least
 			// return this hit if we don't find a better one.
 			hasHitPos = true;
 			hitPos = screenPos2D;
-			hitViewPos = vec3(homogenousPos.xy / homogenousPos.w, sampledViewZ);
+			hitViewPos = candidateViewPos;
 
 			// Undo the last raymarch and decelerate so we can try to trace a
 			// more precise hit.
