@@ -216,13 +216,19 @@ void main() {
 		#endif
 
 		#ifdef GODRAYS
-			// The light the march collected, added on top of the frame.
+			// The light the march collected, and the fraction of the frame that
+			// reaches the eye through the medium it was collected in.
 			//
-			// Added rather than mixed, and with no transmittance term, because
-			// the fading of the distance is the pack's own fog and it has
-			// already been applied per fragment. See the note at the top of
+			// ⚠️ Multiplied before it is added, rather than added on its own: the
+			// fourth channel of that buffer carries what the march's medium let
+			// through, and it is 1.0 on every path but the Nether's plumes - so
+			// everywhere else this is still the addition it has always been, and
+			// the fading of the distance remains the pack's own fog, applied per
+			// fragment. See the note at the top of
 			// /program/post/volumetric_fog.fsh.
-			color += texture(colortex1, screenCoord).rgb;
+			vec4 volumetrics = texture(colortex1, screenCoord);
+
+			color = color * volumetrics.a + volumetrics.rgb;
 		#endif
 
 		#ifdef BLOOM

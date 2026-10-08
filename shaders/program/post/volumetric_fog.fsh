@@ -28,6 +28,13 @@
 // instead would mean moving a term that four other things read. See the same
 // note in the settings file.
 //
+// ⚠️ The one exception is the Nether's plumes, which do fade what is behind
+// them. That fading travels in the fourth channel of this pass's own buffer,
+// which is why the output below is a vec4 and no longer the bare colour it
+// used to be. Every other path leaves the fourth channel at 1.0, so for them
+// the pass is still the addition it has always been - see where absorbance is
+// worked out in main().
+//
 // Half resolution, and the result is a wide smooth glow with no edges of its
 // own, which is the case upscaling handles best: the sampling is bilinear and
 // nothing in it needs a sharp boundary kept.
@@ -105,17 +112,28 @@ uniform float viewHeight;
 // BATCH_LOG.md 176 records it.
 uniform vec3 underwaterFogColor;
 
-// Three channels and no alpha: the scattered light is a colour, and the fading
-// it is not doing does not need a fourth channel to carry.
-const int R11F_G11F_B10F = 0;
-const int colortex1Format = R11F_G11F_B10F;
+// The scattered light in rgb, and in a the fraction of what is behind it that
+// reaches the eye - 1.0 everywhere except the Nether, where the plumes fade.
+//
+// ⚠️ RGBA16F rather than the R11F_G11F_B10F this buffer used to be, and that is
+// what makes the fourth channel exist at all: R11F_G11F_B10F is three
+// components, so writing an alpha into it would have been silently dropped and
+// the whole transmittance would have read back as 1.0 - no regression, but no
+// effect either. The pack already keeps six other buffers in this format
+// (colortex7, 9, 10, 11, 12, 13), so it is the familiar one here.
+// ⚠️ It is a half float, so it is signed and tops out at 65504: the scattered
+// light is nowhere near that, and the quantity in the fourth channel is a
+// fraction between zero and one by construction - but see the note in
+// lib/bloom.glsl about what a distance stored in a half float did once.
+const int RGBA16F = 0;
+const int colortex1Format = RGBA16F;
 
 // colortex1 can be named by DRAWBUFFERS, which reaches as far as nine - so this
 // pass keeps the older directive and matches the rest of the pack, unlike the
 // SMAA and bloom passes which have to reach past it.
 /* DRAWBUFFERS:1 */
 
-layout(location = 0) out vec3 fogScatter;
+layout(location = 0) out vec4 fogScatter;
 
 void main() {
 	// Where this fragment is on the screen. viewWidth is the size of the frame
@@ -183,6 +201,13 @@ void main() {
 	// exactly as they did - this was only ever the fog's own copy of it.
 
 	vec3 scatter = vec3(0.0);
+
+	// What the medium lets through to the eye: one everywhere but the Nether,
+	// where every step through a plume takes a bite out of it. ⚠️ It is left
+	// exactly at one on every other path on purpose - what is behind the shafts
+	// is already faded per fragment by the pack's own fog, and fading it a
+	// second time here would count it twice. See the note at the top.
+	float absorbance = 1.0;
 
 	#ifdef NETHER_PLUMES
 		// ⚠️ Asked once for the pixel rather than once per step. It is a uniform
@@ -260,11 +285,35 @@ void main() {
 					* ((1.0 - exp(-NETHER_PLUME_ABSORPTION * plume)) * 0.25 * plume
 						* NETHER_PLUME_OPTICAL * NETHER_PLUME_DENSITY);
 
+				// The other half of what smoke does: it takes light out of what
+				// is behind it as well as putting its own in. Charged per block
+				// of plume the ray crosses, which is how a medium's optical
+				// depth is charged.
+				//
+				// ⚠️ The density option is in here as well as in the emission, so
+				// that turning the smoke up thickens it rather than only
+				// brightening it.
+				//
+				// ⚠️ The 0.03 is the number to tune, and it has not been measured
+				// in game: at the shipped density a typical core leaves a third to a
+				// half of what is behind it over twenty blocks and a tenth over
+				// fifty, so the columns fade what is behind them without becoming
+				// black walls. Raise it for smoke you cannot see through, lower it
+				// for smoke that only veils.
+				absorbance *= exp(-plume * NETHER_PLUME_ABSORPTION
+					* NETHER_PLUME_DENSITY * stepLength * 0.03);
+
 				// The ceiling smoke goes in plainly instead. It has no inside and
 				// outside to be brighter than - it is a flat layer under a roof.
+				//
+				// ⚠️ And it fades at half weight, by what the plumes have taken
+				// rather than by a coefficient of its own: it is a sheet the ray
+				// crosses briefly, not the column it spends its length in, so it
+				// should not blot out as much. It adds no extinction of its own.
 				emission += NETHER_CEILING_SMOKE_COLOR
 					* (NetherCeilingSmokeDensity(worldPos)
-						* NETHER_CEILING_SMOKE_OPTICAL);
+						* NETHER_CEILING_SMOKE_OPTICAL)
+					* (absorbance * 0.5 + 0.5);
 
 				scatter += emission * stepLength;
 
@@ -361,5 +410,5 @@ void main() {
 		scatter += mediumColor * (sunVisibility * density * stepLength);
 	}
 
-	fogScatter = scatter;
+	fogScatter = vec4(scatter, absorbance);
 }
