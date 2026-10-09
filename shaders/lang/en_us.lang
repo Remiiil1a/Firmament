@@ -501,7 +501,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 524]
+option.PBR_DEBUG=Material debug view [build 525]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1268,6 +1268,59 @@ option.NETHER_HAZE_DENSITY.comment=How thick the thin haze that fills the \
 	colour, so the crimson forest, the warped forest, the soul sand valley and \
 	the basalt deltas each tint it differently. It only ever adds light - it is \
 	far too thin to hide anything behind it. 0.0 is no haze.
+
+option.NETHER_PLUME_CHURN=Plume churn
+option.NETHER_PLUME_CHURN.comment=How fast the smoke churns. It rides the same \
+	wind the leaves and the clouds move on, so it sets a rate rather than \
+	starting a clock of its own. 0.0 is the null case: the drift drops back to \
+	the flat rate it had before the churn was added, which moves too slowly to \
+	see. 1.0 is the shipped rate, about half a slice of noise a second; 3.0 is \
+	two and a half times that, and the columns visibly roll.
+
+option.NETHER_PLUME_RISE=Plume rise
+option.NETHER_PLUME_RISE.comment=How much a column's own density offsets where \
+	its erosion is read. This is what makes one column roll at a different rate \
+	from its neighbour instead of the whole world sliding past on one sheet. 0.0 \
+	is the null case and gives every column the same churn, which is the \
+	reference pack's rigid scroll; 12.0 is the shipped value, which separates \
+	them, and going higher separates them further.
+
+option.NETHER_PLUME_HEIGHT_SCALE=Plume height falloff
+option.NETHER_PLUME_HEIGHT_SCALE.comment=How far a column keeps its density as \
+	it rises, in blocks: over this height the smoke falls to about a third of \
+	what it is at the lava. Low makes short plumes - at 10 a column is a stub by \
+	ten blocks up - and high makes tall ones that stay thick almost to the \
+	ceiling, which is the full-height bar this term exists to avoid.
+
+option.NETHER_PLUME_FLOOR_SCALE=Plume bed height
+option.NETHER_PLUME_FLOOR_SCALE.comment=How far up the bed at the foot of the \
+	columns reaches, in blocks. The bed is what the columns rise out of: without \
+	it they start part way up the floor ramp and read as standing in mid-air. \
+	Low is a skin of smoke on the lava; high reaches far enough up to meet the \
+	bottom of the columns.
+
+option.NETHER_PLUME_FLOOR_AMOUNT=Plume bed density
+option.NETHER_PLUME_FLOOR_AMOUNT.comment=How dense the bed is against the \
+	columns standing in it. 0.0 removes it and leaves the columns in mid-air, \
+	which is how they looked before the bed was added; 0.55 is the shipped \
+	value; 1.0 makes the foot of the layer as thick as the columns themselves.
+
+option.NETHER_PLUME_OPTICAL=Plume brightness
+option.NETHER_PLUME_OPTICAL.comment=How bright the plumes glow: the emission's \
+	own multiplier, and nothing else. It is not how much smoke there is (that is \
+	plume density) and not how much of what is behind it is hidden (that is \
+	plume extinction) - it scales the light added to the frame and leaves the \
+	shape and the opacity alone. 0.004 barely lights anything; 0.016 is the \
+	shipped value, doubled from the 0.008 the plumes first shipped at because \
+	they read as too faint in game; 0.032 makes the Nether a lamp rather than \
+	a place.
+
+option.NETHER_CEILING_SMOKE_OPTICAL=Ceiling smoke brightness
+option.NETHER_CEILING_SMOKE_OPTICAL.comment=How bright the smoke under the \
+	ceiling glows. It is charged separately from the plumes because it is a flat \
+	layer rather than columns, and it is left at the value it shipped with: this \
+	layer is a dark neutral that reads as the roof rather than as the effect. \
+	0.001 all but removes the roof; 0.010 fills the ceiling with smoke.
 
 option.UNDERWATER_GODRAYS=Underwater light shafts
 option.UNDERWATER_GODRAYS.comment=Whether the light shafts are drawn when the \

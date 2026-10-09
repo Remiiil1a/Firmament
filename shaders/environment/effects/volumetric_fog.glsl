@@ -320,7 +320,13 @@ vec3 VolumetricFogTint() {
 // they are at the lava, because the only height term above that was the roof
 // fade at seventy. A plume that does not thin as it rises reads as a bar rather
 // than as smoke.
-#define NETHER_PLUME_HEIGHT_SCALE 25.0
+//
+// ⚠️ A slider as of batch 525. Low is a short plume - over ten blocks the smoke
+// is down to a third of what it is at the lava, so the columns are stubs standing
+// on the bed - and high is a tall one: at 50 they keep most of their density all
+// the way to the roof fade, which is the full-height bar this term was added to
+// take away, so the top of the range is where batch 523 stops being visible.
+#define NETHER_PLUME_HEIGHT_SCALE 25.0 // [10.0 15.0 20.0 25.0 35.0 50.0]
 
 // The bed the columns stand in: how far up it reaches, in blocks, and how dense
 // it is against the columns above it.
@@ -336,8 +342,15 @@ vec3 VolumetricFogTint() {
 // as the smoke standing in it, at no cost of its own. And it is inside the same
 // gates as the columns: the floor fade, the roof fade, the bubble around the eye
 // and the rise fade all multiply it, so it cannot appear where they cannot.
-#define NETHER_PLUME_FLOOR_SCALE 8.0    // how far up the bed reaches, in blocks
-#define NETHER_PLUME_FLOOR_AMOUNT 0.55  // how dense the bed is against the columns
+//
+// ⚠️ Both are sliders as of batch 525. The scale is how far up the bed reaches, in
+// blocks: low is a skin of smoke lying on the lava, high is a bed that climbs far
+// enough to meet the bottom of the columns. The amount is how dense the bed is
+// against the columns: 0.0 takes the bed away and leaves the columns standing in
+// mid-air again, exactly as they did before batch 524, and 1.0 makes the foot of
+// the layer as thick as the columns standing in it.
+#define NETHER_PLUME_FLOOR_SCALE 8.0 // [4.0 6.0 8.0 12.0 16.0]
+#define NETHER_PLUME_FLOOR_AMOUNT 0.55 // [0.0 0.25 0.4 0.55 0.75 1.0]
 
 // How fast the plumes churn, and how much a column's own density offsets its churn.
 //
@@ -349,8 +362,16 @@ vec3 VolumetricFogTint() {
 //
 // ⚠️ 0.0 on BOTH is the null case: the erosion then lands exactly where it landed before
 // batch 520, which is how to tell the new terms apart from everything else on screen.
-#define NETHER_PLUME_CHURN 1.0
-#define NETHER_PLUME_RISE 12.0
+//
+// ⚠️ Both are sliders as of batch 525. Churn is how fast the noise drifts past:
+// 0.0 is the flat pre-520 rate, which does move and moves too slowly to see; 1.0
+// is the rate this shipped at, about half a slice a second; 3.0 is about two and a
+// half times that, where the drift is plainly visible. Rise is the per-column
+// offset: at 0.0 every column churns in step, which is the reference pack's rigid
+// scroll, and 12.0 is the value that separates them; the top of the range pushes
+// them further apart still.
+#define NETHER_PLUME_CHURN 1.0 // [0.0 0.5 1.0 1.5 2.0 3.0]
+#define NETHER_PLUME_RISE 12.0 // [0.0 4.0 8.0 12.0 20.0 32.0]
 
 // How far around the eye the smoke is held off, in blocks.
 //
@@ -371,22 +392,55 @@ vec3 VolumetricFogTint() {
 // behind it rather than as a solid bar of light. Bliss darkens its emission the
 // same way. Its 15.0 is this same curve over a much smaller range, because its
 // density is not normalised to one and this one is.
-const vec3 NETHER_PLUME_COLOR = vec3(1.00, 0.40, 0.16);
+//
+// ⚠️ Recoloured in batch 525, from vec3(1.00, 0.40, 0.16) to something nearer the
+// lava's own orange. The author's report was that the plumes read as "not very
+// visible" and suspected the colour was too pale, and part of it was this: the old
+// green and blue were high enough that a column came out a pale grey-orange
+// against the Nether's own fog, which is not what a hot medium looks like. The red
+// is unchanged; the other two are pulled down and towards the lava below.
+//
+// ⚠️ And it stays a constant while the seven around it become sliders, because
+// this pack has no colour option to follow: every colour-bearing option it has -
+// RAIN_COLOR_SATURATION, END_STAR_TINT, LIGHT_TINT_STRENGTH - is a scalar that
+// moves a colour the shader already holds, and colorwheel.properties is the
+// loader's OIT configuration rather than a colour picker. Inventing a picker for
+// one constant would be a convention of one. See batch 525.
+const vec3 NETHER_PLUME_COLOR = vec3(1.00, 0.32, 0.09);
 const float NETHER_PLUME_ABSORPTION = 2.0;
 
-// How much smoke there is per block, where the field is at its thickest.
+// How bright the smoke is: the emission's overall multiplier, and nothing else.
 //
-// ⚠️ Of the same order as VOLUMETRIC_FOG_DENSITY above, and for the same reason:
-// both are optical depths per block, so a ray of the same length through either
-// comes out at a comparable brightness. Much above this the Nether stops being a
-// place and becomes a lamp.
-const float NETHER_PLUME_OPTICAL = 0.008;
+// ⚠️ Not how much smoke there is - that is NETHER_PLUME_DENSITY above - and not
+// how much of what is behind it the smoke takes away either, which is
+// NETHER_PLUME_EXTINCTION. This is the one number that scales the light the
+// medium adds to the frame, and it leaves the medium's shape and its coverage
+// alone.
+//
+// ⚠️ Doubled in batch 525, from 0.008 to 0.016, which puts it four times
+// VOLUMETRIC_FOG_DENSITY rather than of the same order as it. The old comparison
+// is gone because the two are not doing the same job: the Overworld's fog is lit
+// by the sun and so needs only enough medium to catch it, while this one is its
+// own light seen against a fog that already glows, and it needs more of it to
+// read. The author's report was that the plumes were "not very visible"; this is
+// the half of that which is about amount.
+//
+// ⚠️ A slider as of the same batch. 0.004 is smoke that barely lights anything,
+// 0.016 is the shipped value, and 0.032 is past the point where the Nether stops
+// being a place and becomes a lamp.
+#define NETHER_PLUME_OPTICAL 0.016 // [0.004 0.008 0.012 0.016 0.024 0.032]
 
 // And the same for the smoke under the ceiling. It is a flat layer rather than
 // columns, so it is charged separately and has a colour of its own - a dark
 // neutral, which is what Bliss gives it and what smoke under a roof looks like.
 const vec3 NETHER_CEILING_SMOKE_COLOR = vec3(0.10, 0.075, 0.070);
-const float NETHER_CEILING_SMOKE_OPTICAL = 0.004;
+
+// ⚠️ A slider as of batch 525, and left at the value it shipped with rather than
+// doubled along with the plumes': this layer is a dark neutral that reads as the
+// roof over the dimension rather than as the effect itself, and the report was
+// about the columns. 0.001 makes the roof all but disappear into the fog, 0.004
+// is the shipped value, and 0.010 fills the ceiling with smoke.
+#define NETHER_CEILING_SMOKE_OPTICAL 0.004 // [0.001 0.002 0.004 0.006 0.010]
 
 // And the haze's own, the smallest of the three because the haze is the
 // thinnest thing here. ⚠️ 0.001 is the reference pack's own number for this

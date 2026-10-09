@@ -244,7 +244,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 524]
+option.PBR_DEBUG=材质调试视图 [build 525]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -530,6 +530,21 @@ option.NETHER_PLUME_EXTINCTION.comment=烟柱把背后的东西压暗多少。�
 
 option.NETHER_HAZE_DENSITY=薄雾浓度
 option.NETHER_HAZE_DENSITY.comment=下界空气里那层薄雾有多浓。它和聚成柱子的烟柱不是一回事：整个维度里到处都是、浓淡一样，颜色取的是游戏自己的雾色，所以绯红森林、诡异森林、灵魂沙峡谷和玄武岩三角洲各有各的色调。它只加光、不挡光——薄到遮不住背后的任何东西。0.0 就是没有薄雾。
+
+option.NETHER_PLUME_CHURN=烟柱翻涌速度
+option.NETHER_PLUME_CHURN.comment=烟柱里的噪声飘得多快。它跟树叶和云用的是同一股风，所以这里定的只是快慢，不是另开一个时钟。0.0 是基准情形：飘移退回加翻涌之前那个固定速率，慢到看不出来在动。1.0 是出厂值，约合每秒半层噪声；3.0 大约是它的两倍半，柱子会明显地翻滚。
+option.NETHER_PLUME_RISE=烟柱上升
+option.NETHER_PLUME_RISE.comment=每根柱子按自己的浓度，把侵蚀它的噪声往上抬多少。有它，浓的柱子和旁边的柱子翻涌各走各的；没有它，整个世界共用一层噪声平移过去，也就是参考光影那种走法。0.0 是基准情形，所有柱子同步翻涌；12.0 是出厂值，柱子之间各走各的；再往上差别更大。
+option.NETHER_PLUME_HEIGHT_SCALE=烟柱升腾衰减
+option.NETHER_PLUME_HEIGHT_SCALE.comment=柱子往上走多远还保得住浓度，单位是方块：走过这个高度，浓度就掉到熔岩处的大约三分之一。调小是矮烟柱，10 时往上十格就只剩一小截；调大是冲天烟柱，几乎到天花板都还很浓——那正是这一项当初要避免的「整根一样粗」。
+option.NETHER_PLUME_FLOOR_SCALE=底层烟高度
+option.NETHER_PLUME_FLOOR_SCALE.comment=柱脚那层烟往上铺多高，单位是方块。这层烟是柱子从里面长出来的东西：没有它，柱子会从地面渐变的半山腰开始，看起来悬在半空。调小是岩浆上薄薄一层；调大能一直铺到柱子下半截。
+option.NETHER_PLUME_FLOOR_AMOUNT=底层烟浓度
+option.NETHER_PLUME_FLOOR_AMOUNT.comment=这层烟相对于立在里面的柱子有多浓。0.0 等于去掉它，柱子重新悬在半空，也就是这层烟出现之前的样子；0.55 是出厂值；1.0 时柱脚和柱子一样浓。
+option.NETHER_PLUME_OPTICAL=烟柱亮度
+option.NETHER_PLUME_OPTICAL.comment=烟柱发的光有多亮，也就是发光项自己的总乘数，只此而已。它不是烟有多少（那是「烟柱浓度」），也不是挡住背后多少（那是「烟柱消光」）——它只缩放加进画面的光，形状和遮挡都不动。0.004 几乎不发光；0.016 是出厂值，从最初发布的 0.008 翻倍而来，因为在游戏里看着太淡；0.032 会让下界变成一盏灯，而不是一个地方。
+option.NETHER_CEILING_SMOKE_OPTICAL=顶层烟亮度
+option.NETHER_CEILING_SMOKE_OPTICAL.comment=天花板下那层烟发的光有多亮。它和烟柱分开计费，因为它是一层平的烟而不是柱子；它保持出厂值不动：这层烟是暗的中性色，作用是让下界看起来有顶，而不是当效果本身。0.001 几乎等于没有顶；0.010 整个天花板都是烟。
 
 option.UNDERWATER_GODRAYS=水下丁达尔光
 option.UNDERWATER_GODRAYS.comment=摄像机在水里时是否也画光柱。水下遮罩是空的，因为水面完全遮住了天空，光柱就整个消失；这一项用同样的问法去问水：光透过的是水面，挡路的是地形。水下光柱沿太阳本身的方向走，因此汇聚在天空里真正画出来的太阳上。需要先开启「体积光」，岩浆和细雪里什么都不画。
