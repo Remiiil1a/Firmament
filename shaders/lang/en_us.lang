@@ -501,7 +501,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 527]
+option.PBR_DEBUG=Material debug view [build 528]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1233,14 +1233,7 @@ option.VOLUMETRIC_FOG_FULL_RES.comment=Whether to march and store the fog at \
 	hiding. Compile-time, so it reloads the shaders.
 
 option.NETHER_PLUMES=Nether plumes
-option.NETHER_PLUMES.comment=Draws columns of smoke rising through the \
-	Nether's air, plus a layer of it under the ceiling. This can only add light, \
-	never take it away: the plumes glow rather than blot out what is behind them. \
-	It runs over the finished frame, so it cannot leave a seam on Distant \
-	Horizons or Voxy terrain. It depends on Volumetric fog and shafts - if the \
-	plumes do not appear, check that first. If they look sparse or grainy, \
-	raising the march distance (96 to 128 or 192) does more than raising the \
-	density.
+option.NETHER_PLUMES.comment=The smoke columns that rise over the Nether's lava sea. They glow, and they also take light out of what is behind them: the glow is brightest in the core and on the face turned towards you, and the rest of the column dims whatever is seen through it. Nothing here is add-only any more. `r`n	NETHER_PLUME_EXTINCTION at 0.0 is how to get the old add-only behaviour back.
 
 option.NETHER_PLUME_DENSITY=Plume density
 option.NETHER_PLUME_DENSITY.comment=How much smoke there is. 0.0 is no plumes \
@@ -1266,12 +1259,16 @@ option.NETHER_PLUME_CONTRAST.comment=How far the noise the columns are made of \
 	than the erosion does, so most of the field was being taken to nothing: at 1.0 \
 	- the null case, and what the plumes looked like before this option - only a \
 	quarter of the layer carried any smoke at all, and the thin haze was several \
-	times brighter than the columns standing in it. 1.4 is the shipped value: \
-	about two thirds of the layer carries smoke, the cores are six times brighter \
-	than they were, and the columns come out brighter than the haze instead of \
-	dimmer. 1.2 is a lighter touch, and 2.0 and up is a wall of smoke rather than \
-	a field of columns. The result is held at one, so this changes the shape of \
-	the field and not how bright the smoke is overall - that is plume brightness.
+	times brighter than the columns standing in it. 1.7 is the shipped value, up \
+	from 1.4: about three quarters of the layer carries smoke instead of two \
+	thirds, the cores are wider, and there is about a third more smoke in the \
+	layer, which is what a column needs to stand out with. It widens the cores \
+	rather than brightening them - the result is held at one, so no value of this \
+	can put a column above the density the brightness and the extinction are \
+	tuned against - so this changes the shape of the field and not how bright the \
+	smoke is overall, which is plume brightness. Warning: 1.8 and up pins over \
+	two fifths of the layer at that ceiling, and 2.0 and up is a wall of smoke \
+	rather than a field of columns.
 
 option.NETHER_CEILING_SMOKE=Ceiling smoke
 option.NETHER_CEILING_SMOKE.comment=The smoke that gathers under the ceiling. \
@@ -1284,8 +1281,23 @@ option.NETHER_PLUME_EXTINCTION.comment=How much the plumes fade what is behind \
 	them. The columns glow either way; this is the other half of what smoke \
 	does, the part that dims what is seen through it. 0.0 is the null case: \
 	nothing behind the plumes is faded at all, which is how they behaved before \
-	this option existed. Warning: too high and the columns become walls you \
-	cannot see through.
+	this option existed. 0.06 is the shipped value and was 0.03 until this build, \
+	when it turned out that a column which leaves the background as it was has no \
+	edge to read: twenty blocks of column now let 17% of what is behind them \
+	through, against 41% before. Warning: too high and the columns become walls \
+	you cannot see through.
+option.NETHER_PLUME_SHADING=Plume shading
+option.NETHER_PLUME_SHADING.comment=How much of a column's glow is lost on the \
+	way out through the smoke in front of it. The glow is otherwise a function \
+	of the local density alone, which cannot say where a point sits inside a \
+	column: every part of it comes out equally bright and the column reads as a \
+	soft blob with no near face. This weights it by what the ray has already \
+	crossed, which puts the light on the outside, where the smoke between it and \
+	the eye is thinnest - the near face lit and the far face dark, which is what \
+	gives a column an outline against the lava. It shapes the glow only: it adds \
+	no dimming of its own and cannot brighten anything. 0.0 restores the flat \
+	look this option was added to fix; 3.0 lights little but the skin of a \
+	column and leaves a thick one dark inside.
 
 option.NETHER_HAZE_DENSITY=Haze density
 option.NETHER_HAZE_DENSITY.comment=How thick the thin haze that fills the \
@@ -1328,12 +1340,16 @@ option.NETHER_PLUME_FLOOR_SCALE.comment=How far up the bed at the foot of the \
 option.NETHER_PLUME_FLOOR_AMOUNT=Plume bed density
 option.NETHER_PLUME_FLOOR_AMOUNT.comment=How dense the bed is against the \
 	columns standing in it. 0.0 removes it and leaves the columns in mid-air, \
-	which is how they looked before the bed was added; 0.25 is the shipped value \
-	as of this build, and was 0.55 until the masking it was doing was measured: \
-	at 0.55 the bed was the thicker of the two over nearly nine tenths of the \
-	layer, which is what buried the columns in a wash of fog and left the Nether \
-	looking like haze with no pillars in it; 1.0 makes the foot of the layer as \
-	thick as the columns themselves.
+	which is how they looked before the bed was added; 0.10 is the shipped value, \
+	and was 0.25, then 0.55 before that, each time because the masking it was \
+	doing had been measured. At 0.55 the bed was the thicker of the two over \
+	nearly nine tenths of the layer, which is what buried the columns in a wash \
+	of fog and left the Nether looking like haze with no pillars in it. What \
+	settles the value now is the light rather than the density: the glow curve is \
+	quadratic this far down it, so a bed this thick glows about an eighteenth as \
+	much as a typical column, which is the share its job needs - something for \
+	the columns to rise out of, not a sheet to be seen. 1.0 makes the foot of the \
+	layer as thick as the columns themselves.
 
 option.NETHER_PLUME_OPTICAL=Plume brightness
 option.NETHER_PLUME_OPTICAL.comment=How bright the plumes glow: the emission's \

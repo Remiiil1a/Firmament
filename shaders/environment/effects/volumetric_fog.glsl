@@ -290,7 +290,59 @@ vec3 VolumetricFogTint() {
 // ⚠️ 0.0 is the null case: the columns still glow, and they take nothing out of
 // what is behind them at all, which is exactly how this pass behaved before
 // batch 521.
-#define NETHER_PLUME_EXTINCTION 0.03 // [0.0 0.01 0.02 0.03 0.05 0.08 0.12]
+//
+// ⚠️ Raised from 0.03 to 0.06 in batch 528, and it is the half of that batch
+// which is about the background: a column that leaves what is behind it alone
+// has no edge to read against the lava, and the report was that the plumes read
+// as a wash of haze with no outline to them. The arithmetic is a transmittance
+// through twenty blocks at the shipped density, an optical depth of plume *
+// NETHER_PLUME_ABSORPTION * NETHER_PLUME_DENSITY * 20 * this: through a core of
+// plume about 0.5 that is 0.90 at 0.03, so 41% of the light behind it arrives,
+// and 1.80 at 0.06, which is 17%. Through the field at its own mean plume of
+// 0.168 the same twenty blocks go from 74% to 55%, and over the whole 96-block
+// march distance from 23% to 5.5%.
+//
+// ⚠️ 0.06 is the bottom of the range batch 528 was given, and the top of it is
+// the reason: at 0.10 those three figures are 5.0%, 36% and 0.8%, and a vista
+// that transmits eight parts in a thousand is a wall rather than a place.
+// ⚠️ NETHER_PLUME_CONTRAST rose in the same batch, which raises the field's mean
+// density by about a third, and the two compound at distance: the 96-block
+// figure the shipped pair lands on is 1.9% rather than 5.5%. That is the number
+// to watch in game, and this is the dial for it - the step below is 0.03, which
+// is what this shipped at. NETHER_PLUME_SHADING below is the other dial, since
+// it is the other thing that thins the glow at distance.
+#define NETHER_PLUME_EXTINCTION 0.06 // [0.0 0.01 0.02 0.03 0.06 0.08 0.12]
+
+// How much of a column's own glow survives the smoke in front of it, as a power
+// on the absorbance the march is holding.
+//
+// ⚠️ This is what gives a column a near face and a far face. Every term of the
+// emission is a function of the local density and of nothing else, so on its own
+// it cannot say where a sample sits inside the volume: a sample in the middle of
+// a column and one at its near face come out identical, and what the eye is
+// given is a soft blob with no form in it. Weighting the glow by the absorbance
+// the ray has already paid puts the light on the outside of the column, where
+// the smoke between it and the eye is thinnest - near face lit, far face dark -
+// and the outline then comes out of the march rather than out of a blur.
+//
+// ⚠️ It weights the plume's emission only. The ceiling smoke and the haze go in
+// at full weight, neither of them having an inside to have a near face - see the
+// pass.
+//
+// ⚠️ The exponent the plume's light actually arrives with is this PLUS ONE,
+// because batch 524 already multiplies the whole in-scatter by the absorbance
+// once, in the front-to-back order the integral is written in. At the shipped
+// 2.0 the combined exponent is 3.0: a column that has already taken half of what
+// is behind it dims the glow behind it to an eighth, where one absorbance would
+// leave it at a half.
+//
+// ⚠️ 0.0 is the null case and restores exactly what the pass did before this
+// option existed - the two multiplies fall back to batch 524's one. 1.0 is one
+// more factor of absorbance, and 3.0 is the far end, where only the skin of a
+// column is lit and a thick one is dark inside. It shapes the glow and nothing
+// else: it adds no extinction of its own, and it cannot brighten anything, since
+// its weight is one at the eye and falls from there.
+#define NETHER_PLUME_SHADING 2.0 // [0.0 0.5 1.0 1.5 2.0 3.0]
 
 // How much smoke gathers under the ceiling.
 #define NETHER_CEILING_SMOKE 1.0 // [0.0 0.5 1.0 1.5 2.0 3.0]
@@ -369,7 +421,27 @@ vec3 VolumetricFogTint() {
 // what this term did: the field is then exactly what it was before the option
 // existed. 1.2 is a lighter touch - 4.6% of the layer in cores rather than 18.6%
 // - and 2.0 and up is a wall of smoke rather than a field of columns.
-#define NETHER_PLUME_CONTRAST 1.4 // [1.0 1.2 1.4 1.7 2.0 2.5]
+//
+// ⚠️ Raised from 1.4 to 1.7 in batch 528, and a measurement is what sets it,
+// because what this term does is widen the cores rather than brighten them: the
+// clamp holds a lifted core at one, so no value of this can put a column above
+// the density the emission curve and the optical depth are tuned against, and
+// what a higher value buys is that more of the layer sits at that ceiling.
+// Measured on the noise itself, the fraction pinned at the clamped one goes from
+// 20.0% at 1.4 to 36.8% at 1.7, the fraction carrying any pillar density from
+// 62.5% to 72.7%, and the mean plume from 0.260 to 0.353 - that mean is the
+// figure the paragraph above records as 0.168 at 1.4, so what 1.7 adds is about
+// a third more smoke, spread over wider cores.
+//
+// ⚠️ And 1.7 is where it stops, which is the check batch 528 was asked to make
+// before raising this. The ceiling takes 41.6% of the layer at 1.8, 49.9% at 2.0
+// and 56.7% at 2.2: past that the columns' own noise is no longer shaping the
+// field over most of the area, what is left is the erosion field, and the flat
+// maximum the clamp exists to keep at a column's core has become the layer. 1.7
+// is the highest value on the slider that still leaves more than a quarter of the
+// layer empty - 27.3%, so the gaps between columns are still gaps - and it is the
+// value that answers the report without taking the field apart.
+#define NETHER_PLUME_CONTRAST 1.7 // [1.0 1.2 1.4 1.7 2.0 2.5]
 
 // How far a column thins out as it rises, in blocks: its density falls to about
 // a third of the base value over this height.
@@ -408,20 +480,31 @@ vec3 VolumetricFogTint() {
 // mid-air again, exactly as they did before batch 524, and 1.0 makes the foot of
 // the layer as thick as the columns standing in it.
 //
-// ⚠️ And the amount's default came down from 0.55 to 0.25 in batch 527, because
-// the masking it was doing was measured and it was the larger half of the
-// report. The bed is this amount times the erosion, which is value noise brought
-// into 0.3 to 1.0 - so at 0.55 it sits at a median of 0.36 before the height
-// falloff, against a median surviving pillar of 0.095 at the same point. The bed
-// was the thicker of the two over 88.9% of the layer, and what a player standing
-// on the lava sea saw was the bed's own smooth mottling with the columns buried
-// inside it: fog, and no pillars, which is exactly what was reported. At 0.25 the
-// bed is 0.16 at its median against a median surviving pillar of 0.43, and it is
-// the thicker of the two over 43% of the layer - the gaps low down, which is the
-// job it was added for and the only place it should win. It keeps the columns
-// something to rise out of without being what the layer is made of.
+// ⚠️ And the amount's default has come down twice: 0.55 to 0.25 in batch 527,
+// and 0.25 to 0.10 in batch 528, because the masking it was doing was measured
+// both times and both times it was the larger half of the report. The bed is
+// this amount times the erosion, which is value noise brought into 0.3 to 1.0 -
+// so at 0.55 it sits at a median of 0.36 before the height falloff, against a
+// median surviving pillar of 0.095 at the same point; the bed was the thicker of
+// the two over 88.9% of the layer, and what a player standing on the lava sea
+// saw was the bed's own smooth mottling with the columns buried inside it: fog,
+// and no pillars. At 0.25 it is 0.16 at its median against a median surviving
+// pillar of 0.43, and it is the thicker of the two over 43% of the layer. At
+// 0.10 it is 0.065 at its median, against a median surviving pillar of 0.51 at
+// the contrast above - about eight times thinner.
+//
+// ⚠️ What settles the value is the light rather than the density, and that is
+// why 0.10 is enough where 0.25 was not. The emission curve is quadratic this
+// far down it, so the bed at its 0.10 ceiling glows 0.000109 where a typical
+// pillar at 0.51 glows 0.00196 - eighteen times as much - and read at the foot
+// of the layer, where the height falloff is one and the bed is at its thickest,
+// the bed is the thicker of the two over 31.8% of it against 38.1% at 0.25. (The
+// 43% above is a figure through the layer; this one is at its foot.) Those 31.8%
+// are the gaps between the columns low down, which is the whole job this was
+// added for; everywhere else the columns are what is seen, and the bed is felt
+// as the smoke they rise out of rather than as a sheet they stand in.
 #define NETHER_PLUME_FLOOR_SCALE 8.0 // [4.0 6.0 8.0 12.0 16.0]
-#define NETHER_PLUME_FLOOR_AMOUNT 0.25 // [0.0 0.25 0.4 0.55 0.75 1.0]
+#define NETHER_PLUME_FLOOR_AMOUNT 0.10 // [0.0 0.10 0.25 0.4 0.55 0.75 1.0]
 
 // How fast the plumes churn, and how much a column's own density offsets its churn.
 //
@@ -478,6 +561,14 @@ vec3 VolumetricFogTint() {
 // 15.0 is this same curve over a much smaller range, because its density is not
 // normalised to one and this one is - which is the invariant the clamp in
 // NETHER_PLUME_CONTRAST keeps.
+//
+// ⚠️ And as of batch 528 the whole of the difference is one line: Bliss's plume
+// is a dark core with a bright thin edge and nothing else, while this one is lit
+// in the core - which is what batch 520 inverted the curve to get, and what
+// makes the churn legible - and lit again on its near face, because the emission
+// is weighted by the absorbance in front of it. See NETHER_PLUME_SHADING. Ours
+// keeps the bright core and gains the outline back, and it gets the outline out
+// of the march rather than by inverting the curve a second time.
 //
 // ⚠️ Recoloured in batch 525, from vec3(1.00, 0.40, 0.16) to something nearer the
 // lava's own orange. The author's report was that the plumes read as "not very

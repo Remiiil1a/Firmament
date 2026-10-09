@@ -281,9 +281,36 @@ void main() {
 				// a lit mass rather than a moving outline. The 0.25 keeps the brightest a
 				// column can get at about what that curve gave it, so the change is about
 				// where the light sits and not about how much of it there is.
+				//
+				// ⚠️ Batch 528: and the glow is weighted by what is already between it
+				// and the eye. Every term above is a function of the local density and of
+				// nothing else, so on its own it cannot draw a form - a sample in the
+				// middle of a column and a sample at its near face come out identical, and
+				// what the eye is given is a soft blob with no edge to it, which is the
+				// report that opened the batch. A medium is also not lit through itself:
+				// what a sample sends towards the eye arrives through the smoke in front
+				// of it, so it goes in weighted by that fraction raised to
+				// NETHER_PLUME_SHADING. The near face of a column comes out bright and
+				// the far face dark, and the column reads as a form against the lava
+				// instead of as haze.
+				//
+				// ⚠️ This is an ADDITIONAL weighting and not the only one. The scatter
+				// below is multiplied by the absorbance once more, in the front-to-back
+				// order the integral is written in, and that multiply is batch 524's - so
+				// the exponent the plume's light actually arrives with is
+				// NETHER_PLUME_SHADING + 1.0, which is three at the shipped 2.0: a column
+				// that has already taken half of what is behind it dims the glow behind
+				// it to an eighth, where one absorbance would leave it at a half.
+				//
+				// ⚠️ absorbance is a product of exp()s over a march that never reaches
+				// past VOLUMETRIC_FOG_DISTANCE, and its worst case over those 96 blocks -
+				// a full-density column end to end, at the top of the extinction range -
+				// is about 1e-15 rather than zero, so pow() here is never handed the one
+				// input it has no value for.
 				vec3 emission = NETHER_PLUME_COLOR
 					* ((1.0 - exp(-NETHER_PLUME_ABSORPTION * plume)) * 0.25 * plume
-						* NETHER_PLUME_OPTICAL * NETHER_PLUME_DENSITY);
+						* NETHER_PLUME_OPTICAL * NETHER_PLUME_DENSITY)
+					* pow(absorbance, NETHER_PLUME_SHADING);
 
 				// The ceiling smoke goes in plainly instead. It has no inside and
 				// outside to be brighter than - it is a flat layer under a roof.
@@ -352,19 +379,19 @@ void main() {
 				// brightening it.
 				//
 				// ⚠️ NETHER_PLUME_EXTINCTION is the number to tune, and it has not
-				// been measured in game: at the shipped density a typical core
-				// leaves between a half and two fifths of what is behind it over
-				// twenty blocks and between a tenth and a quarter over fifty, so
-				// the columns fade what is behind them without becoming black
-				// walls. ⚠️ Those two ranges were rewritten in batch 527, when the
-				// columns were given their own scale and their contrast back: the
-				// cores are two to three times denser than they were, so the same
-				// optical depth per block now bites harder - the transmittance of
-				// a 96-block ray through the field falls from a mean of 0.40 to
-				// 0.23 over a vista. The formula is untouched, and this is the
-				// dial if the Nether reads as too closed in. Raise it for smoke
-				// you cannot see through, lower it for smoke that only veils, and
-				// set it to 0.0 to take the fading out altogether.
+				// been measured in game: at the shipped density a typical core of plume
+				// about 0.5 keeps 17% of what is behind it over twenty blocks and about
+				// 1% over fifty, so the columns silhouette against the lava without the
+				// layer becoming a black wall. ⚠️ Those two figures are batch 528's, and
+				// they were 41% and 10% before it: the extinction was raised from 0.03 to
+				// 0.06 because a column that leaves the background as it was has no edge
+				// to read, which is the report the batch opened with. See the option for
+				// the arithmetic, and for the figure to watch instead - the transmittance
+				// of a whole 96-block ray through the field, which the contrast raised in
+				// the same batch compounds with this one to 1.9%, from 23%. The formula
+				// is untouched, and this is the dial if the Nether reads as too closed
+				// in. Raise it for smoke you cannot see through, lower it for smoke that
+				// only veils, and set it to 0.0 to take the fading out altogether.
 				absorbance *= exp(-plume * NETHER_PLUME_ABSORPTION
 					* NETHER_PLUME_DENSITY * stepLength * NETHER_PLUME_EXTINCTION);
 
