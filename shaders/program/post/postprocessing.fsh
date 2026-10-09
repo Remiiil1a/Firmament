@@ -92,6 +92,155 @@ uniform sampler2D colortex1;
 // turning the medium off with them.
 #define GODRAYS_STRENGTH 2.0 // [0.0 0.25 0.5 0.75 1.0 1.5 2.0 3.0]
 
+// The fog is marched at a quarter of the frame's resolution, and the four taps
+// below are what it takes to put a quarter-resolution buffer back on the frame
+// without the blur that a plain bilinear read puts across a silhouette. See
+// UpsampleVolumetrics.
+#ifdef GODRAYS
+
+// The depth the fog was marched from, and the matrix that turns a depth into the
+// distance that march used. Declared behind the pack's duplicate guard, and here
+// rather than beside the other uniforms because this is the only place in this
+// pass that wants any of it - the motion blur next door declares the same matrix
+// under its own option.
+#if !defined(DEPTH_TEXTURE_DECLARED)
+	#define DEPTH_TEXTURE_DECLARED
+	uniform sampler2D depthtex0;
+#endif
+
+#if !defined(PROJECTION_INVERSE_DECLARED)
+	#define PROJECTION_INVERSE_DECLARED
+	uniform mat4 gbufferProjectionInverse;
+#endif
+
+uniform float viewWidth;
+uniform float viewHeight;
+
+// How far apart in distance two points have to be before the fog stops sharing
+// between them, in blocks.
+//
+// This is the whole edge of the upscale. Each of the four taps is weighted by how
+// close its own distance is to the fragment's, so a tap that belongs to a
+// surface in front of or behind this one counts for less - and at a silhouette
+// that is what stops the fog on the far side from being smeared on to the near
+// one. 1.0 block is a compromise: much smaller and a flat wall whose four taps
+// differ only by the depth buffer's own quantisation starts picking favourites
+// between them, which brings the quarter-resolution grid back as a visible
+// pattern; much larger and a silhouette against something several blocks behind
+// it is blurred again, which is the artifact this exists to remove.
+const float FOG_UPSAMPLE_DEPTH_SCALE = 1.0;
+
+// How far the surface at one pixel is from the eye, in blocks, from the depth
+// the fog pass marched to and the matrix it marched with.
+//
+// ⚠️ One copy, because both numbers the weights compare have to be the same
+// quantity: the fog pass linearises the depth it stopped at exactly this way
+// (see the top of /program/post/volumetric_fog.fsh), and a distance worked out
+// any other way would be a different measurement of the same pixel.
+float FogViewDistance(ivec2 pixel, float depth) {
+	vec2 ndc = vec2(pixel) * 2.0 / vec2(viewWidth, viewHeight) - 1.0;
+
+	vec4 viewPosH = gbufferProjectionInverse * vec4(ndc, depth * 2.0 - 1.0, 1.0);
+
+	return length(viewPosH.xyz / viewPosH.w);
+}
+
+// The scattered light of the fog, read at this fragment rather than wherever a
+// bilinear read of the quarter-resolution buffer happened to land.
+//
+// A plain texture() of that buffer takes the four texels around the fragment and
+// mixes them by area alone, and one of those texels can easily straddle a
+// silhouette: a quarter-resolution texel is four pixels across, so its centre can
+// sit on the wall while the rest of it covers the sky behind. Bilinear then mixes
+// the fog of the sky into the wall's pixels, and smears the mix over the few
+// pixels between, which is the blurry edge this replaces.
+//
+// What separates the two surfaces is distance, so every tap is weighted by how
+// far its own distance is from this fragment's - the same joint-bilateral idea
+// the TAA resolve uses on colour. Both rgb - the light the medium scattered - and
+// a - the absorbance through it - are mixed with the same weights.
+//
+// Three things worth knowing before reading it:
+//
+//  * The fog pass computes its own screen coordinate as gl_FragCoord.xy divided
+//    by the frame size times 0.25, and reads its depth with an ordinary
+//    normalized texture() of that coordinate. A quarter-resolution texel index i
+//    therefore has its centre at (i + 0.5) / (view * 0.25), which is
+//    (4i + 2) / view: the centre of full-resolution texel 4i + 2 exactly. So
+//    fetching depthtex0 at ivec2(4i + 2) gives the very depth that texel's fog
+//    was built from - no reconstruction, and no filter between the two.
+//  * Each tap is fetched at its texel's own centre rather than left to the
+//    sampler, so that what is mixed is exactly what was fetched: a texture() at
+//    a coordinate inside a texel returns that texel's value, and the offsets
+//    below are all half-texel ones.
+//  * Mixing absorbance linearly is an approximation. Two layers do not add their
+//    absorbances, they multiply their transmittances - but this blends four taps
+//    that in a flat region hold the same value, where a linear and a
+//    transmittance mix agree, and it is the flat end that has to stay exact.
+//
+// `depth` is this fragment's own depth from depthtex0, raw rather than
+// linearised: this is the one place that conversion is written.
+vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
+	#ifdef VOLUMETRIC_FOG_FULL_RES
+		// Nothing to put back on the frame grid: with the fog marched at the
+		// frame's own resolution one texel is one pixel, and the fetch the debug
+		// views above make is already this fragment's own value.
+		return texelFetch(colortex1, ivec2(gl_FragCoord.xy), 0);
+	#else
+		// The quarter-resolution grid, in texels of it.
+		vec2 fogTexel = screenCoord * vec2(viewWidth, viewHeight) * 0.25 - 0.5;
+
+		ivec2 base = ivec2(floor(fogTexel));
+		vec2 frac = fogTexel - vec2(base);
+
+		// The full-resolution pixel that stands at the centre of each of the four
+		// texels around this fragment - the point the fog in that texel was built
+		// from, as the note above works out.
+		ivec2 fullTexel = base * 4 + ivec2(2);
+
+		float fragmentDistance = FogViewDistance(ivec2(gl_FragCoord.xy), depth);
+
+		vec4 sum = vec4(0.0);
+		float weightSum = 0.0;
+
+		for (int i = 0; i < 2; i++) {
+			for (int j = 0; j < 2; j++) {
+				// The bilinear weight this tap would get from the sampler, and then
+				// the depth weight that says whether the fog here belongs to this
+				// fragment's surface at all. ⚠️ The second is not optional: the fog
+				// buffer's own alpha is absorbance and not an edge signal, since it is
+				// a flat 1.0 on every path but the Nether's plumes.
+				float bilinear = (i == 0 ? 1.0 - frac.x : frac.x)
+					* (j == 0 ? 1.0 - frac.y : frac.y);
+
+				// ⚠️ Each tap's distance is taken through the tap's OWN pixel, not
+				// through this fragment's: the ray that was marched to build this
+				// texel's fog is the one through the centre pixel, and measuring the
+				// distance along the fragment's ray instead tilts it and makes two of
+				// the four taps disagree with a surface they are standing on.
+				ivec2 tapPixel = fullTexel + ivec2(i, j) * 4;
+				float tapDepth = texelFetch(depthtex0, tapPixel, 0).r;
+
+				float tapDistance = FogViewDistance(tapPixel, tapDepth);
+
+				float weight = bilinear
+					* exp(-abs(tapDistance - fragmentDistance) / FOG_UPSAMPLE_DEPTH_SCALE);
+
+				sum += texelFetch(colortex1, base + ivec2(i, j), 0) * weight;
+				weightSum += weight;
+			}
+		}
+
+		// Normalised, so the result is the weighted average of the taps rather than
+		// their sum. With four equal depths every weight is the same and this reduces
+		// to the bilinear read it replaces, exactly - which is what the flat majority
+		// of the frame has to be.
+		return weightSum > 0.0 ? sum / weightSum : vec4(0.0);
+	#endif
+}
+
+#endif
+
 // GODRAYS END
 
 // Note: if we do not define all values used in GLSL expressions, we get the
@@ -107,12 +256,36 @@ uniform sampler2D colortex1;
 #define DEBUG_NONE 0
 #define DEBUG_GODRAYS_NOISY 1
 #define DEBUG_GODRAYS_SMOOTH 2
-#define DEBUG_SKYLIGHT 3
-#define DEBUG_DEPTH 4
-#define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_SKYLIGHT DEBUG_DEPTH]
+#define DEBUG_GODRAYS_UPSAMPLED 3
+#define DEBUG_SKYLIGHT 4
+#define DEBUG_DEPTH 5
+#define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_GODRAYS_UPSAMPLED DEBUG_SKYLIGHT DEBUG_DEPTH]
 
-#if DEBUG == DEBUG_GODRAYS_NOISY || DEBUG == DEBUG_GODRAYS_SMOOTH
-	//uniform sampler2D colortex1;
+#if DEBUG == DEBUG_GODRAYS_UPSAMPLED
+	// The depth-weighted view below reads more than the buffer: it takes its own
+	// distance and the distance of each texel around it as well, so it needs the
+	// depth texture and the matrix that turns a depth into a distance. Declared
+	// under the same duplicate guards the fog's own upsample uses, since the
+	// motion blur next door may already have declared them.
+	#if !defined(SCENE_TEXTURE_DECLARED)
+		#define SCENE_TEXTURE_DECLARED
+		uniform sampler2D colortex0;
+	#endif
+
+	#if !defined(DEPTH_TEXTURE_DECLARED)
+		#define DEPTH_TEXTURE_DECLARED
+		uniform sampler2D depthtex0;
+	#endif
+
+	#if !defined(PROJECTION_INVERSE_DECLARED)
+		#define PROJECTION_INVERSE_DECLARED
+		uniform mat4 gbufferProjectionInverse;
+	#endif
+
+	uniform float viewWidth;
+	uniform float viewHeight;
+#elif DEBUG == DEBUG_GODRAYS_NOISY || DEBUG == DEBUG_GODRAYS_SMOOTH
+	// colortex1 needs no declaration here: it is declared above, unconditionally.
 #elif DEBUG == DEBUG_SKYLIGHT
 	uniform sampler2D colortex5;
 #else
@@ -203,6 +376,16 @@ void main() {
 		// And the same buffer sampled the way the picture samples it, which is
 		// what the frame actually receives.
 		finalColor = texture(colortex1, screenCoord).rgb;
+	#elif DEBUG == DEBUG_GODRAYS_UPSAMPLED
+		#ifdef GODRAYS
+			// What the frame receives once the upscale has had its say: the same
+			// four taps the picture gets, weighted by distance rather than by
+			// area alone. Put beside the two above, the difference between them
+			// at a silhouette is the whole of what this does.
+			float ownDepth = texelFetch(depthtex0, ivec2(gl_FragCoord.xy), 0).r;
+
+			finalColor = UpsampleVolumetrics(screenCoord, ownDepth).rgb;
+		#endif
 	#elif DEBUG == DEBUG_SKYLIGHT
 		finalColor = vec3(texture(colortex5, screenCoord).r);
 	#else
@@ -226,7 +409,15 @@ void main() {
 			// the fading of the distance remains the pack's own fog, applied per
 			// fragment. See the note at the top of
 			// /program/post/volumetric_fog.fsh.
-			vec4 volumetrics = texture(colortex1, screenCoord);
+			//
+			// Read at this fragment rather than bilinearly off the fog buffer,
+			// which mixes the fog of whatever is behind a silhouette into the
+			// pixels in front of it. See UpsampleVolumetrics for what replaces
+			// that and why: the weights compare the fog pass's own depth against
+			// this pixel's, linearised the same way at both ends.
+			float ownDepth = texelFetch(depthtex0, ivec2(gl_FragCoord.xy), 0).r;
+
+			vec4 volumetrics = UpsampleVolumetrics(screenCoord, ownDepth);
 
 			color = color * volumetrics.a + volumetrics.rgb;
 		#endif

@@ -76,11 +76,13 @@ uniform sampler2D depthtex0;
 // At this point in the file the "written by the deferred pass" holds only for
 // the configurations that pass writes it in: /program/post/copy_and_fog.fsh
 // writes colortex4 only under `WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED`
-// or `VOXY`. In the other configuration it writes colortex1 and colortex0 and
-// leaves colortex4 alone, so there this buffer holds whatever last wrote it -
-// with the shipped settings, the previous frame. The pass's own comment on
-// `colortex4Clear` describes that same one-frame lag as deliberate. For a blur
-// this wide either is a frame-old version of the same picture.
+// or `VOXY`. In the other configuration its DRAWBUFFERS is 40, so it writes
+// colortex4 and colortex0 and leaves colortex1 alone - the only writer of
+// colortex1 anywhere in the pack is /program/post/volumetric_fog.fsh - and there
+// this buffer holds whatever last wrote it - with the shipped settings, the
+// previous frame. The pass's own comment on `colortex4Clear` describes that same
+// one-frame lag as deliberate. For a blur this wide either is a frame-old
+// version of the same picture.
 uniform sampler2D colortex4;
 
 uniform vec2 windowToScreen;

@@ -32,9 +32,10 @@
 // lib/taa.glsl.
 //
 // composite3 owns both halves of that arrangement: it runs after composite1,
-// which writes colortex3, and it never writes a reflection back into it - it
-// writes colortex0 and colortex1 and nothing else - so the trace finds the world
-// and never another reflection.
+// which writes colortex3, and it never writes a reflection back into it - its
+// DRAWBUFFERS is 09, so it writes colortex0 and colortex9 and nothing else - so
+// the trace finds the world and never another reflection. (The only writer of
+// colortex1 anywhere in the pack is /program/post/volumetric_fog.fsh.)
 //
 // The uniform it needs is declared here rather than in the pass, because the
 // pass includes this file.
