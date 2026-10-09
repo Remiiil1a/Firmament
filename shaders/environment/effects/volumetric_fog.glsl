@@ -313,6 +313,15 @@ vec3 VolumetricFogTint() {
 #define NETHER_PLUME_BASE 32.0
 #define NETHER_PLUME_TOP 100.0
 
+// How far a column thins out as it rises, in blocks: its density falls to about
+// a third of the base value over this height.
+//
+// ⚠️ Without it the columns are as thick between the lava and the roof fade as
+// they are at the lava, because the only height term above that was the roof
+// fade at seventy. A plume that does not thin as it rises reads as a bar rather
+// than as smoke.
+#define NETHER_PLUME_HEIGHT_SCALE 25.0
+
 // How fast the plumes churn, and how much a column's own density offsets its churn.
 //
 // ⚠️ The clock both of these scale is the pack's wind - windTheta - which is the one the
@@ -492,6 +501,21 @@ float VolumetricFogDensity(vec3 worldPosition) {
 			return 0.0;
 		}
 
+		// And the second half of the layer's shape: a column starts thinning as
+		// soon as it leaves the lava, rather than staying as thick as it is at
+		// the bottom until the roof fade above picks it up.
+		//
+		// ⚠️ On top of the roofFade rather than instead of it, and the two do
+		// different jobs: this one falls with the whole height of the column,
+		// from its base, while the roof fade is still what takes the top of the
+		// layer to nothing.
+		//
+		// ⚠️ At the base this is exactly 1.0 - the max() keeps it from climbing
+		// below the layer, the same guard VolumetricFogDensity's own height term
+		// has - so the floor is unchanged and what the columns lose is their top.
+		float riseFade = exp(-max(worldPosition.y - NETHER_PLUME_BASE, 0.0)
+			/ NETHER_PLUME_HEIGHT_SCALE);
+
 		vec3 squashed = vec3(
 			worldPosition.x, worldPosition.y / 48.0, worldPosition.z);
 
@@ -563,7 +587,7 @@ float VolumetricFogDensity(vec3 worldPosition) {
 		// the subtraction something to bite on.
 		float plume = max(columns * columns - (1.0 - erosion), 0.0);
 
-		return plume * layer;
+		return plume * layer * riseFade;
 	}
 
 	// The smoke that gathers under the ceiling.
