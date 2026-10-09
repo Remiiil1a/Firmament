@@ -259,7 +259,8 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 #define DEBUG_GODRAYS_UPSAMPLED 3
 #define DEBUG_SKYLIGHT 4
 #define DEBUG_DEPTH 5
-#define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_GODRAYS_UPSAMPLED DEBUG_SKYLIGHT DEBUG_DEPTH]
+#define DEBUG_PLUME_DENSITY 6
+#define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_GODRAYS_UPSAMPLED DEBUG_SKYLIGHT DEBUG_DEPTH DEBUG_PLUME_DENSITY]
 
 #if DEBUG == DEBUG_GODRAYS_UPSAMPLED
 	// The depth-weighted view below reads more than the buffer: it takes its own
@@ -288,6 +289,33 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 	// colortex1 needs no declaration here: it is declared above, unconditionally.
 #elif DEBUG == DEBUG_SKYLIGHT
 	uniform sampler2D colortex5;
+#elif DEBUG == DEBUG_PLUME_DENSITY
+	// The density view below asks the Nether's own field for itself, so it needs
+	// the file that owns that field - and nothing else. The world position it asks
+	// about is reconstructed from the depth texture and the projection inverse the
+	// own upsample above already declared, under its duplicate guards.
+	//
+	// ⚠️ Included here rather than at the top of the file because this view is the
+	// only thing in this pass that reads any of it, and DEBUG is a compile-time
+	// constant: on every other setting this program's source is exactly what it
+	// was before the view existed. What arrives with it is the whole of the
+	// medium's settings file, so this is the one debug view whose cost is a
+	// recompile of the option set rather than a few instructions.
+	#include "/environment/effects/volumetric_fog.glsl"
+
+	// ⚠️ cameraPosition and gbufferModelViewInverse are declared by motion_blur.glsl,
+	// which this pass includes below, but only under that file's own MOTION_BLUR
+	// option - and two declarations of one uniform in one program is an error on
+	// the driver, which is what the note in lib/taa.glsl and BATCH_LOG.md 176 are
+	// about. So they are declared here when the option is off and left to that file
+	// when it is on: the same shape as the duplicate guards on the scene texture
+	// and the depth texture above, with the option standing in for the guard macro.
+	#ifdef MOTION_BLUR
+		// Declared by motion_blur.glsl, below.
+	#else
+		uniform vec3 cameraPosition;
+		uniform mat4 gbufferModelViewInverse;
+	#endif
 #else
 	#define SCENE_TEXTURE_DECLARED
 	uniform sampler2D colortex0;
@@ -388,6 +416,57 @@ void main() {
 		#endif
 	#elif DEBUG == DEBUG_SKYLIGHT
 		finalColor = vec3(texture(colortex5, screenCoord).r);
+	#elif DEBUG == DEBUG_PLUME_DENSITY
+		// The Nether's plume density itself: the field the columns are made of,
+		// with no light on it and nothing else in the frame. It is the one question
+		// the picture cannot answer - whether the columns are not there at all, or
+		// are there and not visible - and it is what batch 527 was diagnosed with.
+		//
+		// ⚠️ Read at the world position this pixel shows, so the field is seen where
+		// the picture sees it and nowhere else, and through the same bubble around
+		// the eye that the march holds the smoke off with - which is why the first
+		// blocks in front of the camera come out black in the Nether. A pixel with
+		// nothing drawn in it (a depth of exactly 1.0) is left black as well, which
+		// reads the same as no smoke; in the Nether the roof is bedrock and there
+		// is no such pixel, but a camera looking into the void would have one.
+		//
+		// ⚠️ Black is no smoke and the plume's own colour is a density of one, the
+		// top of the range NetherPlumeDensity is held at - see
+		// NETHER_PLUME_CONTRAST for what holds it there. The ramp is linear, and it
+		// is written without the tonemap like every other view in this pass, so it
+		// is a measurement of the density rather than a picture of the plumes: a
+		// column that is visible here and not in the frame is a shading problem,
+		// and a column that is not here at all is a density problem.
+		//
+		// ⚠️ The whole of what this reads is conditional on the plumes being on, and
+		// the option that switches them off is the one that removes the function
+		// below from the same file this view includes - so the branch is not
+		// decoration. With the plumes off there is no field to look at, and black is
+		// the honest answer; a view that fails to compile because the effect it is
+		// there to diagnose has been switched off would be worse than useless, and
+		// it is the first thing a reader would try.
+		#ifdef NETHER_PLUMES
+			float plumeDepth = texelFetch(depthtex0, ivec2(gl_FragCoord.xy), 0).r;
+
+			vec4 plumeViewH = gbufferProjectionInverse
+				* vec4(screenCoord * 2.0 - 1.0, plumeDepth * 2.0 - 1.0, 1.0);
+			vec3 plumeViewPos = plumeViewH.xyz / plumeViewH.w;
+
+			// The bubble, worked out the way the march works it out: what this reads
+			// is then what the march reads at this surface rather than the raw field.
+			float plumeClear = clamp(
+				length(plumeViewPos) / NETHER_PLUME_CLEAR, 0.0, 1.0);
+
+			vec3 plumeWorldPos = cameraPosition
+				+ mat3(gbufferModelViewInverse) * plumeViewPos;
+
+			finalColor = plumeDepth >= 1.0
+				? vec3(0.0)
+				: NETHER_PLUME_COLOR * clamp(
+					NetherPlumeDensity(plumeWorldPos, plumeClear), 0.0, 1.0);
+		#else
+			finalColor = vec3(0.0);
+		#endif
 	#else
 		vec3 color = texture(colortex0, screenCoord).rgb;
 

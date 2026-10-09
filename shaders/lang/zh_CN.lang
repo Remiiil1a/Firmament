@@ -244,7 +244,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 526]
+option.PBR_DEBUG=材质调试视图 [build 527]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -522,6 +522,12 @@ option.NETHER_PLUMES.comment=让下界的空气里出现烟柱，以及压在天
 option.NETHER_PLUME_DENSITY=烟柱浓度
 option.NETHER_PLUME_DENSITY.comment=有多少烟柱。0.0 等于关掉烟柱；天花板那层烟另有开关。注意：调得太高，下界会从「一个地方」变成「一盏灯」。
 
+option.NETHER_PLUME_SCALE=烟柱宽度
+option.NETHER_PLUME_SCALE.comment=每根柱子有多宽，单位是方块：也就是柱子读的那格噪声有多大，别的选项都不用它。从这个版本起它是独立的数值，不再跟着主世界的「雾的团块大小」走。那个值是每格 90 格方块——那是雾团的尺度：200 格方块的视野只跨它两格，柱子所在的场在玩家站的距离上根本没有柱子。出厂值 26 让同样的视野跨大约八格噪声，柱心宽约 28 格。调小是更细碎、更稀疏的一层细烟；调大是更少、更粗的塔，到范围顶端会糊成一片。主世界自己的雾不读这一项。
+
+option.NETHER_PLUME_CONTRAST=烟柱对比度
+option.NETHER_PLUME_CONTRAST.comment=柱子用的噪声被抬高多少——抬完才平方、才从里面挖掉侵蚀。挖的方式是从平方后的噪声里减去侵蚀，而平方后的噪声整体比侵蚀低，于是大半个场都被减没了：1.0 是基准情形，也是这个选项出现之前的样子——那时只有四分之一的空气里还有烟，薄雾比立在里面的柱子亮好几倍。出厂值 1.4 让大约三分之二的空气带烟，柱心比原来亮六倍，柱子也从比雾暗变成比雾亮。1.2 更轻；2.0 往上就不是一排柱子，而是一堵烟墙。结果被压在 1.0 以内，所以这一项改的是柱子的形状，不是整体的烟量亮度——整体亮度是「烟柱亮度」。
+
 option.NETHER_CEILING_SMOKE=顶层烟
 option.NETHER_CEILING_SMOKE.comment=天花板下方聚起来的那层烟。它和烟柱不是一回事：一层平的、不含噪声的烟，浓度按 y=40 以上的高度的三次方增长。它让下界看起来像有顶。0.0 就是没有顶层烟。
 
@@ -540,7 +546,7 @@ option.NETHER_PLUME_HEIGHT_SCALE.comment=柱子往上走多远还保得住浓度
 option.NETHER_PLUME_FLOOR_SCALE=底层烟高度
 option.NETHER_PLUME_FLOOR_SCALE.comment=柱脚那层烟往上铺多高，单位是方块。这层烟是柱子从里面长出来的东西：没有它，柱子会从地面渐变的半山腰开始，看起来悬在半空。调小是岩浆上薄薄一层；调大能一直铺到柱子下半截。
 option.NETHER_PLUME_FLOOR_AMOUNT=底层烟浓度
-option.NETHER_PLUME_FLOOR_AMOUNT.comment=这层烟相对于立在里面的柱子有多浓。0.0 等于去掉它，柱子重新悬在半空，也就是这层烟出现之前的样子；0.55 是出厂值；1.0 时柱脚和柱子一样浓。
+option.NETHER_PLUME_FLOOR_AMOUNT.comment=这层烟相对于立在里面的柱子有多浓。0.0 等于去掉它，柱子重新悬在半空，也就是这层烟出现之前的样子；0.25 是出厂值，本版从 0.55 降下来：0.55 时有近九成的地方它比柱子还浓，柱子就是被它埋成一片雾的，于是下界看着只有雾、没有柱子；1.0 时柱脚和柱子一样浓。
 option.NETHER_PLUME_OPTICAL=烟柱亮度
 option.NETHER_PLUME_OPTICAL.comment=烟柱发的光有多亮，也就是发光项自己的总乘数，只此而已。它不是烟有多少（那是「烟柱浓度」），也不是挡住背后多少（那是「烟柱消光」）——它只缩放加进画面的光，形状和遮挡都不动。0.004 几乎不发光；0.016 是出厂值，从最初发布的 0.008 翻倍而来，因为在游戏里看着太淡；0.032 会让下界变成一盏灯，而不是一个地方。
 option.NETHER_CEILING_SMOKE_OPTICAL=顶层烟亮度
@@ -716,6 +722,7 @@ value.DEBUG.DEBUG_GODRAYS_NOISY= 噪点体积光调试
 value.DEBUG.DEBUG_GODRAYS_SMOOTH= 平滑体积光调试
 value.DEBUG.DEBUG_SKYLIGHT= 天光可视化调试
 value.DEBUG.DEBUG_DEPTH= 深度缓冲调试（远处有没有深度）
+value.DEBUG.DEBUG_PLUME_DENSITY= 烟柱密度（下界自己的场）
 
 option.SCREENSPACE_SHADOWS=屏幕空间阴影（远景）
 option.SCREENSPACE_SHADOWS.comment=给阴影贴图够不到的远景补阴影：沿太阳方向在深度缓冲里走射线，被挡住处判为阴影。它只用在那段距离之外并平滑淡入，同一处阴影不会被压暗两次。两条固有边界：射线只走到屏幕里已有的几何，草、栅栏这类薄物体容易漏。远处出现细密噪点就调高步数、缩短射线；整体发灰就调低强度。

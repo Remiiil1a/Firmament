@@ -353,11 +353,18 @@ void main() {
 				//
 				// ⚠️ NETHER_PLUME_EXTINCTION is the number to tune, and it has not
 				// been measured in game: at the shipped density a typical core
-				// leaves a third to a half of what is behind it over twenty blocks
-				// and a tenth over fifty, so the columns fade what is behind them
-				// without becoming black walls. Raise it for smoke you cannot see
-				// through, lower it for smoke that only veils, and set it to 0.0 to
-				// take the fading out altogether.
+				// leaves between a half and two fifths of what is behind it over
+				// twenty blocks and between a tenth and a quarter over fifty, so
+				// the columns fade what is behind them without becoming black
+				// walls. ⚠️ Those two ranges were rewritten in batch 527, when the
+				// columns were given their own scale and their contrast back: the
+				// cores are two to three times denser than they were, so the same
+				// optical depth per block now bites harder - the transmittance of
+				// a 96-block ray through the field falls from a mean of 0.40 to
+				// 0.23 over a vista. The formula is untouched, and this is the
+				// dial if the Nether reads as too closed in. Raise it for smoke
+				// you cannot see through, lower it for smoke that only veils, and
+				// set it to 0.0 to take the fading out altogether.
 				absorbance *= exp(-plume * NETHER_PLUME_ABSORPTION
 					* NETHER_PLUME_DENSITY * stepLength * NETHER_PLUME_EXTINCTION);
 

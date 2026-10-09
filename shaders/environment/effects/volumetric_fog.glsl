@@ -313,6 +313,64 @@ vec3 VolumetricFogTint() {
 #define NETHER_PLUME_BASE 32.0
 #define NETHER_PLUME_TOP 100.0
 
+// How wide a column is, in blocks: the cell size of the field the columns are
+// read from, and nothing else reads it.
+//
+// ⚠️ Its own number as of batch 527, and not the Overworld's VOLUMETRIC_FOG_SCALE
+// that it was read at until then. That option is a scale for a fog bank: at its
+// 90 blocks a cell, a 200-block vista of the Nether spans 2.2 cells, so the field
+// the columns are made of had nothing in it to see at any distance a player
+// stands at - one smooth gradient across the whole dimension, with the density
+// varying by 1.4 to 1 over that vista and the light by 1.8 to 1. A test of the
+// field that opened the batch came out at 0.00 to 0.02 of density along a
+// 96-block sight line. The reference pack's own column field is about two orders
+// of magnitude finer than 90, which is the other half of why this was never
+// going to stand in columns.
+//
+// ⚠️ 26 is the default, and it is the middle of the list on purpose. It puts 7.7
+// cells across a 200-block vista; with the contrast below, the pillar cores that
+// come out of it measure a median of 27.6 blocks across with 10 of them in that
+// vista and the widest at 49 - the 15-to-35-block columns this is for. Lower is a
+// finer, more broken field of thin plumes, 8 being the finest here; higher is
+// fewer and broader towers, and at the top of the list the cores merge into
+// masses tens of blocks across, which is the flat wash this batch exists to take
+// away. The Overworld's patches still move with VOLUMETRIC_FOG_SCALE and are not
+// affected by this one.
+#define NETHER_PLUME_SCALE 26.0 // [8.0 12.0 18.0 26.0 40.0 64.0]
+
+// How far the columns are lifted before they are squared and carved, as a
+// multiplier on the noise.
+//
+// ⚠️ The other half of batch 527, and the arithmetic is the argument. The plume
+// is max(columns * columns - (1.0 - erosion), 0.0), with columns a value noise
+// between zero and one whose square has a mean of about 0.27, while
+// (1.0 - erosion) has a mean of 0.35. Subtracting the larger from the smaller
+// takes most of the field below zero: 26.1% of the layer came out with any pillar
+// density at all, and the median of what survived was 0.095. Against the haze,
+// which is a flat 0.00025 of light per block, a median pillar's own light is
+// 0.00010 - so the thin haze was two and a half times the columns at their
+// median and nineteen times them averaged over the layer, which is exactly the
+// report this batch answers: fog visible, no pillars. Lifting the noise before
+// the square moves the subtraction's bite down the distribution, so the erosion
+// still carves and there is more field for it to carve: at the shipped 1.4,
+// 64.6% of the layer carries pillar density instead of 26.1%, the mean plume goes
+// from 0.034 to 0.168, the columns' own light comes out at 1.4 times the haze
+// instead of 0.35 times it, and the emission's 90th percentile goes up sixfold.
+//
+// ⚠️ Held at one after the lift, and that is what keeps this a shaping term
+// rather than a second brightness option. Both NETHER_PLUME_OPTICAL and
+// NETHER_PLUME_EXTINCTION are tuned against a density that tops out at 1.0 - the
+// emission curve and the optical depth per block both read that number directly
+// - and an unclamped lift puts the cores at 1.96 and drags both of them up with
+// it. It is also what the plateau on a column's core is: a dense column seen
+// from outside is a solid core with soft edges, not a spike.
+//
+// ⚠️ 1.0 is the null case, and it is the value to compare against when asking
+// what this term did: the field is then exactly what it was before the option
+// existed. 1.2 is a lighter touch - 4.6% of the layer in cores rather than 18.6%
+// - and 2.0 and up is a wall of smoke rather than a field of columns.
+#define NETHER_PLUME_CONTRAST 1.4 // [1.0 1.2 1.4 1.7 2.0 2.5]
+
 // How far a column thins out as it rises, in blocks: its density falls to about
 // a third of the base value over this height.
 //
@@ -349,8 +407,21 @@ vec3 VolumetricFogTint() {
 // against the columns: 0.0 takes the bed away and leaves the columns standing in
 // mid-air again, exactly as they did before batch 524, and 1.0 makes the foot of
 // the layer as thick as the columns standing in it.
+//
+// ⚠️ And the amount's default came down from 0.55 to 0.25 in batch 527, because
+// the masking it was doing was measured and it was the larger half of the
+// report. The bed is this amount times the erosion, which is value noise brought
+// into 0.3 to 1.0 - so at 0.55 it sits at a median of 0.36 before the height
+// falloff, against a median surviving pillar of 0.095 at the same point. The bed
+// was the thicker of the two over 88.9% of the layer, and what a player standing
+// on the lava sea saw was the bed's own smooth mottling with the columns buried
+// inside it: fog, and no pillars, which is exactly what was reported. At 0.25 the
+// bed is 0.16 at its median against a median surviving pillar of 0.43, and it is
+// the thicker of the two over 43% of the layer - the gaps low down, which is the
+// job it was added for and the only place it should win. It keeps the columns
+// something to rise out of without being what the layer is made of.
 #define NETHER_PLUME_FLOOR_SCALE 8.0 // [4.0 6.0 8.0 12.0 16.0]
-#define NETHER_PLUME_FLOOR_AMOUNT 0.55 // [0.0 0.25 0.4 0.55 0.75 1.0]
+#define NETHER_PLUME_FLOOR_AMOUNT 0.25 // [0.0 0.25 0.4 0.55 0.75 1.0]
 
 // How fast the plumes churn, and how much a column's own density offsets its churn.
 //
@@ -386,12 +457,27 @@ vec3 VolumetricFogTint() {
 // Nether has no sun, so the shadow-map march below has no light to trace and the
 // glow is the smoke's own.
 //
-// ⚠️ The brightness is the density times an exp() of the density, and that is
-// the shape of the effect rather than a detail of it: it makes the smoke
-// brightest where it is THINNEST, so that a column reads as something with light
-// behind it rather than as a solid bar of light. Bliss darkens its emission the
-// same way. Its 15.0 is this same curve over a much smaller range, because its
-// density is not normalised to one and this one is.
+// ⚠️ The brightness is the density times an exp() of the density - the
+// (1.0 - exp(-NETHER_PLUME_ABSORPTION * density)) * 0.25 * density that
+// program/post/volumetric_fog.fsh writes - and that is the shape of the effect
+// rather than a detail of it: the curve climbs with the density, so the core of
+// a column is the brightest part of it and its edges fall away. What that buys
+// is legibility of the churn: what rolls past is a lit mass rather than a moving
+// outline.
+//
+// ⚠️ It said the opposite until batch 527, and the code it described had already
+// changed: the comment still claimed the curve "makes the smoke brightest where
+// it is THINNEST", which is what exp(-density) did before batch 520 inverted it
+// to exp() of the negative density inside the same expression. The inversion is
+// written down where the curve is, in program/post/volumetric_fog.fsh, under
+// "Inverted in batch 520" - which is the file to read beside this one, since
+// that is where the emission is actually built.
+//
+// ⚠️ Bliss darkens its emission the other way, so that its plumes read as ropes
+// with light behind them, and that is what this pack drew until batch 520. Its
+// 15.0 is this same curve over a much smaller range, because its density is not
+// normalised to one and this one is - which is the invariant the clamp in
+// NETHER_PLUME_CONTRAST keeps.
 //
 // ⚠️ Recoloured in batch 525, from vec3(1.00, 0.40, 0.16) to something nearer the
 // lava's own orange. The author's report was that the plumes read as "not very
@@ -602,8 +688,13 @@ float VolumetricFogDensity(vec3 worldPosition) {
 		// and steps through its slices in z - and the two horizontal axes happen to
 		// be the ones it wants in xy, so this one needs no reordering. The next one
 		// does.
+		//
+		// ⚠️ At NETHER_PLUME_SCALE and no longer at VOLUMETRIC_FOG_SCALE, which is
+		// the fix batch 527 is named for: see that option for what 90 blocks a cell
+		// did to this field, which was to leave it with nothing in it at the
+		// distance a player sees it from.
 		float columns = VolumetricFogNoise(vec3(
-			(worldPosition.xz + lean) / VOLUMETRIC_FOG_SCALE, 0.0));
+			(worldPosition.xz + lean) / NETHER_PLUME_SCALE, 0.0));
 
 		// The erosion: a second field eating into them, drifting on the pack's own
 		// wind clock so that they churn rather than standing still. The wind is the
@@ -673,11 +764,21 @@ float VolumetricFogDensity(vec3 worldPosition) {
 		// that the gaps between columns are gaps and the light comes through them.
 		//
 		// ⚠️ And the square on the columns before that subtraction is what keeps
-		// the field mostly empty. Unity noise is mid-range almost everywhere, so
+		// the field mostly empty. Value noise is mid-range almost everywhere, so
 		// subtracting a constant from it would leave a sheet of thin smoke and a
 		// few holes; squaring first pushes the low half towards zero and leaves
 		// the subtraction something to bite on.
-		float plume = max(columns * columns - (1.0 - erosion), 0.0);
+		//
+		// ⚠️ What the square has in front of it as of batch 527 is
+		// NETHER_PLUME_CONTRAST, and it is on the columns rather than on the
+		// squared field because it is the shape of the noise that is wrong and not
+		// the amount of smoke: without it the square's mean of 0.27 sits under the
+		// erosion's mean of 0.35 and the subtraction takes three quarters of the
+		// layer to nothing. The clamp is on the lift and not on the result, so a
+		// column's core is a plateau at one and the erosion still carves it.
+		float bodied = clamp(columns * NETHER_PLUME_CONTRAST, 0.0, 1.0);
+
+		float plume = max(bodied * bodied - (1.0 - erosion), 0.0);
 
 		// ⚠️ max() rather than a sum, and that is what makes this a bed rather
 		// than brighter feet. Added, it would raise the columns' own bases -

@@ -501,7 +501,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 526]
+option.PBR_DEBUG=Material debug view [build 527]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1247,6 +1247,32 @@ option.NETHER_PLUME_DENSITY.comment=How much smoke there is. 0.0 is no plumes \
 	at all; the layer under the ceiling has a switch of its own. Warning: too \
 	high and the Nether becomes a lamp rather than a place.
 
+option.NETHER_PLUME_SCALE=Plume width
+option.NETHER_PLUME_SCALE.comment=How wide a column is, in blocks: the size of \
+	one cell of the noise the columns are read from, and nothing else uses it. It \
+	is a number of its own as of this build, and no longer the Overworld's fine \
+	fog scale - that one is 90 blocks a cell, which is a scale for a fog bank: a \
+	200-block vista holds two of its cells, so the field the columns are made of \
+	had no columns in it at the distance a player stands at. 26 is the shipped \
+	value and puts about eight cells across that vista, with cores around 28 \
+	blocks wide. Low is a finer, more broken field of thin plumes; high is fewer \
+	and broader towers, and at the top of the range they merge into masses. The \
+	Overworld's own fog does not read this option.
+
+option.NETHER_PLUME_CONTRAST=Plume contrast
+option.NETHER_PLUME_CONTRAST.comment=How far the noise the columns are made of \
+	is lifted, before it is squared and the erosion is carved out of it. The carve \
+	subtracts the erosion from the squared noise, and the squared noise sits lower \
+	than the erosion does, so most of the field was being taken to nothing: at 1.0 \
+	- the null case, and what the plumes looked like before this option - only a \
+	quarter of the layer carried any smoke at all, and the thin haze was several \
+	times brighter than the columns standing in it. 1.4 is the shipped value: \
+	about two thirds of the layer carries smoke, the cores are six times brighter \
+	than they were, and the columns come out brighter than the haze instead of \
+	dimmer. 1.2 is a lighter touch, and 2.0 and up is a wall of smoke rather than \
+	a field of columns. The result is held at one, so this changes the shape of \
+	the field and not how bright the smoke is overall - that is plume brightness.
+
 option.NETHER_CEILING_SMOKE=Ceiling smoke
 option.NETHER_CEILING_SMOKE.comment=The smoke that gathers under the ceiling. \
 	Not the same thing as the plumes: a flat layer with no noise in it, \
@@ -1302,8 +1328,12 @@ option.NETHER_PLUME_FLOOR_SCALE.comment=How far up the bed at the foot of the \
 option.NETHER_PLUME_FLOOR_AMOUNT=Plume bed density
 option.NETHER_PLUME_FLOOR_AMOUNT.comment=How dense the bed is against the \
 	columns standing in it. 0.0 removes it and leaves the columns in mid-air, \
-	which is how they looked before the bed was added; 0.55 is the shipped \
-	value; 1.0 makes the foot of the layer as thick as the columns themselves.
+	which is how they looked before the bed was added; 0.25 is the shipped value \
+	as of this build, and was 0.55 until the masking it was doing was measured: \
+	at 0.55 the bed was the thicker of the two over nearly nine tenths of the \
+	layer, which is what buried the columns in a wash of fog and left the Nether \
+	looking like haze with no pillars in it; 1.0 makes the foot of the layer as \
+	thick as the columns themselves.
 
 option.NETHER_PLUME_OPTICAL=Plume brightness
 option.NETHER_PLUME_OPTICAL.comment=How bright the plumes glow: the emission's \
@@ -1486,6 +1516,7 @@ value.DEBUG.DEBUG_GODRAYS_NOISY=Noisy godrays
 value.DEBUG.DEBUG_GODRAYS_SMOOTH=Smooth godrays
 value.DEBUG.DEBUG_SKYLIGHT=Sky light
 value.DEBUG.DEBUG_DEPTH=Depth buffer (is distant terrain in it)
+value.DEBUG.DEBUG_PLUME_DENSITY=Plume density (the Nether's own field)
 
 option.SCREENSPACE_SHADOWS=Screen-space shadows (distance)
 option.SCREENSPACE_SHADOWS.comment=Shadows for terrain the shadow map does not \
