@@ -294,14 +294,15 @@ void main() {
 				// that turning the smoke up thickens it rather than only
 				// brightening it.
 				//
-				// ⚠️ The 0.03 is the number to tune, and it has not been measured
-				// in game: at the shipped density a typical core leaves a third to a
-				// half of what is behind it over twenty blocks and a tenth over
-				// fifty, so the columns fade what is behind them without becoming
-				// black walls. Raise it for smoke you cannot see through, lower it
-				// for smoke that only veils.
+				// ⚠️ NETHER_PLUME_EXTINCTION is the number to tune, and it has not
+				// been measured in game: at the shipped density a typical core
+				// leaves a third to a half of what is behind it over twenty blocks
+				// and a tenth over fifty, so the columns fade what is behind them
+				// without becoming black walls. Raise it for smoke you cannot see
+				// through, lower it for smoke that only veils, and set it to 0.0 to
+				// take the fading out altogether.
 				absorbance *= exp(-plume * NETHER_PLUME_ABSORPTION
-					* NETHER_PLUME_DENSITY * stepLength * 0.03);
+					* NETHER_PLUME_DENSITY * stepLength * NETHER_PLUME_EXTINCTION);
 
 				// The ceiling smoke goes in plainly instead. It has no inside and
 				// outside to be brighter than - it is a flat layer under a roof.
@@ -314,6 +315,37 @@ void main() {
 					* (NetherCeilingSmokeDensity(worldPos)
 						* NETHER_CEILING_SMOKE_OPTICAL)
 					* (absorbance * 0.5 + 0.5);
+
+				// And the third of the Nether's three: the thin haze that is
+				// simply in the air rather than gathered into anything.
+				//
+				// ⚠️ Emission only. It adds nothing to absorbance, and that is
+				// not an oversight: this haze is far too thin to take anything
+				// out of what is behind it, and the reference pack says the same
+				// of its own.
+				//
+				// ⚠️ Its colour is gl_Fog.color, the fixed-function built-in,
+				// because the game fills that in per biome in the Nether - so the
+				// crimson forest, the warped forest, the soul sand valley and the
+				// basalt deltas each tint it themselves, and it costs no uniform
+				// of this pack's. That is the whole reason it is read here.
+				//
+				// ⚠️ But this pack has never read gl_Fog anywhere before, and the
+				// composite stage is not where that built-in is normally
+				// populated: a black one would come out of the normalize below as
+				// a flat grey haze, which is not what this dimension looks like.
+				// So it is guarded, and below a small length the colour is
+				// replaced by a plain constant instead.
+				vec3 hazeColor = gl_Fog.color.rgb;
+
+				if (length(hazeColor) < 1e-4) {
+					hazeColor = vec3(0.35, 0.12, 0.10);
+				}
+
+				// The 0.25 scales the colour down: this is a tint over the air
+				// rather than a light of its own.
+				emission += normalize(hazeColor + 1e-6) * 0.25
+					* (NetherHazeDensity(worldPos) * NETHER_HAZE_OPTICAL);
 
 				scatter += emission * stepLength;
 

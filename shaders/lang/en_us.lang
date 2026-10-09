@@ -501,7 +501,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 521]
+option.PBR_DEBUG=Material debug view [build 522]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1252,6 +1252,22 @@ option.NETHER_CEILING_SMOKE.comment=The smoke that gathers under the ceiling. \
 	Not the same thing as the plumes: a flat layer with no noise in it, \
 	thickening as the third power of the height above y=40. It is what gives the \
 	Nether a roof. 0.0 is no ceiling smoke.
+
+option.NETHER_PLUME_EXTINCTION=Plume extinction
+option.NETHER_PLUME_EXTINCTION.comment=How much the plumes fade what is behind \
+	them. The columns glow either way; this is the other half of what smoke \
+	does, the part that dims what is seen through it. 0.0 is the null case: \
+	nothing behind the plumes is faded at all, which is how they behaved before \
+	this option existed. Warning: too high and the columns become walls you \
+	cannot see through.
+
+option.NETHER_HAZE_DENSITY=Haze density
+option.NETHER_HAZE_DENSITY.comment=How thick the thin haze that fills the \
+	Nether's air is, as against the plumes that gather into columns. It is the \
+	same everywhere in the dimension, and its colour is the game's own fog \
+	colour, so the crimson forest, the warped forest, the soul sand valley and \
+	the basalt deltas each tint it differently. It only ever adds light - it is \
+	far too thin to hide anything behind it. 0.0 is no haze.
 
 option.UNDERWATER_GODRAYS=Underwater light shafts
 option.UNDERWATER_GODRAYS.comment=Whether the light shafts are drawn when the \

@@ -284,8 +284,22 @@ vec3 VolumetricFogTint() {
 // defaults are listed in CHANGELOG.md under v0.7.
 #define NETHER_PLUME_DENSITY 1.5 // [0.0 0.5 1.0 1.5 2.0 3.0]
 
+// How much the plumes fade what is behind them, per block of column that the
+// ray crosses.
+//
+// ⚠️ 0.0 is the null case: the columns still glow, and they take nothing out of
+// what is behind them at all, which is exactly how this pass behaved before
+// batch 521.
+#define NETHER_PLUME_EXTINCTION 0.03 // [0.0 0.01 0.02 0.03 0.05 0.08 0.12]
+
 // How much smoke gathers under the ceiling.
 #define NETHER_CEILING_SMOKE 1.0 // [0.0 0.5 1.0 1.5 2.0 3.0]
+
+// How thick the thin haze that fills the Nether's air is, as against the
+// columns above it. It is the same everywhere in the dimension - no noise and
+// no clock - and its colour is the game's own per-biome fog colour rather than
+// anything of this pack's. See NetherHazeDensity below for both.
+#define NETHER_HAZE_DENSITY 1.0 // [0.0 0.5 1.0 1.5 2.0 3.0]
 
 // The height the columns stand on, and the height they thin out below, in world
 // blocks.
@@ -347,6 +361,13 @@ const float NETHER_PLUME_OPTICAL = 0.008;
 // neutral, which is what Bliss gives it and what smoke under a roof looks like.
 const vec3 NETHER_CEILING_SMOKE_COLOR = vec3(0.10, 0.075, 0.070);
 const float NETHER_CEILING_SMOKE_OPTICAL = 0.004;
+
+// And the haze's own, the smallest of the three because the haze is the
+// thinnest thing here. ⚠️ 0.001 is the reference pack's own number for this
+// medium, taken as it stands rather than measured: at the shipped haze density
+// it is an optical depth of one over a thousand blocks, which is a tint rather
+// than a veil.
+const float NETHER_HAZE_OPTICAL = 0.001;
 
 // The noise the patches are made of, in three dimensions.
 //
@@ -555,5 +576,19 @@ float VolumetricFogDensity(vec3 worldPosition) {
 			clamp((worldPosition.y - 40.0) / 50.0, 0.0, 1.0), 3.0);
 
 		return layer * NETHER_CEILING_SMOKE;
+	}
+
+	// A very thin haze that fills the Nether's air rather than gathering into columns.
+	//
+	// ⚠️ Its colour is the game's own fog colour, which is a per-biome value, so the
+	// crimson forest, the warped forest, the soul sand valley and the basalt deltas each
+	// get their own tint without this pack declaring a single new uniform. That is the
+	// whole reason it is written this way rather than with a colour of our own.
+	//
+	// ⚠️ worldPosition is not read, and that is the rest of the same decision: the
+	// density is a constant, so there is nothing about the point to ask. It is a
+	// parameter so that this is called like the two functions above it.
+	float NetherHazeDensity(vec3 worldPosition) {
+		return NETHER_HAZE_DENSITY;
 	}
 #endif // NETHER_PLUMES
