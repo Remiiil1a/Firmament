@@ -89,6 +89,24 @@ uniform int frameCounter;
 uniform float viewWidth;
 uniform float viewHeight;
 
+// ⚠️ colortex1, which is the buffer this pass WRITES - declared here only to ask
+// its SIZE (batch 533), which is what the screen coordinate below is built from.
+//
+// It used to be built from viewWidth and the scale written in
+// shaders.properties, and that is one fact written down in two places: the
+// properties side turned the buffer into the frame's own size and this pass kept
+// the quarter, so the fog landed shrunken into a corner of the screen. Asking
+// the target removes the second copy, and the reader asks the same question of
+// the same buffer before it decides how to read it - see
+// /program/post/postprocessing.fsh - so no macro can leave the two apart.
+//
+// ⚠️ textureSize is a query and not a sample: it returns the texture's own
+// dimensions and reads no texel, which is what makes it legal in the pass that
+// renders into this buffer. Nothing else here samples it, and nothing should:
+// reading a buffer while writing it is the undefined case this pack keeps its
+// bloom buffers apart for.
+uniform sampler2D colortex1;
+
 // The dither that breaks up the banding between steps. The same 8 by 8 pattern
 // the screen-space shafts used, and the same one the sky's dithering uses.
 #include "/lib/bayer8.glsl"
@@ -136,21 +154,24 @@ const int colortex1Format = RGBA16F;
 layout(location = 0) out vec4 fogScatter;
 
 void main() {
-	// Where this fragment is on the screen. viewWidth is the size of the frame
-	// and not of this target, so the target's own scale has to be written in
-	// here by hand; getting it wrong offsets the whole effect by part of a
-	// screen.
+	// Where this fragment is on the screen. ⚠️ Asked of the target this pass is
+	// rendering into, and not worked out from viewWidth and the scale in
+	// shaders.properties: those are one fact written down twice, and the defect
+	// batch 533 is named for is the two disagreeing - the properties side put
+	// this buffer at the frame's own size and this pass kept the quarter, so the
+	// fog landed shrunken into a corner of the screen. The reader asks the same
+	// question of the same buffer before it reads it, so the two cannot be left
+	// apart by a compile-time option whatever the loader does with the macro.
 	//
-	// A quarter of the frame rather than a half. The result is a wide smooth
-	// glow with no edges of its own, which is the case upscaling handles best -
-	// and the four times smaller target both pays for the higher step count
-	// below and smooths what the dither leaves behind, which matters here
+	// ⚠️ textureSize reads no texel, which is what makes it legal here - see the
+	// note on the declaration above.
+	//
+	// A quarter of the frame rather than a half by default. The result is a wide
+	// smooth glow with no edges of its own, which is the case upscaling handles
+	// best - and the four times smaller target both pays for the higher step
+	// count below and smooths what the dither leaves behind, which matters here
 	// because this pack has no temporal filter left to do it.
-	#ifdef VOLUMETRIC_FOG_FULL_RES
-		vec2 screenCoord = gl_FragCoord.xy / vec2(viewWidth, viewHeight);
-	#else
-		vec2 screenCoord = gl_FragCoord.xy / (vec2(viewWidth, viewHeight) * 0.25);
-	#endif
+	vec2 screenCoord = gl_FragCoord.xy / vec2(textureSize(colortex1, 0));
 
 	float depth = texture(depthtex0, screenCoord).r;
 
