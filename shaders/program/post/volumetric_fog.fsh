@@ -266,6 +266,16 @@ void main() {
 				// The bubble around the eye. samplePos is camera-relative, so its
 				// length is the distance along the ray - this needs the camera's
 				// own position for nothing.
+				//
+				// ⚠️ And this is the one suspect batch 527 left: it is not a fading
+				// of something at the screen's edge, it multiplies the WHOLE plume
+				// term - the emission along with the extinction - by the distance
+				// out to NETHER_PLUME_CLEAR, so at the 24 that shipped, a player
+				// standing on the lava sea had every column within 24 blocks scaled
+				// down and the ones they were standing next to taken out entirely.
+				// The report that opened batch 529 - one thin stripe against the
+				// horizon - is that bubble seen from inside. The option's own note
+				// has the numbers; the default is 8 now.
 				float clearArea = clamp(
 					length(samplePos) / NETHER_PLUME_CLEAR, 0.0, 1.0);
 
@@ -281,6 +291,18 @@ void main() {
 				// a lit mass rather than a moving outline. The 0.25 keeps the brightest a
 				// column can get at about what that curve gave it, so the change is about
 				// where the light sits and not about how much of it there is.
+				//
+				// ⚠️ And batch 529 measured what "what that curve gave it" actually was,
+				// which is where this batch's report came from. At a column's own half
+				// density of 0.5 the whole expression below multiplies out to 0.00047 of a
+				// white frame per block of plume crossed at the pair that shipped - a
+				// 13-block crossing of a column is 0.6% of the frame, and a saturated core
+				// at the top of the march was 1.7%. A column that is half a percent of the
+				// frame is a column nobody can see, which is the near-black picture that
+				// opened the batch. The 0.25 is left alone anyway: it is the null case for
+				// the sliders that were tuned around it, and the gain belongs on
+				// NETHER_PLUME_OPTICAL, where it can be seen and undone. See that option
+				// for the arithmetic on both sides of it.
 				//
 				// ⚠️ Batch 528: and the glow is weighted by what is already between it
 				// and the eye. Every term above is a function of the local density and of
@@ -392,6 +414,15 @@ void main() {
 				// is untouched, and this is the dial if the Nether reads as too closed
 				// in. Raise it for smoke you cannot see through, lower it for smoke that
 				// only veils, and set it to 0.0 to take the fading out altogether.
+				//
+				// ⚠️ Every figure above is divided by two in practice as of batch 529,
+				// which doubled NETHER_PLUME_DENSITY: those transmittances are what a
+				// plume of 0.5 keeps per twenty blocks, and that plume is now carried at
+				// twice the density. The pair the batch ships is 54% through twenty
+				// blocks of the field's own mean plume and 1.3% through a whole
+				// 96-block march of it; 0.03 on this dial is what returns the layer to
+				// what the paragraph above describes, and it costs the emission
+				// nothing.
 				absorbance *= exp(-plume * NETHER_PLUME_ABSORPTION
 					* NETHER_PLUME_DENSITY * stepLength * NETHER_PLUME_EXTINCTION);
 

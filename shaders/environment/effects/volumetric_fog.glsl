@@ -282,7 +282,27 @@ vec3 VolumetricFogTint() {
 // ⚠️ The shipped default is 1.5 as of v0.7: the user raised it from the 1.0 this
 // first shipped at, and that is the setting the release uses. The retuned
 // defaults are listed in CHANGELOG.md under v0.7.
-#define NETHER_PLUME_DENSITY 1.5 // [0.0 0.5 1.0 1.5 2.0 3.0]
+//
+// ⚠️ Raised to 3.0 in batch 529. What that batch answered was not a shortage of
+// smoke - it was the opposite of what the sliders suggested had been tried. The
+// emission's own scale was the fault (see NETHER_PLUME_OPTICAL), but this dial
+// was being asked for and the arithmetic now backs it: at 3.0 the field's mean
+// density is three times what it reads at 1.5 on the debug view, which is what
+// makes the carving visible there, and a typical column's radiance doubles
+// along with it.
+//
+// ⚠️ It doubles the extinction with it and that is a real trade, priced here so
+// it is not discovered in game. The optical depth of a sight line is this
+// times the plume it crosses, so at the column core of 0.5 the twenty-block
+// transmittance goes from 16.5% to 2.7% and the whole 96-block march from 1.9%
+// to nothing measurable; at the field's own mean plume of 0.353 the same pair
+// is 88% to 54% and 54% to 1.3%, and a sight line that holds a core's density
+// over its length lands between the two. The worst of those is a wall a player
+// sees at distance rather than the veil the layer is meant to be, and the
+// recovery is NETHER_PLUME_EXTINCTION at 0.03, which is half of the number
+// this is paired with and restores every one of those percentages exactly -
+// the emission NETHER_PLUME_OPTICAL was raised for is untouched by it.
+#define NETHER_PLUME_DENSITY 3.0 // [0.0 0.5 1.0 1.5 2.0 3.0 4.0 6.0]
 
 // How much the plumes fade what is behind them, per block of column that the
 // ray crosses.
@@ -311,6 +331,15 @@ vec3 VolumetricFogTint() {
 // to watch in game, and this is the dial for it - the step below is 0.03, which
 // is what this shipped at. NETHER_PLUME_SHADING below is the other dial, since
 // it is the other thing that thins the glow at distance.
+// ⚠️ Neither of the two paragraphs above is the shipped arithmetic any more,
+// because batch 529 doubled NETHER_PLUME_DENSITY and every figure in them is a
+// product of that. What the pair actually stands at now: a sight line that
+// carries the field's own mean plume of 0.353 keeps 54% of what is behind it
+// over twenty blocks and 1.3% over the whole 96-block march, and one that
+// carries a column's core of 0.5 keeps 2.7% and 0.2%. The twenty-block figure
+// is recoverable without touching the light: at 0.03 - the step below - every
+// one of them returns to what it was at the shipped 1.5, because a density
+// doubled and an extinction halved are the same optical depth.
 #define NETHER_PLUME_EXTINCTION 0.06 // [0.0 0.01 0.02 0.03 0.06 0.08 0.12]
 
 // How much of a column's own glow survives the smoke in front of it, as a power
@@ -416,6 +445,12 @@ vec3 VolumetricFogTint() {
 // - and an unclamped lift puts the cores at 1.96 and drags both of them up with
 // it. It is also what the plateau on a column's core is: a dense column seen
 // from outside is a solid core with soft edges, not a spike.
+//
+// ⚠️ Batch 529 doubled NETHER_PLUME_DENSITY and did not touch this, so the
+// measured figures above are still the shape's own and the densities they name
+// now enter the frame twice as thick - a mean plume of 0.353 rather than the
+// 0.260 recorded here. What the clamp guarantees is unchanged, which is the
+// reason the density could be raised without the contrast having to follow it.
 //
 // ⚠️ 1.0 is the null case, and it is the value to compare against when asking
 // what this term did: the field is then exactly what it was before the option
@@ -532,7 +567,32 @@ vec3 VolumetricFogTint() {
 // ⚠️ Not a detail. Without it the player stands inside a column and the screen
 // is a wall of orange; the effect has to be something seen from outside. Bliss
 // clears a bubble for exactly this reason.
-#define NETHER_PLUME_CLEAR 24.0
+//
+// ⚠️ And 24 was twice what this needs, which is what batch 529 found. The
+// bubble is a linear ramp with two ends and they cost different things: what it
+// guarantees at 24 is that nothing is drawn within 24 blocks of the eye, but
+// what it also does is scale the whole term - emission and extinction alike -
+// by the distance out to 24, and the distance a player actually stands from the
+// lava sea is inside that. It was the one suspect batch 527 did not touch, and
+// the report it left standing is the report this batch opened with: one thin
+// stripe on the horizon and nothing around the player.
+//
+// ⚠️ 8 is the default because it is the range at which that guarantee is still
+// kept and its cost is not. It does not put the eye outside a column - a core
+// at the shipped twenty-six-block cell measures about twenty-eight blocks
+// across, so the eye can be well inside one - but it does mean the smoke within
+// eight blocks is faded rather than removed, and the surface of a core is then
+// fifteen blocks away through air that is at three quarters of full strength.
+// The arithmetic at the core: 8 leaves 89% of the term at 24 blocks and 62% at
+// 8, where 24 left 33% and 8%.
+//
+// ⚠️ The cost it does not keep is the one the reference pack's own bubble is
+// for, and it is why this is a slider rather than a new constant: a player who
+// walks into a column now has three blocks of it between the eye and the near
+// face, and at the shipped pair that is a screen turning orange. The range is
+// wide on purpose - 16 and 24 are the old behaviour, and 4 is close to no
+// bubble at all.
+#define NETHER_PLUME_CLEAR 8.0 // [4.0 6.0 8.0 12.0 16.0 24.0]
 
 // What the smoke glows with, and how its brightness falls off.
 //
@@ -603,9 +663,54 @@ const float NETHER_PLUME_ABSORPTION = 2.0;
 // the half of that which is about amount.
 //
 // ⚠️ A slider as of the same batch. 0.004 is smoke that barely lights anything,
-// 0.016 is the shipped value, and 0.032 is past the point where the Nether stops
-// being a place and becomes a lamp.
-#define NETHER_PLUME_OPTICAL 0.016 // [0.004 0.008 0.012 0.016 0.024 0.032]
+// 0.016 is the value that shipped from batch 525 to batch 528, and 0.032 was
+// recorded here as the point past which the Nether stops being a place and
+// becomes a lamp.
+//
+// ⚠️ Batch 529 doubled it to 0.032, and the reason is that 0.032 was never the
+// lamp that note claims: it was about a seventh of one, and the note was written
+// against a curve nobody had put numbers on. The numbers, at the shipped march
+// of 24 quadratic steps over VOLUMETRIC_FOG_DISTANCE's 96 blocks, against a
+// reference frame brightness of 1.0 - white as the tonemap sees it. The
+// emission is `(1.0 - exp(-2.0 * p)) * 0.25 * p * OPTICAL * DENSITY` per block
+// of plume crossed, so at a column's own half density of p = 0.5 and the pair
+// that shipped - OPTICAL 0.016, DENSITY 1.5 - one block inside a column is
+// 0.00047 of that reference, and the 13 blocks a sight line crosses it through
+// (five of the 24 steps, in the quadratic ladder's middle) carry 0.0061,
+// 0.6% of the frame. A column that is half a percent of the frame is a
+// column nobody can see, which is the report this batch opened with.
+//
+// ⚠️ The 0.25 inside that expression is where the fault was, and it is left
+// exactly where it is. It came from batch 520, where it was the constant that
+// kept the inverted curve's brightest point at what exp(-density) had given it
+// - see the note in the pass - and it has been carried ever since as a
+// normalisation rather than as a brightness. What it normalises is a quantity
+// nothing here reads. It is kept because it is the null case for the sliders
+// that were tuned around it: a reader moving this option is moving the same
+// thing at 0.032 as they were at 0.016, and the value below is the whole of
+// what changed.
+//
+// ⚠️ What the new pair buys, on the same arithmetic: 0.00095 per block against
+// 0.00047, and the same 13-block crossing at 0.0123 of the reference against
+// 0.0061 - 1.2% of the frame at a column's half density, 2.8% at the field's
+// own mean of 0.353, and 6.7% through a saturated core where the old pair gave
+// 0.3%, 0.7% and 1.7%.
+//
+// ⚠️ And the comparison that decides whether any of that is seen is not against
+// white but against the haze the columns stand in, because the haze fills the
+// whole sight line while a column crosses it in thirteen blocks. The haze emits
+// 0.00025 per block at its own density - it has no density multiplier of its
+// own, so its light per block is flat - and a column at its half density goes
+// from 0.00047 to 0.00095 per block of plume crossed: from about twice the
+// haze's own radiance to about four times it, with 7.6 times at a core. Over a
+// whole crossing against the whole haze the light is what the report is about,
+// and it is the columns that now have the larger share of it.
+//
+// ⚠️ And the same crossing at the top of the list, 0.32, is 0.123 of the
+// reference - ten times this default, and a tenth of a white frame for one
+// crossing of one column, which is loud without being the lamp the old note
+// feared.
+#define NETHER_PLUME_OPTICAL 0.032 // [0.004 0.008 0.016 0.032 0.064 0.128 0.32]
 
 // And the same for the smoke under the ceiling. It is a flat layer rather than
 // columns, so it is charged separately and has a colour of its own - a dark
