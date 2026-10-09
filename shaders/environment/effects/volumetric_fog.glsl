@@ -286,22 +286,38 @@ vec3 VolumetricFogTint() {
 // ⚠️ Raised to 3.0 in batch 529. What that batch answered was not a shortage of
 // smoke - it was the opposite of what the sliders suggested had been tried. The
 // emission's own scale was the fault (see NETHER_PLUME_OPTICAL), but this dial
-// was being asked for and the arithmetic now backs it: at 3.0 the field's mean
-// density is three times what it reads at 1.5 on the debug view, which is what
-// makes the carving visible there, and a typical column's radiance doubles
-// along with it.
+// was being asked for and the arithmetic now backs it: a typical column's
+// radiance doubles along with it, and so does every optical depth below.
+//
+// ⚠️ What it does NOT change is the debug view that batch was diagnosed with,
+// and that is worth saying plainly: DEBUG_PLUME_DENSITY calls NetherPlumeDensity
+// and nothing else, and that function never reads this option at all. The two
+// places that do are the emission and the absorbance in the pass
+// (program/post/volumetric_fog.fsh:337 and :435), so 3.0 brightens and thickens
+// every column without putting one more pixel of density on that view. The dial
+// that does move it is NETHER_PLUME_CLEAR, which multiplies the whole field at
+// its source and is drawn into the view along with it.
 //
 // ⚠️ It doubles the extinction with it and that is a real trade, priced here so
 // it is not discovered in game. The optical depth of a sight line is this
-// times the plume it crosses, so at the column core of 0.5 the twenty-block
-// transmittance goes from 16.5% to 2.7% and the whole 96-block march from 1.9%
-// to nothing measurable; at the field's own mean plume of 0.353 the same pair
-// is 88% to 54% and 54% to 1.3%, and a sight line that holds a core's density
-// over its length lands between the two. The worst of those is a wall a player
-// sees at distance rather than the veil the layer is meant to be, and the
-// recovery is NETHER_PLUME_EXTINCTION at 0.03, which is half of the number
-// this is paired with and restores every one of those percentages exactly -
-// the emission NETHER_PLUME_OPTICAL was raised for is untouched by it.
+// times the plume it crosses - plume * NETHER_PLUME_ABSORPTION * this *
+// blocks * NETHER_PLUME_EXTINCTION - so at the column core of 0.5 the
+// twenty-block transmittance goes from 16.5% to 2.7% and the whole 96-block
+// march from 0.018% to nothing measurable; at the field's own mean plume of
+// 0.353 the same twenty blocks go from 28% to 7.9% and the same march from 0.2%
+// to nothing measurable either. ⚠️ The four figures this sentence used to carry
+// beside those were four different pairs read as one: the 1.9% was the whole
+// march at the mean the contrast raise had just taken the field to - about
+// 0.22 - so it is a figure of the density before this one; the 54% was the
+// twenty-block row at 0.353 with the extinction still at 0.03, which is the
+// pair before batch 528; the 1.3% was the core's own 96-block row with the
+// extinction still at 0.03; and the 88% paired with the 54% is not this pair's
+// transmittance at any distance this note uses - twenty blocks is 28%, fifty is
+// 4.2% and the whole march is 0.2%. The worst of those is a wall a player sees
+// at distance rather than the veil the layer is meant to be, and the recovery
+// is NETHER_PLUME_EXTINCTION at 0.03, which is half of the number this is
+// paired with and restores every one of those percentages exactly - the
+// emission NETHER_PLUME_OPTICAL was raised for is untouched by it.
 #define NETHER_PLUME_DENSITY 3.0 // [0.0 0.5 1.0 1.5 2.0 3.0 4.0 6.0]
 
 // How much the plumes fade what is behind them, per block of column that the
@@ -334,12 +350,17 @@ vec3 VolumetricFogTint() {
 // ⚠️ Neither of the two paragraphs above is the shipped arithmetic any more,
 // because batch 529 doubled NETHER_PLUME_DENSITY and every figure in them is a
 // product of that. What the pair actually stands at now: a sight line that
-// carries the field's own mean plume of 0.353 keeps 54% of what is behind it
-// over twenty blocks and 1.3% over the whole 96-block march, and one that
-// carries a column's core of 0.5 keeps 2.7% and 0.2%. The twenty-block figure
-// is recoverable without touching the light: at 0.03 - the step below - every
-// one of them returns to what it was at the shipped 1.5, because a density
-// doubled and an extinction halved are the same optical depth.
+// carries the field's own mean plume of 0.353 keeps 7.9% of what is behind it
+// over twenty blocks and five parts in a million over the whole 96-block march,
+// and one that carries a column's core of 0.5 keeps 2.7% and nothing measurable
+// at all. ⚠️ Neither of the two figures that stood in this sentence was that
+// pair's own: the 54% was the twenty-block row with the extinction still at
+// 0.03, which is the pair before batch 528, and the 0.2% was the whole march at
+// the mean of 0.353 with the density still at 1.5, which is the pair before
+// this one. The twenty-block figure is recoverable without touching the light:
+// at 0.03 - the step below - every one of them returns to what it was at the
+// shipped 1.5, because a density doubled and an extinction halved are the same
+// optical depth.
 #define NETHER_PLUME_EXTINCTION 0.06 // [0.0 0.01 0.02 0.03 0.06 0.08 0.12]
 
 // How much of a column's own glow survives the smoke in front of it, as a power
@@ -447,10 +468,15 @@ vec3 VolumetricFogTint() {
 // from outside is a solid core with soft edges, not a spike.
 //
 // ⚠️ Batch 529 doubled NETHER_PLUME_DENSITY and did not touch this, so the
-// measured figures above are still the shape's own and the densities they name
-// now enter the frame twice as thick - a mean plume of 0.353 rather than the
-// 0.260 recorded here. What the clamp guarantees is unchanged, which is the
-// reason the density could be raised without the contrast having to follow it.
+// measured figures above are still the shape's own - and so is the mean plume
+// below, which no value of the density can move: it is batch 528's own
+// measurement of the shape, 0.353 at the 1.7 that shipped with it against the
+// 0.260 the same measurement gives at 1.4. NetherPlumeDensity never reads the
+// density option, so what it doubles is the light the field carries - the
+// emission and the optical depth in the pass - and not the field: a mean three
+// times 0.353 is not a state the clamp can produce, since the field stops at
+// one. What the clamp guarantees is unchanged, which is the reason the density
+// could be raised without the contrast having to follow it.
 //
 // ⚠️ 1.0 is the null case, and it is the value to compare against when asking
 // what this term did: the field is then exactly what it was before the option
@@ -582,9 +608,15 @@ vec3 VolumetricFogTint() {
 // at the shipped twenty-six-block cell measures about twenty-eight blocks
 // across, so the eye can be well inside one - but it does mean the smoke within
 // eight blocks is faded rather than removed, and the surface of a core is then
-// fifteen blocks away through air that is at three quarters of full strength.
-// The arithmetic at the core: 8 leaves 89% of the term at 24 blocks and 62% at
-// 8, where 24 left 33% and 8%.
+// fifteen blocks away through air that is back at full strength.
+//
+// ⚠️ And the ramp is the clamp itself rather than a curve: the factor is
+// length(samplePos) / this, held between zero and one, so with 8 it is 0% at the
+// eye, 50% at four blocks and back to full weight from eight blocks out, where
+// 24 gave 33% at eight blocks and did not reach full weight until twenty-four.
+// What that means in the hand is that "full strength" now starts eight blocks
+// from the eye rather than twenty-four, and everything nearer than that is faded
+// in a straight line down to nothing at the eye.
 //
 // ⚠️ The cost it does not keep is the one the reference pack's own bubble is
 // for, and it is why this is a slider rather than a new constant: a player who
@@ -674,10 +706,16 @@ const float NETHER_PLUME_ABSORPTION = 2.0;
 // reference frame brightness of 1.0 - white as the tonemap sees it. The
 // emission is `(1.0 - exp(-2.0 * p)) * 0.25 * p * OPTICAL * DENSITY` per block
 // of plume crossed, so at a column's own half density of p = 0.5 and the pair
-// that shipped - OPTICAL 0.016, DENSITY 1.5 - one block inside a column is
-// 0.00047 of that reference, and the 13 blocks a sight line crosses it through
-// (five of the 24 steps, in the quadratic ladder's middle) carry 0.0061,
-// 0.6% of the frame. A column that is half a percent of the frame is a
+// that shipped - OPTICAL 0.016, DENSITY 1.5 - that expression comes out at
+// 0.0019 per block, which is the figure batch 528 recorded as 0.00196 at the
+// same pair and a plume of 0.51. ⚠️ 0.00047 is not that number and must not be
+// read as it: it is the quarter of it that arrives at the eye once the
+// absorbance weighting is on the glow - pow(absorbance, NETHER_PLUME_SHADING)
+// at the emission in the pass, and batch 524's second absorbance on the scatter
+// - so it is light DELIVERED per block rather than light emitted per block.
+// Everything below inherits that basis: the 13 blocks a sight line crosses a
+// column through (five of the 24 steps, in the quadratic ladder's middle) carry
+// 0.0061, 0.6% of the frame. A column that is half a percent of the frame is a
 // column nobody can see, which is the report this batch opened with.
 //
 // ⚠️ The 0.25 inside that expression is where the fault was, and it is left
@@ -696,14 +734,27 @@ const float NETHER_PLUME_ABSORPTION = 2.0;
 // own mean of 0.353, and 6.7% through a saturated core where the old pair gave
 // 0.3%, 0.7% and 1.7%.
 //
+// ⚠️ Every one of those is light ARRIVING, on the basis the 0.00047 above is
+// on, and not one of them is the emission itself: the expression above yields
+// 0.0019 per block at the old pair and 0.0038 at the shipped one, which over
+// the same thirteen blocks is 2.5% of the frame before and 9.9% after. ⚠️ And
+// the 0.6% above is exactly twice this 0.3% at the same plume and
+// the same pair, so the two are one question with two answers: the 0.6% is a
+// quarter of that 2.5%, and the three here are an eighth of it at the half
+// density, a half at the field's mean and a quarter at a core. Neither sentence
+// said which was which, and a reader who wants one basis for the lot should take
+// the quarter - the arriving fraction the note above works out - throughout.
+//
 // ⚠️ And the comparison that decides whether any of that is seen is not against
 // white but against the haze the columns stand in, because the haze fills the
 // whole sight line while a column crosses it in thirteen blocks. The haze emits
 // 0.00025 per block at its own density - it has no density multiplier of its
-// own, so its light per block is flat - and a column at its half density goes
-// from 0.00047 to 0.00095 per block of plume crossed: from about twice the
-// haze's own radiance to about four times it, with 7.6 times at a core. Over a
-// whole crossing against the whole haze the light is what the report is about,
+// own, so its light per block is flat, and it carries no absorbance weighting
+// either, so that one figure IS emitted light - and a column at its half density
+// goes from 0.00047 to 0.00095 per block of plume crossed, both of those the
+// arriving figure rather than the emitted 0.0019 and 0.0038: from about twice
+// the haze's own radiance to about four times it, with 7.6 times at a core. Over
+// a whole crossing against the whole haze the light is what the report is about,
 // and it is the columns that now have the larger share of it.
 //
 // ⚠️ And the same crossing at the top of the list, 0.32, is 0.123 of the

@@ -294,8 +294,11 @@ void main() {
 				//
 				// ⚠️ And batch 529 measured what "what that curve gave it" actually was,
 				// which is where this batch's report came from. At a column's own half
-				// density of 0.5 the whole expression below multiplies out to 0.00047 of a
-				// white frame per block of plume crossed at the pair that shipped - a
+				// density of 0.5 the emission expression below comes out at 0.0019 of a
+				// white frame per block of plume crossed at the pair that shipped, and
+				// 0.00047 is the quarter of it that arrives at the eye once the
+				// absorbance weighting is on the glow - so the figure this note is built
+				// on is delivered light, not emitted light. On that arriving basis a
 				// 13-block crossing of a column is 0.6% of the frame, and a saturated core
 				// at the top of the march was 1.7%. A column that is half a percent of the
 				// frame is a column nobody can see, which is the near-black picture that
@@ -401,13 +404,14 @@ void main() {
 				// brightening it.
 				//
 				// ⚠️ NETHER_PLUME_EXTINCTION is the number to tune, and it has not
-				// been measured in game: at the shipped density a typical core of plume
-				// about 0.5 keeps 17% of what is behind it over twenty blocks and about
-				// 1% over fifty, so the columns silhouette against the lava without the
-				// layer becoming a black wall. ⚠️ Those two figures are batch 528's, and
-				// they were 41% and 10% before it: the extinction was raised from 0.03 to
-				// 0.06 because a column that leaves the background as it was has no edge
-				// to read, which is the report the batch opened with. See the option for
+				// been measured in game: at the density batch 528 shipped a typical core
+				// of plume about 0.5 keeps 17% of what is behind it over twenty blocks
+				// and about 1% over fifty, so the columns silhouette against the lava
+				// without the layer becoming a black wall. ⚠️ Those two figures are
+				// batch 528's, and they were 41% and 10% before it: the extinction was
+				// raised from 0.03 to 0.06 because a column that leaves the background
+				// as it was has no edge to read, which is the report the batch opened
+				// with. See the option for
 				// the arithmetic, and for the figure to watch instead - the transmittance
 				// of a whole 96-block ray through the field, which the contrast raised in
 				// the same batch compounds with this one to 1.9%, from 23%. The formula
@@ -418,11 +422,15 @@ void main() {
 				// ⚠️ Every figure above is divided by two in practice as of batch 529,
 				// which doubled NETHER_PLUME_DENSITY: those transmittances are what a
 				// plume of 0.5 keeps per twenty blocks, and that plume is now carried at
-				// twice the density. The pair the batch ships is 54% through twenty
-				// blocks of the field's own mean plume and 1.3% through a whole
-				// 96-block march of it; 0.03 on this dial is what returns the layer to
-				// what the paragraph above describes, and it costs the emission
-				// nothing.
+				// twice the density. So the twenty-block core figure is 2.7% rather than
+				// 17%, and the field's own mean plume of 0.353 keeps 7.9% over twenty
+				// blocks and five parts in a million over the whole 96-block march. ⚠️ The
+				// 54% and the 1.3% that stood in that sentence were not the pair this
+				// batch ships: 54% is the twenty-block row with the extinction still at
+				// 0.03, which is the pair before batch 528, and 1.3% is the core's own
+				// 96-block row with the extinction still at 0.03. 0.03 on this dial is
+				// what returns the layer to what the paragraph above describes, and it
+				// costs the emission nothing.
 				absorbance *= exp(-plume * NETHER_PLUME_ABSORPTION
 					* NETHER_PLUME_DENSITY * stepLength * NETHER_PLUME_EXTINCTION);
 

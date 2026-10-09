@@ -117,8 +117,15 @@ uniform vec3 previousCameraPosition;
 // included by more than one program and only one of them had them.
 uniform mat4 gbufferPreviousProjection;
 uniform mat4 gbufferModelViewInverse;
-uniform float viewWidth;
-uniform float viewHeight;
+
+// Declared behind the pack's duplicate guard too, since the pass that includes
+// this file declares the pair for its own upsample and a repeated uniform
+// declaration is an error.
+#if !defined(VIEW_SIZE_DECLARED)
+	#define VIEW_SIZE_DECLARED
+	uniform float viewWidth;
+	uniform float viewHeight;
+#endif
 
 // The one copy of that arithmetic, shared with the temporal resolve and the
 // reflection's history. ⚠️ After the declarations above, not before: the file

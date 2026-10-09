@@ -113,8 +113,15 @@ uniform sampler2D colortex1;
 	uniform mat4 gbufferProjectionInverse;
 #endif
 
-uniform float viewWidth;
-uniform float viewHeight;
+// The view size, which the distance below and the four taps of the upscale are
+// worked out from. Guarded like the two declarations above it: the debug view
+// of this same upsample declares the pair for itself, and so does the motion
+// blur next door.
+#if !defined(VIEW_SIZE_DECLARED)
+	#define VIEW_SIZE_DECLARED
+	uniform float viewWidth;
+	uniform float viewHeight;
+#endif
 
 // How far apart in distance two points have to be before the fog stops sharing
 // between them, in blocks.
@@ -464,8 +471,11 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 		uniform mat4 gbufferProjectionInverse;
 	#endif
 
-	uniform float viewWidth;
-	uniform float viewHeight;
+	#if !defined(VIEW_SIZE_DECLARED)
+		#define VIEW_SIZE_DECLARED
+		uniform float viewWidth;
+		uniform float viewHeight;
+	#endif
 #elif DEBUG == DEBUG_GODRAYS_NOISY || DEBUG == DEBUG_GODRAYS_SMOOTH
 	// colortex1 needs no declaration here: it is declared above, unconditionally.
 #elif DEBUG == DEBUG_SKYLIGHT
