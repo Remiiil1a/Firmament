@@ -285,25 +285,6 @@ void main() {
 					* ((1.0 - exp(-NETHER_PLUME_ABSORPTION * plume)) * 0.25 * plume
 						* NETHER_PLUME_OPTICAL * NETHER_PLUME_DENSITY);
 
-				// The other half of what smoke does: it takes light out of what
-				// is behind it as well as putting its own in. Charged per block
-				// of plume the ray crosses, which is how a medium's optical
-				// depth is charged.
-				//
-				// ⚠️ The density option is in here as well as in the emission, so
-				// that turning the smoke up thickens it rather than only
-				// brightening it.
-				//
-				// ⚠️ NETHER_PLUME_EXTINCTION is the number to tune, and it has not
-				// been measured in game: at the shipped density a typical core
-				// leaves a third to a half of what is behind it over twenty blocks
-				// and a tenth over fifty, so the columns fade what is behind them
-				// without becoming black walls. Raise it for smoke you cannot see
-				// through, lower it for smoke that only veils, and set it to 0.0 to
-				// take the fading out altogether.
-				absorbance *= exp(-plume * NETHER_PLUME_ABSORPTION
-					* NETHER_PLUME_DENSITY * stepLength * NETHER_PLUME_EXTINCTION);
-
 				// The ceiling smoke goes in plainly instead. It has no inside and
 				// outside to be brighter than - it is a flat layer under a roof.
 				//
@@ -347,7 +328,38 @@ void main() {
 				emission += normalize(hazeColor + 1e-6) * 0.25
 					* (NetherHazeDensity(worldPos) * NETHER_HAZE_OPTICAL);
 
-				scatter += emission * stepLength;
+				// ⚠️ Where the order matters. What a step sends towards the eye
+				// is what reaches it through everything the ray has already
+				// crossed, so it goes in weighted by the absorbance the march is
+				// holding as the step begins, and the extinction this step
+				// charges is applied after it - front to back, which is the order
+				// the single-scattering integral is written in. Until batch 524
+				// every step went in at full weight, so the glow of the plumes
+				// behind a near one reached the eye as though that plume were not
+				// there, and the layer glowed through itself. The composite
+				// cannot answer for that on its own: what it multiplies by this
+				// pass's fourth channel is the frame BEHIND the medium, not the
+				// medium's own light.
+				scatter += emission * stepLength * absorbance;
+
+				// The other half of what smoke does: it takes light out of what
+				// is behind it as well as putting its own in. Charged per block
+				// of plume the ray crosses, which is how a medium's optical
+				// depth is charged.
+				//
+				// ⚠️ The density option is in here as well as in the emission, so
+				// that turning the smoke up thickens it rather than only
+				// brightening it.
+				//
+				// ⚠️ NETHER_PLUME_EXTINCTION is the number to tune, and it has not
+				// been measured in game: at the shipped density a typical core
+				// leaves a third to a half of what is behind it over twenty blocks
+				// and a tenth over fifty, so the columns fade what is behind them
+				// without becoming black walls. Raise it for smoke you cannot see
+				// through, lower it for smoke that only veils, and set it to 0.0 to
+				// take the fading out altogether.
+				absorbance *= exp(-plume * NETHER_PLUME_ABSORPTION
+					* NETHER_PLUME_DENSITY * stepLength * NETHER_PLUME_EXTINCTION);
 
 				continue;
 			}

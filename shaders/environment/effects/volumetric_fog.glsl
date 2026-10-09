@@ -322,6 +322,23 @@ vec3 VolumetricFogTint() {
 // than as smoke.
 #define NETHER_PLUME_HEIGHT_SCALE 25.0
 
+// The bed the columns stand in: how far up it reaches, in blocks, and how dense
+// it is against the columns above it.
+//
+// ⚠️ The columns need it because the layer's floor fade is a ramp rather than a
+// surface: without a bed they simply start part way up that ramp, which reads as
+// columns standing in mid-air with the gaps between them empty all the way down
+// to the lava. The bed fills those gaps at the bottom, so the columns rise out
+// of something instead of starting in nothing.
+//
+// ⚠️ It is shaped by the erosion the columns are already eroded by, read from
+// the same fetch - see NetherPlumeDensity - so the bed churns on the same clock
+// as the smoke standing in it, at no cost of its own. And it is inside the same
+// gates as the columns: the floor fade, the roof fade, the bubble around the eye
+// and the rise fade all multiply it, so it cannot appear where they cannot.
+#define NETHER_PLUME_FLOOR_SCALE 8.0    // how far up the bed reaches, in blocks
+#define NETHER_PLUME_FLOOR_AMOUNT 0.55  // how dense the bed is against the columns
+
 // How fast the plumes churn, and how much a column's own density offsets its churn.
 //
 // ⚠️ The clock both of these scale is the pack's wind - windTheta - which is the one the
@@ -575,6 +592,27 @@ float VolumetricFogDensity(vec3 worldPosition) {
 
 		float erosion = VolumetricFogNoise(erosionAt) * 0.7 + 0.3;
 
+		// The bed at the foot of the layer, from the erosion that is already in
+		// hand: see the options above for what it is for. Read as a density of
+		// its own rather than as something subtracted from the columns, which is
+		// why it takes the erosion as it comes and not (1.0 - erosion).
+		//
+		// ⚠️ The same value, and that is the point of doing it here: the bed
+		// costs no fetch and no second clock, and it churns exactly when the
+		// columns standing in it do.
+		//
+		// ⚠️ erosion is in [0.3, 1.0] - it is value noise brought into that band
+		// - so the bed sits between a third and all of the floor amount, and
+		// never at nothing, wherever it is.
+		//
+		// ⚠️ exp() of the height above the base, with the max() that keeps it
+		// flat at and below the base: the same guard every other height term in
+		// this file has, and without it a cave under the lava would be given a
+		// thicker bed than the lava sea it is under.
+		float floorFalloff = exp(-max(worldPosition.y - NETHER_PLUME_BASE, 0.0)
+			/ NETHER_PLUME_FLOOR_SCALE);
+		float floorBed = NETHER_PLUME_FLOOR_AMOUNT * erosion * floorFalloff;
+
 		// ⚠️ Subtracted rather than multiplied, and that is what makes it smoke
 		// rather than a sponge. Multiplying would only dim the field everywhere
 		// the erosion is low; subtracting takes pieces of it away outright, so
@@ -587,7 +625,14 @@ float VolumetricFogDensity(vec3 worldPosition) {
 		// the subtraction something to bite on.
 		float plume = max(columns * columns - (1.0 - erosion), 0.0);
 
-		return plume * layer * riseFade;
+		// ⚠️ max() rather than a sum, and that is what makes this a bed rather
+		// than brighter feet. Added, it would raise the columns' own bases -
+		// already the densest part of the layer - and leave the gaps between
+		// them as empty as they were. A max fills those gaps instead, and where
+		// a column is already denser than the bed the column is what comes out,
+		// unchanged. An argument of a max() is never lowered by the other, so no
+		// point in the layer is left thinner than it was before the bed.
+		return max(plume, floorBed) * layer * riseFade;
 	}
 
 	// The smoke that gathers under the ceiling.
