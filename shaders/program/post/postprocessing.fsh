@@ -190,7 +190,14 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 		// The quarter-resolution grid, in texels of it.
 		vec2 fogTexel = screenCoord * vec2(viewWidth, viewHeight) * 0.25 - 0.5;
 
-		ivec2 base = ivec2(floor(fogTexel));
+		ivec2 fogSize = ivec2(vec2(viewWidth, viewHeight) * 0.25);
+
+		// ⚠️ Clamped into the buffer before anything is fetched from it (batch 530).
+		// Near the screen edge floor() can put the base outside the fog buffer, and a
+		// texelFetch outside a texture is undefined - which is how a garbage value, or a
+		// NaN, reaches the frame as a black speck at a silhouette.
+		ivec2 base = clamp(ivec2(floor(fogTexel)), ivec2(0),
+			max(fogSize - ivec2(1), ivec2(0)));
 		vec2 frac = fogTexel - vec2(base);
 
 		// The full-resolution pixel that stands at the centre of each of the four
@@ -223,8 +230,19 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 
 				float tapDistance = FogViewDistance(tapPixel, tapDepth);
 
+				// ⚠️ The difference is guarded rather than trusted (batch 530). A tap
+				// whose depth is the far plane linearises to a distance that can come
+				// back infinite, and Inf - Inf is a NaN - which makes every comparison
+				// false, so the tap silently takes no weight and the whole weighted sum
+				// can end up empty. Anything that is not a finite, non-negative distance
+				// gets no weight here instead; a NaN fails both tests and lands in the
+				// same place. The >= matters: equal depths are the flat case this has to
+				// keep exact, and they are a gap of exactly zero.
+				float depthGap = abs(tapDistance - fragmentDistance);
+
 				float weight = bilinear
-					* exp(-abs(tapDistance - fragmentDistance) / FOG_UPSAMPLE_DEPTH_SCALE);
+					* (depthGap >= 0.0 && depthGap < 1.0e5
+						? exp(-depthGap / FOG_UPSAMPLE_DEPTH_SCALE) : 0.0);
 
 				sum += texelFetch(colortex1, base + ivec2(i, j), 0) * weight;
 				weightSum += weight;
@@ -235,7 +253,16 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 		// their sum. With four equal depths every weight is the same and this reduces
 		// to the bilinear read it replaces, exactly - which is what the flat majority
 		// of the frame has to be.
-		return weightSum > 0.0 ? sum / weightSum : vec4(0.0);
+		//
+		// ⚠️ And when every weight has been refused - all four depths unreadable, or a
+		// sum that came out zero or not a number - the fallback is the plain bilinear
+		// read and NOT zero (batch 530). Zero is a hole in the fog, and a hole at a
+		// silhouette is exactly the black speck this pass was reported for; the
+		// bilinear read is what the pass did before the depth weighting existed, so the
+		// worst case is now batch 525's behaviour rather than a hole. The comparison is
+		// also the NaN guard: every comparison against a NaN is false, so a poisoned
+		// sum takes this branch.
+		return weightSum > 0.0 ? sum / weightSum : texture(colortex1, screenCoord);
 	#endif
 }
 
