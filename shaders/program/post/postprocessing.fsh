@@ -130,6 +130,54 @@ uniform float viewHeight;
 // it is blurred again, which is the artifact this exists to remove.
 const float FOG_UPSAMPLE_DEPTH_SCALE = 1.0;
 
+// ⚠️ The two bounds the depth weighting needs so that it can never produce a
+// value that is not a number. Both are read by FogViewDistance and by the sum at
+// the bottom of UpsampleVolumetrics. Neither is a knob.
+
+// The largest distance a weight comparison is ever given, in blocks.
+//
+// A depth at the far plane has no distance to contribute. The unprojection of
+// depth 1.0 is the far end of the projection's own depth range: Minecraft sets a
+// finite far plane, so that point is finite - depth 1.0 is "a point on the far
+// plane", BATCH_LOG.md 1061 - but the same arithmetic on a projection whose far
+// plane is at infinity divides by a w that reaches zero and gives +Inf, and two
+// of those subtracted from each other are NaN rather than zero: a NaN weight, a
+// NaN sum, and a black speckle on the frame.
+//
+// So the far plane is given this number instead, deliberately far past anything
+// that can be drawn: the far plane is the vanilla view distance in blocks, 512
+// at the 32 chunks the game allows (BATCH_LOG.md 3361), and no surface in the
+// frame is anywhere near ten thousand blocks away. Two distances that are both
+// clamped were both at the far plane, and the weights of such a pair come out
+// equal - which is the flat case this upscale has to reproduce exactly. It is
+// also 3.4e34 times below the largest float, so nothing on the way through the
+// weights, the sum or the normalisation can overflow.
+const float FOG_UPSAMPLE_MAX_DISTANCE = 1.0e4;
+
+// The smallest weight sum the normalisation at the bottom may divide by. Below
+// it the plain bilinear read is the answer - what this pass did before the depth
+// weighting existed, and what the smooth debug view below calls the way the
+// picture samples it.
+//
+// exp() underflows to exactly zero once its argument passes about -88.7, so with
+// FOG_UPSAMPLE_DEPTH_SCALE at 1.0 a tap more than about 89 blocks from the
+// fragment is weighted nothing at all. Three of the four being nothing is the
+// point of the weighting; all four being nothing is not a mix of anything, and a
+// thin foreground surface against a distant background gives exactly that - a
+// footprint four pixels wide can land entirely on the background. That case is
+// the black speckle this batch exists for: it used to come out of this function
+// as the zero vector, which the picture reads as `color * 0.0 + 0.0` - not a
+// missing fog but a black pixel, and one that takes the scene behind it with it,
+// since the fourth channel is that scene's transmittance.
+//
+// 1e-30 sits eight decades above the smallest normal float (1.18e-38), so a sum
+// that passes it is never denormal and the division keeps its full precision;
+// and it is about exp(-69), so what it says is "every tap is more than about 69
+// blocks away, and the nearest of them is still only one part in 1e30 of the
+// mix". A surface near the fragment is nowhere near it: a tap 20 blocks away
+// already weighs 2e-9, and four of those are 8e-9.
+const float FOG_UPSAMPLE_WEIGHT_EPSILON = 1.0e-30;
+
 // How far the surface at one pixel is from the eye, in blocks, from the depth
 // the fog pass marched to and the matrix it marched with.
 //
@@ -137,12 +185,49 @@ const float FOG_UPSAMPLE_DEPTH_SCALE = 1.0;
 // quantity: the fog pass linearises the depth it stopped at exactly this way
 // (see the top of /program/post/volumetric_fog.fsh), and a distance worked out
 // any other way would be a different measurement of the same pixel.
+//
+// ⚠️ And one guarantee: what comes back is always a finite number, inside
+// FOG_UPSAMPLE_MAX_DISTANCE, for any depth at all. Every weight is a difference
+// of two of these, and a difference needs both sides to be numbers: Inf - Inf is
+// NaN, and a NaN weight is a NaN sum and a black speckle on the frame. There are
+// two ways a distance could stop being a number and both are closed here.
 float FogViewDistance(ivec2 pixel, float depth) {
+	// The far plane - and the sky, which is drawn with depth writing off and so
+	// sits at exactly this depth - is not a place with a distance. This is the
+	// same threshold the two debug views further down use to mean "nothing was
+	// drawn here", and the one copy_and_fog.fsh uses for the same thing.
+	//
+	// ⚠️ Written inverted, `!(depth < 1.0)`, for the reason the NaN guard in
+	// copy_and_fog.fsh gives: a NaN fails every comparison, so an inverted test
+	// catches it and `depth >= 1.0` does not. A depth that is not a number is
+	// exactly the input that must not reach a subtraction.
+	if (!(depth < 1.0)) {
+		return FOG_UPSAMPLE_MAX_DISTANCE;
+	}
+
+	// Everything below the near plane is pulled up to it: a depth outside 0..1
+	// cannot come out of a depth buffer, but this clamp is what makes the matrix
+	// product below finite for every input rather than only for the inputs the
+	// game happens to produce.
+	depth = max(depth, 0.0);
+
 	vec2 ndc = vec2(pixel) * 2.0 / vec2(viewWidth, viewHeight) - 1.0;
 
 	vec4 viewPosH = gbufferProjectionInverse * vec4(ndc, depth * 2.0 - 1.0, 1.0);
 
-	return length(viewPosH.xyz / viewPosH.w);
+	float viewDistance = length(viewPosH.xyz / viewPosH.w);
+
+	// ⚠️ A ceiling, because the division above is by a w that reaches zero at the
+	// far end of the depth range: with a finite far plane the point is the far
+	// plane's own and this never bites; with the far plane at infinity it is the
+	// only thing between here and +Inf.
+	//
+	// ⚠️ And written as a comparison rather than as min(), because min() cannot
+	// order a NaN - a NaN fails this test and takes the ceiling. That is what
+	// makes the guarantee above hold for every input rather than for the ones the
+	// game produces.
+	return viewDistance < FOG_UPSAMPLE_MAX_DISTANCE
+		? viewDistance : FOG_UPSAMPLE_MAX_DISTANCE;
 }
 
 // The scattered light of the fog, read at this fragment rather than wherever a
@@ -180,6 +265,13 @@ float FogViewDistance(ivec2 pixel, float depth) {
 //
 // `depth` is this fragment's own depth from depthtex0, raw rather than
 // linearised: this is the one place that conversion is written.
+//
+// ⚠️ What comes back is always finite, and the three places that is enforced
+// rather than assumed are the distance (FogViewDistance), the weight sum
+// (FOG_UPSAMPLE_WEIGHT_EPSILON) and the result itself. A NaN or an infinity that
+// reaches the frame is a black or a white speck that nothing downstream can
+// repair, and the depth buffer and the fog buffer are both places one can come
+// from.
 vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 	#ifdef VOLUMETRIC_FOG_FULL_RES
 		// Nothing to put back on the frame grid: with the fog marched at the
@@ -190,15 +282,29 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 		// The quarter-resolution grid, in texels of it.
 		vec2 fogTexel = screenCoord * vec2(viewWidth, viewHeight) * 0.25 - 0.5;
 
-		ivec2 fogSize = ivec2(vec2(viewWidth, viewHeight) * 0.25);
-
-		// ⚠️ Clamped into the buffer before anything is fetched from it (batch 530).
-		// Near the screen edge floor() can put the base outside the fog buffer, and a
-		// texelFetch outside a texture is undefined - which is how a garbage value, or a
-		// NaN, reaches the frame as a black speck at a silhouette.
-		ivec2 base = clamp(ivec2(floor(fogTexel)), ivec2(0),
-			max(fogSize - ivec2(1), ivec2(0)));
+		// ⚠️ The base is deliberately NOT clamped into the buffer, although it is
+		// outside it at the frame's edge: on the first column of the frame floor()
+		// gives -1, and on the last it gives the last texel, whose upper tap is one
+		// past the end. Moving the base would move frac with it, and frac is what
+		// the bilinear weights are made of - a base pulled inward on the first
+		// column leaves frac negative, which hands the tap on its right a NEGATIVE
+		// weight, and a weight sum that can cancel to a small positive number is a
+		// division that returns an extrapolation rather than a mix. The fetches are
+		// clamped instead, at the point of each fetch, which leaves frac - and
+		// therefore the weights - exactly the ones a CLAMP_TO_EDGE sampler would
+		// have used for the read this replaces.
+		ivec2 base = ivec2(floor(fogTexel));
 		vec2 frac = fogTexel - vec2(base);
+
+		// The last texel of each buffer, for those clamps. The fog buffer is the
+		// frame at a quarter in each direction - size.buffer.colortex1 is 0.25,
+		// and the fog pass reads and writes it through gl_FragCoord.xy /
+		// (view * 0.25) - and the depth texture is the frame itself. Truncating
+		// view * 0.25 under-states the fog buffer's width if the loader rounds it
+		// up, which costs at most one texel of the edge and cannot ask for a texel
+		// that is not there.
+		ivec2 fogLast = max(ivec2(vec2(viewWidth, viewHeight) * 0.25) - 1, ivec2(0));
+		ivec2 fullLast = ivec2(viewWidth, viewHeight) - 1;
 
 		// The full-resolution pixel that stands at the centre of each of the four
 		// texels around this fragment - the point the fog in that texel was built
@@ -225,26 +331,42 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 				// texel's fog is the one through the centre pixel, and measuring the
 				// distance along the fragment's ray instead tilts it and makes two of
 				// the four taps disagree with a surface they are standing on.
-				ivec2 tapPixel = fullTexel + ivec2(i, j) * 4;
+				//
+				// ⚠️ Clamped into the depth texture, because texelFetch outside a
+				// texture is undefined rather than clamped - a driver may return
+				// anything, including a value that linearises to a NaN - and these
+				// four reach past the frame's right and bottom edges whenever the
+				// base is the last texel of its row: fullTexel is then 4*base + 2,
+				// which is already within four pixels of the frame's end. The
+				// distance below is worked out at this same clamped pixel, so the
+				// depth and the distance it belongs to stay the pair they were.
+				ivec2 tapPixel = clamp(fullTexel + ivec2(i, j) * 4, ivec2(0), fullLast);
 				float tapDepth = texelFetch(depthtex0, tapPixel, 0).r;
 
 				float tapDistance = FogViewDistance(tapPixel, tapDepth);
 
-				// ⚠️ The difference is guarded rather than trusted (batch 530). A tap
-				// whose depth is the far plane linearises to a distance that can come
-				// back infinite, and Inf - Inf is a NaN - which makes every comparison
-				// false, so the tap silently takes no weight and the whole weighted sum
-				// can end up empty. Anything that is not a finite, non-negative distance
-				// gets no weight here instead; a NaN fails both tests and lands in the
-				// same place. The >= matters: equal depths are the flat case this has to
-				// keep exact, and they are a gap of exactly zero.
+				// ⚠️ The gap needs no guard of its own, and that is the point of the
+				// bound FogViewDistance holds: both distances are finite and inside
+				// FOG_UPSAMPLE_MAX_DISTANCE, so the gap is finite and between zero and
+				// that bound - never Inf - Inf, which is the NaN this batch guards
+				// against - and exp() of a bounded, non-positive argument can only ever
+				// underflow. Underflow is a weight of exactly zero, which is what a tap
+				// that far from this fragment has earned. Equal depths, the flat case
+				// that has to stay exact, are a gap of exactly zero and a weight of
+				// exactly one.
 				float depthGap = abs(tapDistance - fragmentDistance);
 
 				float weight = bilinear
-					* (depthGap >= 0.0 && depthGap < 1.0e5
-						? exp(-depthGap / FOG_UPSAMPLE_DEPTH_SCALE) : 0.0);
+					* exp(-depthGap / FOG_UPSAMPLE_DEPTH_SCALE);
 
-				sum += texelFetch(colortex1, base + ivec2(i, j), 0) * weight;
+				// ⚠️ Clamped as well, into the fog buffer this time. On the last
+				// column of a frame whose width is a multiple of four the upper tap
+				// is one texel past the end of the buffer, which is the same
+				// undefined fetch as the depth one above; reading the edge texel
+				// twice there is what the sampler's own CLAMP_TO_EDGE would have
+				// done for the bilinear read this replaces.
+				sum += texelFetch(colortex1, clamp(base + ivec2(i, j), ivec2(0), fogLast), 0)
+					* weight;
 				weightSum += weight;
 			}
 		}
@@ -254,15 +376,47 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 		// to the bilinear read it replaces, exactly - which is what the flat majority
 		// of the frame has to be.
 		//
-		// ⚠️ And when every weight has been refused - all four depths unreadable, or a
-		// sum that came out zero or not a number - the fallback is the plain bilinear
-		// read and NOT zero (batch 530). Zero is a hole in the fog, and a hole at a
-		// silhouette is exactly the black speck this pass was reported for; the
-		// bilinear read is what the pass did before the depth weighting existed, so the
-		// worst case is now batch 525's behaviour rather than a hole. The comparison is
-		// also the NaN guard: every comparison against a NaN is false, so a poisoned
-		// sum takes this branch.
-		return weightSum > 0.0 ? sum / weightSum : texture(colortex1, screenCoord);
+		// ⚠️ And when the sum is too small to normalise - all four weights underflowed
+		// to zero, or every tap is dozens of blocks from this fragment - the fallback
+		// is the plain bilinear read and NOT zero (batch 530). Zero is a hole in the
+		// fog, and a hole at a silhouette is exactly the black speck this pass was
+		// reported for: the picture multiplies the scene by this vector's alpha, so
+		// `color * 0.0 + 0.0` is a black pixel rather than a pixel with no fog on it.
+		// The bilinear read is what the pass did before the depth weighting existed,
+		// so the worst case is batch 525's behaviour instead of a hole.
+		//
+		// ⚠️ The test is a bound rather than `> 0.0`, and it is written inverted. Both
+		// parts are load-bearing: a sum just above zero is four weights that all
+		// belong to something else being divided by each other for no reason (see
+		// FOG_UPSAMPLE_WEIGHT_EPSILON), and every comparison against a NaN is false,
+		// so a sum that has somehow become a NaN takes this branch as well instead of
+		// being divided.
+		if (!(weightSum > FOG_UPSAMPLE_WEIGHT_EPSILON)) {
+			return texture(colortex1, screenCoord);
+		}
+
+		vec4 result = sum / weightSum;
+
+		// ⚠️ The last guard, and the rule it holds is worth holding at the function's
+		// edge rather than three calls into it: whatever the fog buffer holds, nothing
+		// that is not a number leaves this function. The division above cannot make
+		// one on its own - the weights are never negative, so the quotient is bounded
+		// by the largest tap - but a tap that is already a NaN or an infinity would
+		// carry straight through it, and the fog buffer is RGBA16F, which holds both
+		// (volumetric_fog.fsh declares the format). The test is the one the pack
+		// trusts a history with (see the guards in composite1.fsh and ssao.glsl):
+		// `!(dot(x, x) < 1.0e18)` catches a NaN, either infinity, and anything
+		// absurdly large in a single expression. A finite sixteen-bit value can never
+		// trip it - the largest is 65504, so the dot product of a fog colour cannot
+		// reach even 2e10 - and that is what makes this line free for the fog pass.
+		if (!(dot(result, result) < 1.0e18)) {
+			// No fog rather than a black pixel: no scattered light and full
+			// transmittance, which is the state the fog pass itself starts from and
+			// the one the picture reads as "the scene, unchanged".
+			return vec4(0.0, 0.0, 0.0, 1.0);
+		}
+
+		return result;
 	#endif
 }
 
