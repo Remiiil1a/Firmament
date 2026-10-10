@@ -242,9 +242,26 @@ vec3 VolumetricFogTint() {
 // are what it sharpens.
 //
 // The #ifdef, and not #if defined, is what makes it a switch in the menu at all
-// - see BATCH_LOG.md 169.1, where that cost a round trip. The pass reads the
-// same macro to know which buffer it is looking at.
+// - see BATCH_LOG.md 169.1, where that cost a round trip.
 //#define VOLUMETRIC_FOG_FULL_RES
+#ifdef VOLUMETRIC_FOG_FULL_RES
+// (nothing - see below)
+#endif
+// ⚠️ The block above is empty on purpose, and empty is the whole of its work:
+// the #ifdef registration above is the same "not decoration" case as
+// lib/smaa.glsl and lib/sss.glsl, and it is the only thing keeping this switch
+// in the menu. Batch 533 took the last shader-side test of this macro away: the
+// pass used to branch on it to know which buffer it was reading, and it now
+// asks the buffer for its own size instead (textureSize, in
+// /program/post/volumetric_fog.fsh), which is resolution-adaptive on its own
+// and must stay that way. What is left to consume the macro is shaders.properties
+// - the #ifdef that picks colortex1's size, and the profile entries - and none of
+// that keeps the option registered, because only the shaders' own sources count
+// for that. With no #ifdef left anywhere in GLSL, the switch quietly left the
+// menu and the profile's entry for it stopped doing anything, which is what the
+// author reported. This block exists to keep it registered and for nothing else:
+// it does not change what any pass computes, and nothing in the fog pass may
+// depend on this macro again - the buffer's queried size decides that.
 
 // The Nether's smoke columns.
 //
