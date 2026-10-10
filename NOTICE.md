@@ -114,8 +114,9 @@ performance tiers, with the water reflection, the option labels and the
 profile handling corrected alongside them, and **v1.0.1** is the Nether's
 smoke rebuilt - the columns churn, they fade what is behind them and thin out
 as they rise, and their light sits in the core of a column rather than spread
-evenly across its width - with the volumetric fog's edges and its
-full-resolution path corrected alongside them. What each release changed is
+evenly across its width - with the End's sky steadied, Voxy's distant terrain
+in the End and the Nether lit by the dimension it stands in, and the volumetric
+fog's edges and its full-resolution path corrected alongside them. What each release changed is
 listed in `CHANGELOG.md` in the short form, and in the `RELEASE_NOTES-*.md`
 files in full.
 
@@ -403,62 +404,49 @@ files in full.
 
 **Added in v1.0.1**
 
-* The Nether's smoke columns churn, and each column churns at its own rate: the
-  churn rides the same wind the leaves and the clouds move on, and where it is
-  read is offset by the column's own density, so a thick column rolls out of
-  step with the gap beside it rather than the whole layer sliding past on one
-  sheet. Two options set it - how fast the smoke moves, and how far apart the
-  columns are set.
-* A bed of smoke at the foot of the columns, which is what they rise out of:
-  without it they started part way up the floor's fade and read as standing in
-  mid-air, with the gaps between them empty all the way down to the lava. It is
-  carved by the same moving noise as the smoke above it, so it churns on the
-  same clock, and how far up it reaches and how thick it is are options.
-* A thin haze that fills the Nether's air. It is not made of columns - it is
-  the same everywhere in the dimension - and its colour is the game's own fog
-  colour, so the crimson forest, the warped forest, the soul sand valley and
-  the basalt deltas each tint it differently. It only ever adds light, which is
-  what the columns have to stand out from.
+* The Nether's smoke columns churn, each at its own rate, riding the wind the
+  leaves and the clouds move on: where the churn is read is offset by the
+  column's own density, so a thick column rolls out of step with the gap beside
+  it. Two options set how fast the smoke moves and how far apart the columns are.
+* A bed of smoke at the foot of the columns, carved by the same moving noise as
+  the smoke above it, which is what they rise out of rather than standing in
+  mid-air. How far up it reaches and how thick it is are options.
+* A thin haze that fills the Nether's air, the same everywhere in the dimension
+  and tinted by the game's own fog colour; it only ever adds light.
 * A column's light is brightest in its middle and falls away towards its thin
-  edge, with the core taking a deeper, hotter colour and the edge a paler one.
-  It cannot brighten anything - it only takes light away from the thinnest
-  parts - and 0.0 gives back exactly the old flat colour.
+  edge, with the core taking a deeper, hotter colour. It cannot brighten
+  anything, and 0.0 gives back the old flat colour.
 
 **Changed in v1.0.1**
 
 * The columns fade what is behind them instead of only adding glow, and their
-  own glow is shaded. The dimming is charged for every block of column a sight
-  line crosses, so it builds up along the view and what is far behind a column
-  is taken out far harder than what is close to it; the shading weights a
-  column's own light by the smoke the view has already crossed, so the near
-  face is lit, the far side goes dark, and a column has an outline against the
-  lava. Both are options, and 0.0 on either is the flat, add-only look the
-  columns had before they existed.
-* The columns thin out as they rise: how far one keeps its density is an
-  option, low making short plumes standing on the bed and high making tall ones
-  that stay thick almost to the ceiling, which is the flat-topped look the
-  option exists to avoid.
-* The smoke close to the player is no longer cleared away so widely. The radius
-  was 24 and it scales the whole effect down within that distance, which
-  includes the distance a player stands from the lava sea, so the nearest
-  columns were faded towards nothing rather than drawn. It is 8 now, which
-  still fades the smoke right at the eye.
-* The Nether page's defaults are the author's own tuning in game, and its
-  descriptions were rewritten to say what an option does and which way to turn
-  it, and nothing else: the tuning behind each default, the percentages and the
-  ratios, came out of them, leaving what the option does and what a value of
-  0.0 gives back.
-* The page went from three options to seventeen, and four of its labels now say
-  what the option does. **Plume rise** is **Plume churn offset** - it moves
-  where a column's churn is read and raises nothing - and **Ceiling smoke** is
-  **Ceiling smoke density**, because it is a slider with an amount in it rather
-  than the switch for that layer. The first two are new names for the setting
-  itself, so a value saved under the old name goes back to its default once;
-  **Plume churn** is **Plume churn speed** and **Plume clearing around the
-  eye** is **Plume clearing radius**, which are label changes only.
+  own glow is shaded: the dimming is charged for every block of column a sight
+  line crosses, so it builds up along the view, and the shading leaves the near
+  face lit and the far side dark. 0.0 on either is the old flat, add-only look.
+* The columns thin out as they rise: how far one keeps its density is an option,
+  and over that height it falls to about a third of what it is at the lava.
+* The smoke close to the player is no longer cleared away so widely: the radius
+  was 24 and is 8, which still fades the smoke right at the eye.
+* The Nether page went from three options to seventeen, and four of its labels
+  now say what the option does: **Plume rise** is **Plume churn offset**,
+  **Ceiling smoke** is **Ceiling smoke density**, **Plume churn** is **Plume
+  churn speed** and **Plume clearing around the eye** is **Plume clearing
+  radius**. The first two rename the setting itself, so a value saved under the
+  old name goes back to its default once, and the page's defaults are the
+  author's own tuning in game.
 
 **Fixed in v1.0.1**
 
+* The End's sky no longer shakes as the player moves. The End body, the
+  gravitational lensing behind it and the starfield it bends used to creep with
+  every step of the camera: the direction they are placed at was taken from a
+  quantity that still carried the camera's own position, and that part was never
+  cancelled out, so it turned a little further with each step. It is computed
+  whole now, and the sky holds still.
+* Voxy's distant terrain is lit by the dimension it stands in. Terrain drawn by
+  Voxy in the End and the Nether was shaded as if it stood in the Overworld, so
+  the far terrain and the chunks beside it disagreed. Each of the two dimensions
+  has a set of programs of its own now, and the two are lit alike.
 * The volumetric fog's edges are resolved against the geometry. The fog is
   marched at a quarter of the frame and put back on the full frame with the
   depth taken into account, so an edge lands where the surface behind it is
