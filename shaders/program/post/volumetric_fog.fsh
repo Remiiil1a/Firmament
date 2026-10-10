@@ -376,7 +376,7 @@ void main() {
 				// the pillar field in NetherPlumeDensity is read in the horizontal
 				// plane only, so it peaks at a column's core and falls to nothing in
 				// the gaps between columns - and it is already in hand, so the shape
-				// costs one smoothstep and three mixes and no fetch and no step.
+				// costs one smoothstep and four mixes and no fetch and no step.
 				//
 				// ⚠️ coreness is 0 at the thin edge of a column and 1 from
 				// NETHER_PLUME_CORE_DENSITY upwards, and that constant is the half
@@ -385,7 +385,7 @@ void main() {
 				// 0.51, so a typical pillar's middle comes out at one and everything
 				// thinner than 0.5 lands somewhere on the ramp between.
 				//
-				// ⚠️ The two mixes are written around the constants the pass already
+				// ⚠️ The four mixes are written around the constants the pass already
 				// had, so that NETHER_PLUME_CORE_GRADIENT at 0.0 gives back exactly
 				// the colour and the weight the emission had before the option
 				// existed - mix(x, y, 0.0) is x, to the bit - and that is the null

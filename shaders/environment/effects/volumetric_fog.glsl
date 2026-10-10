@@ -329,7 +329,7 @@ vec3 VolumetricFogTint() {
 // ⚠️ Every other figure that has stood in this note is an earlier pair's and is
 // kept here as such: 2.7%, 7.9% and five parts in a million are batch 529's, this
 // option at 3.0 with the extinction at 0.06; 16.5% and 28% are batch 528's at the
-// 1.5 it shipped; and the 1.9%, 54%, 1.3%, 88%, 4.2% and 0.2% that collected here
+// 1.5 it shipped; and the 1.9%, 53.0%, 1.3%, 88%, 4.2% and 0.2% that collected here
 // were several different pairs read as one. The extinction option's note names the
 // pair behind each of those it can account for, and the 88% is the one it cannot,
 // for a reason worth having in front of you: at the mean plume of 0.353 with this
@@ -380,10 +380,10 @@ vec3 VolumetricFogTint() {
 // rather than a place. The 1.9% it records for the whole march is the mean the
 // contrast raise had just taken the field to, about 0.22, with this at 0.06 and
 // the density at 1.5 - not the mean of 0.353 batch 529 measured afterwards. And
-// the 28%, 4.2%, 54% and 0.2% that stood beside it in this note are pairs that
+// the 28%, 4.2%, 53.0% and 0.2% that stood beside it in this note are pairs that
 // never shipped at all: at the mean of 0.353 the twenty-, fifty- and 96-block rows
 // are 28%, 4.2% and 0.2% with the density at 3.0 and this back at 0.03 - the
-// density batch 529 raised and the extinction batch 528 had already left - and 54%
+// density batch 529 raised and the extinction batch 528 had already left - and 53.0%
 // is that same mean's twenty-block row at the density of 1.5 that this 0.03 was
 // paired with before batch 528 raised it.
 //
@@ -440,7 +440,7 @@ vec3 VolumetricFogTint() {
 // by the erosion, so a sample in the middle of a column comes back at the top of
 // that range while a sample at the same column's thin outer edge comes back near
 // zero. That number is in hand at every step of the march, so the gradient is one
-// smoothstep of it and two mixes - no fetch, no extra step, and nothing added to
+// smoothstep of it and four mixes - no fetch, no extra step, and nothing added to
 // the density function or to its signature, which the debug views call.
 //
 // ⚠️ The core is NETHER_PLUME_CORE_DENSITY, 0.5, and that is not an arbitrary
@@ -451,7 +451,7 @@ vec3 VolumetricFogTint() {
 // falls to zero in the gaps - which is the gradient that was asked for, with the
 // thin parts of the field taken down and the cores left where they are.
 //
-// ⚠️ 0.0 is the null case, and exact rather than approximate: both mixes are
+// ⚠️ 0.0 is the null case, and exact rather than approximate: the four mixes are
 // written around the constants the pass already had, so at 0.0 the colour is
 // exactly NETHER_PLUME_COLOR, the weight is exactly one, bit for bit, and the
 // pass draws what it drew before this option existed. 0.6 is what ships, and it
@@ -687,11 +687,14 @@ vec3 VolumetricFogTint() {
 // added for; everywhere else the columns are what is seen, and the bed is felt
 // as the smoke they rise out of rather than as a sheet they stand in.
 //
-// ⚠️ The 0.000109 and 0.00196 this paragraph used to carry were two different
-// pairs read as one - the bed's figure at optical 0.016 with density 1.5, and
-// the pillar's at 0.032 with 3.0 - and the eighteen they come to was the right
-// answer to a sum with two different scales in it, because the ratio depends on
-// the shape of the emission curve alone: every pair gives eighteen before the
+// ⚠️ The 0.000109 and 0.00196 this paragraph used to carry are one pair's, and
+// both are EMITTED: the bed at its 0.10 ceiling and a typical pillar at 0.51,
+// with optical 0.016 and density 1.5. (0.00196 was pinned on 0.032 with 3.0
+// here, and that is wrong twice over: the pillar at 0.51 under that pair is
+// 0.0078 emitted, and 0.00196 is that 0.0078's quarter - the round-quarter
+// basis the optical note below calls out as its own recurring error.) The
+// eighteen comes out right for either pair, because the ratio depends on the
+// shape of the emission curve alone: every pair gives eighteen before the
 // gradient, and the two densities it is made of are the same in all of them.
 #define NETHER_PLUME_FLOOR_SCALE 8.0 // [4.0 6.0 8.0 12.0 16.0]
 #define NETHER_PLUME_FLOOR_AMOUNT 0.10 // [0.0 0.10 0.25 0.4 0.55 0.75 1.0]
