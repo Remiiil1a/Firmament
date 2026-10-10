@@ -111,9 +111,13 @@ plumes and the four styles for the block selection outline, **v0.8** is motion
 vectors and the temporal filter rebuilt on them, with the parallax occlusion
 mapping and its self-shadowing beside it, and **v1.0.0** is the four
 performance tiers, with the water reflection, the option labels and the
-profile handling corrected alongside them. What each release changed is listed
-in `CHANGELOG.md` in the short form, and in the `RELEASE_NOTES-*.md` files in
-full.
+profile handling corrected alongside them, and **v1.0.1** is the Nether's
+smoke rebuilt - the columns churn, they fade what is behind them and thin out
+as they rise, and their light sits in the core of a column rather than spread
+evenly across its width - with the volumetric fog's edges and its
+full-resolution path corrected alongside them. What each release changed is
+listed in `CHANGELOG.md` in the short form, and in the `RELEASE_NOTES-*.md`
+files in full.
 
 **Added in v0.1**
 
@@ -396,6 +400,80 @@ full.
   pack's own entry had a stray line written into its first line, on the same
   line as its key, which left the key unmatchable. Both first lines are
   restored from Steadfast verbatim.
+
+**Added in v1.0.1**
+
+* The Nether's smoke columns churn, and each column churns at its own rate: the
+  churn rides the same wind the leaves and the clouds move on, and where it is
+  read is offset by the column's own density, so a thick column rolls out of
+  step with the gap beside it rather than the whole layer sliding past on one
+  sheet. Two options set it - how fast the smoke moves, and how far apart the
+  columns are set.
+* A bed of smoke at the foot of the columns, which is what they rise out of:
+  without it they started part way up the floor's fade and read as standing in
+  mid-air, with the gaps between them empty all the way down to the lava. It is
+  carved by the same moving noise as the smoke above it, so it churns on the
+  same clock, and how far up it reaches and how thick it is are options.
+* A thin haze that fills the Nether's air. It is not made of columns - it is
+  the same everywhere in the dimension - and its colour is the game's own fog
+  colour, so the crimson forest, the warped forest, the soul sand valley and
+  the basalt deltas each tint it differently. It only ever adds light, which is
+  what the columns have to stand out from.
+* A column's light is brightest in its middle and falls away towards its thin
+  edge, with the core taking a deeper, hotter colour and the edge a paler one.
+  It cannot brighten anything - it only takes light away from the thinnest
+  parts - and 0.0 gives back exactly the old flat colour.
+
+**Changed in v1.0.1**
+
+* The columns fade what is behind them instead of only adding glow, and their
+  own glow is shaded. The dimming is charged for every block of column a sight
+  line crosses, so it builds up along the view and what is far behind a column
+  is taken out far harder than what is close to it; the shading weights a
+  column's own light by the smoke the view has already crossed, so the near
+  face is lit, the far side goes dark, and a column has an outline against the
+  lava. Both are options, and 0.0 on either is the flat, add-only look the
+  columns had before they existed.
+* The columns thin out as they rise: how far one keeps its density is an
+  option, low making short plumes standing on the bed and high making tall ones
+  that stay thick almost to the ceiling, which is the flat-topped look the
+  option exists to avoid.
+* The smoke close to the player is no longer cleared away so widely. The radius
+  was 24 and it scales the whole effect down within that distance, which
+  includes the distance a player stands from the lava sea, so the nearest
+  columns were faded towards nothing rather than drawn. It is 8 now, which
+  still fades the smoke right at the eye.
+* The Nether page's defaults are the author's own tuning in game, and its
+  descriptions were rewritten to say what an option does and which way to turn
+  it, and nothing else: the tuning behind each default, the percentages and the
+  ratios, came out of them, leaving what the option does and what a value of
+  0.0 gives back.
+* The page went from three options to seventeen, and four of its labels now say
+  what the option does. **Plume rise** is **Plume churn offset** - it moves
+  where a column's churn is read and raises nothing - and **Ceiling smoke** is
+  **Ceiling smoke density**, because it is a slider with an amount in it rather
+  than the switch for that layer. The first two are new names for the setting
+  itself, so a value saved under the old name goes back to its default once;
+  **Plume churn** is **Plume churn speed** and **Plume clearing around the
+  eye** is **Plume clearing radius**, which are label changes only.
+
+**Fixed in v1.0.1**
+
+* The volumetric fog's edges are resolved against the geometry. The fog is
+  marched at a quarter of the frame and put back on the full frame with the
+  depth taken into account, so an edge lands where the surface behind it is
+  instead of being smeared across it.
+* Full-resolution fog works again. With it on, the fog was read from the
+  quarter-resolution grid and drawn shrunken into a corner of the screen,
+  because the size the buffer had been given and the size the reader assumed
+  had drifted apart; the reader asks the fog's own image for its size now,
+  whichever of the two it is. The option had also dropped out of the menu and
+  out of the High tier along the way, and both are back.
+* A cause of black speckles at silhouettes is gone. A fog sample taken from
+  outside the fog's own image, or a distance that came back as not-a-number,
+  could leave a black dot on an edge. The reads are held inside the image, a
+  non-finite distance is refused, and an empty sum falls back to the smoothed
+  read rather than to a hole.
 
 ## 5. Files
 
