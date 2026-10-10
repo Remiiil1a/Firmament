@@ -517,6 +517,19 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 	#endif
 #elif DEBUG == DEBUG_GODRAYS_NOISY || DEBUG == DEBUG_GODRAYS_SMOOTH
 	// colortex1 needs no declaration here: it is declared above, unconditionally.
+	//
+	// ⚠️ The frame's own size does need one, since batch 534 made this view ask
+	// the buffer for its own grid rather than trusting an #ifdef to say what that
+	// grid is. It sits behind the same guard the upsample's declaration uses: with
+	// volumetric light on it is already there, and with it off this view still has
+	// to compile - a view that fails to compile because the effect it diagnoses has
+	// been switched off would be worse than useless, and it is the first thing a
+	// reader tries.
+	#if !defined(VIEW_SIZE_DECLARED)
+		#define VIEW_SIZE_DECLARED
+		uniform float viewWidth;
+		uniform float viewHeight;
+	#endif
 #elif DEBUG == DEBUG_SKYLIGHT
 	uniform sampler2D colortex5;
 #elif DEBUG == DEBUG_PLUME_DENSITY
@@ -625,11 +638,27 @@ void main() {
 		// The scattered light as the pass wrote it, at the buffer's own
 		// resolution: what the march left between its steps shows up here as
 		// banding, which is what the dither and the step count are for.
-		#ifdef VOLUMETRIC_FOG_FULL_RES
-			finalColor = texelFetch(colortex1, ivec2(gl_FragCoord.xy), 0).rgb;
-		#else
-			finalColor = texelFetch(colortex1, ivec2(gl_FragCoord.xy * 0.25), 0).rgb;
-		#endif
+		// ⚠️ The buffer's place on the frame is asked of the buffer, exactly as the
+		// helper above asks it (batch 534), and no longer decided by an #ifdef on
+		// VOLUMETRIC_FOG_FULL_RES with a hand-written 0.25 in the other branch: those
+		// were two statements of one fact, and in the configuration where they
+		// disagreed - the properties side sizing this buffer to the frame while the
+		// macro did not take - this view read the wrong grid and smeared the
+		// quarter-resolution fog over a full-resolution frame. Whatever size the
+		// buffer is, this is its own texel grid and it cannot disagree with it.
+		//
+		// ⚠️ The mapping is written as integer division rather than as a scale factor,
+		// and that is its one difference from the helper: every pixel of one texel's
+		// footprint has to land on the SAME texel, and (pixel * fogTexels) / view is
+		// exact in integers where a float quotient can come out a hair under the
+		// integer it should be. The clamp is the helper's, for the helper's reason: a
+		// fetch outside a texture is undefined rather than clamped, and the last column
+		// of the frame is one pixel from the buffer's own edge.
+		ivec2 fogTexels = textureSize(colortex1, 0);
+
+		finalColor = texelFetch(colortex1, clamp(
+			ivec2(gl_FragCoord.xy) * fogTexels / ivec2(viewWidth, viewHeight),
+			ivec2(0), fogTexels - 1), 0).rgb;
 	#elif DEBUG == DEBUG_GODRAYS_SMOOTH
 		// And the same buffer sampled the way the picture samples it, which is
 		// what the frame actually receives.
@@ -667,6 +696,14 @@ void main() {
 		// is a measurement of the density rather than a picture of the plumes: a
 		// column that is visible here and not in the frame is a shading problem,
 		// and a column that is not here at all is a density problem.
+		//
+		// ⚠️ The colour it draws that measurement in is the plume's own base colour,
+		// and the core gradient does not move it: that option scales the emission
+		// away from this colour towards a paler edge and a deeper core, which is a
+		// thing done to the light after the field is read. A column that is bright
+		// here and dim in the frame can therefore be the gradient as easily as the
+		// brightness - set the gradient to 0.0 to take the ramp out of the question
+		// before blaming anything else.
 		//
 		// ⚠️ The whole of what this reads is conditional on the plumes being on, and
 		// the option that switches them off is the one that removes the function

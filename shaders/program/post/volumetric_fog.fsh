@@ -314,19 +314,31 @@ void main() {
 				// where the light sits and not about how much of it there is.
 				//
 				// ⚠️ And batch 529 measured what "what that curve gave it" actually was,
-				// which is where this batch's report came from. At a column's own half
-				// density of 0.5 the emission expression below comes out at 0.0019 of a
-				// white frame per block of plume crossed at the pair that shipped, and
-				// 0.00047 is the quarter of it that arrives at the eye once the
-				// absorbance weighting is on the glow - so the figure this note is built
-				// on is delivered light, not emitted light. On that arriving basis a
-				// 13-block crossing of a column is 0.6% of the frame, and a saturated core
-				// at the top of the march was 1.7%. A column that is half a percent of the
-				// frame is a column nobody can see, which is the near-black picture that
-				// opened the batch. The 0.25 is left alone anyway: it is the null case for
-				// the sliders that were tuned around it, and the gain belongs on
-				// NETHER_PLUME_OPTICAL, where it can be seen and undone. See that option
-				// for the arithmetic on both sides of it.
+				// which is where that batch's report came from. ⚠️ Its figures are that
+				// batch's and are quoted here at ITS pair, optical 0.016 and density
+				// 1.5: at a column's own half density of 0.5 the emission expression
+				// below comes out at 0.0019 of a white frame per block of plume crossed,
+				// and that batch put a quarter of it at the eye once the absorbance
+				// weighting was on the glow - so its 0.6% for a 13-block crossing and
+				// its 1.7% for a saturated core are light DELIVERED, not light emitted.
+				// A column that is half a percent of the frame is a column nobody can
+				// see, which is the near-black picture that opened that batch.
+				//
+				// ⚠️ That quarter was a round number for a weighting worth working out
+				// rather than rounding: a sample's light arrives as the emission times
+				// absorbance raised to NETHER_PLUME_SHADING + 1.0 - this option's
+				// exponent and batch 524's own multiply, which is one more - and the
+				// mean of that over a crossing of transmittance T is (1 - T^3)/(3 * -ln
+				// T). At the pair batch 534 ships - optical 0.32, density 2.0,
+				// extinction 0.03 - a half-density crossing has T = 45.8%, so 38.6% of
+				// the light put into it arrives, which makes the same thirteen blocks
+				// 65.7% of a white frame emitted and 25.4% of it delivered. Both of
+				// those are the numbers this note is now built on, and every figure
+				// below that is called ARRIVING is on that definition. The 0.25 is left
+				// alone anyway: it is the null case for the sliders that were tuned
+				// around it, and the gain belongs on NETHER_PLUME_OPTICAL, where it can
+				// be seen and undone. See that option for the arithmetic on both sides
+				// of it.
 				//
 				// ⚠️ Batch 528: and the glow is weighted by what is already between it
 				// and the eye. Every term above is a function of the local density and of
@@ -351,9 +363,54 @@ void main() {
 				// ⚠️ absorbance is a product of exp()s over a march that never reaches
 				// past VOLUMETRIC_FOG_DISTANCE, and its worst case over those 96 blocks -
 				// a full-density column end to end, at the top of the extinction range -
-				// is about 1e-15 rather than zero, so pow() here is never handed the one
-				// input it has no value for.
-				vec3 emission = NETHER_PLUME_COLOR
+				// is about 1e-20 rather than zero at the density batch 534 ships, so
+				// pow() here is never handed the one input it has no value for. (The
+				// 1e-15 this note carried until batch 534 is the same arithmetic at the
+				// 1.5 the density shipped at from batch 520 to batch 528, and batch
+				// 529's 3.0 puts it below 1e-30 - still a number in a 32-bit float,
+				// whose smallest subnormal is about 1.4e-45.)
+				//
+				// ⚠️ The core-to-edge gradient (batch 534): the light a column sends
+				// is not spread evenly across its width. The density above is the one
+				// thing this pass holds that says how far into a column a sample sits -
+				// the pillar field in NetherPlumeDensity is read in the horizontal
+				// plane only, so it peaks at a column's core and falls to nothing in
+				// the gaps between columns - and it is already in hand, so the shape
+				// costs one smoothstep and three mixes and no fetch and no step.
+				//
+				// ⚠️ coreness is 0 at the thin edge of a column and 1 from
+				// NETHER_PLUME_CORE_DENSITY upwards, and that constant is the half
+				// density the arithmetic in the options calls a column's core: the
+				// field's own mean plume is 0.353 and a typical surviving pillar is
+				// 0.51, so a typical pillar's middle comes out at one and everything
+				// thinner than 0.5 lands somewhere on the ramp between.
+				//
+				// ⚠️ The two mixes are written around the constants the pass already
+				// had, so that NETHER_PLUME_CORE_GRADIENT at 0.0 gives back exactly
+				// the colour and the weight the emission had before the option
+				// existed - mix(x, y, 0.0) is x, to the bit - and that is the null
+				// case this pack asks of every shaping option. The slider is a
+				// compile-time constant, so at 0.0 the whole gradient folds away.
+				//
+				// ⚠️ The absorbance the march is holding is deliberately NOT part of
+				// this. It is the other half of a column's shape and it already has an
+				// option of its own - NETHER_PLUME_SHADING weights the glow by it,
+				// which is what puts the light on a column's near face - and folding
+				// it in here as well would darken the same side twice and make the
+				// gradient depend on what stands in front of a column rather than on
+				// where the sample sits inside it.
+				float coreness = smoothstep(
+					0.0, NETHER_PLUME_CORE_DENSITY, plume);
+
+				vec3 plumeColor = mix(NETHER_PLUME_COLOR,
+					mix(NETHER_PLUME_EDGE_COLOR, NETHER_PLUME_CORE_COLOR, coreness),
+					NETHER_PLUME_CORE_GRADIENT);
+
+				float plumeWeight = mix(1.0,
+					mix(NETHER_PLUME_EDGE_GAIN, 1.0, coreness),
+					NETHER_PLUME_CORE_GRADIENT);
+
+				vec3 emission = plumeColor * plumeWeight
 					* ((1.0 - exp(-NETHER_PLUME_ABSORPTION * plume)) * 0.25 * plume
 						* NETHER_PLUME_OPTICAL * NETHER_PLUME_DENSITY)
 					* pow(absorbance, NETHER_PLUME_SHADING);
@@ -424,34 +481,49 @@ void main() {
 				// that turning the smoke up thickens it rather than only
 				// brightening it.
 				//
-				// ⚠️ NETHER_PLUME_EXTINCTION is the number to tune, and it has not
-				// been measured in game: at the density batch 528 shipped a typical core
-				// of plume about 0.5 keeps 17% of what is behind it over twenty blocks
-				// and about 1% over fifty, so the columns silhouette against the lava
-				// without the layer becoming a black wall. ⚠️ Those two figures are
-				// batch 528's, and they were 41% and 10% before it: the extinction was
-				// raised from 0.03 to 0.06 because a column that leaves the background
-				// as it was has no edge to read, which is the report the batch opened
-				// with. See the option for
-				// the arithmetic, and for the figure to watch instead - the transmittance
-				// of a whole 96-block ray through the field, which the contrast raised in
-				// the same batch compounds with this one to 1.9%, from 23%. The formula
-				// is untouched, and this is the dial if the Nether reads as too closed
-				// in. Raise it for smoke you cannot see through, lower it for smoke that
-				// only veils, and set it to 0.0 to take the fading out altogether.
+				// ⚠️ NETHER_PLUME_EXTINCTION is the number to tune. ⚠️ Every figure
+				// in this note is at the pair batch 534 ships - density 2.0, extinction
+				// 0.03 - and every one of them is a transmittance, which is the fraction
+				// of what is behind the medium that reaches the eye. A sight line
+				// through a column's core of about 0.5 keeps 30.1% of it over twenty
+				// blocks and 5.0% over fifty; one through the field at its own mean
+				// plume of 0.353 keeps 42.9% over the same twenty blocks and 1.71% over
+				// the whole 96-block march, where the core keeps 0.31%. So the columns
+				// silhouette against the lava without the layer becoming a black wall,
+				// which is what this dial is for.
 				//
-				// ⚠️ Every figure above is divided by two in practice as of batch 529,
-				// which doubled NETHER_PLUME_DENSITY: those transmittances are what a
-				// plume of 0.5 keeps per twenty blocks, and that plume is now carried at
-				// twice the density. So the twenty-block core figure is 2.7% rather than
-				// 17%, and the field's own mean plume of 0.353 keeps 7.9% over twenty
-				// blocks and five parts in a million over the whole 96-block march. ⚠️ The
-				// 54% and the 1.3% that stood in that sentence were not the pair this
-				// batch ships: 54% is the twenty-block row with the extinction still at
-				// 0.03, which is the pair before batch 528, and 1.3% is the core's own
-				// 96-block row with the extinction still at 0.03. 0.03 on this dial is
-				// what returns the layer to what the paragraph above describes, and it
-				// costs the emission nothing.
+				// ⚠️ What a transmittance does when the density or this is changed is
+				// not proportional, and that is the trap: what doubles is the OPTICAL
+				// DEPTH, which is the exponent, so doubling it squares the transmittance
+				// and halving it takes the square root. Batch 534 lowered the density
+				// from batch 529's 3.0 to 2.0 and this from 0.06 to 0.03, so the product
+				// that scales every depth fell to a third of what it was: every figure
+				// above is batch 529's own raised to the power one third - its core's
+				// twenty blocks go from 2.7% to 30.1%, and its whole-march mean from
+				// five parts in a million to 1.71%.
+				//
+				// ⚠️ The figures the earlier versions of this note carried are kept
+				// here as the pairs that produced them, because each was true of one:
+				// 17% and about 1% are batch 528's twenty- and fifty-block core rows at
+				// density 1.5 with the extinction at 0.06; 41% and 10% are the same two
+				// rows at 1.5 with 0.03, which is the pair before that batch and the
+				// reason it raised this option, a column that leaves the background as
+				// it was having no edge to read; 2.7%, 7.9% and five parts in a million
+				// are batch 529's rows at density 3.0 with 0.06, the last of them being
+				// the 96-block march at the field's own mean plume of 0.353; and the
+				// 1.9% and 23% that stood here for that same march are batch 528's, the
+				// first at the density the contrast raise had just produced and the
+				// second at the mean plume of 0.168 it measured then. ⚠️ 54% and 1.3%
+				// were not the pair any of those batches shipped: 54% is the twenty-block
+				// row with the extinction still at 0.03 and 1.3% is the core's own
+				// 96-block row at that same 0.03.
+				//
+				// The formula is untouched, and this is the dial if the Nether reads as
+				// too closed in. Raise it for smoke you cannot see through, lower it for
+				// smoke that only veils, and set it to 0.0 to take the fading out
+				// altogether - which is a bottom the slider still has, although the
+				// shipped 0.03 is now the second step on it rather than the step below
+				// the top.
 				absorbance *= exp(-plume * NETHER_PLUME_ABSORPTION
 					* NETHER_PLUME_DENSITY * stepLength * NETHER_PLUME_EXTINCTION);
 
