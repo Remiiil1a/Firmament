@@ -16,6 +16,101 @@ report problems in this project, not in Steadfast's.
 
 ---
 
+## v1.0.1 - 2026-10-10
+
+The Nether's smoke rebuilt: columns that churn, hide what is behind them and thin
+out as they rise, lit from the core outwards over a bed of their own - and a
+volumetric fog whose edges land on the geometry rather than beside it.
+
+### Added
+
+* **The plumes churn, and each column churns at its own rate.** The churn rides
+  the same wind the leaves and the clouds move on, and where it is read is offset
+  by the column's own density, so a thick column rolls out of step with the gap
+  beside it instead of the whole layer sliding past on one sheet. **Plume churn
+  speed** sets how fast the smoke moves and **Plume churn offset** how far apart
+  the columns are set.
+* **A bed of smoke at the foot of the columns.** Without it the columns started
+  part way up the floor's fade and read as standing in mid-air, with the gaps
+  between them empty all the way down to the lava. **Plume bed height** is how
+  far up it reaches and **Plume bed density** is how thick it is against the
+  columns standing in it; it is carved by the same moving noise as the smoke
+  above it, so it churns on the same clock.
+* **A thin haze fills the Nether's air.** It is not made of columns: it is the
+  same everywhere in the dimension, and its colour is the game's own fog colour,
+  so the crimson forest, the warped forest, the soul sand valley and the basalt
+  deltas each tint it differently. **Haze density** sets it, and it only ever
+  adds light - which is what the columns have to stand out from.
+* **Plume core gradient.** A column's light is brightest in its middle now and
+  falls away towards its thin edge, with the core taking a deeper, hotter colour
+  and the edge a paler one. Before it, a column was one colour from edge to edge
+  and read as a stripe of light rather than as a mass with a core. It cannot
+  brighten anything - it only takes light away from the thinnest parts - and
+  `0.0` gives back exactly the old flat colour.
+
+### Changed
+
+* **The plumes fade what is behind them instead of only adding glow.** **Plume
+  extinction** is charged for every block of column a sight line crosses, so the
+  dimming builds up along the view and what is far behind a column is taken out
+  far harder than what is close to it. `0.0` is the old add-only look, which is
+  how the plumes behaved before the option existed.
+* **The glow is shaded.** **Plume shading** weights a column's own light by the
+  smoke the view has already crossed: the near face is lit and the far side goes
+  dark, so a column has an outline against the lava. Without it the light
+  depended on the local thickness alone and every part of a column came out
+  equally bright - a soft blob with neither a near face nor a far one. `0.0`
+  restores that flat look, and the top of the range lights little but the skin of
+  a column.
+* **The plumes thin out as they rise.** **Plume height falloff** is how far a
+  column keeps its density, and over that height the density falls to about a
+  third of what it is at the lava. Lower makes short plumes standing on the bed;
+  higher makes tall ones that stay thick almost to the ceiling, which is the
+  flat-topped look the option exists to avoid.
+* **The smoke close to the player is no longer cleared away so widely.** **Plume
+  clearing radius** was `24`, and it scales the whole effect down within that
+  distance - which includes the distance a player stands from the lava sea, so
+  the nearest columns were faded towards nothing rather than drawn. It is `8`
+  now. The smoke right at the eye still fades, and walking into a column turns
+  the screen orange faster than it used to.
+* **The Nether page's defaults are the author's own tuning in game.** Plume
+  density `2.0`, extinction `0.03`, height falloff `20`, churn speed `1.5`,
+  brightness `0.32` and core gradient `0.6`, with the rest of the page as it now
+  stands: width `26`, contrast `1.7`, shading `2.0`, clearing radius `8`, bed
+  height `8` and bed density `0.10`, haze `1.0`, and ceiling smoke density `1.0`
+  with brightness `0.004`.
+* **The descriptions in that page say what an option does and which way to turn
+  it, and nothing else.** They used to carry the tuning behind each default -
+  percentages, ratios, which build changed which value - which is not what
+  someone reading a menu needs. What is left is what the option does, which way
+  to turn it, and what a value of `0.0` gives back.
+* **The page went from three options to seventeen, and four of its labels now say
+  what the option does.** `Plume rise` is **Plume churn offset** - it moves where
+  a column's churn is read and raises nothing; `Ceiling smoke` is **Ceiling smoke
+  density**, because it is a slider with an amount in it rather than the switch
+  for that layer; `Plume churn` is **Plume churn speed** and `Plume clearing
+  around the eye` is **Plume clearing radius**. The first two are new names for
+  the setting itself, so a value saved under the old name goes back to its
+  default once; the last two are label changes only.
+
+### Fixed
+
+* **The volumetric fog's edges are resolved against the geometry.** The fog is
+  marched at a quarter of the frame and put back on the full frame with the depth
+  taken into account, so an edge lands where the surface behind it is instead of
+  being smeared across it.
+* **Full resolution fog works again.** With it on, the fog was read from the
+  quarter-resolution grid and drawn shrunken into a corner of the screen, because
+  the size the buffer was given and the size the reader assumed had drifted
+  apart; the reader asks the fog's own image for its size now, whichever of the
+  two it is. The option had also dropped out of the menu and out of the High tier
+  along the way, and both are back.
+* **A cause of black speckles at silhouettes is gone.** A fog sample taken from
+  outside the fog's own image, or a distance that came back as not-a-number,
+  could leave a black dot on an edge. The reads are held inside the image, a
+  non-finite distance is refused, and an empty sum falls back to the smoothed
+  read rather than to a hole.
+
 ## v1.0.0 - 2026-10-04
 
 The first official release: four ready-made performance tiers, and a first pass

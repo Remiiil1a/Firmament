@@ -501,7 +501,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 536]
+option.PBR_DEBUG=Material debug view [build 537]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1226,136 +1226,56 @@ option.VOLUMETRIC_FOG_RAIN_STRENGTH.comment=How much thicker the fog is in \
 	second is what shows. Only applies out in the open: rain does not thicken the \
 	air in a cave.
 option.VOLUMETRIC_FOG_FULL_RES=Full resolution fog
-option.VOLUMETRIC_FOG_FULL_RES.comment=Whether to march and store the fog at \
-	the full resolution of the frame. Off by default at a quarter of the frame, \
-	which the default step count is tuned for. Warning: full resolution costs \
-	about sixteen times as much. Turn it on only to see what the upscale was \
-	hiding. Compile-time, so it reloads the shaders.
+option.VOLUMETRIC_FOG_FULL_RES.comment=Whether the fog is drawn at the full resolution of the frame instead of at a quarter of it. Off by default, which is what the default step count is tuned for. Warning: full resolution costs about sixteen times as much, so turn it on only if the fog's softness bothers you and you have the performance to spare. Compile-time, so changing it reloads the shaders.
 
 option.NETHER_PLUMES=Nether plumes
-option.NETHER_PLUMES.comment=The smoke columns that rise over the Nether's lava sea, and the whole of this pack's smoke in that dimension: turning this off takes the layer under the ceiling and the thin haze in the air with it, because the three are one picture. They glow, and they also take light out of what is behind them: the glow is brightest in the core and on the face turned towards you, and the rest of the column dims whatever is seen through it. Nothing here is add-only any more. 
-	Plume extinction at 0.0 is how to get the old add-only behaviour back, and haze density at 0.0 is how to take the haze away and leave the columns standing.
+option.NETHER_PLUMES.comment=The smoke columns that rise over the Nether's lava sea, and all of this pack's smoke in that dimension: turning this off also removes the flat layer under the ceiling and the thin haze in the air, because the three are drawn as one picture. The columns glow, and they also hide what is behind them. Set plume extinction to 0.0 if you want them to add light only, and haze density to 0.0 to keep the columns and drop the haze.
 
 option.NETHER_PLUME_DENSITY=Plume density
-option.NETHER_PLUME_DENSITY.comment=How much smoke there is. It multiplies both halves of what smoke does at once - the light a column sends towards the eye and the light it takes out of what is behind it - so 1.5 was the release value, 3.0 was the last build's and 2.0 is what ships now, tuned in game against the brightness below. 0.0 is no plumes at all; the layer under the ceiling has an amount of its own. Warning: the two halves move together, and a transmittance is not proportional to either - twenty blocks of a column's core keep 30.1% of what is behind them at the shipped pair, this 2.0 with plume extinction at 0.03, where this at 3.0 with the extinction unchanged would keep 2.7%, because what doubles is the optical depth: a transmittance is exp() of a negative depth, so doubling the depth squares the transmittance rather than halving it. Plume extinction at 0.06 takes that 30.1% to 9.1% and costs the light nothing. Warning: what it does not do is move the density debug view, however much it looks like the dial that was being asked for - that view calls the plume density field itself, and that function never reads this option. The two places that do are the emission and the absorbance in the pass. The dials that move the view are plume clearing, which multiplies the whole field at its source, and plume height falloff, which is 20 now rather than 25, so the field the view shows is thinner at the top than it was.
+option.NETHER_PLUME_DENSITY.comment=How much smoke there is. It thickens the columns and makes them hide more of what is behind them at the same time, so turning it up also dims whatever is seen through them. 0.0 leaves no columns at all; the flat layer under the ceiling has a density of its own.
 
 option.NETHER_PLUME_SCALE=Plume width
-option.NETHER_PLUME_SCALE.comment=How wide a column is, in blocks: the size of \
-	one cell of the noise the columns are read from, and nothing else uses it. It \
-	is a number of its own as of this build, and no longer the Overworld's fine \
-	fog scale - that one is 90 blocks a cell, which is a scale for a fog bank: a \
-	200-block vista holds two of its cells, so the field the columns are made of \
-	had no columns in it at the distance a player stands at. 26 is the shipped \
-	value and puts about eight cells across that vista, with cores around 28 \
-	blocks wide. Low is a finer, more broken field of thin plumes; high is fewer \
-	and broader towers, and at the top of the range they merge into masses. The \
-	Overworld's own fog does not read this option.
+option.NETHER_PLUME_SCALE.comment=How wide a column is, in blocks. Smaller gives a finer, more broken field of thin plumes; larger gives fewer and broader towers, which merge into masses at the top of the range. The Overworld's fog has a size of its own and is not affected.
 
 option.NETHER_PLUME_CONTRAST=Plume contrast
-option.NETHER_PLUME_CONTRAST.comment=How far the noise the columns are made of \
-	is lifted, before it is squared and the erosion is carved out of it. The carve \
-	subtracts the erosion from the squared noise, and the squared noise sits lower \
-	than the erosion does, so most of the field was being taken to nothing: at 1.0 \
-	- the null case, and what the plumes looked like before this option - only a \
-	quarter of the layer carried any smoke at all, and the thin haze was several \
-	times brighter than the columns standing in it. 1.7 is the shipped value, up \
-	from 1.4: about three quarters of the layer carries smoke instead of two \
-	thirds, the cores are wider, and there is about a third more smoke in the \
-	layer, which is what a column needs to stand out with. It widens the cores \
-	rather than brightening them - the result is held at one, so no value of this \
-	can put a column above the density the brightness and the extinction are \
-	tuned against - so this changes the shape of the field and not how bright the \
-	smoke is overall, which is plume brightness. Warning: 1.8 and up pins over \
-	two fifths of the layer at that ceiling, and 2.0 and up is a wall of smoke \
-	rather than a field of columns.
+option.NETHER_PLUME_CONTRAST.comment=How much of the air the columns fill. Turning it up widens the cores and puts smoke into more of the layer; too far and the gaps between columns close up, so it reads as a wall of smoke instead of separate columns. It widens the columns rather than brightening them - use plume brightness for how bright the smoke is - and the lowest setting is the sparse field the plumes had before this option existed.
 
 option.NETHER_CEILING_SMOKE_DENSITY=Ceiling smoke density
-option.NETHER_CEILING_SMOKE_DENSITY.comment=The smoke that gathers under the ceiling: the amount of it, against the brightness it is given. Not the same thing as the plumes: a flat layer with no noise in it, thickening as the third power of the height above y=40. It is what gives the Nether a roof. 0.0 is no ceiling smoke.
-	Not the same thing as the plumes: a flat layer with no noise in it, \
-	thickening as the third power of the height above y=40. It is what gives the \
-	Nether a roof. 0.0 is no ceiling smoke.
+option.NETHER_CEILING_SMOKE_DENSITY.comment=How much smoke gathers in the flat layer under the ceiling. It is not made of columns: it is even, it thickens as you go up, and it is what gives the Nether a roof. 0.0 leaves it out.
 
 option.NETHER_PLUME_EXTINCTION=Plume extinction
-option.NETHER_PLUME_EXTINCTION.comment=How much the plumes fade what is behind them. The columns glow either way; this is the other half of what smoke does, the part that dims what is seen through it. 0.0 is the null case: nothing behind the plumes is faded at all, which is how they behaved before this option existed. It is charged per block of column the ray crosses - the optical depth a sight line builds is the plume along it, times 2.0, times the plume density, times the distance, times this option - and what arrives is exp() of the negative of that, which is why raising it does not dim the layer evenly: it pulls the far end of a sight line in much harder than the near end. 0.03 is the shipped value, and it is what the last build paired with a density of 2.0 as well, so the pair is the same and the light is what moved. What it gives: twenty blocks of a column's half density keep 30.1% of what is behind them, fifty blocks keep 5.0%, and the whole 96-block march keeps 0.31%; the field at its own mean plume of 0.353 keeps 42.9% over twenty blocks and 1.71% over the march. Warning: what this option does to a transmittance is not proportional, because the optical depth is the exponent - doubling the depth squares the transmittance and halving it takes the square root. The 2.7%, 7.9% and five parts in a million an earlier version of this text quoted are the build before last, density 3.0 with this at 0.06, which is three times the optical depth of the pair that ships; the 41% and 16.5% before those were the twenty-block row at density 1.5 with this at 0.03 and then 0.06, two pairs back. (The 0.2% and the 1.9% older notes quote for the whole march are that 1.5 density with this at 0.06 as well, at the field's means of the time, about 0.353 and 0.22.) Too high and the columns become walls you cannot see through.
+option.NETHER_PLUME_EXTINCTION.comment=How much the columns hide what is behind them. They glow either way; this is the part that dims what is seen through them, and the dimming builds up along the line of sight, so it takes much more out of what is far behind a column than of what is close to it. 0.0 is the null case and leaves them adding light only, the way they looked before this option existed; too high and they become walls you cannot see through.
 option.NETHER_PLUME_SHADING=Plume shading
-option.NETHER_PLUME_SHADING.comment=How much of a column's glow is lost on the \
-	way out through the smoke in front of it. The glow is otherwise a function \
-	of the local density alone, which cannot say where a point sits inside a \
-	column: every part of it comes out equally bright and the column reads as a \
-	soft blob with no near face. This weights it by what the ray has already \
-	crossed, which puts the light on the outside, where the smoke between it and \
-	the eye is thinnest - the near face lit and the far face dark, which is what \
-	gives a column an outline against the lava. It shapes the glow only: it adds \
-	no dimming of its own and cannot brighten anything. 0.0 restores the flat \
-	look this option was added to fix; 3.0 lights little but the skin of a \
-	column and leaves a thick one dark inside.
+option.NETHER_PLUME_SHADING.comment=How much of a column's own glow survives the smoke in front of it. Without it the glow depends only on how thick the smoke is there, so a column's near face and far side come out equally bright and it reads as a soft blob with no outline; this puts the light on the outside, where the smoke between it and your eye is thinnest, so the near face is lit and the far side goes dark. It only shapes the glow - it adds no dimming of its own and cannot brighten anything - and 0.0 is the flat look it was added to fix.
 
 option.NETHER_PLUME_CORE_GRADIENT=Plume core gradient
-option.NETHER_PLUME_CORE_GRADIENT.comment=How much of a column's light sits in its middle rather than being spread evenly across its width. A column is densest at its core, and this turns that into the look of a plume: at 0.0 every part of a column is the colour it has always been and there is no gradient at all; at 0.6, what ships, the thin edge of a column keeps about three fifths of its light and is mixed towards a paler colour, while the core keeps all of its light and is mixed towards a deeper, hotter one; at 1.0 the edge keeps a third of its light and the core is the deeper colour outright. It cannot brighten anything - the weight is one at a core and falls from there - so it only ever takes light away from the thin parts of the smoke, and the brightness figures in the options above, quoted at a column's half density, are unaffected by it. A column with a middle of its own is half of what makes smoke read as a plume rather than as a stripe of light; the churn options are the other half.
+option.NETHER_PLUME_CORE_GRADIENT.comment=Where a column's light sits across its width. Turning it up keeps the light in the core and gives it a deeper, hotter colour while the thin outer edge keeps less of its light and turns paler; 0.0 is the null case, where every part of a column is the one colour it had before this option existed. It cannot brighten anything - it only takes light away from the thin parts - and that is what gives a column a middle instead of a flat stripe of light.
 
 option.NETHER_HAZE_DENSITY=Haze density
-option.NETHER_HAZE_DENSITY.comment=How thick the thin haze that fills the \
-	Nether's air is, as against the plumes that gather into columns. It is the \
-	same everywhere in the dimension, and its colour is the game's own fog \
-	colour, so the crimson forest, the warped forest, the soul sand valley and \
-	the basalt deltas each tint it differently. It only ever adds light - it is \
-	far too thin to hide anything behind it. 0.0 is no haze.
+option.NETHER_HAZE_DENSITY.comment=How thick the thin haze that fills the Nether's air is. It is not the columns: it is the same everywhere in the dimension, and it takes the game's own fog colour, so each biome tints it differently - and it only adds light, being far too thin to hide anything behind it. 0.0 leaves it out.
 
 option.NETHER_PLUME_CHURN=Plume churn speed
-option.NETHER_PLUME_CHURN.comment=How fast the smoke churns. It rides the same wind the leaves and the clouds move on, so it sets a rate rather than starting a clock of its own. 0.0 is the null case: the drift drops back to the flat rate it had before the churn was added, which moves too slowly to see. 1.5 is what ships now, a third again the 1.0 that shipped before it - about three quarters of a slice of noise a second against the half a slice that 1.0 gave - and 3.0 is nearly twice that again, where the columns visibly roll.
-	wind the leaves and the clouds move on, so it sets a rate rather than \
-	starting a clock of its own. 0.0 is the null case: the drift drops back to \
-	the flat rate it had before the churn was added, which moves too slowly to \
-	see. 1.0 is the shipped rate, about half a slice of noise a second; 3.0 is \
-	two and a half times that, and the columns visibly roll.
+option.NETHER_PLUME_CHURN.comment=How fast the smoke churns. The churn rides the same wind the leaves and the clouds move on, so this sets a rate rather than starting a clock of its own. 0.0 is the null case and drops back to the old flat drift, which moves too slowly to see; higher makes the columns visibly roll.
 
 option.NETHER_PLUME_CHURN_OFFSET=Plume churn offset
-option.NETHER_PLUME_CHURN_OFFSET.comment=How much a column's own density offsets where its erosion is read. This is what makes one column roll at a different rate from its neighbour instead of the whole world sliding past on one sheet. It is an offset in the erosion's own coordinate and not a height, which is why this build names it for the churn rather than for a rise: a fully dense column reads the erosion about eighty-four blocks higher up its own axis than a gap between columns does, and nothing about it lifts a column. 0.0 is the null case and gives every column the same churn, which is the reference pack's rigid scroll; 12.0 is the shipped value, which separates them, and going higher separates them further.
-	its erosion is read. This is what makes one column roll at a different rate \
-	from its neighbour instead of the whole world sliding past on one sheet. 0.0 \
-	is the null case and gives every column the same churn, which is the \
-	reference pack's rigid scroll; 12.0 is the shipped value, which separates \
-	them, and going higher separates them further.
+option.NETHER_PLUME_CHURN_OFFSET.comment=How much a column's own density shifts its churn out of step with its neighbours. This is what makes one column churn at its own pace instead of the whole world sliding past on one sheet. 0.0 is the null case and churns every column in step; higher separates them further.
 
 option.NETHER_PLUME_CLEAR=Plume clearing radius
-option.NETHER_PLUME_CLEAR.comment=How far around the player the smoke is held off, in blocks. Not a detail: without it, standing inside a column fills the screen with orange, because a medium seen from inside is not an object any more. This is not a fade at the screen's edge, it is a multiplier on the whole term - a player inside it is surrounded by smoke that is thinned towards nothing - which is why 24, the value it shipped with, turned out to be the reason the columns were not there: the distance a player actually stands from the lava sea is inside it, so the smoke around them was scaled down and the nearest columns were not drawn at all. 8 is the shipped value: it still fades what is right at the eye, but it stops removing the fifteen to twenty blocks a column's own face is at. Warning: walk into a column with this low and the screen turns orange - and at this build's brightness it turns orange faster than it did, the three blocks between the eye and a column's near face putting six and a half times as much light there as the build before it. 16 and 24 are the old behaviour, and 4 is close to no bubble at all.
+option.NETHER_PLUME_CLEAR.comment=How far around the player the smoke is faded out, in blocks. It keeps the screen from filling with orange when you stand inside a column, and it fades the smoke right at your eye rather than removing it. Further out it fades more of the nearby smoke as well - which is what hid the nearest columns before - while closer leaves the smoke around you at full strength, so walking into a column turns the screen orange.
 option.NETHER_PLUME_HEIGHT_SCALE=Plume height falloff
-option.NETHER_PLUME_HEIGHT_SCALE.comment=How far a column keeps its density as it rises, in blocks: over this height the smoke falls to about a third of what it is at the lava, and half of it leaves about three fifths. 20 is the shipped value, down from the 25 the build before it shipped: at 25 the smoke ten blocks up kept 67% of the lava's density and twenty blocks up 45%, where at 20 those are 61% and 37%, and at the roof fade's own start, thirty-eight blocks up, 15% rather than 22%. Low makes short plumes - at 10 a column is down to 37% after ten blocks - and high makes tall ones: at 50 they keep 47% of their density all the way up to where the roof fade begins, which is the full-height bar this term exists to avoid.
-	it rises, in blocks: over this height the smoke falls to about a third of \
-	what it is at the lava. Low makes short plumes - at 10 a column is a stub by \
-	ten blocks up - and high makes tall ones that stay thick almost to the \
-	ceiling, which is the full-height bar this term exists to avoid.
+option.NETHER_PLUME_HEIGHT_SCALE.comment=How far a column keeps its density as it rises, in blocks: over this height its density falls to about a third of what it is at the lava. Smaller makes short plumes standing on the bed; larger makes tall ones that stay thick almost to the ceiling, which is the flat-topped look this option exists to avoid.
 
 option.NETHER_PLUME_FLOOR_SCALE=Plume bed height
-option.NETHER_PLUME_FLOOR_SCALE.comment=How far up the bed at the foot of the \
-	columns reaches, in blocks. The bed is what the columns rise out of: without \
-	it they start part way up the floor ramp and read as standing in mid-air. \
-	Low is a skin of smoke on the lava; high reaches far enough up to meet the \
-	bottom of the columns.
+option.NETHER_PLUME_FLOOR_SCALE.comment=How far up the bed of smoke at the foot of the columns reaches, in blocks. The bed is what the columns rise out of: without it they start part way up the floor's fade and read as standing in mid-air. Small is a skin of smoke on the lava; large reaches far enough up to meet the bottom of the columns.
 
 option.NETHER_PLUME_FLOOR_AMOUNT=Plume bed density
-option.NETHER_PLUME_FLOOR_AMOUNT.comment=How dense the bed is against the columns standing in it. 0.0 removes it and leaves the columns in mid-air, which is how they looked before the bed was added; 0.10 is the shipped value, and was 0.25, then 0.55 before that, each time because the masking it was doing had been measured. At 0.55 the bed was the thicker of the two over nearly nine tenths of the layer, which is what buried the columns in a wash of fog and left the Nether looking like haze with no pillars in it. What settles the value now is the light rather than the density: the glow curve is quadratic this far down it, so a bed this thick glows about an eighteenth as much as a typical column, and about a twenty-eighth once the core gradient's weight is on it - a thin sheet is what that option fades hardest - which is the share its job needs: something for the columns to rise out of, not a sheet to be seen. 1.0 makes the foot of the layer as thick as the columns themselves.
-	columns standing in it. 0.0 removes it and leaves the columns in mid-air, \
-	which is how they looked before the bed was added; 0.10 is the shipped value, \
-	and was 0.25, then 0.55 before that, each time because the masking it was \
-	doing had been measured. At 0.55 the bed was the thicker of the two over \
-	nearly nine tenths of the layer, which is what buried the columns in a wash \
-	of fog and left the Nether looking like haze with no pillars in it. What \
-	settles the value now is the light rather than the density: the glow curve is \
-	quadratic this far down it, so a bed this thick glows about an eighteenth as \
-	much as a typical column, which is the share its job needs - something for \
-	the columns to rise out of, not a sheet to be seen. 1.0 makes the foot of the \
-	layer as thick as the columns themselves.
+option.NETHER_PLUME_FLOOR_AMOUNT.comment=How dense the bed is against the columns standing in it. 0.0 removes it and leaves the columns standing in mid-air, which is how they looked before the bed was added. Too much and the bed becomes what you see, with the columns buried in a wash of haze; the shipped value is thin enough to read as the smoke they rise out of.
 
 option.NETHER_PLUME_OPTICAL=Plume brightness
-option.NETHER_PLUME_OPTICAL.comment=How bright the plumes glow: the emission's own multiplier, and nothing else. It is not how much smoke there is (that is plume density) and not how much of what is behind it is hidden (that is plume extinction) - it scales the light added to the frame and leaves the shape and the opacity alone, which is why the fix for plumes that could not be seen is here rather than in either of those. 0.016 was the value two builds ago and 0.032 the last one; 0.32 is what ships now, the author's own tuning in game, ten times the value before it, and the slider is built around it rather than ending on it: 0.04 at the bottom is about what the previous build's pair put out, and 0.80 at the top is two and a half times what ships. Warning: a figure here is light EMITTED per block of plume crossed unless it says otherwise, and the arriving figures are what is left of it after the smoke in front - a sample arrives as the emission times absorbance cubed, so over the thirteen blocks a sight line crosses a column through, 38.6% of the light put in arrives. On that basis: at a column's half density the crossing is 65.7% of a white frame emitted and 25.4% arriving; at the field's own mean plume of 0.353 it is 37.2% emitted and 18.2% arriving; through a saturated core it is 179.8% emitted and 38.1% arriving. The build before this one had 9.9%, 5.6% and 27.0% emitted over the same crossing, and the thin haze the columns stand in emits a flat 0.00025 per block, which a half-density column beats by 202 times emitted and 78 times arriving.
+option.NETHER_PLUME_OPTICAL.comment=How bright the plumes glow. It scales the light the smoke adds to the frame and nothing else: it is not how much smoke there is (that is plume density) and not how much of what is behind it is hidden (that is plume extinction), so it leaves the shape and the coverage alone. Lower is a dim Nether and higher a bright one, and it makes no difference to a column that is not there at all.
 
 option.NETHER_CEILING_SMOKE_OPTICAL=Ceiling smoke brightness
-option.NETHER_CEILING_SMOKE_OPTICAL.comment=How bright the smoke under the \
-	ceiling glows. It is charged separately from the plumes because it is a flat \
-	layer rather than columns, and it is left at the value it shipped with: this \
-	layer is a dark neutral that reads as the roof rather than as the effect. \
-	0.001 all but removes the roof; 0.010 fills the ceiling with smoke.
+option.NETHER_CEILING_SMOKE_OPTICAL.comment=How bright the flat layer of smoke under the ceiling glows. It is set separately from the plumes because it is a layer rather than columns, and it is left dark and neutral on purpose: it is there to read as the Nether's roof, not as an effect of its own. The lowest setting all but removes the roof; the highest fills the ceiling with smoke.
 
 option.UNDERWATER_GODRAYS=Underwater light shafts
 option.UNDERWATER_GODRAYS.comment=Whether the light shafts are drawn when the \

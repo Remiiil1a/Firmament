@@ -567,15 +567,14 @@ vec3 VolumetricFogTint() {
 // density 1.5, with no absorbance weighting on either side - the haze carries
 // none by construction and the column's figure here is emitted light, as the
 // emission figures in this file are unless they say otherwise. At the pair batch
-// 534 ships that same median pillar of 0.095 emits 0.0026 per block, which the
-// core gradient's weight of 0.65 takes to 0.0017 - about seven times the haze
-// rather than a third of it, before the march has weighted anything. Lifting the
+// 534 ships that same median pillar of 0.095 is several times the haze rather
+// than a fraction of it, before the march has weighted either; the core
+// gradient's weight takes it down a little and it stays well above. Lifting the
 // noise before the square moves the subtraction's bite down the distribution, so
 // the erosion still carves and there is more field for it to carve: at the
 // shipped 1.4, 64.6% of the layer carries pillar density instead of 26.1%, the
-// mean plume goes from 0.034 to 0.168, the columns' own light comes out at 1.4
-// times the haze instead of 0.35 times it, and the emission's 90th percentile
-// goes up sixfold.
+// mean plume goes from 0.034 to 0.168, and the columns' own light comes out
+// above the haze instead of below it.
 //
 // ⚠️ Held at one after the lift, and that is what keeps this a shaping term
 // rather than a second brightness option. Both NETHER_PLUME_OPTICAL and
@@ -944,15 +943,13 @@ const float NETHER_PLUME_EDGE_GAIN = 0.35;
 // why the two bases disagreed by a factor of four when a reader took them for
 // one: the only figures here that are emitted are the ones that say so.
 //
-// ⚠️ On the arriving basis, and at the pairs named: a half-density crossing is
-// 25.4% of the reference now, against 1.4% at batch 533's pair and 0.6% at the
-// pair before it - which is the figure batch 529 opened with, and the report
-// along with it, "a column that is half a percent of the frame is a column nobody
-// can see". At the field's own mean plume of 0.353 the same crossing is 18.2%
-// against 1.1% at batch 533's pair; through a saturated core of 1.0 it is 38.1%
-// against 1.9% there and 1.0% at the pair before it. ⚠️ Batch 529 published 1.7%
-// for that saturated core on its own quarter basis rather than on this one, which
-// is the same discrepancy in miniature.
+// ⚠️ On the arriving basis, and at the shipped pair: a half-density crossing is
+// 25.4% of the reference, the field's own mean plume of 0.353 arrives at 18.2%,
+// and a saturated core at 38.1%. ⚠️ The pairs before this one were not in the
+// same league - the report batch 529 opened with was that a column that dim is a
+// column nobody can see - and the older versions of this note gave their own
+// columns of figures for those pairs on a round quarter basis rather than on this
+// one, which is the discrepancy this paragraph exists to stop repeating.
 //
 // ⚠️ The 0.25 inside that expression is where batch 529's fault was, and it is
 // left exactly where it is. It came from batch 520, where it was the constant
