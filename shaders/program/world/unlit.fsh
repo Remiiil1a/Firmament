@@ -44,15 +44,6 @@ void main() {
 	// gbuffers_block.fsh for one - are the ones that set this program's flat
 	// color. Written without `defined(END_DEBUG_TINT)` the body would compile
 	// against a name the preprocessor has never seen.
-	//
-	// At this point in the file the guard says something narrower than the
-	// option. END_DEBUG is an Iris option and never a #define in this pack, and
-	// its value is 0 or 1 either way, so the left-hand test is the option and
-	// nothing else. END_DEBUG_TINT is the half that is checked: it is a macro
-	// this program does not define, and the programs that do - see
-	// gbuffers_block.fsh for one - are the ones that set this program's flat
-	// color. Written without `defined(END_DEBUG_TINT)` the body would compile
-	// against a name the preprocessor has never seen.
 	#if defined(END_DEBUG) && defined(END_DEBUG_TINT)
 		if (EndDimension()) {
 			gl_FragData[0] = vec4(END_DEBUG_TINT, 1.0);

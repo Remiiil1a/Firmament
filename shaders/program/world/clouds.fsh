@@ -37,9 +37,6 @@ in vec4 fog;
 // Declared by the pack for the programs that take light from the world; it is
 // not read anywhere in the body below, so at this point in the file it has no
 // meaning to state. Left in place rather than given a meaning it has not got.
-// Declared by the pack for the programs that take light from the world; it is
-// not read anywhere in the body below, so at this point in the file it has no
-// meaning to state. Left in place rather than given a meaning it has not got.
 in vec3 indirect;
 
 uniform vec3 cloudColor;
@@ -83,11 +80,6 @@ void main() {
 
 	// Multiply in cloud color / fog and write out to the primary color
 	// buffer.
-	//
-	// fog.a is the Fog() return's transmittance - what is left of the surface
-	// after the fog - and fog.rgb its colour already multiplied by the fog
-	// factor, so this is a premultiplied blend of one surface with no
-	// background behind it. See environment/fog.glsl for the return.
 	//
 	// fog.a is the Fog() return's transmittance - what is left of the surface
 	// after the fog - and fog.rgb its colour already multiplied by the fog
