@@ -18,7 +18,7 @@
 // Uncharted 2 Tonemapping presentation by John Hable.
 //
 // This is an option rather than a private constant: shaders.properties puts it
-// on screen.EFFECTS_COLOR_SETTINGS and its EDIT_DEFAULT profile turns it off with
+// on screen.EFFECTS_COLOR_SETTINGS and profile.FIRMAMENT_MEDIUM turns it off with
 // "!SATURATED_TONEMAP", lang/en_us.lang gives it a name and a description, and
 // the #ifdef below is what selects between the two parameter sets. The #define
 // immediately below is commented out, so the default state of this file is the

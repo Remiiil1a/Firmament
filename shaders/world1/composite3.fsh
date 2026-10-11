@@ -30,7 +30,7 @@
 //
 // A reflection is a lookup into the world that is already drawn, and the world
 // that is already drawn and put together over the last few frames is colortex3.
-// environment_reflection.glsl declares it and reads it (:42, :325), and this
+// environment_reflection.glsl declares it and reads it (:43, :326), and this
 // pass gets it through that include rather than declaring it here.
 //
 // composite1 is the pass that writes colortex3, and it also reads it - it is
