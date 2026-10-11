@@ -38,9 +38,6 @@
 // program that declares its format. The note at the top of
 // /program/post/light_bleed.fsh is the other half of this.
 //
-// At this point in the file the copy is colortex4, below, and this is the
-// program that declares its format. The note at the top of
-// /program/post/light_bleed.fsh is the other half of this.
 const int R11F_G11F_B10F = 0;
 const int R8 = 0;
 

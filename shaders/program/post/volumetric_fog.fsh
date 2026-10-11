@@ -137,8 +137,8 @@ uniform vec3 underwaterFogColor;
 // what makes the fourth channel exist at all: R11F_G11F_B10F is three
 // components, so writing an alpha into it would have been silently dropped and
 // the whole transmittance would have read back as 1.0 - no regression, but no
-// effect either. The pack already keeps six other buffers in this format
-// (colortex7, 9, 10, 11, 12, 13), so it is the familiar one here.
+// effect either. The pack already keeps four other buffers in this format
+// (colortex7, 9, 12, 13), so it is the familiar one here.
 // ⚠️ It is a half float, so it is signed and tops out at 65504: the scattered
 // light is nowhere near that, and the quantity in the fourth channel is a
 // fraction between zero and one by construction - but see the note in
