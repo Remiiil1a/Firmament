@@ -468,9 +468,6 @@ void dWorldPosdxdy(
 // further would be a list of broken pictures, which is worse than a shorter
 // slider. See BATCH_LOG.md 148.
 //
-// Note that the declaration here reads 0.5 while profile.EDIT_DEFAULT in
-// shaders.properties sets 1.0, so the profile restores the full reflection this
-// option is a way out of.
 #define WATER_REFLECTION_STRENGTH 0.5 // [0.0 0.1 0.25 0.5 0.75 1.0]
 
 vec4 TranslucentLighting(

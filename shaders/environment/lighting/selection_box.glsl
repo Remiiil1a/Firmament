@@ -49,7 +49,7 @@
 //
 // ⚠️ These are read as sRGB - the numbers a colour picker shows - and converted
 // on the way in, so that 128 is stored as roughly a fifth of full brightness -
-// 0.502 to the 2.2 is 0.222, in the linear light everything else here is in -
+// 0.502 to the 2.2 is 0.220, in the linear light everything else here is in -
 // and therefore displays as 0.50, the mid tone the picker showed. Taken
 // unconverted it would be stored as 0.502 and display as 0.73. The pack works in
 // linear light throughout and this is the one place a player types a colour,
