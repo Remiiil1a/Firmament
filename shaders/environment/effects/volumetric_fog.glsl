@@ -110,11 +110,11 @@ vec3 VolumetricFogTint() {
 
 // Whether to draw the shafts and the medium that carries them.
 //
-// The name is the one the screen-space version used, and it is kept on purpose:
-// it is referenced from the quality profiles in shaders.properties, from the
-// menu, and from the lang files, and every one of those still means the same
-// thing by it - whether this pack draws volumetric light. What changed is how.
-#define GODRAYS
+// One switch rather than two, because the pass behind it is a single march:
+// the shafts are what that march scatters towards the eye, so with the medium
+// switched off there is nothing to scatter them out of. The name follows the
+// medium the march is about, which is what this file draws.
+#define VOLUMETRIC_FOG
 
 // How bright the scattered light is.
 //

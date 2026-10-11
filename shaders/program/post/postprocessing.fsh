@@ -49,7 +49,7 @@ const int colortex0Format = R11F_G11F_B10F;
 uniform sampler2D colortex12;
 uniform sampler2D colortex13;
 
-// GODRAYS BEGIN
+// VOLUMETRIC FOG BEGIN
 
 // The shafts, as the volumetric fog pass left them: the light the medium
 // scattered towards the eye, at half resolution.
@@ -70,13 +70,13 @@ uniform sampler2D colortex13;
 // version exists for and the one the old version could not draw.
 uniform sampler2D colortex1;
 
-// Whether to draw the shafts and the medium that carries them.
+// Whether to draw the medium the light travels through, and the shafts it
+// scatters towards the eye.
 //
-// The name is the one the screen-space version used, kept on purpose: the
-// quality profiles in shaders.properties, the menu and both lang files all
-// reference it, and every one of them still means the same thing by it -
-// whether this pack draws volumetric light. What changed is how it is drawn.
-#define GODRAYS
+// One switch for both, because the pass it turns on is one march through the
+// fog: the shafts are that march's scattering, so there is nothing to draw
+// them from with the medium off. The name follows the medium the pass is about.
+#define VOLUMETRIC_FOG
 
 // How bright the shafts are.
 //
@@ -99,7 +99,7 @@ uniform sampler2D colortex1;
 // decided by the buffer's queried size at the top of UpsampleVolumetrics rather
 // than by the option that sized it (batch 533), and the writer asks the same
 // question of the same buffer. See that function.
-#ifdef GODRAYS
+#ifdef VOLUMETRIC_FOG
 
 // The depth the fog was marched from, and the matrix that turns a depth into the
 // distance that march used. Declared behind the pack's duplicate guard, and here
@@ -468,7 +468,7 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 
 #endif
 
-// GODRAYS END
+// VOLUMETRIC FOG END
 
 // Note: if we do not define all values used in GLSL expressions, we get the
 // following error:
@@ -664,7 +664,7 @@ void main() {
 		// what the frame actually receives.
 		finalColor = texture(colortex1, screenCoord).rgb;
 	#elif DEBUG == DEBUG_GODRAYS_UPSAMPLED
-		#ifdef GODRAYS
+		#ifdef VOLUMETRIC_FOG
 			// What the frame receives once the upscale has had its say: the same
 			// four taps the picture gets, weighted by distance rather than by
 			// area alone. Put beside the two above, the difference between them
@@ -744,7 +744,7 @@ void main() {
 			color = MotionBlur(screenCoord);
 		#endif
 
-		#ifdef GODRAYS
+		#ifdef VOLUMETRIC_FOG
 			// The light the march collected, and the fraction of the frame that
 			// reaches the eye through the medium it was collected in.
 			//

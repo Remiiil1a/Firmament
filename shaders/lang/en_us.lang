@@ -501,7 +501,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 537]
+option.PBR_DEBUG=Material debug view [build 542]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1138,19 +1138,15 @@ option.DIRECTIONAL_SKYLIGHT_SHADING.comment=Whether sky light depends on which \
 	way a surface faces, making upward faces brighter. Off gives every face the \
 	same sky light: flatter, and better if undersides look too dark.
 
-option.GODRAYS=Volumetric fog and shafts
-option.GODRAYS.comment=Whether light shafts radiate from the sun, drawn from a \
-	mask of where the sky is visible. Being a screen-space effect, it only knows \
-	what is on screen: something off the edge of the view cannot block a shaft. \
-	Under water the mask is empty, since the surface hides the sky from below; \
-	Underwater light shafts puts them back.
+option.VOLUMETRIC_FOG=Volumetric fog
+option.VOLUMETRIC_FOG.comment=Whether the air is drawn as a medium that light travels through: the fog itself and the shafts scattered inside it. The Nether's plumes belong to it as well, so turning it off takes all three with it.
 
 option.GODRAYS_STRENGTH=Volumetric light strength
 option.GODRAYS_STRENGTH.comment=How bright the light shafts are, as a multiple \
 	of what the pack draws on its own. It covers both sides of the waterline: the \
 	underwater shafts have a strength of their own and the two multiply, so under \
 	water both apply and above it only this one. Setting either to 0.0 turns off \
-	the part it covers, the same picture as with Volumetric light off. 1.0 is the \
+	the part it covers, the same picture as with Volumetric fog off. 1.0 is the \
 	pack's own picture, unchanged.
 
 option.RAIN_COLOR_SATURATION=Rain colour saturation
@@ -1283,8 +1279,8 @@ option.UNDERWATER_GODRAYS.comment=Whether the light shafts are drawn when the \
 	the surface hides the sky completely, so the shafts vanish; this puts them \
 	back by asking the same question of the water, where the light comes through \
 	the surface and the terrain gets in the way. They run along the sun's own \
-	direction, so they meet the sun actually drawn in the sky. Needs Volumetric \
-	light on, and nothing is drawn in lava or powder snow.
+	direction, so they meet the sun actually drawn in the sky. Needs Volumetric fog \
+	on, and nothing is drawn in lava or powder snow.
 
 option.UNDERWATER_GODRAYS_STRENGTH=Underwater light shaft strength
 option.UNDERWATER_GODRAYS_STRENGTH.comment=How bright the shafts under water \
