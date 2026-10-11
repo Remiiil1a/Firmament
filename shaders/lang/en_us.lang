@@ -501,7 +501,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 550]
+option.PBR_DEBUG=Material debug view [build 551]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -857,7 +857,7 @@ option.END_GIANT.comment=What sits in the End's sky: a very small white-hot \
 
 option.END_GIANT_SIZE=Body size
 option.END_GIANT_SIZE.comment=The angular radius of the body, in radians, and \
-	the scale everything else is measured against; the real sun is 0.0045, so \
+	the scale everything else is measured against; the real sun is 0.0046, so \
 	every step is many times life size. With no visible disc left, it scales the \
 	core's width, the halo's radius and the Einstein radius. Default about 15 \
 	degrees across, largest about 26; raising it costs a little.

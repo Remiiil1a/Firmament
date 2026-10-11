@@ -278,7 +278,7 @@ vec3 EndStarfield(vec3 worldDir) {
 #define END_GIANT
 
 // Overall size, as the angular radius of the body in radians. The real sun is
-// 0.0045, so every step here is many times life size; the default is about
+// 0.0046, so every step here is many times life size; the default is about
 // fifteen degrees across.
 //
 // With no visible disc on the body any more, this is what scales everything
