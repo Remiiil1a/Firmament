@@ -34,7 +34,7 @@ Those same terms also require, for any modified version:
   modified version anywhere else;
 * that the **file name include the same thing**, for which the terms suggest the
   suffix `-edit-of-coderbot-Steadfast` - hence
-  `Firmament-v1.0.1-edit-of-coderbot-Steadfast.zip`;
+  `Firmament-v1.0.2-edit-of-coderbot-Steadfast.zip`;
 * that the GPL and those terms are kept, and that nothing suggests this is an
   official Steadfast release. **It is not.** coderbot does not support it, and
   bug reports about it do not belong in Steadfast's issue tracker.
@@ -462,6 +462,21 @@ files in full.
   could leave a black dot on an edge. The reads are held inside the image, a
   non-finite distance is refused, and an empty sum falls back to the smoothed
   read rather than to a hole.
+
+**Changed in v1.0.2**
+
+* The volumetric fog's master switch carries the fog's own name now, and the
+  light-shaft options moved onto that page with it; the page's layout is tidied.
+* Three user-visible wording corrections from the comment audit: volumetric cloud
+  cells are 24 blocks (not 12), the reflection blur costs five sky samples (not
+  eight), and `END_GIANT_SIZE`'s "real sun" is 0.0046 (not 0.0045).
+
+**Fixed in v1.0.2**
+
+* The duplicated `skyAmbientLuminance` definition is gone, so Iris no longer logs
+  `Ignoring duplicated custom uniform name`.
+* The `deferred` pass's `==` clause that never took effect is not written at all
+  now; the pass was always on, so nothing changed on screen.
 
 ## 5. Files
 

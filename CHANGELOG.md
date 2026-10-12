@@ -16,6 +16,28 @@ report problems in this project, not in Steadfast's.
 
 ---
 
+## v1.0.2 - 2026-10-12
+
+A small update: menu tidying, two long-standing warnings closed, and a pass over
+every comment in the pack. **No behaviour changed** beyond the three items below.
+
+### Changed
+
+* The light-shafts page's master switch now uses the volumetric fog's own name
+  (`VOLUMETRIC_FOG`), and everything on the Effects page except Glint brightness
+  moved into that page; the page's layout is tidied - two switches on one row
+  with the two strengths right after them.
+* Comment audit: three user-visible wording corrections - volumetric cloud cells
+  12 blocks -> 24 blocks, reflection blur 8 samples -> 5 sky samples, and
+  `END_GIANT_SIZE`'s "real sun" 0.0045 -> 0.0046.
+
+### Fixed
+
+* The duplicated `skyAmbientLuminance` definition is gone, so Iris no longer logs
+  `Ignoring duplicated custom uniform name`.
+* The `deferred` pass's `==` clause that never took effect is not written at all
+  now, which removes the warning it caused; the pass was always on, so nothing
+  changed on screen.
 ## v1.0.1 - 2026-10-10
 
 The Nether's smoke rebuilt: columns that churn, hide what is behind them and thin
