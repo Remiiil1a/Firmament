@@ -98,10 +98,29 @@
 
 // The depth buffer, for the distance of this pixel from the eye - the hand test
 // below is made of it, and nothing else here needs it.
-uniform sampler2D depthtex0;
+//
+// Declared behind the pack's duplicate guard too, since the pass that includes this
+// file declares the same texture for its own depth view: whichever of the two
+// arrives first claims the name, and a repeated uniform declaration is an error
+// either way round. See the note in /lib/taa.glsl and BATCH_LOG.md 176.
+#if !defined(DEPTH_TEXTURE_DECLARED)
+	#define DEPTH_TEXTURE_DECLARED
+	uniform sampler2D depthtex0;
+#endif
 
+// The projection, for turning a depth into a view distance. gbufferProjection and
+// gbufferModelView are this file's alone - nothing that includes it declares
+// them - while gbufferProjectionInverse is declared by the pass that includes
+// the file as well, so that one goes behind the pack's duplicate guard for the
+// same reason as the texture above: the first of the two to arrive claims the
+// name, and a second declaration of one uniform in one program is an error on
+// the driver.
 uniform mat4 gbufferProjection;
-uniform mat4 gbufferProjectionInverse;
+
+#if !defined(PROJECTION_INVERSE_DECLARED)
+	#define PROJECTION_INVERSE_DECLARED
+	uniform mat4 gbufferProjectionInverse;
+#endif
 uniform mat4 gbufferModelView;
 
 // The matrix the previous frame was drawn with, for the turning below. Only its

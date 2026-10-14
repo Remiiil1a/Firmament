@@ -545,20 +545,6 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 	// medium's settings file, so this is the one debug view whose cost is a
 	// recompile of the option set rather than a few instructions.
 	#include "/environment/effects/volumetric_fog.glsl"
-
-	// ⚠️ cameraPosition and gbufferModelViewInverse are declared by motion_blur.glsl,
-	// which this pass includes below, but only under that file's own MOTION_BLUR
-	// option - and two declarations of one uniform in one program is an error on
-	// the driver, which is what the note in lib/taa.glsl and BATCH_LOG.md 176 are
-	// about. So they are declared here when the option is off and left to that file
-	// when it is on: the same shape as the duplicate guards on the scene texture
-	// and the depth texture above, with the option standing in for the guard macro.
-	#ifdef MOTION_BLUR
-		// Declared by motion_blur.glsl, below.
-	#else
-		uniform vec3 cameraPosition;
-		uniform mat4 gbufferModelViewInverse;
-	#endif
 #else
 	#define SCENE_TEXTURE_DECLARED
 	uniform sampler2D colortex0;
@@ -582,6 +568,20 @@ uniform sampler2D depthtex1;
 // uses it, even when the two end up in the same file once the includes are done.
 #include "/environment/effects/motion_blur.glsl"
 
+
+	// ⚠️ cameraPosition and gbufferModelViewInverse are declared by motion_blur.glsl,
+	// which this pass includes above, but only under that file's own MOTION_BLUR
+	// option - and two declarations of one uniform in one program is an error on
+	// the driver, which is what the note in lib/taa.glsl and BATCH_LOG.md 176 are
+	// about. So they are declared here when the option is off and left to that file
+	// when it is on: the same shape as the duplicate guards on the scene texture
+	// and the depth texture above, with the option standing in for the guard macro.
+	#ifdef MOTION_BLUR
+		// Declared by motion_blur.glsl, above.
+	#else
+		uniform vec3 cameraPosition;
+		uniform mat4 gbufferModelViewInverse;
+	#endif
 layout(location = 0) out vec3 finalColor;
 
 uniform vec3 godraysColor;
