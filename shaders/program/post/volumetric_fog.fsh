@@ -102,10 +102,25 @@ uniform float viewHeight;
 //
 // ⚠️ textureSize is a query and not a sample: it returns the texture's own
 // dimensions and reads no texel, which is what makes it legal in the pass that
-// renders into this buffer. Nothing else here samples it, and nothing should:
-// reading a buffer while writing it is the undefined case this pack keeps its
-// bloom buffers apart for.
+// renders into this buffer - and it is asked and not sampled at the top of
+// main() for exactly that reason. The buffer IS sampled further down, by the
+// temporal denoise, and that is legal for a different reason: Iris gives each
+// colortex two sides and has a composite pass read one while writing the other,
+// which is what makes the history read at the bottom of main() a read of the
+// previous frame rather than a read of this one. See the note there, and
+// BATCH_LOG.md b569 for the documentation that was checked.
 uniform sampler2D colortex1;
+
+// Where a world point was on the previous frame's screen, for the temporal
+// denoise at the bottom of main().
+//
+// ⚠️ The four uniforms are declared here rather than in /lib/reproject.glsl,
+// which declares none of its own on purpose: a second declaration of one uniform
+// in one program does not compile, and that file is included by a vsh and by
+// three programs that each declare their own set.
+uniform mat4 gbufferPreviousProjection;
+uniform mat4 gbufferPreviousModelView;
+uniform vec3 previousCameraPosition;
 
 // The dither that breaks up the banding between steps. The same 8 by 8 pattern
 // the screen-space shafts used, and the same one the sky's dithering uses.
@@ -118,6 +133,20 @@ uniform sampler2D colortex1;
 // distort(), which the shadow map has to be read through - see the note where it
 // is used. The same include lit.vsh and shadowmap.glsl take.
 #include "/lib/distort.glsl"
+
+// ReprojectWorldPosition(), the pack's one copy of "where was this point on the
+// screen a frame ago" - the same function the temporal resolve, the reflection's
+// history and the motion blur all take their movement from. The temporal denoise
+// below is its fourth caller, which is the point of it being a file: a second
+// copy of a reprojection is a second place to fix the next time one is found
+// wrong. See the note on it in /lib/reproject.glsl.
+//
+// ⚠️ Included here, after the uniforms above, and not at the top of the file:
+// that file declares no uniforms of its own and needs four in hand before it can
+// be expanded - gbufferPreviousProjection, gbufferPreviousModelView,
+// previousCameraPosition and viewWidth/viewHeight, the last two of which are
+// declared above as well.
+#include "/lib/reproject.glsl"
 
 // The colour the pack fades what is under water towards, for the medium to take
 // its own colour from down there. A custom uniform, so this stage has it.
@@ -146,12 +175,103 @@ uniform vec3 underwaterFogColor;
 const int RGBA16F = 0;
 const int colortex1Format = RGBA16F;
 
+// And it keeps its contents between frames, which is what makes the temporal
+// denoise at the bottom of main() possible at all: the denoise reads the
+// previous frame's result back out of this very buffer as its history, and a
+// buffer cleared every frame would have nothing in it to read.
+//
+// ⚠️ This line is the whole effect, and deleting it kills the denoise silently -
+// the buffer goes back to being cleared to vec4(1.0) every frame, every frame is
+// then averaged against that instead of against the fog, and a still frame looks
+// plausible while the accumulation converges on "no fog at all". The copy in
+// shaders.properties does NOT do the same job: Iris reads this directive out of
+// the GLSL sources (its documentation puts it in "any GLSL shader file", and
+// Bliss ships all sixteen in one included file) and its shaders.properties
+// parser has no case for it. The properties line is there so that the flag is
+// visible beside the size.buffer line it belongs to, and for no other reason.
+const bool colortex1Clear = false;
+
 // colortex1 can be named by DRAWBUFFERS, which reaches as far as nine - so this
 // pass keeps the older directive and matches the rest of the pack, unlike the
 // SMAA and bloom passes which have to reach past it.
 /* DRAWBUFFERS:1 */
 
 layout(location = 0) out vec4 fogScatter;
+
+// The temporal denoise.
+//
+// The march takes ONE ray through each texel of this buffer, with its steps
+// offset by a dither that changes every frame, so a single frame of it is a
+// single sample of a noisy estimator: what the eye is given is the step
+// boundaries and the patch noise of the medium, and nothing in this pass can
+// average them away because there is nothing else to average them with. This
+// stage is that average. It reads the previous frame's result back through the
+// camera's own reprojection, keeps it if it looks like a plausible value for
+// this texel, and mixes the two - which is the "denoise" half of what
+// Bliss Shader's VLTemporalFiltering() does for its own volumetrics
+// (shaders/dimensions/composite3.fsh, and see BATCH_LOG.md b569 for the
+// line-by-line comparison of what was taken from it and what was not).
+//
+// It is a SEPARATE stage rather than more steps in the march, because the two
+// buy the same thing at very different prices: the march's cost is the shadow
+// fetch per step - the single most expensive instruction in this pack - while
+// this stage's is ONE fetch of a quarter-resolution buffer plus the one depth
+// read the march had already made, on a target a sixteenth of the frame's size.
+//
+// ⚠️ One fetch, and not the nine this started with. The first version bounded
+// the history by the mean and the deviation of the texel's 3x3 neighbourhood,
+// and that could not work for a reason worth keeping in front of a reader: every
+// read of this buffer inside this pass returns the PREVIOUS frame's accumulated
+// value (see the note on colortex1 below), so a neighbourhood of it measures an
+// already-averaged signal, its spread is far below the per-frame noise, and the
+// bound it makes contains the very ghost it was meant to reject. Nine fetches to
+// reject nothing. What replaced it costs no fetches at all: the history against
+// the frame being drawn, which is a measurement the one-pass shape can actually
+// make. See the note on FOG_DENOISE_CHANGE_TOLERANCE.
+//
+// ⚠️ The options are in /environment/effects/volumetric_fog.glsl with the rest
+// of the medium's, NOT here: the menu registers an option by finding its
+// `#define` in the sources, and where that define lives is where a reader looks
+// for what the option does. What is here is only what the option switches on,
+// plus the one tuning constant below.
+
+// The variance clamp this stage was designed around, kept as a note rather than
+// as a constant.
+//
+// The plan was Salvi's variance clipping - the same bound the temporal resolve
+// uses in composite1.fsh, the history held inside the current texel's
+// neighbourhood mean plus or minus a multiple of its standard deviation. It is
+// the right bound for a resolve because a resolve HAS the current frame's
+// neighbourhood: composite1 reads colortex0, which this frame's geometry has
+// just written.
+//
+// ⚠️ This pass does not have it, and that is the whole story of this stage's
+// first attempt. The only buffer it can read is the one it is writing, and a
+// composite pass reads the side of a colortex that holds the PREVIOUS frame (see
+// the note on colortex1 below). So a 3x3 of it is a 3x3 of already-averaged
+// values: its spread is that of the accumulated signal rather than of the
+// per-frame noise, the band built from it is narrow AND contains the ghost it is
+// supposed to exclude, and the clamp cannot reject anything. It measured nine
+// fetches per texel and did nothing with them.
+//
+// What replaced it is on the other side of the same problem: instead of bounding
+// the history by data that is not the current frame, compare the history against
+// the current frame directly. That is VOLUMETRIC_FOG_DENOISE_TOLERANCE below,
+// and it is a measurement one pass CAN make.
+
+// How far a history's brightness may be from this frame's before the history is
+// thrown away, as a fraction of the brighter of the two.
+//
+// ⚠️ This is the stage's anti-ghosting, and it is a constant rather than an
+// option because nothing about it is a matter of taste: below the noise it
+// discards the history on every frame and the stage stops existing, and far above
+// it a ghost survives. A quarter sits between the two by a wide margin - the
+// per-frame error the model in BATCH_LOG.md b569 measured puts a typical fog
+// luma's noise at a few percent of itself, so a quarter is several deviations of
+// it, while the changes worth rejecting - a door opening on a lit room, the water
+// closing over the eye, a portal - move the fog by much more than a quarter. If
+// the fog is ever seen smearing through a change, this is the number to lower.
+const float VOLUMETRIC_FOG_DENOISE_TOLERANCE = 0.25;
 
 void main() {
 	// Where this fragment is on the screen. ⚠️ Asked of the target this pass is
@@ -169,8 +289,12 @@ void main() {
 	// A quarter of the frame rather than a half by default. The result is a wide
 	// smooth glow with no edges of its own, which is the case upscaling handles
 	// best - and the four times smaller target both pays for the higher step
-	// count below and smooths what the dither leaves behind, which matters here
-	// because this pack has no temporal filter left to do it.
+	// count below and smooths what the dither leaves behind.
+	//
+	// ⚠️ "and this pack has no temporal filter to do it" stood at the end of that
+	// sentence until batch 569, which is the batch that gave this pass one. The
+	// quarter is still worth having on its own - it is what pays for 24 steps -
+	// but it is no longer the only thing standing between the dither and the eye.
 	vec2 screenCoord = gl_FragCoord.xy / vec2(textureSize(colortex1, 0));
 
 	float depth = texture(depthtex0, screenCoord).r;
@@ -620,5 +744,259 @@ void main() {
 		scatter += mediumColor * (sunVisibility * density * stepLength);
 	}
 
-	fogScatter = vec4(scatter, absorbance);
+	vec4 raw = vec4(scatter, absorbance);
+
+	// TEMPORAL DENOISE BEGIN
+
+	// What the march made, before the denoise touches it. Kept apart rather than
+	// denoised in place so that the one path that cannot have a history is one
+	// assignment rather than three, and so that a debug view of the noisy buffer
+	// is a view of what the march actually produced.
+	vec4 resolved = raw;
+
+	#ifdef VOLUMETRIC_FOG_DENOISE
+		// ⚠️ There is no history in the first frames of a buffer's life, and the
+		// test is on the frame rather than on the buffer's contents because a
+		// buffer that has never been written holds whatever the driver left in
+		// it: this one is not cleared - see colortex1Clear in /composite.fsh,
+		// without which there is nothing to accumulate onto - so its first
+		// contents are undefined and may well be plausible-looking values. Three
+		// frames is enough for the flip to have put a written frame on both sides,
+		// which is the condition that makes the read below a read of the frame
+		// before this one.
+		if (frameCounter >= 3) {
+			// Where this texel was on the previous frame's screen.
+			//
+			// ⚠️ `rayDirection` is ALREADY A WORLD DIRECTION, and that is the one
+			// thing this block has to get right: it was taken through
+			// `mat3(gbufferModelViewInverse)` near the top of main() - see the note
+			// there - and it was never brought back. So neither branch below may
+			// put it through that matrix a second time. Doing so rotates it by the
+			// camera's own rotation twice, and the point that comes out is not this
+			// ray: at a yaw of ninety degrees it lands ninety degrees away, the
+			// reprojection reads a texel with nothing to do with this one, and the
+			// noise the stage removes comes and goes as the player turns - a defect
+			// no still frame can show.
+			//
+			// ⚠️ The point that is reprojected is a choice, and it is the whole
+			// difference between a denoise that follows the world and one that
+			// slides across it. A ray through a pixel covers everything from the eye
+			// to wherever it stops, and the history has to be looked up at ONE
+			// point; which point is right depends on what stopped the ray:
+			//
+			//   * it stopped on something solid - a hill, a wall, the ground - and
+			//     the fog on screen is what is in front of THAT SURFACE. The point
+			//     is the surface, at the distance the march stopped at, so the fog
+			//     and the history are anchored to the same place in the world and
+			//     both walk with the camera;
+			//   * it stopped at the far end of the medium, over a sky pixel - there
+			//     is no surface, and the fog on screen is the whole column. What
+			//     anchors it is the DIRECTION, and nothing about where the camera
+			//     is or has walked: the point is one block along the direction from
+			//     the PREVIOUS eye, which cancels the walk out of the difference
+			//     the reprojection takes. Using the current eye there instead would
+			//     carry the whole frame's movement into the history and slide the
+			//     fog sideways across a sky that is not moving.
+			//
+			// ⚠️ The split is on the surface being at the far plane, which is the
+			// same test composite1.fsh makes to mean "nothing was drawn here" and
+			// the same depthtex0 the march read - not on surfaceDistance reaching
+			// VOLUMETRIC_FOG_DISTANCE, which is where the MARCH stops and not where
+			// the surface is. The two are different questions: a hill two hundred
+			// blocks away caps the march at 96 and is still a surface the fog
+			// belongs to.
+			//
+			// ⚠️ The held item is not reprojected like the world, for the reason
+			// composite1.fsh gives in full: it is attached to the camera, so it
+			// stays put relative to the eye while the world slides past, and
+			// reprojecting it with the camera's translation makes it drag its own
+			// history along with the walking. Cancelling the translation the same
+			// way - by adding back the difference - leaves the reprojection
+			// rotation-only. The threshold is the game's own non-linear depth, so
+			// it is Mellow Shader's empirical number, which is where the resolve
+			// took it from; the fog over a held item is a small part of the frame
+			// and getting the branch slightly wrong costs a small error in it.
+			const float FOG_DENOISE_HAND_DEPTH = 0.56;
+
+			vec3 anchorWorldPos;
+
+			if (depth < 1.0) {
+				vec3 surfaceWorldPos = cameraPosition + rayDirection * surfaceDistance;
+
+				anchorWorldPos = depth > FOG_DENOISE_HAND_DEPTH
+					? surfaceWorldPos
+					: surfaceWorldPos + (previousCameraPosition - cameraPosition);
+			} else {
+				anchorWorldPos = previousCameraPosition + rayDirection;
+			}
+
+			Reprojection reprojection =
+				ReprojectWorldPosition(anchorWorldPos, screenCoord);
+
+			// A pixel that was off the screen or behind the camera last frame has
+			// no history at all, and one from the first frames of the buffer has
+			// none worth reading - see the frame test above.
+			//
+			// ⚠️ `!(...)` rather than `(...)`, because every comparison against a
+			// NaN is false: the "inside the frame" test is the one that catches it,
+			// and the outside test written the other way round would let it
+			// through. The coordinate is then not sampled at all.
+			//
+			// ⚠️ The fetch is behind the test rather than left to a clamped
+			// coordinate. A clamp would make the read legal, but what it would read
+			// is the fog at the edge of the screen - a texel with nothing to do
+			// with this one - and the clamp would also put a NaN coordinate into a
+			// fetch whose result would then have to be discarded anyway.
+			vec4 history = raw;
+
+			if (!reprojection.offScreen && !reprojection.behindCamera) {
+				history = texture(colortex1, reprojection.previousCoord);
+			}
+
+			// A history that is not a number, or is infinite, is replaced rather
+			// than left to the mix below: a buffer that cannot hold a NaN turns one
+			// into an ordinary zero, and a zero that reaches the history is a hole
+			// in the fog rather than a dark fog. One bound asks the whole question,
+			// and a NaN fails every comparison - which is why the negation is the
+			// check.
+			if (!(dot(history, history) < 1.0e18)) {
+				history = raw;
+			}
+
+			// How far this texel moved since the previous frame, in pixels of the
+			// FRAME.
+			//
+			// ⚠️ The frame's pixels and not this buffer's, which is the one thing
+			// about this number that was got wrong here first. The weight below is
+			// the temporal resolve's, and the resolve's velocity is measured on the
+			// frame's grid (composite1.fsh); measuring this one on the fog's grid
+			// makes a texel of motion mean a quarter of a pixel, so a slow pan that
+			// moves the picture one pixel a frame scores a stillness of 0.94 and
+			// keeps almost the whole history - which is exactly the movement the
+			// weight exists to react to. A pixel is a pixel: the same number the
+			// resolve uses, so the same number means the same thing in both.
+			vec2 velocity = (screenCoord - reprojection.previousCoord)
+				* vec2(viewWidth, viewHeight);
+
+			// How much of the history this texel keeps.
+			//
+			// The shape is the temporal resolve's, in composite1.fsh: the option
+			// is the weight for a texel that did not move, and exp(-|v|^2) takes it
+			// towards seven tenths of itself as the texel starts to move. That is
+			// what makes a long history usable at all - a long history is the only
+			// thing that can average a per-frame sample out, and it is also what
+			// smears anything that moves, so the two are split by motion.
+			//
+			// ⚠️ A whole texel of motion already scores 0.37, so the floor is what
+			// most of a moving frame actually gets. It is 0.7 of the option rather
+			// than zero because zero would throw the history away outright on every
+			// frame the camera moves at all, which is every frame a player is
+			// walking - and the noise this exists to remove does not stop when they
+			// do.
+			float stillness = exp(-dot(velocity, velocity));
+			float historyWeight = VOLUMETRIC_FOG_DENOISE_STRENGTH
+				* mix(0.7, 1.0, stillness);
+
+			// A history that does not look like what is here now is thrown away
+			// rather than mixed in.
+			//
+			// ⚠️ This is the whole of the stage's anti-ghosting, and it is here
+			// because the variance clamp this started with was INERT rather than
+			// wrong. That clamp bounded the history by the mean and the deviation of
+			// this texel's 3x3 neighbourhood - and every read of this buffer inside
+			// this pass returns the PREVIOUS frame's accumulated value, because Iris
+			// has a composite pass read one side of a colortex while writing the
+			// other (see the note on colortex1 above). So the clamp was measuring an
+			// already-averaged signal, its bounds contained the very ghost they were
+			// meant to reject, and it could not reject anything: nine fetches per
+			// texel to do nothing at all. What CAN be measured in one pass is this -
+			// the history against the frame that is being drawn now.
+			//
+			// ⚠️ Luma, and not the three channels separately: what changes when the
+			// fog does is how much light there is, and a per-channel test would fire
+			// on a colour change that a per-channel mix handles perfectly well.
+			//
+			// ⚠️ The test is relative to the larger of the two, not absolute. The
+			// scattered light's scale is set by the exposure in shaders.properties
+			// and by the time of day, so a fixed threshold would fire constantly at
+			// noon and never at dusk. What the ratio means: a history more than a
+			// quarter away from what is here is a history about somewhere else - the
+			// fog behind a door that has just opened, or the other dimension's air
+			// after a portal - and dropping it outright recovers in one frame rather
+			// than in the ten an exponential average would take.
+			//
+			// ⚠️ It cannot fire on noise, and that is arithmetic rather than hope:
+			// raw and history are two samples of the same estimator, so their
+			// difference has about 1.41 times the deviation of one of them, while a
+			// quarter of a typical fog luma is several deviations of the per-frame
+			// error the model in BATCH_LOG.md b569 measured. A threshold below the
+			// noise would not reject ghosts, it would reject the history always -
+			// which is the same defect as the clamp this replaces, wearing the
+			// opposite sign.
+			float rawLuma = dot(raw.rgb, vec3(0.2126, 0.7152, 0.0722));
+			float historyLuma = dot(history.rgb, vec3(0.2126, 0.7152, 0.0722));
+
+			// Floored, so that the division the ratio implies cannot be by zero:
+			// two black pixels on a dark night are two samples that agree, and the
+			// difference between them is then tested against this rather than
+			// against nothing.
+			float lumaScale = max(max(rawLuma, historyLuma), 1.0e-4);
+
+			if (abs(historyLuma - rawLuma)
+				> VOLUMETRIC_FOG_DENOISE_TOLERANCE * lumaScale) {
+				historyWeight = 0.0;
+			}
+
+			// The weight is checked before it is used, and it is the last place in
+			// this pass where a value that is not a number can still get in:
+			// previousCoord came out of a clip-space division by its own w, and
+			// mix(raw, raw, NaN) is a NaN. Zero rather than anything else, because
+			// zero takes this texel from the current frame, which is the one answer
+			// that cannot be wrong about a frame already known to be finite.
+			if (!(historyWeight >= 0.0 && historyWeight <= 1.0)) {
+				historyWeight = 0.0;
+			}
+
+			resolved = mix(raw, history, historyWeight);
+
+			// A transmittance outside nothing and everything is not a transmittance.
+			// The mix cannot produce one - both of its arms are in range - but the
+			// value goes into a buffer the next frame reads back as its history, and
+			// the picture multiplies the scene by it, so it is clamped where it is
+			// made. ⚠️ It also cannot drift: a value that came back out of range
+			// would be mixed in again every frame, so this is what keeps a
+			// transmittance a transmittance for as long as the buffer lives.
+			//
+			// ⚠️ Inside the #ifdef, with the stage it belongs to. Outside it, this
+			// line would run on the path where the option is off as well - which is
+			// a no-op for the march's own output, whose fourth channel is 1.0 or a
+			// product of exp()s, but it is a no-op this batch should not be adding
+			// to a path it claims not to touch. See the note on the guard below for
+			// the one line that has to stay outside.
+			resolved.a = clamp(resolved.a, 0.0, 1.0);
+		}
+	#endif
+
+	// Whatever this buffer holds, nothing that is not a number leaves the pass
+	// that fills it - the guard postprocessing.fsh's own UpsampleVolumetrics ends
+	// with, for the same reason. One bound asks the whole question, and the
+	// fallback is no fog rather than a black speck: no scattered light and full
+	// transmittance, which is the state the march above starts from.
+	//
+	// ⚠️ This one is deliberately OUTSIDE the #ifdef, and it is the only line
+	// after the march that is. Both paths end here - the march's own output feeds
+	// it when the option is off - so putting it inside would leave the off path
+	// unguarded, and putting it inside would also make it dead code on the path
+	// it is most likely to be needed on. It does not change any value the march
+	// can produce: the buffer is RGBA16F, whose largest finite value is 65504, so
+	// dot(x,x) tops out near 1.3e10 against a bound of 1e18.
+	//
+	// ⚠️ It follows the clamp rather than preceding it, because `clamp(NaN, 0.0,
+	// 1.0)` is a NaN - on the denoised path the two are one guard split in two,
+	// not two guards.
+	if (!(dot(resolved, resolved) < 1.0e18)) {
+		resolved = vec4(0.0, 0.0, 0.0, 1.0);
+	}
+
+	fogScatter = resolved;
 }

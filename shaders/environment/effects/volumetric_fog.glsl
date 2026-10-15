@@ -263,6 +263,65 @@ vec3 VolumetricFogTint() {
 // it does not change what any pass computes, and nothing in the fog pass may
 // depend on this macro again - the buffer's queried size decides that.
 
+// ⚠️ And this is the whole of why the temporal denoise added in batch 569 is
+// on by default: the quarter-resolution target and the dither are what make the
+// noise, and until that batch the note above ended "this pack has no temporal
+// filter left to do it" - which was true, and which meant the dither was the
+// last word on what a fog texel held. It is not any more; see the note on
+// VOLUMETRIC_FOG_DENOISE below for what does it now.
+
+// Whether the fog is denoised over time.
+//
+// The march through the medium is a MONTE CARLO estimator: one ray per texel,
+// with the step boundaries offset by a per-frame dither, so a single frame of it
+// is a single noisy sample of what the medium actually sends towards the eye.
+// What that looks like on screen is the step boundaries and the patch noise of
+// the medium, moving as the dither moves - and the quarter-resolution target
+// smooths some of it, but smoothing is not averaging, and the noise that is left
+// is the noise a player sees.
+//
+// This option turns on the stage that averages it: the previous frame's result is
+// reprojected onto this one with the camera's own movement, checked against the
+// frame being drawn, and mixed in. Two things decide how much of it is kept - a
+// history that has moved is kept less, and a history whose brightness does not
+// match what is here now is dropped outright - and the noise comes down by about
+// three times with neither of them firing.
+//
+// ⚠️ That factor is MEASURED and not guessed. Batch 569 modelled the arithmetic
+// on this machine - the estimator, the mix and the check, over hundreds of frames
+// - because there is no way to read a number like this off a screen here; see
+// BATCH_LOG.md b569. A plain ten-frame average with neither check divides the
+// noise by four and a half, so about a third of what is available is what the
+// two checks cost together, and they are what keeps the medium from smearing
+// instead.
+//
+// ⚠️ Off is not "the same picture with more noise": it is the picture this pack
+// drew before the stage existed. With the option off the whole stage is not
+// compiled, so the buffer holds what the march wrote and nothing else - one
+// guard at the very end excepted, which the off path needs as much as the on
+// path does and which no finite value can trip. See /program/post/volumetric_fog.fsh.
+#define VOLUMETRIC_FOG_DENOISE
+
+// How much of the average each new frame keeps.
+//
+// 0.9 is the shipped value: a texel that has not moved carries a weighted
+// average of about the last ten frames. Raising it lengthens the history and
+// smooths further, and the cost is the obvious one - a longer history is slower
+// to forget, so anything the stage's checks do not catch stays on screen for
+// longer. Lowering it shortens the average and gives the noise back.
+//
+// ⚠️ The top of the range is 0.95 and not 1.0, and that is a bound rather than a
+// taste: at 1.0 the history is never replaced by anything the current frame
+// says, so a texel that has been covered by a hill and uncovered again would
+// still be showing the fog it had before, and the stage stops being a filter and
+// becomes a lag of unbounded length. 0.95 is about twenty frames - still a long
+// average, and still something a moving camera can shed.
+//
+// ⚠️ It is the weight for a texel that did NOT move. A moving one keeps less
+// than this - see the note in /program/post/volumetric_fog.fsh, where the
+// exp(-|v|^2) that decides how much less lives.
+#define VOLUMETRIC_FOG_DENOISE_STRENGTH 0.9 // [0.0 0.5 0.65 0.75 0.85 0.9 0.95]
+
 // The Nether's smoke columns.
 //
 // Requested in batch 344, after the user's verdict on batch 342's attempt at the
