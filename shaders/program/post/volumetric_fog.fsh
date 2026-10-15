@@ -855,6 +855,16 @@ void main() {
 			// it starts true.
 			bool historyFromScreen = true;
 
+			// ⚠️ And the same for the coordinate itself, and this one is a compile
+			// error rather than a convention: the velocity below is worked out from
+			// it and sits OUTSIDE this branch, so a `Reprojection` declared inside
+			// would not be in scope where it is read. That is exactly what the first
+			// build of this batch did, and the driver said so - "undefined variable
+			// reprojection" at the velocity. The still path leaves it at zero, which
+			// is what the velocity wants there anyway: with no reprojection there is
+			// no movement to measure, and the branch that reads it knows that.
+			vec2 reprojectedCoord = screenCoord;
+
 			if (cameraStill) {
 				history = texelFetch(colortex1, ivec2(gl_FragCoord.xy), 0);
 			} else {
@@ -884,6 +894,8 @@ void main() {
 				// into a fetch whose result would then have to be discarded anyway.
 				historyFromScreen = !reprojection.offScreen
 					&& !reprojection.behindCamera;
+
+				reprojectedCoord = reprojection.previousCoord;
 
 				if (historyFromScreen) {
 					history = texture(colortex1, reprojection.previousCoord);
@@ -921,7 +933,7 @@ void main() {
 			// per-frame noise field on the blend factor itself.
 			vec2 velocity = cameraStill
 				? vec2(0.0)
-				: (screenCoord - reprojection.previousCoord) * vec2(viewWidth, viewHeight);
+				: (screenCoord - reprojectedCoord) * vec2(viewWidth, viewHeight);
 
 			// How much of the history this texel keeps.
 			//
