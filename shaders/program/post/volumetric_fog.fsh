@@ -259,19 +259,24 @@ layout(location = 0) out vec4 fogScatter;
 // the current frame directly. That is VOLUMETRIC_FOG_DENOISE_TOLERANCE below,
 // and it is a measurement one pass CAN make.
 
-// How far a history's brightness may be from this frame's before the history is
-// thrown away, as a fraction of the brighter of the two.
+// How far a history's brightness may be from this frame's before the history
+// starts to be distrusted, as a fraction of the brighter of the two.
 //
-// ⚠️ This is the stage's anti-ghosting, and it is a constant rather than an
-// option because nothing about it is a matter of taste: below the noise it
-// discards the history on every frame and the stage stops existing, and far above
-// it a ghost survives. A quarter sits between the two by a wide margin - the
-// per-frame error the model in BATCH_LOG.md b569 measured puts a typical fog
-// luma's noise at a few percent of itself, so a quarter is several deviations of
-// it, while the changes worth rejecting - a door opening on a lit room, the water
-// closing over the eye, a portal - move the fog by much more than a quarter. If
-// the fog is ever seen smearing through a change, this is the number to lower.
-const float VOLUMETRIC_FOG_DENOISE_TOLERANCE = 0.25;
+// ⚠️ 1.0 - so the falloff only begins when the two differ by the whole of the
+// brighter one, which is a doubling or a halving. That is a scene change: a door
+// opening on a lit room, the water closing over the eye, a portal. Everything
+// below it is the marching noise and must be averaged, not distrusted.
+//
+// ⚠️ This started at 0.25, and the user's report is what found it: "the denoise
+// on and off look about the same". They were right, and the arithmetic says why.
+// `raw` is one sample of the estimator while `history` is an average of ten, so
+// the difference between them is dominated by raw's own per-frame error - at the
+// relative noise a 24-step march reaches over a thin medium, a quarter threshold
+// fires on about a THIRD of all texels every frame (see the model in BATCH_LOG.md
+// b569). A hard test cannot sit above that noise and below a real change at the
+// same time; this one no longer has to, because it scales the weight instead of
+// throwing the history away.
+const float VOLUMETRIC_FOG_DENOISE_TOLERANCE = 1.0;
 
 void main() {
 	// Where this fragment is on the screen. ⚠️ Asked of the target this pass is
@@ -818,39 +823,71 @@ void main() {
 			// and getting the branch slightly wrong costs a small error in it.
 			const float FOG_DENOISE_HAND_DEPTH = 0.56;
 
-			vec3 anchorWorldPos;
-
-			if (depth < 1.0) {
-				vec3 surfaceWorldPos = cameraPosition + rayDirection * surfaceDistance;
-
-				anchorWorldPos = depth > FOG_DENOISE_HAND_DEPTH
-					? surfaceWorldPos
-					: surfaceWorldPos + (previousCameraPosition - cameraPosition);
-			} else {
-				anchorWorldPos = previousCameraPosition + rayDirection;
-			}
-
-			Reprojection reprojection =
-				ReprojectWorldPosition(anchorWorldPos, screenCoord);
-
-			// A pixel that was off the screen or behind the camera last frame has
-			// no history at all, and one from the first frames of the buffer has
-			// none worth reading - see the frame test above.
+			// Whether the camera moved at all since the previous frame.
 			//
-			// ⚠️ `!(...)` rather than `(...)`, because every comparison against a
-			// NaN is false: the "inside the frame" test is the one that catches it,
-			// and the outside test written the other way round would let it
-			// through. The coordinate is then not sampled at all.
+			// ⚠️ This is not an optimisation and it is the fix for the defect that
+			// made this whole stage a no-op in its first shipped build (b569, and
+			// the user's report is what found it: "the denoise on and off look about
+			// the same"). When the camera has not moved, the reprojection is an
+			// identity and there is nothing to compute - but computing it anyway
+			// costs accuracy, not just time: the point is rebuilt from the depth
+			// buffer, the depth buffer is written by geometry drawn with the TAA's
+			// sub-pixel jitter, and the projection inverse is the un-jittered one, so
+			// the reprojected coordinate comes back a fraction of a pixel off. That
+			// fraction is enough to give `velocity` a non-zero value, which lowers
+			// the history weight - and, far worse, it is different for every texel
+			// and every frame, so the weight itself becomes a per-frame noise field.
+			// A stage whose blend factor flickers is a stage that does not average.
 			//
-			// ⚠️ The fetch is behind the test rather than left to a clamped
-			// coordinate. A clamp would make the read legal, but what it would read
-			// is the fog at the edge of the screen - a texel with nothing to do
-			// with this one - and the clamp would also put a NaN coordinate into a
-			// fetch whose result would then have to be discarded anyway.
+			// ⚠️ With the camera still there is nothing to reproject and the history
+			// is simply this texel: the buffer holds the previous frame at the same
+			// index, so the read needs no coordinate at all. That is the case a
+			// player is in whenever they stop to look at the fog, which is when the
+			// marching noise and its flicker are visible in the first place.
+			bool cameraStill = all(equal(cameraPosition, previousCameraPosition));
+
 			vec4 history = raw;
 
-			if (!reprojection.offScreen && !reprojection.behindCamera) {
-				history = texture(colortex1, reprojection.previousCoord);
+			// ⚠️ Whether the reprojection found anything, kept outside the branch
+			// that computes it: the debug view at the end of this stage needs it, and
+			// a diagnostic that reads a variable its own branch declared would not
+			// compile. The camera-still path has no reprojection to have failed, so
+			// it starts true.
+			bool historyFromScreen = true;
+
+			if (cameraStill) {
+				history = texelFetch(colortex1, ivec2(gl_FragCoord.xy), 0);
+			} else {
+				vec3 anchorWorldPos;
+
+				if (depth < 1.0) {
+					vec3 surfaceWorldPos =
+						cameraPosition + rayDirection * surfaceDistance;
+
+					anchorWorldPos = depth > FOG_DENOISE_HAND_DEPTH
+						? surfaceWorldPos
+						: surfaceWorldPos + (previousCameraPosition - cameraPosition);
+				} else {
+					anchorWorldPos = previousCameraPosition + rayDirection;
+				}
+
+				Reprojection reprojection =
+					ReprojectWorldPosition(anchorWorldPos, screenCoord);
+
+				// A pixel that was off the screen or behind the camera last frame
+				// has no history at all.
+				//
+				// ⚠️ The fetch is behind the test rather than left to a clamped
+				// coordinate. A clamp would make the read legal, but what it would
+				// read is the fog at the edge of the screen - a texel with nothing to
+				// do with this one - and the clamp would also put a NaN coordinate
+				// into a fetch whose result would then have to be discarded anyway.
+				historyFromScreen = !reprojection.offScreen
+					&& !reprojection.behindCamera;
+
+				if (historyFromScreen) {
+					history = texture(colortex1, reprojection.previousCoord);
+				}
 			}
 
 			// A history that is not a number, or is infinite, is replaced rather
@@ -875,8 +912,16 @@ void main() {
 			// keeps almost the whole history - which is exactly the movement the
 			// weight exists to react to. A pixel is a pixel: the same number the
 			// resolve uses, so the same number means the same thing in both.
-			vec2 velocity = (screenCoord - reprojection.previousCoord)
-				* vec2(viewWidth, viewHeight);
+			//
+			// ⚠️ Zero when the camera is still, and it is zero because the history
+			// is this texel - there is no reprojected coordinate to measure against,
+			// which is the whole point of the branch above. Not a shortcut: the
+			// measured coordinate at a standstill is a fraction of a pixel off (see
+			// the note on cameraStill), and that fraction would come out here as a
+			// per-frame noise field on the blend factor itself.
+			vec2 velocity = cameraStill
+				? vec2(0.0)
+				: (screenCoord - reprojection.previousCoord) * vec2(viewWidth, viewHeight);
 
 			// How much of the history this texel keeps.
 			//
@@ -887,7 +932,7 @@ void main() {
 			// thing that can average a per-frame sample out, and it is also what
 			// smears anything that moves, so the two are split by motion.
 			//
-			// ⚠️ A whole texel of motion already scores 0.37, so the floor is what
+			// ⚠️ A whole pixel of motion already scores 0.37, so the floor is what
 			// most of a moving frame actually gets. It is 0.7 of the option rather
 			// than zero because zero would throw the history away outright on every
 			// frame the camera moves at all, which is every frame a player is
@@ -897,55 +942,73 @@ void main() {
 			float historyWeight = VOLUMETRIC_FOG_DENOISE_STRENGTH
 				* mix(0.7, 1.0, stillness);
 
-			// A history that does not look like what is here now is thrown away
-			// rather than mixed in.
+			// How much of the history this texel keeps, given how far the history
+			// is from what is being drawn now.
 			//
-			// ⚠️ This is the whole of the stage's anti-ghosting, and it is here
-			// because the variance clamp this started with was INERT rather than
-			// wrong. That clamp bounded the history by the mean and the deviation of
-			// this texel's 3x3 neighbourhood - and every read of this buffer inside
-			// this pass returns the PREVIOUS frame's accumulated value, because Iris
-			// has a composite pass read one side of a colortex while writing the
-			// other (see the note on colortex1 above). So the clamp was measuring an
-			// already-averaged signal, its bounds contained the very ghost they were
-			// meant to reject, and it could not reject anything: nine fetches per
-			// texel to do nothing at all. What CAN be measured in one pass is this -
-			// the history against the frame that is being drawn now.
+			// ⚠️ This scales the weight, and it does NOT throw the history away.
+			// Its first version rejected outright - `historyWeight = 0.0` whenever
+			// the two agreed to less than a quarter - and that is what made the
+			// whole stage a no-op in the build the user first saw:
 			//
-			// ⚠️ Luma, and not the three channels separately: what changes when the
-			// fog does is how much light there is, and a per-channel test would fire
-			// on a colour change that a per-channel mix handles perfectly well.
+			//   `mix(raw, raw, w)` is `raw`.
 			//
-			// ⚠️ The test is relative to the larger of the two, not absolute. The
+			// The arithmetic behind that is worth keeping, because the mistake is
+			// easy to make again. `raw` is ONE sample of the estimator and
+			// `history` is an average of about ten, so the difference between them
+			// is dominated by raw's own per-frame error - its deviation is the
+			// marching noise itself, not a fraction of it. At a relative noise of
+			// 0.3, which a 24-step march over a mostly-empty medium reaches easily
+			// (BATCH_LOG.md b569 measures this), a quarter threshold fired on about
+			// **35% of all texels every frame**; at 0.5 it fired on 57%. A hard test
+			// cannot sit above that noise and below a real scene change at the same
+			// time, so it is the wrong instrument - it either discards the history
+			// or it does nothing.
+			//
+			// What replaces it is the same measurement used as a weight, which has
+			// no cliff in it:
+			//
+			//   * a texel where nothing changed keeps the full weight, and the
+			//     history averages the dither away - which is the entire purpose;
+			//   * a texel where the fog really has changed keeps almost none of it,
+			//     and starts again from this frame;
+			//   * and a texel where the history is merely noisy is pulled *towards*
+			//     the current frame rather than being discarded, which is the case
+			//     the old test could not express at all.
+			//
+			// ⚠️ The relative form is kept for the reason it was introduced: the
 			// scattered light's scale is set by the exposure in shaders.properties
-			// and by the time of day, so a fixed threshold would fire constantly at
-			// noon and never at dusk. What the ratio means: a history more than a
-			// quarter away from what is here is a history about somewhere else - the
-			// fog behind a door that has just opened, or the other dimension's air
-			// after a portal - and dropping it outright recovers in one frame rather
-			// than in the ten an exponential average would take.
+			// and by the time of day, so an absolute difference would be a different
+			// test at noon and at dusk. What the reference is matters, though, and
+			// it is the LARGER of the two rather than the raw frame: on the raw
+			// frame alone, a texel whose history is correctly bright and whose raw
+			// sample happens to be dark - which is exactly what the marching noise
+			// produces - would read as a large change and be rejected, which is the
+			// same defect in a smaller costume.
 			//
 			// ⚠️ It cannot fire on noise, and that is arithmetic rather than hope:
-			// raw and history are two samples of the same estimator, so their
-			// difference has about 1.41 times the deviation of one of them, while a
-			// quarter of a typical fog luma is several deviations of the per-frame
-			// error the model in BATCH_LOG.md b569 measured. A threshold below the
-			// noise would not reject ghosts, it would reject the history always -
-			// which is the same defect as the clamp this replaces, wearing the
-			// opposite sign.
+			// the ratio is a difference over the larger of two positive numbers, so
+			// it is bounded by one; and below the scale floor the difference is
+			// tested against the floor rather than against nothing, which is what
+			// stops two black pixels on a dark night from reading as a change.
 			float rawLuma = dot(raw.rgb, vec3(0.2126, 0.7152, 0.0722));
 			float historyLuma = dot(history.rgb, vec3(0.2126, 0.7152, 0.0722));
 
-			// Floored, so that the division the ratio implies cannot be by zero:
-			// two black pixels on a dark night are two samples that agree, and the
-			// difference between them is then tested against this rather than
-			// against nothing.
+			// Floored, so that the ratio cannot be against zero.
 			float lumaScale = max(max(rawLuma, historyLuma), 1.0e-4);
 
-			if (abs(historyLuma - rawLuma)
-				> VOLUMETRIC_FOG_DENOISE_TOLERANCE * lumaScale) {
-				historyWeight = 0.0;
-			}
+			float disagreement = clamp(
+				abs(historyLuma - rawLuma) / lumaScale
+					/ VOLUMETRIC_FOG_DENOISE_TOLERANCE,
+				0.0, 1.0);
+
+			// ⚠️ The floor on the falloff, and it is what makes a real change
+			// recover. At 0.0 the history would keep nothing and a texel whose fog
+			// had genuinely gone - a door closed over a lit room - would snap to the
+			// current frame, which is the cliff this whole change is undoing; at
+			// 0.25 a texel that disagrees completely still keeps a quarter of each
+			// frame, so a ghost is down to a sixteenth in three frames and gone in
+			// about five, while a texel that agrees keeps the full average.
+			historyWeight *= mix(0.25, 1.0, 1.0 - disagreement);
 
 			// The weight is checked before it is used, and it is the last place in
 			// this pass where a value that is not a number can still get in:
@@ -974,6 +1037,50 @@ void main() {
 			// to a path it claims not to touch. See the note on the guard below for
 			// the one line that has to stay outside.
 			resolved.a = clamp(resolved.a, 0.0, 1.0);
+
+			#ifdef VOLUMETRIC_FOG_DENOISE_DEBUG
+				// What the stage actually did with this texel, in colour.
+				//
+				// ⚠️ This exists because the first shipped version of the stage
+				// (b569) was a no-op and NOTHING on this machine could see that: the
+				// user's report - "the denoise on and off look about the same" - was
+				// the only evidence, and it arrived after the build was delivered. A
+				// filter whose whole job is to change what a moving picture looks
+				// like cannot be checked by reading its source; it has to be looked
+				// at. This is what to look at.
+				//
+				// The four colours are the four states the stage can be in, and they
+				// are the whole diagnosis:
+				//
+				//   * GREY  - `frameCounter < 3`: the buffer has no written history
+				//             yet, so nothing is being averaged. Should only ever be
+				//             seen for the first frames after a load or a resize.
+				//   * BLACK - the camera is still and the history IS this texel:
+				//             the ideal case, and the one a player is in whenever
+				//             they stop to look at the fog. **A frame that is not
+				//             black here while the player stands still is a bug in
+				//             the reprojection, not in the averaging.**
+				//   * GREEN - the camera is moving and the reprojection found a
+				//             texel on screen, so the history was read. Brightness
+				//             is how much of it was kept after the disagreement
+				//             falloff: a texel with no history use left is red.
+				//   * RED   - the reprojection went off screen or behind the camera,
+				//             so there is no history at all. Saturated red over the
+				//             whole frame is the signature of a reprojection that is
+				//             wrong, which is what the double rotation of b569 looked
+				//             like.
+				if (frameCounter < 3) {
+					resolved.rgb = vec3(0.5);
+				} else if (cameraStill) {
+					resolved.rgb = vec3(0.0);
+				} else if (historyFromScreen) {
+					resolved.rgb = vec3(0.0, historyWeight, 0.0);
+				} else {
+					resolved.rgb = vec3(1.0, 0.0, 0.0);
+				}
+
+				resolved.a = 1.0;
+			#endif
 		}
 	#endif
 
