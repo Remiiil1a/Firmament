@@ -363,30 +363,67 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 	vec4 sum = vec4(0.0);
 	float weightSum = 0.0;
 
-	for (int i = 0; i < 2; i++) {
-		for (int j = 0; j < 2; j++) {
-			// The bilinear weight this tap would get from the sampler, and then
-			// the depth weight that says whether the fog here belongs to this
-			// fragment's surface at all. ⚠️ The second is not optional: the fog
-			// buffer's own alpha is absorbance and not an edge signal, since it is
-			// a flat 1.0 on every path but the Nether's plumes.
-			float bilinear = (i == 0 ? 1.0 - frac.x : frac.x)
-				* (j == 0 ? 1.0 - frac.y : frac.y);
+	// ⚠️ NINE taps over the three-by-three of fog texels around this fragment, and
+	// this is the fix for the "blurry mosaic" the author reported at the edges
+	// (batch 572). The four-tap read this replaces is a BILINEAR upsample, and a
+	// bilinear upsample of a quarter-resolution buffer can only ever mix the four
+	// texels that straddle this pixel. That is exactly right while the picture is
+	// flat - the majority of the frame, and it still is here, see the note on the
+	// flat case below - but at an edge it is not enough, for a reason that is
+	// visible in the geometry rather than in the code: a fragment at a silhouette
+	// has some of those four texels belonging to the surface in front and some to
+	// the surface behind, and there are only four of them to choose between. The
+	// winning texel therefore changes in whole 4-pixel steps as the fragment
+	// slides across the footprint, which is a mosaic on a 4-pixel grid.
+	//
+	// Nine taps do not remove that ambiguity - nothing read at this resolution
+	// can - but they give it somewhere to go: three candidates along each axis
+	// instead of two, weighted smoothly, so the transition between them is a fade
+	// rather than a step.
+	//
+	// ⚠️ The weight is no longer bilinear, and that is the point rather than a
+	// detail. frac was the right weight for a bilinear read and is the wrong one
+	// here, because at frac near 0.5 it makes the two texels of a row contribute
+	// almost equally while the third contributes nothing, which is a step in the
+	// weights as frac crosses the taps. exp(-d^2) has no such step and gives every
+	// tap a weight that is a continuous function of where the fragment is.
+	//
+	// ⚠️ d is measured in FOG TEXELS from this fragment's own position on the fog
+	// grid, so it is the distance to the tap - not to the tap's centre pixel,
+	// which is what the depth is measured at and is a different thing. One tap
+	// away is 0.37 of the centre's weight and two away is 0.018, so the three-by-
+	// three covers the footprint (which is two texels across) with a little room
+	// to spare and nothing beyond it.
+	for (int i = -1; i <= 1; i++) {
+		for (int j = -1; j <= 1; j++) {
+			// ⚠️ Skipped rather than clamped, unlike the four-tap read: with the
+			// base able to sit at the buffer's edge, this ring reaches one texel
+			// past it, and reading the edge texel twice there would weight that
+			// texel three times over. The sum is normalised at the bottom, so
+			// dropping a tap costs nothing but the tap.
+			ivec2 tapTexel = base + ivec2(i, j);
+
+			if (tapTexel.x < 0 || tapTexel.y < 0
+				|| tapTexel.x > fogLast.x || tapTexel.y > fogLast.y) {
+				continue;
+			}
+
+			vec2 offset = vec2(i, j) - frac;
+			float spatial = exp(-dot(offset, offset));
 
 			// ⚠️ Each tap's distance is taken through the tap's OWN pixel, not
 			// through this fragment's: the ray that was marched to build this
 			// texel's fog is the one through the centre pixel, and measuring the
-			// distance along the fragment's ray instead tilts it and makes two of
-			// the four taps disagree with a surface they are standing on.
+			// distance along the fragment's ray instead tilts it and makes the
+			// taps disagree with a surface they are standing on.
 			//
 			// ⚠️ Clamped into the depth texture, because texelFetch outside a
 			// texture is undefined rather than clamped - a driver may return
 			// anything, including a value that linearises to a NaN - and these
-			// four reach past the frame's right and bottom edges whenever the
-			// base is the last texel of its row: fullTexel is then 4*base + 2,
-			// which is already within four pixels of the frame's end. The
-			// distance below is worked out at this same clamped pixel, so the
-			// depth and the distance it belongs to stay the pair they were.
+			// reach past the frame's edges near the border: fullTexel is 4*base+2,
+			// which is already within six pixels of the frame's end at the last
+			// base. The distance below is worked out at this same clamped pixel,
+			// so the depth and the distance it belongs to stay the pair they were.
 			ivec2 tapPixel = clamp(fullTexel + ivec2(i, j) * 4, ivec2(0), fullLast);
 			float tapDepth = texelFetch(depthtex0, tapPixel, 0).r;
 
@@ -395,46 +432,50 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 			// ⚠️ The gap needs no guard of its own, and that is the point of the
 			// bound FogViewDistance holds: both distances are finite and inside
 			// FOG_UPSAMPLE_MAX_DISTANCE, so the gap is finite and between zero and
-			// that bound - never Inf - Inf, which is the NaN this batch guards
-			// against - and exp() of a bounded, non-positive argument can only ever
+			// that bound - never Inf - Inf, which is the NaN this guards against -
+			// and exp() of a bounded, non-positive argument can only ever
 			// underflow. Underflow is a weight of exactly zero, which is what a tap
 			// that far from this fragment has earned. Equal depths, the flat case
 			// that has to stay exact, are a gap of exactly zero and a weight of
 			// exactly one.
 			float depthGap = abs(tapDistance - fragmentDistance);
 
-			float weight = bilinear
-				* exp(-depthGap / FOG_UPSAMPLE_DEPTH_SCALE);
+			float weight = spatial * exp(-depthGap / FOG_UPSAMPLE_DEPTH_SCALE);
 
-			// ⚠️ Clamped as well, into the fog buffer this time. On the last
-			// column of a frame whose width is a multiple of four the upper tap
-			// is one texel past the end of the buffer, which is the same
-			// undefined fetch as the depth one above; reading the edge texel
-			// twice there is what the sampler's own CLAMP_TO_EDGE would have
-			// done for the bilinear read this replaces.
-			sum += texelFetch(colortex1, clamp(base + ivec2(i, j), ivec2(0), fogLast), 0)
-				* weight;
+			sum += texelFetch(colortex1, tapTexel, 0) * weight;
 			weightSum += weight;
 		}
 	}
 
 	// Normalised, so the result is the weighted average of the taps rather than
-	// their sum. With four equal depths every weight is the same and this reduces
-	// to the bilinear read it replaces, exactly - which is what the flat majority
-	// of the frame has to be.
+	// their sum - which is now load-bearing rather than tidy: the nine weights are
+	// a Gaussian kernel and do not add up to one, and the taps at the buffer's
+	// edge are dropped outright, so the divisor is a different number in every
+	// pixel.
 	//
-	// ⚠️ And when the sum is too small to normalise - all four weights underflowed
-	// to zero, or every tap is dozens of blocks from this fragment - the fallback
-	// is the plain bilinear read and NOT zero (batch 530). Zero is a hole in the
-	// fog, and a hole at a silhouette is exactly the black speck this pass was
-	// reported for: the picture multiplies the scene by this vector's alpha, so
+	// ⚠️ What this does NOT do any more is reduce exactly to the bilinear read.
+	// With four equal depths the four-tap version did, and that was its best
+	// property for the flat majority of the frame. Nine Gaussian weights do not:
+	// they mix in the cross taps at 0.37 each, which softens the fog by about a
+	// third of a fog texel - one and a third pixels of the frame - even where the
+	// buffer is flat. That is a real cost and it is accepted deliberately: the
+	// alternative is the four-pixel mosaic at every edge, which is far more
+	// visible than a third of a texel of softness spread over the whole picture.
+	// If the fog ever reads as too soft and no edge is blocky, the thing to do is
+	// narrow this kernel, not to go back to four taps.
+	//
+	// ⚠️ And when the sum is too small to normalise - every weight underflowed to
+	// zero, or every tap is dozens of blocks from this fragment - the fallback is
+	// the plain bilinear read and NOT zero (batch 530). Zero is a hole in the fog,
+	// and a hole at a silhouette is exactly the black speck this pass was reported
+	// for: the picture multiplies the scene by this vector's alpha, so
 	// `color * 0.0 + 0.0` is a black pixel rather than a pixel with no fog on it.
 	// The bilinear read is what the pass did before the depth weighting existed,
 	// so the worst case is batch 525's behaviour instead of a hole.
 	//
 	// ⚠️ The test is a bound rather than `> 0.0`, and it is written inverted. Both
-	// parts are load-bearing: a sum just above zero is four weights that all
-	// belong to something else being divided by each other for no reason (see
+	// parts are load-bearing: a sum just above zero is weights that all belong to
+	// something else being divided by each other for no reason (see
 	// FOG_UPSAMPLE_WEIGHT_EPSILON), and every comparison against a NaN is false,
 	// so a sum that has somehow become a NaN takes this branch as well instead of
 	// being divided.

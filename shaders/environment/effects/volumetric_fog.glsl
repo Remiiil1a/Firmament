@@ -170,12 +170,28 @@ vec3 VolumetricFogTint() {
 // most of them are spent in the first few dozen blocks, where the medium has
 // its edges, and the far ones are allowed to be far apart.
 //
-// 24 rather than the 16 this started at, and it costs less than that did: the
-// pass writes a quarter of the frame rather than half of it, so a step here is
-// a quarter of the work it was. The extra steps are there because the medium
-// now has patches of its own - see VOLUMETRIC_FOG_NOISE - and sampling them
-// coarsely is what would put the bands back.
-#define VOLUMETRIC_FOG_STEPS 24 // [8 12 16 24 32]
+// ⚠️ 48 as of batch 572, up from 24, and the reason is a measured one rather
+// than a taste. What decides whether a march shimmers is not how many samples it
+// takes but how many it takes per e-fold of the thing it is integrating, and this
+// pack's medium is a steep one: the density falls off with a 24-block e-folding
+// height, so the 96-block march crosses four of them. At 24 steps that is SIX
+// samples per e-fold.
+//
+// ⚠️ The comparison that makes that a number rather than a worry is Bliss Shader,
+// whose fog looks smooth at eight samples - and the eight is not the
+// achievement it looks like. Its air haze has an e-folding height of about 924
+// blocks (lib/overworld_fog.glsl: exp2(-max(y-62,0)/8000*6), and 8000/6*ln2 is
+// 924), so its 256-block march crosses a QUARTER of one e-fold and its eight
+// samples land at 28.9 per e-fold. It is not sampling well; it is sampling
+// something that barely varies. Copying its step count here would be a
+// four-fold regression, and the author's own measurement agrees: at 24 steps the
+// shimmer is visible at high density, and 64 makes it go away.
+//
+// 48 is the compromise that number supports: 12 samples per e-fold, twice what
+// 24 gave, for twice the march cost. 64 and 96 are on the slider for anyone who
+// wants what the author measured, and VOLUMETRIC_FOG_DENOISE is there to take
+// what is left.
+#define VOLUMETRIC_FOG_STEPS 48 // [8 12 16 24 32 48 64 96]
 
 // How much structure the medium has.
 //
