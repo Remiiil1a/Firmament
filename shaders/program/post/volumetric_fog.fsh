@@ -302,7 +302,39 @@ void main() {
 	// but it is no longer the only thing standing between the dither and the eye.
 	vec2 screenCoord = gl_FragCoord.xy / vec2(textureSize(colortex1, 0));
 
-	float depth = texture(depthtex0, screenCoord).r;
+	// ⚠️ The depth is POINT-SAMPLED at one full-resolution pixel, and that is the
+	// fix for the "blurry mosaic at the edges" the author reported (batch 573).
+	// What stood here was `texture(depthtex0, screenCoord)`, and a texture() is a
+	// BILINEAR read: at a quarter-resolution grid it averages the depth of the
+	// four full-resolution pixels around this texel's centre. Away from an edge
+	// those four are the same surface and the average is that surface's depth;
+	// AT an edge they are not - two of them belong to the thing in front and two
+	// to the thing behind - and the average is a distance that belongs to
+	// neither. The march then stops there, so its far end and the surface it is
+	// shaded against slide between the two real distances as the camera moves,
+	// in whole fog texels. That is a mosaic on the fog buffer's own four-pixel
+	// grid, and no filter downstream can remove it: the value was already wrong
+	// when it was written.
+	//
+	// Bliss does not have this. Its march takes the depth with texelFetch at the
+	// low-resolution pixel's own index (composite3.fsh's bilateralUpsample reads
+	// depth with texelFetch), so its marched distance is one real surface's and
+	// never a blend of two.
+	//
+	// ⚠️ The pixel is the one the fog texel's centre lands on, which is exactly
+	// the pixel the reader reconstructs for this same texel and compares its
+	// depth against - see fullTexel in /program/post/postprocessing.fsh. The two
+	// have to be the same pixel or the depth the fog was built from and the depth
+	// it is compared against are two different measurements of one texel.
+	//
+	// ⚠️ Clamped, because texelFetch outside a texture is undefined rather than
+	// clamped, and a frame whose width is not a multiple of four can put this one
+	// pixel past the end.
+	ivec2 fullSize = ivec2(viewWidth, viewHeight);
+	ivec2 depthPixel = clamp(ivec2(screenCoord * vec2(fullSize)),
+		ivec2(0), fullSize - 1);
+
+	float depth = texelFetch(depthtex0, depthPixel, 0).r;
 
 	// The ray, in camera-relative space, from the eye to the surface this pixel
 	// shows - or to the far end of the medium, whichever comes first. Working
