@@ -869,35 +869,57 @@ void main() {
 			vec3 bloom = textureLod(colortex12, screenCoord, 0.0).rgb * BLOOM_TIGHT_WEIGHT
 				+ textureLod(colortex13, screenCoord, 0.0).rgb * BLOOM_WIDE_WEIGHT;
 
-			// ⚠️ And the bloom fog: the medium's own pixels take more of the
-			// bloom than the rest of the frame (batch 576, ported from Bliss
-			// Shader's BLOOMY_FOG).
+			// ⚠️ And the bloom fog: the medium's own pixels take a SOFT, WIDE part
+			// of the glow, added to them (batch 578, and this is the second
+			// attempt at porting it - see below).
 			//
-			// ⚠️ The bloom is first blurred a little further and then blended back
-			// towards itself by the mask, which is what makes the fog SOFT rather
-			// than merely brighter. Adding the bloom outright - `bloom * (1 + k)`
-			// - would brighten the fog without smoothing it, and the noise in the
-			// fog is exactly what this option exists to hide; a brighter noisy
-			// thing is a more visible noisy thing.
+			// ⚠️ What Bliss Shader actually does, read from
+			// dimensions/composite10.fsh:281-297. It computes two different things
+			// from the same seven blur levels:
 			//
-			// ⚠️ The extra blur is the two bloom levels averaged rather than
-			// weighted, which is the widest mix this pass has without another
-			// fetch: the tight level alone is too sharp to soften a texel-scale
-			// grain, and the wide level alone loses the glow's shape.
+			//     bloom    = weighted toward the TIGHT end   (1, 1/2, 1/3, ...)
+			//     fogBloom = (t0 + t1 + ... + t6) / 7         EQUAL weights
 			//
-			// ⚠️ The mask is a blend weight, so a BLOOMY_FOG above 1.0 pushes it
-			// past one and it is clamped there - which is what makes the setting
-			// usable as a strength rather than only as a switch. At 0.0 the mask is
-			// not applied at all and this is the plain addition it has always been.
+			// and the fog gets `fogBloom`, not `bloom`. Equal weights on octaves
+			// that far apart - the widest is 1/256 of the frame - washes almost all
+			// of the shape out of it, so what lands on the medium is close to a
+			// uniform screen-wide average. That flatness IS the effect: the fog is
+			// lifted evenly instead of being made to glow where the scene is bright.
 			//
-			// ⚠️ Only where the fog is: the mask is zero on a pixel with no medium
-			// in front of it, so nothing outside the fog changes. That is the whole
-			// difference between this and BLOOM_STRENGTH, which applies to the whole
-			// frame.
+			// ⚠️ THE FIRST ATTEMPT HERE TOOK THE MASK AND LEFT THE FLATNESS. It did
+			// `mix(bloom, (bloom + tight + wide) * 0.5, mask)`, which is still the
+			// shaped, weighted bloom - merely softer. Measured on one bright object
+			// against dark ground (bloomy_shape.py), that mix falls off from the
+			// centre some thirty thousand times more sharply than Bliss's fogBloom
+			// does. So the fog lit up around bright things and stayed dark
+			// elsewhere, which reads as a haze laid over the picture rather than as
+			// the medium carrying light - and that is exactly what was reported:
+			// "Bliss makes the volumetric light softer; yours is just a hazy
+			// layer."
+			//
+			// ⚠️ And it is ADDED rather than mixed towards, which is Bliss's own
+			// `color + bloom*lightScat` where the port had a mix. Blending towards a
+			// blurred copy of the bloom DARKENS the glow's peak while brightening
+			// its skirts - a wash over the whole region. Adding a wide, dim glow
+			// leaves the bloom the picture already had and puts soft light into the
+			// medium on top of it.
+			//
+			// ⚠️ Firmament has two blur levels where Bliss has seven, and that is a
+			// real limit rather than a detail: the widest thing this pack can sample
+			// is a quarter of the frame blurred twice, so the glow here is wide but
+			// it is not Bliss's near-uniform average. What is taken from Bliss is
+			// the principle - equal weights across the levels available, so the wide
+			// one counts as much as the tight one, where the picture's own bloom
+			// weights the tight one at 0.35 and the wide at 0.65 of a pair that is
+			// itself tight-leaning. Doing better would mean a downsampling chain
+			// this pack does not have.
 			#ifdef VOLUMETRIC_FOG
-				bloom = mix(bloom, (bloom + textureLod(colortex12, screenCoord, 0.0).rgb
-					+ textureLod(colortex13, screenCoord, 0.0).rgb) * 0.5,
-					clamp(bloomFogMask * BLOOMY_FOG, 0.0, 1.0));
+				vec3 bloomFogWide =
+					(textureLod(colortex12, screenCoord, 0.0).rgb
+						+ textureLod(colortex13, screenCoord, 0.0).rgb) * 0.5;
+
+				color += bloomFogWide * clamp(bloomFogMask * BLOOMY_FOG, 0.0, 1.0)
+					* BLOOM_STRENGTH;
 			#endif
 
 			color += bloom * BLOOM_STRENGTH;
