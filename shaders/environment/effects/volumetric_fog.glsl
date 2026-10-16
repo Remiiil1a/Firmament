@@ -34,6 +34,28 @@
 // fog and the foliage move together. Uniforms: none
 uniform vec4 windTheta;
 
+// The light the medium is lit by where the SUN DOES NOT REACH IT, with the
+// time-of-day exposure already folded in like the sun half.
+//
+// ⚠️ This is the difference between a medium and a hole (batch 580). Until it
+// existed the march multiplied one colour by the shadow map's answer and nothing
+// else, so a step in shadow contributed EXACTLY nothing: the fog was not dimmed in
+// shadow, it was DELETED, and the shape of the deletion was the shadow map's own
+// silhouette. That is the largest single reason a volume of air read as a glow laid
+// over the screen - real air is lit by the sky from every direction, so shade
+// changes its colour and barely changes its brightness at all.
+//
+// ⚠️ It is built in shaders.properties from skyAmbient, the same quantity the
+// pack's own clouds are lit by - see cloudLightAmbient, whose note says it is
+// skyAmbient reused. Sharing it rather than inventing a second ambient is what
+// keeps the fog and the clouds the same colour at the same hour.
+//
+// ⚠️ It has no option of its own and shares GODRAYS_STRENGTH with the sun half, so
+// the player's master dial still turns the whole medium down to nothing instead of
+// leaving an ambient glow behind. A separate slider for how much of the fog's light
+// is ambient would be a dial for a physical constant.
+uniform vec3 fogAmbientColor;
+
 // How much medium there is, by time of day: built in shaders.properties from the
 // sun's height, because that is where the sun's position can be read. Uniforms:
 // none

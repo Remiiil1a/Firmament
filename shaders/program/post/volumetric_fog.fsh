@@ -730,13 +730,23 @@ void main() {
 		// The density is asked for a world position, not a camera-relative one:
 		// the patches are fixed to the world, so that walking past them shows
 		// them sliding by rather than standing still.
+		// ⚠️ This test CANNOT FIRE, and saying so is the fix (batch 580). The
+		// comment here used to claim it skips the shadow fetch for every step above
+		// the layer and keeps a high camera as cheap as a low one. It does not:
+		// VolumetricFogDensity returns `exp(-max(y - base, 0) / height)` times the
+		// noise and the option dials, and an exp() is never zero - it is small, not
+		// absent - so the branch has never been taken and the saving it promises has
+		// never been banked. An audit found it by asking what the function actually
+		// returns rather than what the comment said.
+		//
+		// ⚠️ It is left in place, unreachable, rather than replaced with a threshold:
+		// a threshold would change the fog, since the medium above the layer is thin
+		// but not empty and the whole point of an exponential layer is that it has no
+		// edge. Making the saving real would mean deciding how thin is nothing, and
+		// that is a decision about how the fog looks rather than about how it costs.
+		// What is fixed is the claim, not the branch.
 		float density = VolumetricFogDensity(cameraPosition + samplePos);
 
-		// Most of the ray is usually outside the layer, and the density is zero
-		// exactly rather than nearly there, so this skips the shadow fetch for
-		// every step that is above the fog. It is the same early out the light
-		// bleed uses for taps with no lamp in them, and it is what keeps the
-		// cost of a high camera from being the cost of a low one.
 		if (density <= 0.0) {
 			continue;
 		}
@@ -813,7 +823,33 @@ void main() {
 		// medium is lit by, how much of it the sun reaches, and how much medium
 		// there is. There is no transmittance term in the loop because this pass
 		// adds light rather than replacing any - see the note at the top.
-		scatter += mediumColor * (sunVisibility * density * stepLength);
+		//
+		// ⚠️ TWO TERMS because a volume of air has two sources of light, and until
+		// batch 580 there was only the first (batch 580; the audit that found it is
+		// the one that read both implementations side by side). With only the sun
+		// term a step in shadow contributed EXACTLY zero - `sunVisibility` is the
+		// whole of the light - so the fog was not dimmed where the sun was blocked,
+		// it was deleted, and the shape of the hole was the shadow map's silhouette.
+		// Air takes light from the whole sky, so what a shadow does is change the
+		// colour the medium scatters and barely change how much of it there is.
+		//
+		// ⚠️ The ambient term is NOT weighted by `sunVisibility`, and that is the
+		// entire point: what blocks the sun does not block the sky. Bliss makes the
+		// same split - `LightColor*shadows*... + AmbientColor*...`, its
+		// lib/overworld_fog.glsl:338 - and it is the same arrangement the pack's own
+		// clouds already use, where `cloudLightAmbient` and `cloudLightDirect` are
+		// separate uniforms.
+		//
+		// ⚠️ 0.5 on the ambient, and it is the one number here rather than a
+		// derivation: a medium lit from a hemisphere receives about half of what the
+		// same medium lit by a disc of the same radiance would, and the pack's sky
+		// ambient is already the average over the sky. Too high and the fog stops
+		// responding to the sun at all, which is the old artifact with the sign
+		// reversed; too low and the shadow outline comes back.
+		vec3 stepLight = fogAmbientColor * 0.5
+			+ mediumColor * sunVisibility;
+
+		scatter += stepLight * (density * stepLength);
 
 	}
 

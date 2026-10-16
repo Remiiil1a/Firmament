@@ -889,32 +889,6 @@ void main() {
 
 			vec4 volumetrics = UpsampleVolumetrics(screenCoord, ownDepth);
 
-			// ⚠️ The bloom fog mask, read out of that same fourth channel (batch
-			// 576). What the channel holds depends on the dimension - the mask on
-			// every path where the transmittance is exactly 1.0, and the plumes'
-			// transmittance in the Nether, because a channel can hold one number -
-			// and the note on the fog pass's output is where that is worked out.
-			//
-			// ⚠️ NOTHING HERE HAS TO KNOW WHICH OF THE TWO IT IS, and that is the
-			// whole reason the split is workable: the mask is 1.0 in the Nether (the
-			// smoke already fades what is behind it and should not be doing the
-			// bloom's job as well) and the transmittance is 1.0 everywhere else, so
-			// in both cases the channel is the smaller of the two and the blend
-			// weight wants to be the smaller of the two. One clamp serves both.
-			//
-			// ⚠️ Read out here rather than after the multiply below, because
-			// `volumetrics.a` is what that multiply consumes: reading it afterwards
-			// would be reading it after it had already been used once.
-			//
-			// ⚠️ An earlier version of this line asked `NetherDimension()` instead,
-			// which does not compile: that function comes in with
-			// /environment/dimension.glsl, this program only includes that file
-			// under the DEBUG_PLUME_DENSITY debug view, and a call in the ordinary
-			// path is therefore an undeclared name. Nothing in the final pass may
-			// depend on a uniform the final pass is not given - the same trap
-			// BATCH_LOG.md 171 records for shadowDistance.
-			float bloomFogMask = clamp(volumetrics.a, 0.0, 1.0);
-
 			color = color * volumetrics.a + volumetrics.rgb;
 		#endif
 
