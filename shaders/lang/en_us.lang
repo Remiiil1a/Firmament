@@ -501,7 +501,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 575]
+option.PBR_DEBUG=Material debug view [build 576]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1221,15 +1221,6 @@ option.VOLUMETRIC_FOG_RAIN_STRENGTH.comment=How much thicker the fog is in \
 	It drives both the marched medium and the pack's own distance fog, and the \
 	second is what shows. Only applies out in the open: rain does not thicken the \
 	air in a cave.
-option.VOLUMETRIC_FOG_DISTANCE_FADE=Distance fade
-option.VOLUMETRIC_FOG_DISTANCE_FADE.comment=How far short of the march's end the \
-	fog thins out, in blocks. The last steps of the ray are the longest ones, so \
-	they are where a sample is most likely to disagree with its neighbour, and \
-	fading them softens the hard rim at the far edge of the fog. It is a small \
-	setting by nature: the far end of the ray crosses the thinnest air, but it is \
-	also where a ray to the horizon spends most of its length, so even 24 blocks \
-	removes most of the fog you can see. 0 leaves the far end at full strength, \
-	which is the default and the way the fog behaved before this setting existed.
 option.VOLUMETRIC_FOG_DENOISE=Denoise the fog
 option.VOLUMETRIC_FOG_DENOISE.comment=Whether the marched fog is averaged over \
 	time. Each frame traces one ray per texel with its steps offset differently, \
@@ -1246,6 +1237,16 @@ option.VOLUMETRIC_FOG_DENOISE_STRENGTH.comment=How much of the average each new 
 	back but follow the fog more quickly. It is the figure for a part of the screen \
 	that is holding still: a moving one keeps a little less, and one where the fog \
 	has genuinely changed keeps much less until it has caught up.
+option.BLOOMY_FOG=Bloomy fog
+option.BLOOMY_FOG.comment=How much bloom the fog's own pixels take. The fog is the \
+	softest thing in the frame and the grain in it is the last noise left after the \
+	denoise, so letting the glow pool inside the medium hides what remains and makes \
+	the air read as air rather than as a screen of dots. It applies to the fog only: \
+	a pixel with no medium in front of it takes none of it, so nothing outside the \
+	fog changes. Above 1.0 the effect is pushed as far as it goes and stops, which is \
+	how the setting works as a strength rather than only as a switch. 0 leaves the \
+	bloom exactly as it was. It needs the bloom on to do anything, since it is a \
+	multiplier on the bloom itself.
 option.VOLUMETRIC_FOG_FULL_RES=Full resolution fog
 option.VOLUMETRIC_FOG_FULL_RES.comment=Whether the fog is drawn at the full resolution of the frame instead of at a quarter of it. Off by default, which is what the default step count is tuned for. Warning: full resolution costs about sixteen times as much, so turn it on only if the fog's softness bothers you and you have the performance to spare. Compile-time, so changing it reloads the shaders.
 

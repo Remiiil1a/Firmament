@@ -806,6 +806,32 @@ void main() {
 
 			vec4 volumetrics = UpsampleVolumetrics(screenCoord, ownDepth);
 
+			// ⚠️ The bloom fog mask, read out of that same fourth channel (batch
+			// 576). What the channel holds depends on the dimension - the mask on
+			// every path where the transmittance is exactly 1.0, and the plumes'
+			// transmittance in the Nether, because a channel can hold one number -
+			// and the note on the fog pass's output is where that is worked out.
+			//
+			// ⚠️ NOTHING HERE HAS TO KNOW WHICH OF THE TWO IT IS, and that is the
+			// whole reason the split is workable: the mask is 1.0 in the Nether (the
+			// smoke already fades what is behind it and should not be doing the
+			// bloom's job as well) and the transmittance is 1.0 everywhere else, so
+			// in both cases the channel is the smaller of the two and the blend
+			// weight wants to be the smaller of the two. One clamp serves both.
+			//
+			// ⚠️ Read out here rather than after the multiply below, because
+			// `volumetrics.a` is what that multiply consumes: reading it afterwards
+			// would be reading it after it had already been used once.
+			//
+			// ⚠️ An earlier version of this line asked `NetherDimension()` instead,
+			// which does not compile: that function comes in with
+			// /environment/dimension.glsl, this program only includes that file
+			// under the DEBUG_PLUME_DENSITY debug view, and a call in the ordinary
+			// path is therefore an undeclared name. Nothing in the final pass may
+			// depend on a uniform the final pass is not given - the same trap
+			// BATCH_LOG.md 171 records for shadowDistance.
+			float bloomFogMask = clamp(volumetrics.a, 0.0, 1.0);
+
 			color = color * volumetrics.a + volumetrics.rgb;
 		#endif
 
@@ -822,6 +848,37 @@ void main() {
 			// straight there.
 			vec3 bloom = textureLod(colortex12, screenCoord, 0.0).rgb * BLOOM_TIGHT_WEIGHT
 				+ textureLod(colortex13, screenCoord, 0.0).rgb * BLOOM_WIDE_WEIGHT;
+
+			// ⚠️ And the bloom fog: the medium's own pixels take more of the
+			// bloom than the rest of the frame (batch 576, ported from Bliss
+			// Shader's BLOOMY_FOG).
+			//
+			// ⚠️ The bloom is first blurred a little further and then blended back
+			// towards itself by the mask, which is what makes the fog SOFT rather
+			// than merely brighter. Adding the bloom outright - `bloom * (1 + k)`
+			// - would brighten the fog without smoothing it, and the noise in the
+			// fog is exactly what this option exists to hide; a brighter noisy
+			// thing is a more visible noisy thing.
+			//
+			// ⚠️ The extra blur is the two bloom levels averaged rather than
+			// weighted, which is the widest mix this pass has without another
+			// fetch: the tight level alone is too sharp to soften a texel-scale
+			// grain, and the wide level alone loses the glow's shape.
+			//
+			// ⚠️ The mask is a blend weight, so a BLOOMY_FOG above 1.0 pushes it
+			// past one and it is clamped there - which is what makes the setting
+			// usable as a strength rather than only as a switch. At 0.0 the mask is
+			// not applied at all and this is the plain addition it has always been.
+			//
+			// ⚠️ Only where the fog is: the mask is zero on a pixel with no medium
+			// in front of it, so nothing outside the fog changes. That is the whole
+			// difference between this and BLOOM_STRENGTH, which applies to the whole
+			// frame.
+			#ifdef VOLUMETRIC_FOG
+				bloom = mix(bloom, (bloom + textureLod(colortex12, screenCoord, 0.0).rgb
+					+ textureLod(colortex13, screenCoord, 0.0).rgb) * 0.5,
+					clamp(bloomFogMask * BLOOMY_FOG, 0.0, 1.0));
+			#endif
 
 			color += bloom * BLOOM_STRENGTH;
 		#endif

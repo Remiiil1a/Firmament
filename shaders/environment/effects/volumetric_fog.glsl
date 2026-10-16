@@ -210,47 +210,44 @@ vec3 VolumetricFogTint() {
 // is a broken-up one.
 #define VOLUMETRIC_FOG_SCALE 90.0 // [30.0 45.0 60.0 90.0 128.0 192.0 256.0]
 
-// How far short of the march's end the medium fades out, in blocks.
+// How much bloom the fog's own pixels take.
 //
-// ⚠️ A REQUESTED feature (batch 574), and the reason it helps is worth writing
-// down because it looks at first like a way of throwing away the far half of the
-// effect. What it does is make the far steps contribute less and less, over the
-// last stretch of the march, until they contribute nothing.
+// ⚠️ Ported from Bliss Shader, whose own note says what it is for: "the strength
+// of bloom that is applied to fog ... this effect makes the fog look soft, it
+// helps hide a little noise too". That is the problem this whole line of work has
+// been on, and it is a second and cheaper answer to it than the temporal denoise:
+// the denoise averages the noise away, and this makes what is left of it soft
+// enough that the eye stops finding it.
 //
-// Why that is worth having: the last steps of the ladder are the longest ones -
-// the positions are spread quadratically, so the final step covers several times
-// the ground the first one does - and the medium out there is the thinnest. So
-// the far end of the march is where a sample is both cheapest to lose and most
-// likely to disagree with its neighbour, and a disagreement at the end of the
-// ray is what the eye reads as a hard rim and as blockiness. Fading it makes that
-// rim gradual instead of sharp, and it takes the visible bottom edge of the
-// marching range with it.
+// How it works, in three short steps, none of which is much on its own:
 //
-// ⚠️ 0.0 IS THE DEFAULT, and it is the correction this option's first release
-// needed. The first default was 24, chosen from the fade's effect on the STEP
-// WEIGHTS - which is not the picture. The fog is a layer whose density falls off
-// with height, so the last quarter of the ray crosses the thinnest air of the
-// whole march and the light it carries is out of all proportion to its length.
-// Measured on the density profile rather than on the weights (fade_strength.py),
-// a fade of 24 leaves a ray to the horizon with **12.5% of the light it had** - an
-// eight-fold loss, on the rays the fog is mostly seen on, and what that looks like
-// is the near field gone and the far field thinned to nothing.
+//   1. the fog pass measures how much medium is in front of each pixel - the
+//      optical depth the march charges as it goes - and writes that as a mask into
+//      the fog buffer's fourth channel, multiplied into the transmittance that was
+//      already there, so the picture is unchanged;
+//   2. the mask rides along with the fog's colour through the upscale, so it
+//      arrives at the final pass on the same grid as the fog it masks;
+//   3. the final pass, where the bloom is added, blends the bloom towards its own
+//      blurred form by that mask, so the medium's pixels take more of it and the
+//      rest of the frame is untouched.
 //
-// ⚠️ So the range stops at 24 and the default is off. At 0.0 no sample position,
-// step length or count changes and the picture is the one this option did not
-// exist for. What softens the rim without emptying the fog is the small end:
+// ⚠️ 1.0 is a multiplier rather than a switch: at 0.0 the mask is ignored and
+// nothing changes, at 1.0 the masked pixels take the bloom at the strength the
+// bloom pass already gives them, and above 1.0 the mask is pushed past its own
+// range and clipped - which is what makes the setting usable as a strength rather
+// than only as a switch.
 //
-//     fade  4   leaves 2% of the horizon's light   (the last few steps only)
-//     fade  8   leaves 4%
-//     fade 12   leaves 6%
-//     fade 24   leaves 13%
+// ⚠️ The bloom has to be ON for this to do anything, and that is not a defect to
+// fix: what it modulates IS the bloom, so there is nothing for it to modulate
+// when BLOOM is off. The two settings are on different pages of the menu - this
+// one under the atmosphere, the bloom under effects - which is worth knowing
+// before wondering why it stopped working.
 //
-// ⚠️ It fades the light the medium SCATTERS and not the light it takes away. On
-// every path but the Nether the second is the pack's own per-fragment fog, which
-// this pass does not own - so a fade here cannot darken anything, it can only
-// stop adding. The plumes' extinction is left at full strength for a reason
-// written where it is charged.
-#define VOLUMETRIC_FOG_DISTANCE_FADE 0.0 // [0.0 4.0 8.0 12.0 16.0 24.0]
+// ⚠️ Bliss also has UNDERWATER_BLOOMY_FOG and RAIN_SNOW_BLOOMY_FOG; this pack has
+// neither. Under water the same mask applies, which is the sensible default, and
+// if the underwater fog ever reads as too glowy then that is the option to add
+// next.
+#define BLOOMY_FOG 1.0 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0 3.0 4.0 6.0 10.0 15.0 20.0]
 
 // How many layers of noise are summed. More is finer detail, and each layer
 // costs two noise fetches per step of the march.
