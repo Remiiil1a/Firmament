@@ -900,13 +900,120 @@ void main() {
 		float sunVisibility = 1.0;
 
 		if (withinShadowMap > 0.0001) {
-			// texture() on a shadow sampler compares the third component
-			// against what the map holds there and returns the result, with the
-			// hardware doing the filtering - so this is a soft edge for free,
-			// and softer the further away the map's texels are.
+			// ⚠️ FILTERED OVER THE STEP'S OWN FOOTPRINT, and that is the fix for
+			// the flicker through leaves (batch 584).
+			//
+			// ⚠️ The single fetch that used to stand here is a POINT SAMPLE of a
+			// high-frequency function. The shaft through a canopy is not a smooth
+			// field - it is a hard pattern of lit gaps and dark leaves, and a gap a
+			// block or two across subtends less than one shadow texel from far
+			// enough away. Point-sampling that at 48 places along a ray, where each
+			// sample's position moves with the camera, is textbook aliasing: the
+			// sample lands in a gap or on a leaf, and which one changes as the player
+			// walks, so the ray's answer swings the full way between lit and dark from
+			// one frame to the next.
+			//
+			// ⚠️ The resolution is what makes it visible, and the author reported
+			// exactly that: bad at a quarter of the frame, absent at full resolution.
+			// This pass marches ONE ray per fog texel, so at a quarter of the frame
+			// one ray stands for sixteen pixels and its single shadow answer is asked
+			// to represent all sixteen - but the leaf pattern varies across those
+			// sixteen at a scale the one ray cannot see, so the texel flickers as a
+			// unit. At full resolution each pixel has its own ray, the pattern is
+			// resolved across pixels rather than aliased into one, and any flicker
+			// left is sub-pixel and the frame's own temporal resolve handles it.
+			//
+			// ⚠️ Why the temporal denoise could not save it, which is worth knowing
+			// before trusting a filter to: the denoise drops the history in proportion
+			// to how much the colour DISAGREES, and a swing between fully lit and
+			// fully shadowed is not noise to it - it looks exactly like the fog
+			// genuinely changing, which is the case the history is supposed to be
+			// dropped for. Filtering is the only answer; averaging cannot fix a signal
+			// that is wrong in the same way every frame it is wrong.
+			//
+			// ⚠️ The width is the STEP'S FOOTPRINT and not a fixed softness, because
+			// that is the quantity the aliasing is against. A step of the march covers
+			// a volume, not a point - that is what stepping through a medium means -
+			// and its cross-section is (stepLength / distance) radians across. Asking
+			// the map for the average over that cross-section is therefore not a
+			// blur laid over the answer; it IS the answer the sample was always meant
+			// to stand for, and the unfiltered version was the approximation.
+			//
+			// ⚠️ And that is also why this does NOT change the full-resolution path,
+			// which the author could see was already right: the footprint is a
+			// property of the march, and the march is identical at both resolutions.
+			// The filter widens for the quarter-resolution case because it makes the
+			// same request of the map; it does not widen because the buffer got
+			// smaller. Nothing here reads the buffer size or the option, so the
+			// resolution bug cannot come back through this door.
+			//
+			// ⚠️ The width is the loop's own `stepLength`, declared above with the
+			// two ends of the step rather than recomputed here: one name for one
+			// quantity, and the two ends are what the sample's position was made
+			// from as well.
+
+			// ⚠️ HALF the step, because `spread` here is a RADIUS and the four taps
+			// below are placed AT it: they sit on the corners of a square twice this
+			// wide, so a radius of half the step makes the kernel span one whole step.
+			// Asking for `stepLength` instead would filter a volume twice the size of
+			// the one the sample stands for, which softens the canopy's own light
+			// beyond what is being asked about.
+			//
+			// ⚠️ The distance is `samplePos`'s own length and not a fresh one: that
+			// vector is this step's centre in camera-relative space, and it is made
+			// from the same `start` and `end` the step's length is, so the two
+			// quantities in the ratio describe the same volume. Taking the distance
+			// from anywhere else - the fragment's own depth, say - would measure the
+			// footprint of a different step.
+			//
+			// ⚠️ Why there is a division at all, given that a shadow map for a
+			// directional light is ORTHOGRAPHIC and a length in blocks is therefore a
+			// constant number of map texels wherever it is: because the map is
+			// DISTORTED, and the distortion divides the map's coordinates by
+			// `length(pos.xy) + factor` (see /lib/distort.glsl). That gathers the map
+			// towards the player, which is a perspective-like compression of the map's
+			// own coordinates, so the width this filter has to ask for in those
+			// coordinates is the world-space width divided by the distance it is being
+			// gathered from.
+			//
+			// ⚠️ `shadowProjection[0][0]` is the map's own blocks-to-clip scale, which
+			// for an orthographic projection is 1 over the half-width of the box the
+			// map covers - 1/128 here, the shadow distance the pack ships.
+			//
+			// ⚠️ The ceiling: a ray that grazes along the layer has a long step and a
+			// short distance to it, and without a bound the four taps would walk the
+			// whole map and read the shadow of somewhere else entirely. 0.02 of the
+			// map is about five blocks at these settings, which is already wider than
+			// any gap this is for.
+			float spread = min(stepLength * 0.5 / max(length(samplePos), 1.0)
+				* shadowProjection[0][0], 0.02);
+
+			// Four taps, each a hardware 2x2 PCF fetch, so sixteen texels of the map
+			// are read for the price of four, and their average is the fraction of the
+			// step's cross-section the sun actually reaches.
+			//
+			// ⚠️ The taps are on the DIAGONALS rather than on the axes, and the reason
+			// is the kernel's shape: the axis taps would land inside the square the
+			// hardware already averages, so two of the four would add nothing and the
+			// filter would be half the width it looks. On the diagonals the four
+			// centres sit on the corners of a square twice the width of one fetch.
+			vec3 shadowTap1 = vec3(shadowPos.xy + vec2(spread, spread), shadowPos.z);
+			vec3 shadowTap2 = vec3(shadowPos.xy + vec2(-spread, spread), shadowPos.z);
+			vec3 shadowTap3 = vec3(shadowPos.xy + vec2(spread, -spread), shadowPos.z);
+			vec3 shadowTap4 = vec3(shadowPos.xy + vec2(-spread, -spread), shadowPos.z);
+
+			// texture() on a shadow sampler compares the third component against what
+			// the map holds there and returns the result, with the hardware doing the
+			// filtering - so this is a soft edge for free, and softer the further away
+			// the map's texels are.
+			float shadowAverage = 0.25 * texture(shadowtex1, shadowTap1)
+				+ 0.25 * texture(shadowtex1, shadowTap2)
+				+ 0.25 * texture(shadowtex1, shadowTap3)
+				+ 0.25 * texture(shadowtex1, shadowTap4);
+
 			sunVisibility = mix(
 				1.0,
-				texture(shadowtex1, shadowPos),
+				shadowAverage,
 				withinShadowMap);
 		}
 
