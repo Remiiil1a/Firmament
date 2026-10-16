@@ -278,25 +278,6 @@ layout(location = 0) out vec4 fogScatter;
 // throwing the history away.
 const float VOLUMETRIC_FOG_DENOISE_TOLERANCE = 1.0;
 
-// How much medium it takes to mask a pixel completely, as a scale on the optical
-// depth the march charges.
-//
-// ⚠️ The mask is `1 - exp(-opticalDepth * this)`, so this is the reciprocal of the
-// optical depth at which the fog stops looking thin: at 0.02, a ray crossing an
-// optical depth of 50 blocks of full-strength medium comes out two-thirds masked.
-//
-// ⚠️ It is not a dial any existing option already has. The march charges its
-// density per block and never converts it into an opacity, so there is no
-// "medium to visibility" number in the pack to borrow - this is where the
-// conversion happens, and it is the only place.
-//
-// ⚠️ The height layer's mean density is well under one - the ray is above the
-// base as often as below it - so the numbers this is really applied to are
-// smaller than "blocks of full-strength medium" suggests, and the shipped value
-// leans towards masking. If the fog ever reads as too glowy this is the number to
-// lower, and it is a constant rather than an option because a second slider for
-// "how much haze counts as haze" would be one dial too many.
-const float BLOOMY_FOG_DENSITY_TO_OPACITY = 0.02;
 
 // How far along the ray the temporal denoise's anchor sits, in blocks.
 //
@@ -440,18 +421,6 @@ void main() {
 	// is already faded per fragment by the pack's own fog, and fading it a
 	// second time here would count it twice. See the note at the top.
 	float absorbance = 1.0;
-
-	// How much medium the ray crosses, as an optical depth - the integral of the
-	// density along it, which is a property of the medium and not of the light.
-	//
-	// ⚠️ Its own accumulator, and NOT the absorbance above (batch 576). The two
-	// look like the same quantity and are not: the absorbance is a TRANSMITTANCE
-	// this pass has deliberately pinned at 1.0 on the Overworld path, because the
-	// fading of what is behind the fog belongs to the pack's own per-fragment fog
-	// and this pass must not do it twice. A mask taken from a quantity pinned at
-	// 1.0 is a mask of zero, which is why the bloom fog could not be built on it.
-	// This one is measured for its own sake and feeds nothing but the mask.
-	float opticalDepth = 0.0;
 
 	#ifdef NETHER_PLUMES
 		// ⚠️ Asked once for the pixel rather than once per step. It is a uniform
@@ -753,13 +722,6 @@ void main() {
 				absorbance *= exp(-plume * NETHER_PLUME_ABSORPTION
 					* NETHER_PLUME_DENSITY * stepLength * NETHER_PLUME_EXTINCTION);
 
-				// And the plume's own medium charged as optical depth, so that the
-				// bloom fog's mask covers the smoke the same way it covers the
-				// Overworld's air. ⚠️ Taken from the plume field and not from the
-				// absorbance just above: the absorbance carries the extinction
-				// option, which is a dial for how much the smoke hides what is
-				// behind it, and the mask is about how much smoke there is.
-				opticalDepth += plume * stepLength;
 
 				continue;
 			}
@@ -853,13 +815,6 @@ void main() {
 		// adds light rather than replacing any - see the note at the top.
 		scatter += mediumColor * (sunVisibility * density * stepLength);
 
-		// And the same density charged as optical depth, which is what the bloom
-		// fog's mask is made of. ⚠️ Charged whether or not the sun reaches it, and
-		// that is deliberate: how much medium is in front of a pixel is a fact
-		// about the medium, and the mask is meant to say where the fog IS rather
-		// than where it is lit - a mask that followed the shadows would pulse as
-		// the sun moved.
-		opticalDepth += density * stepLength;
 	}
 
 	vec4 raw = vec4(scatter, absorbance);
@@ -1274,82 +1229,5 @@ void main() {
 		resolved = vec4(0.0, 0.0, 0.0, 1.0);
 	}
 
-	// The bloom fog mask, in the OUTPUT's fourth channel - ready for bloom, the
-	// way the pack that made this technique famous does it.
-	//
-	// ⚠️ Where this comes from (batch 576). Bliss Shader has an option it calls
-	// BLOOMY_FOG, "the strength of bloom that is applied to fog", whose own note
-	// says what it is for: "this effect makes the fog look soft, it helps hide a
-	// little noise too". That is the problem this whole line of work has been on,
-	// so it is worth having - and it is one short step in each of three places,
-	// none of which looks like much on its own:
-	//
-	//   1. the fog pass measures how much medium is in front of each pixel and
-	//      writes that as a mask into the buffer's fourth channel;
-	//   2. the final pass, where the bloom is added, scales the bloom by the mask
-	//      so the medium's own pixels take more of it;
-	//   3. the mask rides along with the fog's colour through the upscale, so it
-	//      arrives where the bloom is.
-	//
-	// ⚠️ What the mask is made of is the whole of the correctness here, and the
-	// first two attempts got it wrong in opposite directions:
-	//
-	//   * made from the fog's SCATTER, it would follow how BRIGHT the fog is -
-	//     brightest at noon and nearly nothing at night - so the same option would
-	//     mean a different thing at every hour;
-	//   * made from the pass's own ABSORBANCE, it would be zero, because that
-	//     quantity is pinned at 1.0 on every path but the Nether (see where it is
-	//     declared) - a mask nobody could see.
-	//
-	// What it is made of instead is the OPTICAL DEPTH the march charges as it
-	// goes: the integral of the density along the ray. That is a property of the
-	// medium and of nothing else - not of the sun, not of the hour, not of the
-	// shadows - so the option means one thing at every time of day.
-	//
-	// ⚠️ exp() rather than a clamp, so that the mask approaches one instead of
-	// arriving at it: a ray through twice as much medium should be *more* masked
-	// than one through half as much, and a clamp would flatten the two together
-	// at the top. ⚠️ And the coefficient is a density-to-opacity scale that is
-	// NOT any existing dial: FOG_DENOISE-style reasoning does not apply here,
-	// because the quantity being mapped is one this pass has never exposed before.
-	// 0.02 means a ray crossing an optical depth of 50 blocks of full-strength
-	// medium reads as two thirds masked.
-	float bloomFogMask = 1.0 - exp(-opticalDepth * BLOOMY_FOG_DENSITY_TO_OPACITY);
-
-	// The mask can only ever be in range by construction, but it is read by the
-	// final pass as a blend factor and a blend factor outside nothing-and-
-	// everything is not a blend factor - the same argument the absorbance above
-	// makes about itself.
-	bloomFogMask = clamp(bloomFogMask, 0.0, 1.0);
-
-	// ⚠️ THE TWO NUMBERS THAT HAVE TO SHARE THIS CHANNEL, and it took two wrong
-	// answers to get here (batch 576). The channel is what the picture multiplies
-	// the scene by, so it carries the TRANSMITTANCE; the bloom needs a MASK, and
-	// this buffer has no fourth place to put it. Two independent numbers in one
-	// number cannot be recovered from each other - `a * mask` needs one of them to
-	// get the other - and that is a dead end however it is dressed up.
-	//
-	// ⚠️ What makes it possible is that the two are never both needed at once,
-	// because the transmittance is only ever less than one in the NETHER:
-	//
-	//   * on every other path `absorbance` is exactly 1.0 by construction - see
-	//     where it is declared, and the note there about not counting the pack's
-	//     own fog twice - so the channel is a constant and replacing it with the
-	//     mask throws away nothing at all;
-	//   * in the Nether it carries the plumes' transmittance, as it always has,
-	//     and the mask is left at 1.0 for the final pass. That is not a
-	//     compromise: the plumes already fade what is behind them, and masking the
-	//     bloom by the smoke as well would make the one medium do the same job
-	//     twice.
-	//
-	// ⚠️ The branch is the same `NetherDimension()` test the march itself uses, so
-	// the two cannot disagree about which medium is being drawn.
-	float channel;
-	#ifdef NETHER_PLUMES
-		channel = inNether ? resolved.a : bloomFogMask;
-	#else
-		channel = bloomFogMask;
-	#endif
-
-	fogScatter = vec4(resolved.rgb, channel);
+	fogScatter = resolved;
 }

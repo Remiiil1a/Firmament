@@ -41,22 +41,21 @@ const int colortex0Format = R11F_G11F_B10F;
 // bloom is off and its passes are skipped.
 #include "/lib/bloom.glsl"
 
-// The medium's settings, for the BLOOMY_FOG multiplier used with the bloom below.
+// The medium's settings, for the DEBUG_PLUME_DENSITY view below.
 //
-// ⚠️ Included HERE, unconditionally, and not only where the debug view further
-// down reaches for it - and the difference cost a build (batch 577). That file is
-// where BLOOMY_FOG is defined; it used to arrive in this program only inside the
-// `#elif DEBUG == DEBUG_PLUME_DENSITY` branch, which is the branch that is
-// compiled AWAY on every ordinary setting. So the multiplier below was a name
-// with nothing behind it, and the driver answered with exactly what it was:
+// ⚠️ Included HERE, unconditionally, rather than only inside the branch that
+// reaches for it - and the difference cost a build (batch 577):
 //
 //     final.fsh: 0(174) : error C1503: undefined variable "BLOOMY_FOG"
 //
-// ⚠️ The lesson is about what a check can miss rather than about the include: the
-// harness that assembles this program verified that the IDENTIFIER appeared in the
-// source, and it did - in the dead branch. An identifier being present is not the
-// same as its define being reachable. That check has been tightened to compare the
-// identifier against the macros the assembly actually defines.
+// That batch put a multiplier in the bloom block whose #define lived in this
+// file, while this program included it only under the debug view, so every
+// ordinary setting compiled a name with nothing behind it. The multiplier is gone
+// now, but the arrangement is kept: a program may not depend on a name arriving
+// from a branch it compiles away, and the debug view below is such a branch.
+//
+// ⚠️ And the file is NOT included again where the view is. Two includes of a
+// file with no guard of its own would be two copies of every declaration in it.
 #include "/environment/effects/volumetric_fog.glsl"
 
 // The two levels of the bloom, as composite7 and composite10 left them.
@@ -147,16 +146,40 @@ uniform sampler2D colortex1;
 // How far apart in distance two points have to be before the fog stops sharing
 // between them, in blocks.
 //
-// This is the whole edge of the upscale. Each of the four taps is weighted by how
-// close its own distance is to the fragment's, so a tap that belongs to a
-// surface in front of or behind this one counts for less - and at a silhouette
-// that is what stops the fog on the far side from being smeared on to the near
-// one. 1.0 block is a compromise: much smaller and a flat wall whose four taps
-// differ only by the depth buffer's own quantisation starts picking favourites
-// between them, which brings the quarter-resolution grid back as a visible
-// pattern; much larger and a silhouette against something several blocks behind
-// it is blurred again, which is the artifact this exists to remove.
-const float FOG_UPSAMPLE_DEPTH_SCALE = 1.0;
+// This is the whole edge of the upscale. Each tap's own distance is compared with
+// the fragment's, and a tap whose surface is past this far from this pixel's is
+// dropped rather than down-weighted - see FOG_UPSAMPLE_DEPTH_GATE below for why
+// "dropped" and not "weighted by less", which is the difference that matters and
+// is where this file's own history is worth reading.
+
+// How far a tap's surface may be from this pixel's before the tap is dropped
+// outright, in blocks.
+//
+// ⚠️ This is the GATE, and it is the part of Bliss Shader's bilateral upsample that
+// the first port of it left out (batch 579). The constant above is a multiplier: it
+// makes a tap from the other side of a silhouette count for less, and less is not
+// nothing. Bliss tests the depth and keeps the tap or discards it, and the
+// difference is measurable exactly where it matters - across a 1 to 3 block gap,
+// which is a kerb, a step, a fence rail, a leaf:
+//
+//     depth gap      smooth exp(-gap)      this gate
+//        1 block          18% of the far surface got through     none
+//        2 blocks          7.5%                                  none
+//        3 blocks          2.9%                                  none
+//
+// ⚠️ 1.0 block, and it is ABSOLUTE rather than a fraction of the distance - the
+// same choice the scale above makes, and for the same reason: a fence rail one
+// block in front of a wall is one block in front of it at any distance a player
+// stands at, and a threshold that grew with distance would keep the two blended
+// together in the far field, which is where a soft edge is most visible.
+//
+// ⚠️ Its cost is the far field and it is a real one: a slope crossed by one fog
+// texel changes depth by more than a block, so on distant terrain the gate rejects
+// taps that are legitimately on the same surface. The taps on the pixel's own
+// texel survive - their gap is zero by construction - so the result degrades to
+// the plain read rather than to nothing, and the fallback below catches the case
+// where even that fails.
+const float FOG_UPSAMPLE_DEPTH_GATE = 1.0;
 
 // ⚠️ The two bounds the depth weighting needs so that it can never produce a
 // value that is not a number. Both are read by FogViewDistance and by the sum at
@@ -187,23 +210,25 @@ const float FOG_UPSAMPLE_MAX_DISTANCE = 1.0e4;
 // weighting existed, and what the smooth debug view below calls the way the
 // picture samples it.
 //
-// exp() underflows to exactly zero once its argument passes about -88.7, so with
-// FOG_UPSAMPLE_DEPTH_SCALE at 1.0 a tap more than about 89 blocks from the
-// fragment is weighted nothing at all. Three of the four being nothing is the
-// point of the weighting; all four being nothing is not a mix of anything, and a
-// thin foreground surface against a distant background gives exactly that - a
-// footprint four pixels wide can land entirely on the background. That case is
-// the black speckle this batch exists for: it used to come out of this function
-// as the zero vector, which the picture reads as `color * 0.0 + 0.0` - not a
-// missing fog but a black pixel, and one that takes the scene behind it with it,
-// since the fourth channel is that scene's transmittance.
+// ⚠️ THE GATE MAKES THIS MORE LIKELY TO BE REACHED, not less, and that is worth
+// understanding before touching either number (batch 579). With a gate, a tap is
+// either fully in or fully out, so the sum is a sum of Gaussian weights over
+// whichever taps passed - and at a silhouette against a distant background it is
+// entirely possible for none of them to pass. `tapOnThisSurface` is deliberately
+// not an exact test of the pixel's own texel, so this is a real case rather than a
+// theoretical one.
 //
-// 1e-30 sits eight decades above the smallest normal float (1.18e-38), so a sum
-// that passes it is never denormal and the division keeps its full precision;
-// and it is about exp(-69), so what it says is "every tap is more than about 69
-// blocks away, and the nearest of them is still only one part in 1e30 of the
-// mix". A surface near the fragment is nowhere near it: a tap 20 blocks away
-// already weighs 2e-9, and four of those are 8e-9.
+// What that means for the answer: the plain bilinear read, which is what this pass
+// did before any of this existed. That is the right fallback rather than a
+// compromise - a pixel whose every neighbour is another surface should show the
+// fog of its own surface, and the bilinear read is the one that is weighted by
+// area alone and does not need a neighbour to agree about depth.
+//
+// ⚠️ 1e-30 sits eight decades above the smallest normal float (1.18e-38), so a sum
+// that passes it is never denormal and the division keeps its full precision. Any
+// smaller a bound and a sum of a few genuine weights could divide into noise;
+// any larger and a legitimate single distant tap would be thrown away in favour of
+// the bilinear read.
 const float FOG_UPSAMPLE_WEIGHT_EPSILON = 1.0e-30;
 
 // How far the surface at one pixel is from the eye, in blocks, from the depth
@@ -450,15 +475,53 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 			// ⚠️ The gap needs no guard of its own, and that is the point of the
 			// bound FogViewDistance holds: both distances are finite and inside
 			// FOG_UPSAMPLE_MAX_DISTANCE, so the gap is finite and between zero and
-			// that bound - never Inf - Inf, which is the NaN this guards against -
-			// and exp() of a bounded, non-positive argument can only ever
-			// underflow. Underflow is a weight of exactly zero, which is what a tap
-			// that far from this fragment has earned. Equal depths, the flat case
-			// that has to stay exact, are a gap of exactly zero and a weight of
-			// exactly one.
+			// that bound - never Inf - Inf, which is the NaN this guards against.
 			float depthGap = abs(tapDistance - fragmentDistance);
 
-			float weight = spatial * exp(-depthGap / FOG_UPSAMPLE_DEPTH_SCALE);
+			// ⚠️ A GATE rather than a weight, and this is the part taken from Bliss
+			// that the first port left out (batch 579). Its bilateral upsample tests
+			// the depth and keeps a tap or discards it - `abs(gap) < threshold ? 1.0
+			// : 1e-7` - where this pack multiplied by a smooth `exp(-gap/scale)`.
+			//
+			// ⚠️ The difference is not how sharp the falloff is; it is that a
+			// MULTIPLIER NEVER REJECTS. Measured across a silhouette
+			// (upsample_gap_sweep.py, and the sweep is the point - a first attempt
+			// compared one 30-block gap where exp() underflows and both filters agree,
+			// which proved nothing):
+			//
+			//     depth gap     smooth exp(-gap)   a gate
+			//        1 block        18.0% of the far surface passes    0.0%
+			//        2 blocks        7.5%                              0.0%
+			//        3 blocks        2.9%                              0.0%
+			//
+			// A one-to-three block difference is a kerb, a step, a fence rail, a
+			// leaf - the silhouettes a player actually walks past - and the smooth
+			// weight was bleeding several per cent of the fog from BEHIND them onto
+			// them. The fog there was built by a march that ended at ITS OWN surface,
+			// so mixing the two is mixing two different rays, and a few per cent of
+			// the wrong ray at every edge is what reads as the fog being soft and
+			// smeared at exactly the places it should be crisp.
+			//
+			// ⚠️ The threshold is ABSOLUTE rather than Bliss's relative-to-distance,
+			// and the reason is geometric: a fence rail one block in front of a wall
+			// is one block in front of it whether the player is standing next to it
+			// or two hundred blocks away, and a relative threshold would call the two
+			// the same surface at distance - which is precisely the case the gate is
+			// for. What it costs is the far field, where a slope crossed by one fog
+			// texel changes depth by more than a block and its taps are dropped; the
+			// fallback below catches that, and the alternative was to keep bleeding
+			// at every edge in the frame.
+			//
+			// ⚠️ The gate is applied to the DEPTH and the Gaussian to the POSITION,
+			// which is the division of labour between the two: the gate decides, and
+			// the Gaussian makes the decision fade rather than step - a hard gate
+			// with bilinear weights alone would bring back the four-pixel mosaic of
+			// batch 572.
+			bool tapOnThisSurface = depthGap <= FOG_UPSAMPLE_DEPTH_GATE;
+
+			float weight = tapOnThisSurface
+				? spatial
+				: 0.0;
 
 			sum += texelFetch(colortex1, tapTexel, 0) * weight;
 			weightSum += weight;
@@ -868,59 +931,6 @@ void main() {
 			// straight there.
 			vec3 bloom = textureLod(colortex12, screenCoord, 0.0).rgb * BLOOM_TIGHT_WEIGHT
 				+ textureLod(colortex13, screenCoord, 0.0).rgb * BLOOM_WIDE_WEIGHT;
-
-			// ⚠️ And the bloom fog: the medium's own pixels take a SOFT, WIDE part
-			// of the glow, added to them (batch 578, and this is the second
-			// attempt at porting it - see below).
-			//
-			// ⚠️ What Bliss Shader actually does, read from
-			// dimensions/composite10.fsh:281-297. It computes two different things
-			// from the same seven blur levels:
-			//
-			//     bloom    = weighted toward the TIGHT end   (1, 1/2, 1/3, ...)
-			//     fogBloom = (t0 + t1 + ... + t6) / 7         EQUAL weights
-			//
-			// and the fog gets `fogBloom`, not `bloom`. Equal weights on octaves
-			// that far apart - the widest is 1/256 of the frame - washes almost all
-			// of the shape out of it, so what lands on the medium is close to a
-			// uniform screen-wide average. That flatness IS the effect: the fog is
-			// lifted evenly instead of being made to glow where the scene is bright.
-			//
-			// ⚠️ THE FIRST ATTEMPT HERE TOOK THE MASK AND LEFT THE FLATNESS. It did
-			// `mix(bloom, (bloom + tight + wide) * 0.5, mask)`, which is still the
-			// shaped, weighted bloom - merely softer. Measured on one bright object
-			// against dark ground (bloomy_shape.py), that mix falls off from the
-			// centre some thirty thousand times more sharply than Bliss's fogBloom
-			// does. So the fog lit up around bright things and stayed dark
-			// elsewhere, which reads as a haze laid over the picture rather than as
-			// the medium carrying light - and that is exactly what was reported:
-			// "Bliss makes the volumetric light softer; yours is just a hazy
-			// layer."
-			//
-			// ⚠️ And it is ADDED rather than mixed towards, which is Bliss's own
-			// `color + bloom*lightScat` where the port had a mix. Blending towards a
-			// blurred copy of the bloom DARKENS the glow's peak while brightening
-			// its skirts - a wash over the whole region. Adding a wide, dim glow
-			// leaves the bloom the picture already had and puts soft light into the
-			// medium on top of it.
-			//
-			// ⚠️ Firmament has two blur levels where Bliss has seven, and that is a
-			// real limit rather than a detail: the widest thing this pack can sample
-			// is a quarter of the frame blurred twice, so the glow here is wide but
-			// it is not Bliss's near-uniform average. What is taken from Bliss is
-			// the principle - equal weights across the levels available, so the wide
-			// one counts as much as the tight one, where the picture's own bloom
-			// weights the tight one at 0.35 and the wide at 0.65 of a pair that is
-			// itself tight-leaning. Doing better would mean a downsampling chain
-			// this pack does not have.
-			#ifdef VOLUMETRIC_FOG
-				vec3 bloomFogWide =
-					(textureLod(colortex12, screenCoord, 0.0).rgb
-						+ textureLod(colortex13, screenCoord, 0.0).rgb) * 0.5;
-
-				color += bloomFogWide * clamp(bloomFogMask * BLOOMY_FOG, 0.0, 1.0)
-					* BLOOM_STRENGTH;
-			#endif
 
 			color += bloom * BLOOM_STRENGTH;
 		#endif
