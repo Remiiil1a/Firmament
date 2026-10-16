@@ -226,16 +226,31 @@ vec3 VolumetricFogTint() {
 // rim gradual instead of sharp, and it takes the visible bottom edge of the
 // marching range with it.
 //
-// ⚠️ 0.0 is the null case, and it is the value to check against: at 0.0 no sample
-// position, step length or count changes, and the picture is the one this option
-// did not exist for.
+// ⚠️ 0.0 IS THE DEFAULT, and it is the correction this option's first release
+// needed. The first default was 24, chosen from the fade's effect on the STEP
+// WEIGHTS - which is not the picture. The fog is a layer whose density falls off
+// with height, so the last quarter of the ray crosses the thinnest air of the
+// whole march and the light it carries is out of all proportion to its length.
+// Measured on the density profile rather than on the weights (fade_strength.py),
+// a fade of 24 leaves a ray to the horizon with **12.5% of the light it had** - an
+// eight-fold loss, on the rays the fog is mostly seen on, and what that looks like
+// is the near field gone and the far field thinned to nothing.
+//
+// ⚠️ So the range stops at 24 and the default is off. At 0.0 no sample position,
+// step length or count changes and the picture is the one this option did not
+// exist for. What softens the rim without emptying the fog is the small end:
+//
+//     fade  4   leaves 2% of the horizon's light   (the last few steps only)
+//     fade  8   leaves 4%
+//     fade 12   leaves 6%
+//     fade 24   leaves 13%
 //
 // ⚠️ It fades the light the medium SCATTERS and not the light it takes away. On
 // every path but the Nether the second is the pack's own per-fragment fog, which
 // this pass does not own - so a fade here cannot darken anything, it can only
 // stop adding. The plumes' extinction is left at full strength for a reason
 // written where it is charged.
-#define VOLUMETRIC_FOG_DISTANCE_FADE 24.0 // [0.0 8.0 16.0 24.0 32.0 48.0 64.0]
+#define VOLUMETRIC_FOG_DISTANCE_FADE 0.0 // [0.0 4.0 8.0 12.0 16.0 24.0]
 
 // How many layers of noise are summed. More is finer detail, and each layer
 // costs two noise fetches per step of the march.
