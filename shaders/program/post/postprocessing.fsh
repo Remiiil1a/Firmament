@@ -41,6 +41,24 @@ const int colortex0Format = R11F_G11F_B10F;
 // bloom is off and its passes are skipped.
 #include "/lib/bloom.glsl"
 
+// The medium's settings, for the BLOOMY_FOG multiplier used with the bloom below.
+//
+// ⚠️ Included HERE, unconditionally, and not only where the debug view further
+// down reaches for it - and the difference cost a build (batch 577). That file is
+// where BLOOMY_FOG is defined; it used to arrive in this program only inside the
+// `#elif DEBUG == DEBUG_PLUME_DENSITY` branch, which is the branch that is
+// compiled AWAY on every ordinary setting. So the multiplier below was a name
+// with nothing behind it, and the driver answered with exactly what it was:
+//
+//     final.fsh: 0(174) : error C1503: undefined variable "BLOOMY_FOG"
+//
+// ⚠️ The lesson is about what a check can miss rather than about the include: the
+// harness that assembles this program verified that the IDENTIFIER appeared in the
+// source, and it did - in the dead branch. An identifier being present is not the
+// same as its define being reachable. That check has been tightened to compare the
+// identifier against the macros the assembly actually defines.
+#include "/environment/effects/volumetric_fog.glsl"
+
 // The two levels of the bloom, as composite7 and composite10 left them.
 //
 // Declared unconditionally rather than behind the option, because a uniform
@@ -574,18 +592,20 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 #elif DEBUG == DEBUG_SKYLIGHT
 	uniform sampler2D colortex5;
 #elif DEBUG == DEBUG_PLUME_DENSITY
-	// The density view below asks the Nether's own field for itself, so it needs
-	// the file that owns that field - and nothing else. The world position it asks
-	// about is reconstructed from the depth texture and the projection inverse the
-	// own upsample above already declared, under its duplicate guards.
+	// The density view below asks the Nether's own field for itself, and the file
+	// that owns that field - /environment/effects/volumetric_fog.glsl - is now
+	// included unconditionally at the top of this program, for the BLOOMY_FOG
+	// multiplier the bloom needs. It is therefore already in scope here.
 	//
-	// ⚠️ Included here rather than at the top of the file because this view is the
-	// only thing in this pass that reads any of it, and DEBUG is a compile-time
-	// constant: on every other setting this program's source is exactly what it
-	// was before the view existed. What arrives with it is the whole of the
-	// medium's settings file, so this is the one debug view whose cost is a
-	// recompile of the option set rather than a few instructions.
-	#include "/environment/effects/volumetric_fog.glsl"
+	// ⚠️ It used to be included at this point instead, and that is what broke a
+	// build: everything defined in it was visible to this view and to nothing else,
+	// so every ordinary setting compiled with BLOOMY_FOG as an undefined name. See
+	// the note on the include at the top.
+	//
+	// ⚠️ And it is NOT included again here. Two includes of one file would be two
+	// copies of every declaration in it, which is a redefinition rather than a
+	// waste - the file has no include guard of its own, and giving it one would be
+	// a change to a file four other programs take.
 #else
 	#define SCENE_TEXTURE_DECLARED
 	uniform sampler2D colortex0;
