@@ -309,6 +309,49 @@ const float VOLUMETRIC_FOG_DENOISE_TOLERANCE = 1.0;
 // texel is a quantity that can vary per frame, which is the failure being fixed.
 const float FOG_DENOISE_ANCHOR_DISTANCE = 64.0;
 
+// How strongly the medium scatters light forwards, as the Henyey-Greenstein
+// anisotropy parameter.
+//
+// ⚠️ 0.4, and the number was CHOSEN BY MEASUREMENT rather than by reaching for a
+// realistic one. The physical range is 0 (scatters equally in every direction) to 1
+// (scatters only forwards); real mist is high on it, and 0.75 is a defensible value
+// for it - but a phase function is normalised so that its average over all
+// directions is one, which means a TIGHTER lobe is paid for by a DIMMER sky
+// everywhere else (phase_check.py, integrating over the sphere):
+//
+//     g      looking at the sun     sun at 90 deg     back to the sun
+//     0.40          x 3.9              x 0.67            x 0.31
+//     0.50          x 6.0              x 0.54            x 0.22
+//     0.75          x28.0              x 0.22            x 0.08
+//
+// At 0.75 the fog would be twenty-eight times brighter into the sun and less than a
+// quarter as bright across the rest of the frame - which is what real mist does, and
+// is why a photograph into the sun has no detail in it. It is also unusable as a
+// default for a game: every fog brightness in the pack would have had to be retuned
+// around the one direction the player is not usually looking. At 0.4 the shafts
+// gain a factor of about four towards the sun and the rest of the frame moves by
+// less than half either way.
+//
+// ⚠️ 3.9 at the sun is also the number the audit read out of Bliss Shader's own
+// curve (ogPhase at full forward, times the 5.0 its caller applies), so this is
+// the same visible strength as the reference rather than merely a safe one.
+//
+// ⚠️ Not a knob in the menu, deliberately, even though it is the one number here
+// that a player might want to move. It is a property of the medium, like the
+// density profile's shape; the dial for how bright the shafts are is
+// GODRAYS_STRENGTH, and a second dial for how they respond to direction would be
+// two ways to change the same picture.
+const float FOG_PHASE_G = 0.4;
+
+// And how strongly it scatters backwards, for the smaller second lobe.
+//
+// ⚠️ -0.2, which is a back-peaked lobe rather than a forward one - the sign of the
+// parameter is what turns it round, and that is why it needs a constant of its own
+// rather than reusing the one above. Small, because mist really is brighter looking
+// INTO the light; its only job is to stop the medium being darkest exactly opposite
+// the sun, which reads as the fog switching itself off behind the player.
+const float FOG_PHASE_G_BACK = -0.2;
+
 void main() {
 	// Where this fragment is on the screen. ⚠️ Asked of the target this pass is
 	// rendering into, and not worked out from viewWidth and the scale in
@@ -406,6 +449,54 @@ void main() {
 	vec3 mediumColor = isEyeInWaterFog == 1
 		? underwaterFogColor
 		: fogSunColor * VolumetricFogTint();
+
+	// HOW THE MEDIUM SCATTERS, BY THE ANGLE BETWEEN THE RAY AND THE SUN (batch 582).
+	//
+	// ⚠️ Until this existed the fog's brightness did not depend on WHERE THE CAMERA
+	// WAS LOOKING AT ALL: one colour, times a shadow test, and the shafts were
+	// exactly as bright viewed from the sun's side as from the far side. That is not
+	// what air does, and it is the difference an audit found between this fog and
+	// Bliss's - its `sunPhase` runs to about 2.5 at the sun and its `phaseRayleigh`
+	// varies by a factor of nearly two across the sky, so its medium reads as a
+	// volume the light is travelling through rather than as a glow laid on the
+	// screen.
+	//
+	// ⚠️ Henyey-Greenstein rather than Bliss's own curve, and the reason is that
+	// Bliss's is two exponentials of a power tuned to its own light levels - a shape
+	// ported without its numbers is a shape with nothing behind it, which is the
+	// mistake this whole line of work has already made three times. HG is the
+	// standard single-lobe phase function, it is one line, and its parameter means
+	// something physical:
+	//
+	//     g = 0.4    forward-peaked, which is what makes looking towards the sun
+	//                through mist flare and looking away from it not
+	//
+	// ⚠️ Normalised so that the AVERAGE OVER ALL DIRECTIONS IS ONE, which is what
+	// makes it a redistribution of the light rather than a source of more of it.
+	// Integrating HG over the sphere gives `1 - g^2` of the isotropic case, so the
+	// division by `1 - g^2` puts the mean back to one: the fog is not made brighter
+	// on average by this line, only brighter towards the sun and dimmer away from it.
+	// Without it the peak at the sun would multiply the medium in addition to
+	// peaking, and every fog setting in the pack would have had to be retuned to
+	// compensate.
+	float cosSun = dot(rayDirection, worldSunVector);
+
+	float hgForward = (1.0 - FOG_PHASE_G * FOG_PHASE_G)
+		/ pow(1.0 + FOG_PHASE_G * FOG_PHASE_G
+			- 2.0 * FOG_PHASE_G * cosSun, 1.5);
+
+	// ⚠️ A little of the light comes back towards the eye from the other side, and
+	// without it the medium is darkest exactly opposite the sun - which reads as the
+	// fog being switched off behind the player rather than as air. Bliss has the same
+	// second lobe (`backScatterPhase`, an HG at -SdotV). 0.06 is small, and it is
+	// deliberately smaller than the forward lobe rather than symmetric: mist really
+	// is brighter looking into the light, which is the whole reason sunbeams are
+	// visible from the sun's side and not from behind.
+	float hgBack = (1.0 - FOG_PHASE_G_BACK * FOG_PHASE_G_BACK)
+		/ pow(1.0 + FOG_PHASE_G_BACK * FOG_PHASE_G_BACK
+			+ 2.0 * FOG_PHASE_G_BACK * cosSun, 1.5);
+
+	float sunPhase = mix(hgForward, hgBack, 0.06);
 
 	// The cloud transmittance that used to be worked out here was taken back out
 	// in b318: read once per pixel, at one point along the ray, it made the
@@ -846,8 +937,16 @@ void main() {
 		// ambient is already the average over the sky. Too high and the fog stops
 		// responding to the sun at all, which is the old artifact with the sign
 		// reversed; too low and the shadow outline comes back.
+		// ⚠️ The phase applies to the SUN term and NOT to the ambient one, and that
+		// split is the whole reason the phase is worth having (batch 582). An
+		// ambient term is light that arrived at the medium from every direction
+		// before it was scattered towards the eye, so it has no angle to the sun to
+		// depend on - weighting it by `sunPhase` would make the sky's own light
+		// directional, which is the one thing it is not. Bliss separates them the
+		// same way: its `shadows*sunPhase` multiplies the light term and its
+		// `AmbientColor` is added outside the angle entirely.
 		vec3 stepLight = fogAmbientColor * 0.5
-			+ mediumColor * sunVisibility;
+			+ mediumColor * (sunVisibility * sunPhase);
 
 		scatter += stepLight * (density * stepLength);
 

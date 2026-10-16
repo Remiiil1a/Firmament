@@ -56,6 +56,27 @@ uniform vec4 windTheta;
 // is ambient would be a dial for a physical constant.
 uniform vec3 fogAmbientColor;
 
+// Which way the sun is pointing, for the scattering phase below.
+//
+// ⚠️ A PACK-DECLARED UNIFORM, NOT ONE OF THE MOD'S, and that is why it is written
+// out here (batch 582). `shaders.properties` builds it as
+// `uniform.vec3.worldSunVector`, and the two files that declare it are
+// /environment/sky/gradient.glsl and /environment/sky/minishita.glsl - neither of
+// which this pass reaches, because the fog pass's include list is the noise, this
+// file, the distortion and the reprojection. Using it without this line would have
+// been `C1503: undefined variable`, and no checker in the pack would have said so:
+// they are line-oriented and build no include graph. `_check_shader_sources.ps1`
+// found it, and it is the second time this batch that a name was used whose
+// declaration was somewhere else.
+//
+// ⚠️ Under the same guard the sky files use, so that a program taking both does not
+// declare it twice. Nothing does today - the only reader of this file is the final
+// pass, which is also the one stage that deliberately does not include the sky -
+// but the guard is what makes that a property rather than a coincidence.
+#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
+	uniform vec3 worldSunVector;
+#endif
+
 // How much medium there is, by time of day: built in shaders.properties from the
 // sun's height, because that is where the sun's position can be read. Uniforms:
 // none
