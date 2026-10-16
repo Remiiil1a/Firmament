@@ -210,6 +210,33 @@ vec3 VolumetricFogTint() {
 // is a broken-up one.
 #define VOLUMETRIC_FOG_SCALE 90.0 // [30.0 45.0 60.0 90.0 128.0 192.0 256.0]
 
+// How far short of the march's end the medium fades out, in blocks.
+//
+// ⚠️ A REQUESTED feature (batch 574), and the reason it helps is worth writing
+// down because it looks at first like a way of throwing away the far half of the
+// effect. What it does is make the far steps contribute less and less, over the
+// last stretch of the march, until they contribute nothing.
+//
+// Why that is worth having: the last steps of the ladder are the longest ones -
+// the positions are spread quadratically, so the final step covers several times
+// the ground the first one does - and the medium out there is the thinnest. So
+// the far end of the march is where a sample is both cheapest to lose and most
+// likely to disagree with its neighbour, and a disagreement at the end of the
+// ray is what the eye reads as a hard rim and as blockiness. Fading it makes that
+// rim gradual instead of sharp, and it takes the visible bottom edge of the
+// marching range with it.
+//
+// ⚠️ 0.0 is the null case, and it is the value to check against: at 0.0 no sample
+// position, step length or count changes, and the picture is the one this option
+// did not exist for.
+//
+// ⚠️ It fades the light the medium SCATTERS and not the light it takes away. On
+// every path but the Nether the second is the pack's own per-fragment fog, which
+// this pass does not own - so a fade here cannot darken anything, it can only
+// stop adding. The plumes' extinction is left at full strength for a reason
+// written where it is charged.
+#define VOLUMETRIC_FOG_DISTANCE_FADE 24.0 // [0.0 8.0 16.0 24.0 32.0 48.0 64.0]
+
 // How many layers of noise are summed. More is finer detail, and each layer
 // costs two noise fetches per step of the march.
 #define VOLUMETRIC_FOG_OCTAVES 2 // [1 2 3]

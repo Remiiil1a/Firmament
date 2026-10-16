@@ -278,6 +278,36 @@ layout(location = 0) out vec4 fogScatter;
 // throwing the history away.
 const float VOLUMETRIC_FOG_DENOISE_TOLERANCE = 1.0;
 
+// How far along the ray the temporal denoise's anchor sits, in blocks.
+//
+// ⚠️ A distance with NO DEPTH IN IT, and that is the whole point. At a silhouette
+// the depth the march stopped at flips between the thing in front and the thing
+// behind - a point-sampled depth does, which is what fixed the mosaic - so
+// anything built from that depth flips with it, and an anchor that flips hands the
+// reprojection a different world point every other frame. That is the drag the
+// author reported after batch 573. A point at a fixed distance along the ray has
+// no depth in it and nothing to flip.
+//
+// ⚠️ A median filter over the neighbouring depths was tried first and abandoned
+// on measurement, not on taste: at a silhouette a neighbourhood is about half near
+// samples and half far ones, so the middle of nine sits exactly on the boundary
+// between the two groups and moving ONE sample across it moves the answer the
+// whole way from one surface to the other. filter_choice.py shows the true median
+// of nine swinging the full 30 blocks; every order statistic does. Only a mean is
+// stable, and a mean is what caused the mosaic - it returns a distance no surface
+// has.
+//
+// ⚠️ The cost of anchoring on the ray instead of the surface: a texel whose fog
+// belongs to a wall right in front of it is reprojected as though it belonged to a
+// point further along the same ray. That is a small error - and it is the SAME
+// error every frame, which is the difference between a history that can be
+// averaged and one that cannot.
+//
+// ⚠️ Not a knob, and not in the menu: it wants to be a typical distance into the
+// medium, the same for every texel and every frame. A quantity that varies per
+// texel is a quantity that can vary per frame, which is the failure being fixed.
+const float FOG_DENOISE_ANCHOR_DISTANCE = 64.0;
+
 void main() {
 	// Where this fragment is on the screen. ⚠️ Asked of the target this pass is
 	// rendering into, and not worked out from viewWidth and the scale in
@@ -420,6 +450,26 @@ void main() {
 		float start = VOLUMETRIC_FOG_DISTANCE * t0 * t0;
 		float end = VOLUMETRIC_FOG_DISTANCE * t1 * t1;
 		float stepLength = end - start;
+
+		// How much of this step's light survives the fade at the far end of the
+		// march. Asked at the middle of the step, because that is where the sample
+		// is taken - the step's own two ends belong to it and to its neighbour.
+		//
+		// ⚠️ The ramp is a smoothstep and not a straight line, and the reason is
+		// the gradient rather than the shape: a linear ramp reaches the fade
+		// distance with a kink in its first derivative, and a kink in a quantity
+		// that is integrated along the ray is a faint line across the fog at that
+		// distance. A smoothstep arrives and leaves flat.
+		//
+		// ⚠️ VOLUMETRIC_FOG_DISTANCE_FADE is the LENGTH of the fade, measured back
+		// from the end of the march, so 0.0 leaves the ramp at 1.0 for every step
+		// and the option costs nothing and changes nothing. See the option for why
+		// fading the far end helps at all.
+		float fadeSpan = min(VOLUMETRIC_FOG_DISTANCE_FADE, VOLUMETRIC_FOG_DISTANCE);
+		float fadeStart = VOLUMETRIC_FOG_DISTANCE - fadeSpan;
+		float fade = fadeSpan <= 0.0
+			? 1.0
+			: smoothstep(fadeStart, VOLUMETRIC_FOG_DISTANCE, (start + end) * 0.5);
 
 		// And where the surface is nearer than this step there is nothing left
 		// to light, because the medium behind an opaque thing is not seen.
@@ -631,7 +681,16 @@ void main() {
 				// cannot answer for that on its own: what it multiplies by this
 				// pass's fourth channel is the frame BEHIND the medium, not the
 				// medium's own light.
-				scatter += emission * stepLength * absorbance;
+				// ⚠️ And the FADE is applied to the whole of it - the three
+				// emissions together, not to the extinction above. What is being
+				// faded is the light this step sends towards the eye, so that the
+				// far end of the march adds less and less instead of stopping; the
+				// extinction is left at full strength on purpose, because it is
+				// what the plumes do to what is BEHIND them and a sight line
+				// through a column is a sight line through it whatever the march
+				// does at its own far end. Fading that too would make the far
+				// plumes see-through rather than dimmer.
+				scatter += emission * stepLength * fade * absorbance;
 
 				// The other half of what smoke does: it takes light out of what
 				// is behind it as well as putting its own in. Charged per block
@@ -778,7 +837,11 @@ void main() {
 		// medium is lit by, how much of it the sun reaches, and how much medium
 		// there is. There is no transmittance term in the loop because this pass
 		// adds light rather than replacing any - see the note at the top.
-		scatter += mediumColor * (sunVisibility * density * stepLength);
+		//
+		// ⚠️ `fade` is the far end of the march thinning out, and it is asked
+		// here as well as in the Nether's path because both of them are the same
+		// quantity: what this step contributes. See the option for what it is for.
+		scatter += mediumColor * (sunVisibility * density * stepLength * fade);
 	}
 
 	vec4 raw = vec4(scatter, absorbance);
@@ -900,39 +963,83 @@ void main() {
 			if (cameraStill) {
 				history = texelFetch(colortex1, ivec2(gl_FragCoord.xy), 0);
 			} else {
-				vec3 anchorWorldPos;
+			// ⚠️ The anchor is placed on the RAY and not on the surface, and that
+			// is the fix for the drag reported after batch 573. It took two
+			// attempts; the first is worth keeping because the arithmetic killed
+			// it.
+			//
+			// What was wrong: the anchor was the surface point, rebuilt from the
+			// depth the march stopped at. That depth is point-sampled - which is
+			// what fixed the mosaic, see where it is read - and a point-sampled
+			// depth FLIPS at a silhouette, between the thing in front and the thing
+			// behind. So the anchor jumped between two world points 30 blocks apart
+			// every time the view turned a little, the history was read from the
+			// wrong place on those frames, and the fog dragged.
+			//
+			// ⚠️ THE FIRST ATTEMPT WAS A MEDIAN FILTER over the 3x3 of depths, and
+			// it does not work - not because it was written badly, but because the
+			// geometry forbids it. At a silhouette the neighbourhood is roughly
+			// half near samples and half far ones, so the middle of nine sits
+			// exactly on the boundary between the two groups, and moving ONE
+			// sample across that boundary moves the answer the whole way from one
+			// surface to the other. Measured on synthetic neighbourhoods
+			// (filter_choice.py): the true median of nine swings by the full 30
+			// blocks, and so does any other order statistic. Only a mean is stable,
+			// and a mean is precisely what caused the mosaic - it returns a
+			// distance that no surface has.
+			//
+			// ⚠️ So the stable quantity is not a filtered depth; it is the
+			// DIRECTION, which has no discontinuity anywhere. A point at a fixed
+			// distance along the ray:
+			//
+			//   * reprojects correctly under rotation, because the ray rotates with
+			//     the camera exactly as the world does;
+			//   * reprojects correctly under translation, because the point is
+			//     placed in the world, so the camera moving moves the point against
+			//     it exactly as it moves terrain;
+			//   * has NO dependence on any depth, so there is nothing in it to flip.
+			//
+			// ⚠️ What it gives up is anchoring at the surface, which is what a
+			// reprojection prefers when it can be had: a texel whose fog belongs to
+			// a wall right in front of it is now reprojected as though it belonged
+			// to a point further along the same ray. What that costs is a small
+			// reprojection error where the surface is much nearer than the anchor -
+			// and what it buys is that the error is the SAME every frame instead of
+			// alternating between two surfaces, which is the difference between a
+			// history that can be averaged and one that cannot.
+			//
+			// ⚠️ The sky and the surface now take the same branch, which is the
+			// other half of the simplification: there is no longer a test on the
+			// depth here at all, so there is nothing for a flipping depth to
+			// disturb. The held item keeps its branch, because it is the one case
+			// where the answer is genuinely different - it is attached to the
+			// camera and does not move like the world.
+			vec3 anchorWorldPos = cameraPosition + rayDirection * FOG_DENOISE_ANCHOR_DISTANCE;
 
-				if (depth < 1.0) {
-					vec3 surfaceWorldPos =
-						cameraPosition + rayDirection * surfaceDistance;
-
-					anchorWorldPos = depth > FOG_DENOISE_HAND_DEPTH
-						? surfaceWorldPos
-						: surfaceWorldPos + (previousCameraPosition - cameraPosition);
-				} else {
-					anchorWorldPos = previousCameraPosition + rayDirection;
-				}
-
-				Reprojection reprojection =
-					ReprojectWorldPosition(anchorWorldPos, screenCoord);
-
-				// A pixel that was off the screen or behind the camera last frame
-				// has no history at all.
-				//
-				// ⚠️ The fetch is behind the test rather than left to a clamped
-				// coordinate. A clamp would make the read legal, but what it would
-				// read is the fog at the edge of the screen - a texel with nothing to
-				// do with this one - and the clamp would also put a NaN coordinate
-				// into a fetch whose result would then have to be discarded anyway.
-				historyFromScreen = !reprojection.offScreen
-					&& !reprojection.behindCamera;
-
-				reprojectedCoord = reprojection.previousCoord;
-
-				if (historyFromScreen) {
-					history = texture(colortex1, reprojection.previousCoord);
-				}
+			if (depth <= FOG_DENOISE_HAND_DEPTH) {
+				anchorWorldPos += previousCameraPosition - cameraPosition;
 			}
+
+			Reprojection reprojection =
+				ReprojectWorldPosition(anchorWorldPos, screenCoord);
+
+			// A pixel that was off the screen or behind the camera last frame
+			// has no history at all.
+			//
+			// ⚠️ The fetch is behind the test rather than left to a clamped
+			// coordinate. A clamp would make the read legal, but what it would
+			// read is the fog at the edge of the screen - a texel with nothing to
+			// do with this one - and the clamp would also put a NaN coordinate
+			// into a fetch whose result would then have to be discarded anyway.
+			historyFromScreen = !reprojection.offScreen
+				&& !reprojection.behindCamera;
+
+			reprojectedCoord = reprojection.previousCoord;
+
+			if (historyFromScreen) {
+				history = texture(colortex1, reprojection.previousCoord);
+			}
+		}
 
 			// A history that is not a number, or is infinite, is replaced rather
 			// than left to the mix below: a buffer that cannot hold a NaN turns one

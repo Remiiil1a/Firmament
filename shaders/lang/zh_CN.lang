@@ -244,7 +244,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 573]
+option.PBR_DEBUG=材质调试视图 [build 574]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -513,6 +513,8 @@ option.VOLUMETRIC_FOG_TIME_VARIATION=雾随时间变化
 option.VOLUMETRIC_FOG_TIME_VARIATION.comment=体积雾的浓度是否随游戏时间变化。0 = 全天一样浓；1 = 跟着一天走：日出与日落最浓，上午逐渐消散，正午几乎看不见，入夜后又慢慢加浓。曲线的形状是定好的。
 option.VOLUMETRIC_FOG_RAIN_STRENGTH=雨天加浓
 option.VOLUMETRIC_FOG_RAIN_STRENGTH.comment=下雨时雾浓多少。0 = 不影响；1 = 雨最大时翻倍，而且用的是雨势的平方，小雨几乎看不出来，暴雨会把视野收起来。它同时加浓体积步进的介质和本包自身的距离雾，看得出来的是后一处。只有露天才生效，山洞里不会因此变浓。
+option.VOLUMETRIC_FOG_DISTANCE_FADE=远端淡化
+option.VOLUMETRIC_FOG_DISTANCE_FADE.comment=体积雾在步进终点之前多少格开始逐渐变淡。光线最后几步最长、穿过的空气也最稀薄，所以那里的采样既最不值钱、又最容易和邻居对不上——看上去就是雾远处一道生硬的边。把它们淡掉就消掉了这道边。0 = 远端满强度，也就是这一项存在之前的样子。
 option.VOLUMETRIC_FOG_DENOISE=体积雾降噪
 option.VOLUMETRIC_FOG_DENOISE.comment=体积雾是否在时间上做平均。每一帧每个像素只打一条光线、而且每帧的步进起点都错开，所以单帧就是一次带噪的采样，看上去就是会爬动的颗粒；这一项把前几帧的结果按相机自身的移动对到本帧上累加，站着不动时根本不需要重投影，平均也最长。关掉它，画面上就是这一项存在之前本包画的东西。平均多长见「降噪强度」。
 option.VOLUMETRIC_FOG_DENOISE_STRENGTH=降噪强度
