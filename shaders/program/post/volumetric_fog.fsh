@@ -333,7 +333,7 @@ const float FOG_DENOISE_ANCHOR_DISTANCE = 64.0;
 // less than half either way.
 //
 // ⚠️ 3.9 at the sun is also the number the audit read out of Bliss Shader's own
-// curve (ogPhase at full forward, times the 5.0 its caller applies), so this is
+// curve (fogPhase at full forward, times the 5.0 its caller applies), so this is
 // the same visible strength as the reference rather than merely a safe one.
 //
 // ⚠️ Not a knob in the menu, deliberately, even though it is the one number here
