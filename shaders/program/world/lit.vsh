@@ -200,12 +200,33 @@ flat out uint perFace;
 #if defined(HAS_WAVING_FOLIAGE)
 	#define WAVING_FOLIAGE // Waving foliage (optional but basically free).
 
-	// WindDisplacement and WaveFoliage. ⚠️ WaveFoliage used to be defined here; it
-	// moved into the file in batch 587 because the shadow pass needs the same
-	// displacement and a second copy would be a second place for the two to drift
-	// apart. The file also declares cameraPosition for the same reason, so this
-	// program no longer declares it.
+	uniform vec3 cameraPosition;
+
+	// WindDisplacement
 	#include "/environment/wind.glsl"
+
+	void WaveFoliage(uint materialID, inout vec4 cameraRelativePos) {
+		// at_midBlock.xyz is the offset from this vertex to the centre of its
+		// block in 1/64 block units - not in blocks, and not the distance in
+		// blocks. The attribute the loader supplies is a vec4 whose w is the
+		// block's own light level (Iris 1.7 and later); the declaration above
+		// takes only the xyz, so that component is not readable here and
+		// nothing here wants it. Read these numbers as 1/64-block offsets and
+		// the test below is "is this vertex at the top of its block's column".
+		//
+		// So if these are the top vertices, then the offset to the center
+		// will be negative as the center is below these vertices.
+		bool topOfFoliage = at_midBlock.y < 0.0;
+		bool wavingGroundFoliage = materialID == GROUND_FOLIAGE;
+		bool wavingLeaves = materialID == LEAVES;
+
+		if (wavingLeaves || (wavingGroundFoliage && topOfFoliage)) {
+			vec3 worldPos = cameraRelativePos.xyz + cameraPosition;
+			vec3 displacement = WindDisplacement(worldPos);
+			displacement.y = wavingGroundFoliage ? 0.0 : displacement.y;
+			cameraRelativePos.xyz += displacement;
+		}
+	}
 #endif
 
 uint FetchMaterialID(vec3 worldNormal) {
@@ -312,88 +333,26 @@ vec3 FetchWorldNormal() {
 }
 
 #if !defined(NEVER_RECEIVES_SHADOWS)
-	// How far a shadow lookup is allowed to wander, in blocks.
-	//
-	// ⚠️ WHAT THIS IS FOR (batch 588). Every fragment builds its own lookup position,
-	// and that position moves continuously with the surface and with the camera. The
-	// shadow map's own texel grid does not - it is anchored to the map - so the two
-	// drift against each other by a fraction of a texel as the player walks, and a
-	// fragment's answer can flip between two texels without anything in the world
-	// having moved.
-	//
-	// ⚠️ It is a COMPRESSION, not a lattice, and the first version of this comment
-	// said lattice and was wrong. `p - (fract(p) - 0.5) * cell` does not send every
-	// fragment to one of a set of discrete points: it maps each unit cell of the world
-	// onto a band `cell` wide, preserving order inside the cell. Two fragments 0.01
-	// blocks apart stay 0.0025 blocks apart at cell = 0.25; two fragments a block
-	// apart come out `cell` apart. What that buys is the point: the SPREAD of lookup
-	// positions across a patch is cut by a factor of four, so the patch's fragments
-	// stop straddling a texel edge independently of one another.
-	//
-	// ⚠️ It is the ONLY mechanism of this kind in either pack. Neither pack snaps the
-	// projection or the shadow matrices - that was the first thing looked for and both
-	// trees are clean - and this is what the reference actually does, at
-	// lib/Shadows.glsl:190 in Bliss Shader, applied per fragment there.
-	//
-	// ⚠️ 0.25 blocks, deliberately HALF the reference's 0.5, and for the same reason
-	// the reference makes its own a variable at all: the band should be a few of the
-	// map's own texels. Bliss's shadow map is finer than ours beyond about eight blocks
-	// from the light axis, so the same band is fewer of its texels than of ours.
-	//
-	// ⚠️ NOT faded by the light level, which is the one place this departs from the
-	// reference on purpose. Bliss scales the band from half a block in the dark down to
-	// nothing in full sun, because its purpose there is a light-leak fix driven by the
-	// light map; the side effect is that the band BREATHES as the light changes, and a
-	// width that follows the lightmap is a second source of the same class of artefact.
-	// Ours is the same width everywhere and at every light level.
-	//
-	// ⚠️ Applied to the CAMERA-RELATIVE position rather than to the world position, and
-	// that is a deliberate departure. Bliss snaps the world position and therefore has
-	// to bias the fract() argument by a millionth of it: at world coordinates of a few
-	// thousand blocks a bare fract() has so little resolution left that the band
-	// collapses. A camera-relative coordinate is always within a view distance of the
-	// origin, so that term has no job here - and what it would cost is an offset that
-	// moves with the camera, which is the thing this line exists to remove.
-	#define SHADOW_LOOKUP_SNAP 0.25
-
 	vec3 ShadowMapPosition(vec4 cameraRelativePos, vec3 worldNormal) {
 		float NdotL = dot(worldNormal, worldLightVector);
-
-		// ⚠️ SNAP FIRST, bias second, and the order matters: the bias below is
-		// measured from the shadow-space radius of whatever position it is given, so
-		// biasing the unsnapped position and snapping afterwards would move a point
-		// that was already offset by an amount computed for somewhere else.
-		//
-		// ⚠️ Written as `p - (fract(p) - 0.5) * band`, which is the reference's own
-		// algebra. Read it as: keep the fractional part of the position, scale it by
-		// the band, and subtract it from the position - so the offset that is left is
-		// bounded by the band, and a patch a block across has its lookups squeezed
-		// into a quarter of a block of the map instead of a whole one.
-		vec3 snapCells = fract(cameraRelativePos.xyz) - 0.5;
-		cameraRelativePos.xyz -= snapCells * SHADOW_LOOKUP_SNAP;
 
 		// Shadow bias method inspired by:
 		//
 		// - Complementary Reimagined by Emin:
 		//   https://github.com/ComplementaryDevelopment/ComplementaryReimagined
-		//
+		//   
 		//   File /shaders/lib/lighting/mainLighting.glsl#L150-L154 as of commit
 		//   b511bc03e3fd27023d8ea649e8621bb485518c43
 		//
 		// - Photon by SixthSurge:
 		//   https://github.com/sixthsurge/photon
-		//
-		//   File /shaders/include/light/distortion.glsl#L31-L47as of commit
+		//   
+		//   File /shaders/include/light/distortion.glsl#L31-L47as of commit 
 		//   e253cefc5ff1382f5758834a2d293749a814c724
 		//
 		// We do this a bit differently. I observed that varying the offset
 		// along the normal vector is not only necessary, but rather directly
 		// related to shadow distortion.
-
-		// First, transform the position using the shadow matrices. We use the
-		// same length calculation, but depart by keeping this variable term
-		// separate. Multiplying it by 1.5 was a hack necessary to remove acne
-		// on far-away mountain tops.
 
 		// First, transform the position using the shadow matrices. We use the
 		// same length calculation, but depart by keeping this variable term
@@ -584,27 +543,13 @@ void main() {
 	perFace = EncodePerFace(
 		worldNormal, faceTangent, tangentHandedness, materialID);
 
+	#if !defined(NEVER_RECEIVES_SHADOWS)
+		shadowPos = ShadowMapPosition(cameraRelativePos, worldNormal);
+	#endif
+
 	#ifdef WAVING_FOLIAGE
 		WaveFoliage(materialID, cameraRelativePos);
 		viewPos = gbufferModelView * cameraRelativePos;
-	#endif
-
-	// ⚠️ THE LOOKUP IS BUILT FROM THE POSITION THE WAVE JUST MOVED, and the order of
-	// these two blocks is the whole of it (batch 587). It used to be the other way
-	// round: the lookup was taken from the resting position and the wave applied
-	// afterwards, so the shadow was asked about where the leaf would have been rather
-	// than where it is drawn. A leaf is built of features one to six shadow texels
-	// across and it moves up to 0.09 of a block, which is one to two texels at the
-	// distances a player stands from one - so the lit/shadowed boundary slid across
-	// part of the leaf every frame, at the wind's frequency. That is the crawling the
-	// author reported through foliage, and it is why it was worst on leaves: nothing
-	// else in the scene is displaced per frame at all.
-	//
-	// ⚠️ Still inside the guard for WAVING_FOLIAGE rather than the shadow test, and
-	// deliberately after it: with waving off, cameraRelativePos is the resting
-	// position and this is exactly where it has always been.
-	#if !defined(NEVER_RECEIVES_SHADOWS)
-		shadowPos = ShadowMapPosition(cameraRelativePos, worldNormal);
 	#endif
 
 	#ifdef LOWER_DISTANT_WATER_HEIGHT
