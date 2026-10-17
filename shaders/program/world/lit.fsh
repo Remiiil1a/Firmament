@@ -1708,7 +1708,12 @@ void main() {
 	// ⚠️ Only WATER is marked. Ice, glass, stained glass and Nether portals are
 	// translucent too and are deliberately left at zero, because light does pass
 	// through them and the fog behind them should be visible.
-	gl_FragData[1] = vec4(skyLight, materialID == WATER ? 1.0 : 0.0);
+	// ⚠️ `vec3(skyLight)` and not `skyLight`: skyLight is a float, and `vec4(float)`
+	// broadcasts to all four channels whereas `vec4(float, float)` is only TWO
+	// components and the driver refuses it - C1067, "too little data in type
+	// constructor", from the basic program (batch 594). The cast is what puts three
+	// channels of sky light beside the one channel of mask.
+	gl_FragData[1] = vec4(vec3(skyLight), materialID == WATER ? 1.0 : 0.0);
 
 	gl_FragData[2] = vec4(emitterColor, 1.0);
 
