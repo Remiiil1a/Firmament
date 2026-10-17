@@ -77,6 +77,35 @@ uniform vec3 fogAmbientColor;
 	uniform vec3 worldSunVector;
 #endif
 
+// The scattered-light filter's sampling kernel, for the shadow test in the march.
+//
+// ⚠️ The same 16-point list the world's shadow filter uses, and this is a second
+// copy of it on purpose (batch 585). It lives in the pass's settings file because
+// the world's copy lives in /environment/lighting/shadowmap.glsl, and that file
+// declares `shadowtex1` and `shadowDistance` for the world's own purposes - this
+// pass declares both itself, and two declarations in one program do not compile.
+// The alternative was a third file holding only this array, and the pack holds one
+// invariant above tidiness: no new file goes into `shaders/`.
+//
+// ⚠️ Its provenance and its measured properties are written down in full at the
+// world's copy; the short of it is that the Iris shader tutorial's PCF chapter
+// calls it a Poisson disk, that it is not one (closest pair 0.132 where a real
+// sixteen-point disk holds about 0.5, and one point outside the unit circle), and
+// that what it actually has is the property being bought - no lattice, and
+// blue-noise-like angular coverage.
+//
+// ⚠️ Its RMS radius is 0.783 and both filters divide by that, so the filter comes
+// out as wide as the radius it is asked for rather than about a quarter wider.
+const vec2 pcfDisk[16] = vec2[16](
+	vec2(-0.9420, 0.3993), vec2( 0.9456, -0.7689),
+	vec2(-0.0942, -0.9294), vec2( 0.3450, 0.2939),
+	vec2(-0.7155, 0.1693), vec2(-0.2640, -0.2159),
+	vec2( 0.4160, 0.1829), vec2(-0.6320, -0.5269),
+	vec2( 0.1280, 0.5884), vec2(-0.3870, 0.7314),
+	vec2( 0.8600, -0.0890), vec2(-0.7710, -0.4020),
+	vec2(-0.0880, -0.5470), vec2( 0.5880, 0.6960),
+	vec2(-0.4630, 0.0860), vec2( 0.2230, -0.8290));
+
 // How much medium there is, by time of day: built in shaders.properties from the
 // sun's height, because that is where the sun's position can be read. Uniforms:
 // none

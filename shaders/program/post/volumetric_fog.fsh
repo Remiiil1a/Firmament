@@ -988,28 +988,64 @@ void main() {
 			float spread = min(stepLength * 0.5 / max(length(samplePos), 1.0)
 				* shadowProjection[0][0], 0.02);
 
-			// Four taps, each a hardware 2x2 PCF fetch, so sixteen texels of the map
-			// are read for the price of four, and their average is the fraction of the
-			// step's cross-section the sun actually reaches.
+			// ⚠️ AN IRREGULAR KERNEL ROTATED PER FOG TEXEL AND PER FRAME, which is the
+			// second half of this fix (batch 585). Four taps on the corners of a square
+			// are a REGULAR pattern, and a regular pattern sampled against a regular
+			// texel grid produces a regular artefact: on a shadow edge, where the
+			// filter has a gradient to work on, it shows as a texture that crawls
+			// rather than as softness. The same four taps in the same orientation every
+			// frame also leave the eye something to follow as the camera moves - which
+			// is the author's report, and it was reported as crawling rather than as a
+			// hard or a soft edge.
 			//
-			// ⚠️ The taps are on the DIAGONALS rather than on the axes, and the reason
-			// is the kernel's shape: the axis taps would land inside the square the
-			// hardware already averages, so two of the four would add nothing and the
-			// filter would be half the width it looks. On the diagonals the four
-			// centres sit on the corners of a square twice the width of one fetch.
-			vec3 shadowTap1 = vec3(shadowPos.xy + vec2(spread, spread), shadowPos.z);
-			vec3 shadowTap2 = vec3(shadowPos.xy + vec2(-spread, spread), shadowPos.z);
-			vec3 shadowTap3 = vec3(shadowPos.xy + vec2(spread, -spread), shadowPos.z);
-			vec3 shadowTap4 = vec3(shadowPos.xy + vec2(-spread, -spread), shadowPos.z);
+			// ⚠️ The kernel is the same 16-point list the world's shadow filter uses.
+			// See /environment/lighting/shadowmap.glsl, which is where it is written
+			// down and where its provenance and its measured properties are. It is
+			// repeated here rather than reached by an include because that file
+			// declares `shadowtex1` and `shadowDistance` for the world's own purposes
+			// and this pass declares both itself - two declarations in one program do
+			// not compile.
+			//
+			// ⚠️ The rotation is hashed from the fog TEXEL's own position and not from
+			// gl_FragCoord, because this pass runs at a quarter of the frame: hashing
+			// the full-resolution coordinate would give the sixteen pixels inside one
+			// fog texel sixteen different rotations, and every one of those pixels then
+			// reads a fog value built from a DIFFERENT set of shadow samples. That is
+			// noise across the texel instead of an average inside it, and the upscale
+			// would have to smooth away something that was never meant to be there.
+			// One rotation per fog texel keeps each texel's answer coherent.
+			//
+			// ⚠️ `frameCounter` is stirred in with an irrational step so consecutive
+			// frames take angles as far apart as possible. A slow sequence of angles
+			// would read as the same crawl at a different speed, which is worse than
+			// not changing it at all.
+			vec2 fogPixel = floor(screenCoord * vec2(textureSize(colortex1, 0)));
 
-			// texture() on a shadow sampler compares the third component against what
-			// the map holds there and returns the result, with the hardware doing the
-			// filtering - so this is a soft edge for free, and softer the further away
-			// the map's texels are.
-			float shadowAverage = 0.25 * texture(shadowtex1, shadowTap1)
-				+ 0.25 * texture(shadowtex1, shadowTap2)
-				+ 0.25 * texture(shadowtex1, shadowTap3)
-				+ 0.25 * texture(shadowtex1, shadowTap4);
+			float pcfAngle = fract(sin(dot(fogPixel, vec2(12.9898, 78.233))) * 43758.5453
+				+ float(frameCounter) * 0.6180339887) * 6.28318530718;
+
+			float pcfCos = cos(pcfAngle);
+			float pcfSin = sin(pcfAngle);
+
+			float shadowAverage = 0.0;
+
+			for (int i = 0; i < 16; i++) {
+				// The kernel's own RMS radius is 0.783, so dividing by it keeps the
+				// filter as wide as `spread` says - see the note on the world's copy
+				// of this kernel in shadowmap.glsl, where the number is worked out.
+				vec2 pcfOffset = pcfDisk[i];
+				vec2 pcfRotated = vec2(
+					pcfOffset.x * pcfCos - pcfOffset.y * pcfSin,
+					pcfOffset.x * pcfSin + pcfOffset.y * pcfCos) * (spread / 0.783);
+
+				// texture() on a shadow sampler compares the third component against
+				// what the map holds there and returns the result, with the hardware
+				// doing the filtering.
+				shadowAverage += texture(shadowtex1,
+					vec3(shadowPos.xy + pcfRotated, shadowPos.z));
+			}
+
+			shadowAverage /= 16.0;
 
 			sunVisibility = mix(
 				1.0,
