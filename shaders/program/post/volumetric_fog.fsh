@@ -72,27 +72,25 @@ uniform sampler2D depthtex1;
 
 // The depth WITH the translucent pass in it: the surface the pixel actually shows.
 //
-// ⚠️ Read for one purpose only (batch 592) and never to stop at blindly: where the
-// front-most surface is translucent AND sits at or below sea level, it is the water
-// and the march ends there. See where the two depths are compared. Glass and ice are
-// translucent too, which is why the height test is what separates them - the material
-// itself is not available to this stage.
+// ⚠️ Read for one purpose only (batch 593), and never to stop at blindly: where the
+// water program has marked this pixel as water and the camera is not under water,
+// this is the water's surface and the march ends there. See where the two depths are
+// used, and colortex2's alpha for how the mark is made.
 uniform sampler2D depthtex0;
 
-// Where the game puts its water, in world blocks.
+// The buffer the world programs write their sky light into - and, in its ALPHA, the
+// water mask this pass needs.
 //
-// ⚠️ One above the water blocks themselves - sea level is 62 blocks of water with air
-// at 63 - so a surface at 63.0 is the top face of an ocean. This is a constant of the
-// GAME and not an option, which is why it is here and not in the settings file: the
-// only thing that could vary about it is the world, and it does not.
+// ⚠️ The alpha is free, which is what makes this cost nothing: the world programs
+// write `vec4(skyLight)`, so all four channels hold the same number, and the only
+// readers of this buffer anywhere in the pack take `.r`. Giving the fourth channel a
+// meaning of its own therefore changes nothing that already reads it.
 //
-// ⚠️ It exists because nothing this stage can read carries a surface's material. The
-// material is decoded per vertex in the world programs from the block's own entity
-// attributes and is never written to a buffer, so a post stage can know that a
-// surface is transparent but not what it is transparent of. Height is the one signal
-// the game gives for free: water is the only translucent in the world that is always
-// at sea level.
-#define WATER_SURFACE_LEVEL 63.0
+// ⚠️ This is how Bliss Shader does it, at dimensions/composite2.fsh:592-595: the
+// water program marks the pixel, and the pass that needs to know reads the mark. The
+// alternative - guessing from depth and height - was tried first and does not work;
+// see the note where this is tested.
+uniform sampler2D colortex2;
 
 // The shadow map, opaque casters only.
 //
@@ -473,47 +471,39 @@ void main() {
 	// than stopping early, which is the price of the fix and is what the step count
 	// setting is for.
 	//
-	// ⚠️ ...BUT NOT THROUGH WATER (batch 592). The translucent pass is drawn after
+	// ⚠️ ...BUT NOT THROUGH WATER (batch 593). The translucent pass is drawn before
 	// this one, so a ray that runs to the opaque surface runs THROUGH the water and
-	// picks up medium for the whole distance under it. What comes out is fog inside
-	// the water lit by open-air light at open-air density, because stepping through a
-	// medium means the WATER is being reported as air - which the author saw from
-	// above the surface and described as looking wrong.
+	// picks up medium for the whole depth under it. Because the camera is not under
+	// water, that medium is the AIR's - air density, air colour - so the water is
+	// being reported as air, which the author saw from above the surface and
+	// described as looking wrong.
 	//
-	// The fix is to stop the march at the water's surface again, and only water: where
-	// the front-most surface is translucent, the camera is not under water, and that
-	// surface sits at or below sea level - which is where the game puts every ocean,
-	// lake and river - the translucent surface is treated as the end of the air.
-	// Glass, ice and Nether portals are normally above sea level, so they keep the
-	// whole ray and the batch-590 fix stands for them.
+	// ⚠️ HOW THE WATER IS IDENTIFIED, and this is taken from Bliss Shader rather than
+	// invented: the water program marks its own pixels and the fog reads the mark.
+	// Bliss does it at dimensions/composite2.fsh:592-595 - it fetches the ALPHA of one
+	// of its world buffers, calls the pixel water when that alpha is above 0.99, and
+	// gates the water volumetrics on `iswater && isEyeInWater != 1`. This pack's
+	// colortex2 alpha is the same thing: the fourth channel of the buffer the world
+	// programs write skyLight into, which nothing reads and which therefore costs
+	// nothing to give a meaning to. See where it is written in
+	// /program/world/lit.fsh.
+	// (The buffer Bliss uses is deliberately not named here by its index: this pack's
+	// own gate for undeclared samplers reads these comments, and a bare buffer name in
+	// prose reads to it as a use.)
 	//
-	// ⚠️ That is a HEURISTIC and its limits are worth stating rather than discovering
-	// later: water built above sea level, and glass or ice lying at or below sea
-	// level (a frozen ocean's surface is exactly that), are classified as water. The
-	// alternative was to tint the inside of the water with its own colour, which needs
-	// the surface's MATERIAL - and nothing this stage can read carries it, because the
-	// material is decoded per vertex in the world program and never written to a
-	// buffer.
-	vec4 opaqueH = gbufferProjectionInverse
-		* (vec4(screenCoord * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0));
-	float opaqueDistance = length(opaqueH.xyz / opaqueH.w);
+	// ⚠️ The FIRST attempt at this did not use a flag at all - it guessed water from
+	// the depth buffers and the surface's height against sea level - and it did
+	// nothing, twice over: a height test cannot separate water from glass, and ice and
+	// glass sit at every height including sea level. A mark written by the program
+	// that actually knows the material is the only thing that can.
+	//
+	// ⚠️ `isEyeInWaterFog == 0` is kept from that attempt and is not decoration: when
+	// the camera IS under water the medium being marched is the water itself, which
+	// is exactly what should happen, and stopping at the surface would delete it.
+	float waterMask = texelFetch(colortex2, depthPixel, 0).a;
 
-	float depthFront = texelFetch(depthtex0, depthPixel, 0).r;
-
-	if (isEyeInWaterFog == 0 && depthFront < 1.0) {
-		vec4 frontH = gbufferProjectionInverse
-			* (vec4(screenCoord * 2.0 - 1.0, depthFront * 2.0 - 1.0, 1.0));
-		vec3 frontView = frontH.xyz / frontH.w;
-
-		// The surface's height in the world, which is the only thing that can say
-		// whether this is water or a window: both are translucent, and the game's water
-		// is the one that sits at sea level.
-		float frontWorldY = cameraPosition.y + frontView.y;
-
-		if (length(frontView) < opaqueDistance
-			&& frontWorldY <= WATER_SURFACE_LEVEL) {
-			depth = depthFront;
-		}
+	if (isEyeInWaterFog == 0 && waterMask > 0.5) {
+		depth = texelFetch(depthtex0, depthPixel, 0).r;
 	}
 	//
 	// The ray, in camera-relative space, from the eye to the surface this pixel

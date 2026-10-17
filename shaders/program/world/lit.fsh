@@ -1689,7 +1689,27 @@ void main() {
 	#endif
 
 	gl_FragData[0] = fragmentColor;
-	gl_FragData[1] = vec4(skyLight);
+
+	// ⚠️ The ALPHA of this buffer is a WATER MASK, and it is free: all four channels
+	// used to hold skyLight and the only readers of the buffer anywhere in the pack
+	// take `.r`, so the fourth channel had no meaning until one was given to it
+	// (batch 593).
+	//
+	// ⚠️ Why it is needed at all: a post stage can tell that a surface is translucent
+	// from the depth buffers but not WHAT it is translucent of, because the material
+	// is decoded here from the block's own attributes and never reaches a buffer. The
+	// volumetric fog has to know, because a ray that crosses glass should carry on and
+	// a ray that crosses the water's surface should stop - water is a medium of its
+	// own, and the air's fog has no business being inside it.
+	//
+	// ⚠️ This is exactly how Bliss Shader marks its water, and its fog reads the mark
+	// the same way - see the note at the read in /program/post/volumetric_fog.fsh.
+	//
+	// ⚠️ Only WATER is marked. Ice, glass, stained glass and Nether portals are
+	// translucent too and are deliberately left at zero, because light does pass
+	// through them and the fog behind them should be visible.
+	gl_FragData[1] = vec4(skyLight, materialID == WATER ? 1.0 : 0.0);
+
 	gl_FragData[2] = vec4(emitterColor, 1.0);
 
 	// The material the deferred pass reflects the environment with: the normal
