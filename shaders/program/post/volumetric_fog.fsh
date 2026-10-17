@@ -70,6 +70,30 @@
 // surface. The two are genuinely separable and only the march changes here.
 uniform sampler2D depthtex1;
 
+// The depth WITH the translucent pass in it: the surface the pixel actually shows.
+//
+// ⚠️ Read for one purpose only (batch 592) and never to stop at blindly: where the
+// front-most surface is translucent AND sits at or below sea level, it is the water
+// and the march ends there. See where the two depths are compared. Glass and ice are
+// translucent too, which is why the height test is what separates them - the material
+// itself is not available to this stage.
+uniform sampler2D depthtex0;
+
+// Where the game puts its water, in world blocks.
+//
+// ⚠️ One above the water blocks themselves - sea level is 62 blocks of water with air
+// at 63 - so a surface at 63.0 is the top face of an ocean. This is a constant of the
+// GAME and not an option, which is why it is here and not in the settings file: the
+// only thing that could vary about it is the world, and it does not.
+//
+// ⚠️ It exists because nothing this stage can read carries a surface's material. The
+// material is decoded per vertex in the world programs from the block's own entity
+// attributes and is never written to a buffer, so a post stage can know that a
+// surface is transparent but not what it is transparent of. Height is the one signal
+// the game gives for free: water is the only translucent in the world that is always
+// at sea level.
+#define WATER_SURFACE_LEVEL 63.0
+
 // The shadow map, opaque casters only.
 //
 // shadowtex1 rather than shadowtex0 because the shafts should stop at what
@@ -79,6 +103,13 @@ uniform sampler2DShadow shadowtex1;
 
 uniform mat4 gbufferProjectionInverse;
 uniform mat4 gbufferModelViewInverse;
+
+// This frame's view matrix, for the one question the temporal stage asks about the
+// camera: whether it MOVED. See where `cameraStill` is worked out - comparing
+// positions is not enough, and getting that wrong is what made the fog swim when the
+// player looked around (batch 592).
+uniform mat4 gbufferModelView;
+
 uniform mat4 shadowModelView;
 uniform mat4 shadowProjection;
 
@@ -441,6 +472,49 @@ void main() {
 	// air behind the glass - and it costs the full step count on those pixels rather
 	// than stopping early, which is the price of the fix and is what the step count
 	// setting is for.
+	//
+	// ⚠️ ...BUT NOT THROUGH WATER (batch 592). The translucent pass is drawn after
+	// this one, so a ray that runs to the opaque surface runs THROUGH the water and
+	// picks up medium for the whole distance under it. What comes out is fog inside
+	// the water lit by open-air light at open-air density, because stepping through a
+	// medium means the WATER is being reported as air - which the author saw from
+	// above the surface and described as looking wrong.
+	//
+	// The fix is to stop the march at the water's surface again, and only water: where
+	// the front-most surface is translucent, the camera is not under water, and that
+	// surface sits at or below sea level - which is where the game puts every ocean,
+	// lake and river - the translucent surface is treated as the end of the air.
+	// Glass, ice and Nether portals are normally above sea level, so they keep the
+	// whole ray and the batch-590 fix stands for them.
+	//
+	// ⚠️ That is a HEURISTIC and its limits are worth stating rather than discovering
+	// later: water built above sea level, and glass or ice lying at or below sea
+	// level (a frozen ocean's surface is exactly that), are classified as water. The
+	// alternative was to tint the inside of the water with its own colour, which needs
+	// the surface's MATERIAL - and nothing this stage can read carries it, because the
+	// material is decoded per vertex in the world program and never written to a
+	// buffer.
+	vec4 opaqueH = gbufferProjectionInverse
+		* (vec4(screenCoord * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0));
+	float opaqueDistance = length(opaqueH.xyz / opaqueH.w);
+
+	float depthFront = texelFetch(depthtex0, depthPixel, 0).r;
+
+	if (isEyeInWaterFog == 0 && depthFront < 1.0) {
+		vec4 frontH = gbufferProjectionInverse
+			* (vec4(screenCoord * 2.0 - 1.0, depthFront * 2.0 - 1.0, 1.0));
+		vec3 frontView = frontH.xyz / frontH.w;
+
+		// The surface's height in the world, which is the only thing that can say
+		// whether this is water or a window: both are translucent, and the game's water
+		// is the one that sits at sea level.
+		float frontWorldY = cameraPosition.y + frontView.y;
+
+		if (length(frontView) < opaqueDistance
+			&& frontWorldY <= WATER_SURFACE_LEVEL) {
+			depth = depthFront;
+		}
+	}
 	//
 	// The ray, in camera-relative space, from the eye to the surface this pixel
 	// shows - or to the far end of the medium, whichever comes first. Working
@@ -1242,7 +1316,28 @@ void main() {
 			// index, so the read needs no coordinate at all. That is the case a
 			// player is in whenever they stop to look at the fog, which is when the
 			// marching noise and its flicker are visible in the first place.
-			bool cameraStill = all(equal(cameraPosition, previousCameraPosition));
+			// ⚠️ "Still" means the camera has not MOVED and not TURNED, and until
+			// batch 592 only the first half was tested (batch 592). Comparing
+			// positions alone calls a camera that is spinning on the spot still, so a
+			// player looking around took this path: the history was read from the
+			// SAME SCREEN TEXEL, which after a rotation shows a completely different
+			// part of the world. The denoise then averaged this frame's fog with fog
+			// from somewhere else entirely, and the result was fog that appeared to
+			// swim along with the view instead of sitting in the world - the author's
+			// report, and the reason this is compared against the view matrix.
+			//
+			// ⚠️ The MODELVIEW and not the projection: the projection carries the
+			// sub-pixel TAA jitter, which changes every frame even when nobody has
+			// touched the mouse, so including it would mean this branch never ran.
+			//
+			// ⚠️ Matrix equality is four column comparisons because GLSL has no
+			// equal() for matrices - equal() is the vector one, and a matrix is not a
+			// vector to the language however much it looks like one.
+			bool cameraStill =
+				all(equal(gbufferModelView[0], gbufferPreviousModelView[0]))
+				&& all(equal(gbufferModelView[1], gbufferPreviousModelView[1]))
+				&& all(equal(gbufferModelView[2], gbufferPreviousModelView[2]))
+				&& all(equal(gbufferModelView[3], gbufferPreviousModelView[3]));
 
 			vec4 history = raw;
 
