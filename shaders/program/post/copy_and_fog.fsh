@@ -40,6 +40,7 @@
 //
 const int R11F_G11F_B10F = 0;
 const int R8 = 0;
+const int RG8 = 0;
 
 // We must write to colortex4, as per OptiFine/Iris specifications, that is the
 // first colortex buffer number that gbuffers shaders can sample. colortex0-3
@@ -58,7 +59,20 @@ const int colortex4Format = R11F_G11F_B10F;
 // below writes all of it, every frame, so what they see is the current frame's
 // copy whether or not the loader wiped it first.
 const bool colortex4Clear = false;
-const int colortex2Format = R8;
+// ⚠️ RG8 and not R8 (batch 595). The RED channel is the sky light, which is what
+// every reader of this buffer takes; the GREEN channel is the water mask the
+// volumetric fog needs, written by the world programs - see the note at the write in
+// /program/world/lit.fsh.
+//
+// ⚠️ It was R8, and the first attempt at the mask wrote its flag into the ALPHA of
+// that format. A single-channel texture HAS no alpha: the write is dropped, and
+// reading the missing component gives 1.0 - so every pixel in the frame read as
+// water, the fog stopped its march at the first translucent surface everywhere, and
+// looking through glass lost the medium behind it exactly as it had before batch 590
+// fixed it. The one channel it had was already spoken for, which is why the buffer
+// is widened rather than the flag squeezed in: two channels of 8 bits each is the
+// smallest change that can carry both numbers.
+const int colortex2Format = RG8;
 const int colortex5Format = R8;
 
 // Water absorption configuration, has wide-reaching impacts across the

@@ -78,15 +78,18 @@ uniform sampler2D depthtex1;
 // used, and colortex2's alpha for how the mark is made.
 uniform sampler2D depthtex0;
 
-// The buffer the world programs write their sky light into - and, in its ALPHA, the
-// water mask this pass needs.
+// The buffer the world programs write their sky light into - and, in its GREEN
+// channel, the water mask this pass needs.
 //
-// ⚠️ The alpha is free, which is what makes this cost nothing: the world programs
-// write `vec4(skyLight)`, so all four channels hold the same number, and the only
-// readers of this buffer anywhere in the pack take `.r`. Giving the fourth channel a
-// meaning of its own therefore changes nothing that already reads it.
+// ⚠️ GREEN and not ALPHA: this buffer was R8 when the mask was first added, a
+// single-channel format with no alpha at all, so the write was dropped and every read
+// of `.a` came back 1.0 - every pixel read as water, the march stopped at the first
+// translucent surface everywhere, and the glass fix of batch 590 was undone. It is
+// RG8 now; red is still the sky light and every reader of it takes `.r`. See the note
+// on the format in /program/post/copy_and_fog.fsh and the one at the write in
+// /program/world/lit.fsh.
 //
-// ⚠️ This is how Bliss Shader does it, at dimensions/composite2.fsh:592-595: the
+// ⚠️ This is how Bliss Shader does it too, at dimensions/composite2.fsh:592-595: the
 // water program marks the pixel, and the pass that needs to know reads the mark. The
 // alternative - guessing from depth and height - was tried first and does not work;
 // see the note where this is tested.
@@ -500,7 +503,7 @@ void main() {
 	// ⚠️ `isEyeInWaterFog == 0` is kept from that attempt and is not decoration: when
 	// the camera IS under water the medium being marched is the water itself, which
 	// is exactly what should happen, and stopping at the surface would delete it.
-	float waterMask = texelFetch(colortex2, depthPixel, 0).a;
+	float waterMask = texelFetch(colortex2, depthPixel, 0).g;
 
 	if (isEyeInWaterFog == 0 && waterMask > 0.5) {
 		depth = texelFetch(depthtex0, depthPixel, 0).r;
