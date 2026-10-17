@@ -106,14 +106,25 @@ const vec2 pcfDisk[16] = vec2[16](
 	vec2(-0.0880, -0.5470), vec2( 0.5880, 0.6960),
 	vec2(-0.4630, 0.0860), vec2( 0.2230, -0.8290));
 
-// How much medium there is, by time of day: built in shaders.properties from the
-// sun's height, because that is where the sun's position can be read. Uniforms:
-// none
-uniform float volumetricFogTimeFactor;
-
-// And how much more of it there is in rain, built the same way and for the same
-// reason. Uniforms: none
+// And how much more of it there is in rain, as a multiplier on the current time of
+// day's density: built in shaders.properties from the weather strength, because
+// that is one of the quantities the property file can read and a shader cannot be
+// sure of - the trap shadowDistance set in BATCH_LOG.md 171. Uniforms: none
 uniform float volumetricFogRainFactor;
+
+// The sun's angle, in radians, which is what FogTimeDensity below walks the day
+// with.
+//
+// ⚠️ Asked of the mod rather than derived from worldSunVector, and the reason is
+// the whole point of the four densities: the sun is at the horizon TWICE a day, so
+// a height cannot tell dawn from dusk. `sunAngle` can - it is zero at sunrise, a
+// quarter turn at noon, half a turn at sunset and three quarters at midnight.
+//
+// ⚠️ Not named in BATCH_LOG.md 171's list of quantities a stage cannot rely on:
+// that trap was shadowDistance, which is a pack option some stages are not given.
+// sunAngle is an engine uniform, present in every stage, and the same one Bliss
+// Shader reads for its own day tracking.
+uniform float sunAngle;
 
 // The pack's value noise, which the patches are built from. Uniforms: noisetex
 #include "/lib/valueNoise.glsl"
@@ -210,12 +221,85 @@ vec3 VolumetricFogTint() {
 // keep the two comparable.
 #define UNDERWATER_GODRAYS_STRENGTH 1.5 // [0.0 0.25 0.5 0.75 1.0 1.5 2.0]
 
-// How thick the air is, per block, at the height the fog pools at.
+// How thick the air is, per block, at each of the four parts of the day.
 //
-// This is the master dial for how visible the whole effect is: raise it and
-// valleys fill up, lower it and the shafts thin out. It is per block, so 0.01
-// is an optical depth of one over a hundred blocks of the densest air.
-#define VOLUMETRIC_FOG_DENSITY 0.004 // [0.0 0.002 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
+// ⚠️ These are ABSOLUTE densities and not multipliers (batch 590). They are four
+// settings where there used to be one, and that one - VOLUMETRIC_FOG_DENSITY - is
+// gone: a single master dial times a hard-coded time curve could only scale the
+// whole cycle, so a player who wanted thick dawn mist and a thin noon had no way
+// to ask for it. Each value here is the density at its own part of the day, in the
+// same units the old master dial was in, so 0.004 is the shipped look and all four
+// at 0.004 reproduce exactly what this pack did before.
+//
+// ⚠️ The day is walked as an ARC rather than by the sun's height, and the
+// difference matters: the sun is at the horizon twice a day, so its height cannot
+// tell dawn from dusk. The arc comes from `sunAngle`, which is zero at sunrise, a
+// quarter turn at noon, half a turn at sunset and three quarters at midnight - so
+// these four values sit at the four corners of the day and blend linearly between
+// the neighbours. See FogTimeDensity below.
+//
+// ⚠️ All four default to the same number ON PURPOSE. The four-way split is a tool
+// the player reaches for, not a look this pack imposes; a default with thick dawn
+// and bare noon would change the picture for anyone who never opens the menu.
+#define FOG_DENSITY_MORNING 0.004 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
+#define FOG_DENSITY_NOON 0.004 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
+#define FOG_DENSITY_EVENING 0.004 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
+#define FOG_DENSITY_NIGHT 0.004 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
+
+// How much thicker the medium is in rain, as a multiplier on whichever of the four
+// above is current.
+//
+// At 0 the rain does not change anything; at 1 the fog is twice as thick at full
+// rain, and the value scales from there. What it follows is the mod's weather
+// strength rather than a flag, and it is squared, so a drizzle thickens the fog a
+// little and a thunderstorm closes the view in, with no step between the two.
+//
+// ⚠️ Renamed from VOLUMETRIC_FOG_RAIN_STRENGTH in batch 590. The old name called it
+// a strength of its own; what it is is the rain's share of the density, which is
+// what the new name says.
+//
+// ⚠️ It is also what environment/fog.glsl scales the pack's own atmospheric fog by,
+// and that half is the one that shows: a thicker medium barely registers in rain,
+// because rain is what hides the shafts the medium scatters, while the fading out
+// of the distance is what a viewer actually sees. Sundial does the same at its
+// atmosphere's optical depth - see BATCH_LOG.md 177.
+//
+// ⚠️ On the Overworld only. Neither the Nether nor the End has weather, and
+// underwater has a density of its own that deliberately follows neither.
+#define FOG_DENSITY_RAIN 0.5 // [0.0 0.5 1.0 1.5 2.0 3.0]
+
+// How thick the medium is under water, per block.
+//
+// ⚠️ Its own density and NOT a multiple of the air's (batch 590). Water is not air:
+// the same medium in it is several times as thick, and before this batch that was
+// done by multiplying the Overworld's density by a hard-coded six - which meant the
+// water thickened and thinned with the time of day and with the rain, neither of
+// which reaches under the surface.
+//
+// ⚠️ 0.024 is exactly the old behaviour written out: the old master dial of 0.004
+// times that six. A player who never touches this sees no change.
+#define FOG_DENSITY_UNDERWATER 0.024 // [0.0 0.005 0.01 0.015 0.02 0.03 0.05]
+
+// How thick the medium is in the End, per block.
+//
+// ⚠️ The End does NOT reuse the Overworld's densities (batch 590). It is a
+// different place with a different air, and its air was previously governed by the
+// Overworld's clock - which is meaningless there, because the End has no sun and
+// therefore no dawn, noon, dusk or night for the four values above to mean.
+//
+// ⚠️ That is why this is ONE value and not four. A slider that cannot do anything
+// in the dimension it governs is worse than no slider, and this pack has already
+// paid for an option whose description promised what its code did not do.
+#define FOG_DENSITY_END 0.004 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
+
+// How thick the layer of air in the Nether is, per block.
+//
+// ⚠️ This is the AIR and not the smoke columns. The columns have their own
+// NETHER_PLUME_* settings further down and this does not touch them: they are a
+// separate medium drawn by a separate branch of the march. What this governs is the
+// thin haze the shafts are drawn in, which previously reused the Overworld's
+// density and so followed the Overworld's clock in a dimension with no day.
+#define FOG_DENSITY_NETHER 0.004 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
 
 // How far up, in blocks, the fog has thinned to about a third of its density at
 // the bottom. Larger values make a deeper layer that reaches higher.
@@ -290,32 +374,6 @@ vec3 VolumetricFogTint() {
 // How much smaller each layer is than the one before, and how much weaker.
 #define VOLUMETRIC_FOG_OCTAVE_SCALE 2.8 // [2.0 2.4 2.8 3.2]
 #define VOLUMETRIC_FOG_OCTAVE_FADE 0.45 // [0.2 0.3 0.45 0.6]
-
-// How much the fog follows the time of day.
-//
-// At 0 the medium is the same all day. At 1 it follows the curve built in
-// shaders.properties: thickest at sunrise and sunset, thinning through the
-// morning until noon is nearly bare, and building again through the night
-// towards the next sunrise. Morning mist and evening mist are one thing seen
-// from two sides, which is why a single curve covers both.
-#define VOLUMETRIC_FOG_TIME_VARIATION 1.0 // [0.0 0.25 0.5 0.75 1.0]
-
-// How much thicker the medium is in rain.
-//
-// At 0 the rain does not change anything. At 1 the fog is twice as thick at full
-// rain, and the value scales from there. What it follows is the mod's weather
-// strength rather than a flag, and it is squared, so a drizzle thickens the fog
-// a little and a thunderstorm closes the view in, with no step between the two.
-//
-// It drives two things, and the second is the one that shows. The factor is
-// built in shaders.properties, because rainStrength is a quantity that file can
-// read and a shader cannot be sure of - the trap shadowDistance set in
-// BATCH_LOG.md 171. It multiplies this medium's density, and it is also what
-// environment/fog.glsl scales the pack's own atmospheric fog by: a thicker
-// medium barely shows in rain, because rain is what hides the shafts the medium
-// scatters, while the distance fading out is what a viewer sees. Sundial does
-// the same at its atmosphere's optical depth - see BATCH_LOG.md 177.
-#define VOLUMETRIC_FOG_RAIN_STRENGTH 0.5 // [0.0 0.5 1.0 1.5 2.0 3.0]
 
 // Whether to march and store the fog at the full resolution of the frame.
 //
@@ -1038,8 +1096,8 @@ const float NETHER_PLUME_EDGE_GAIN = 0.35;
 // medium adds to the frame, and it leaves the medium's shape and its coverage
 // alone.
 //
-// ⚠️ Doubled in batch 525, from 0.008 to 0.016, which puts it four times
-// VOLUMETRIC_FOG_DENSITY rather than of the same order as it. The old comparison
+// ⚠️ Doubled in batch 525, from 0.008 to 0.016, which puts it four times the air
+// density rather than of the same order as it. The old comparison
 // is gone because the two are not doing the same job: the Overworld's fog is lit
 // by the sun and so needs only enough medium to catch it, while this one is its
 // own light seen against a fog that already glows, and it needs more of it to
@@ -1167,28 +1225,92 @@ float VolumetricFogNoise(vec3 at) {
 	return mix(below, above, blend);
 }
 
+// How thick the air is at this moment of the day, per block.
+//
+// ⚠️ Walks the day as an ARC from `sunAngle` rather than interpolating on the sun's
+// height, and that is the one thing this function exists for (batch 590). The sun
+// is at the horizon twice a day, so height alone maps dawn and dusk to the same
+// number and any curve built on it has to give them the same density. An angle does
+// not: it goes round the day once, so the four settings sit at four distinct points
+// and each is reachable on its own.
+//
+// The phase is normalised to 0..1 with sunrise at 0, noon at a quarter, sunset at a
+// half and midnight at three quarters. Between them the two neighbouring settings
+// blend linearly, so the day is a closed loop with no step anywhere - including at
+// dawn, where midnight hands over to morning.
+float FogTimeDensity() {
+	float phase = fract(sunAngle / 6.28318530718);
+
+	// ⚠️ One `t` for the whole chain rather than one per branch. Four locals with
+	// the same name in four scopes is legal GLSL, but it reads as if they were the
+	// same variable and one of the pack's own gates cannot tell the difference - so
+	// the naming is doing the work of making the intent obvious.
+	float t;
+
+	if (phase < 0.25) {
+		// Sunrise to noon: morning hands over to noon.
+		t = phase * 4.0;
+		return mix(FOG_DENSITY_MORNING, FOG_DENSITY_NOON, t);
+	} else if (phase < 0.5) {
+		// Noon to sunset: noon hands over to evening.
+		t = (phase - 0.25) * 4.0;
+		return mix(FOG_DENSITY_NOON, FOG_DENSITY_EVENING, t);
+	} else if (phase < 0.75) {
+		// Sunset to midnight: evening hands over to night.
+		t = (phase - 0.5) * 4.0;
+		return mix(FOG_DENSITY_EVENING, FOG_DENSITY_NIGHT, t);
+	}
+
+	// Midnight to sunrise: night hands over to morning, which is what closes the
+	// loop - the last segment is the only one that has to end where the first
+	// begins.
+	t = (phase - 0.75) * 4.0;
+	return mix(FOG_DENSITY_NIGHT, FOG_DENSITY_MORNING, t);
+}
+
 // How much medium there is at a world position.
 //
-// Three things multiply into it: how high the point is, which is the layer's
-// shape; how much noise is there, which is its structure; and the density
-// option, which is its amount.
+// Three things multiply into it: how high the point is, which is the layer's shape;
+// how much noise is there, which is its structure; and the base density, which is
+// its amount. The amount is now picked per dimension and per time of day rather
+// than being one dial times one curve - see the four FOG_DENSITY_* settings at the
+// top of this file for why.
 //
-// The height falloff is exponential rather than a hard layer, because that is
-// what fog does - it thins out gradually - and the max() is what keeps the
-// layer above its base rather than below it: at and under VOLUMETRIC_FOG_BASE
-// the density is the full value and it falls off upwards from there, so the
-// caves under the base do not end up with the thickest fog in the world.
+// The height falloff is exponential rather than a hard layer, because that is what
+// fog does - it thins out gradually - and the max() is what keeps the layer above
+// its base rather than below it: at and under VOLUMETRIC_FOG_BASE the density is the
+// full value and it falls off upwards from there, so the caves under the base do not
+// end up with the thickest fog in the world.
 float VolumetricFogDensity(vec3 worldPosition) {
-	// The #ifdef, and not #if defined, is what makes UNDERWATER_GODRAYS a
-	// switch in the menu rather than a constant - the same mistake was made
-	// with INDIRECT_BOUNCE in b311 and it is written down in BATCH_LOG.md
-	// 169.1 because it cost a round trip twice.
-	#ifdef UNDERWATER_GODRAYS
-		// Water is not air: the same medium, several times as thick.
-		float denseness = isEyeInWaterFog == 1 ? 6.0 : 1.0;
-	#else
-		float denseness = 1.0;
-	#endif
+	// ⚠️ ONE BRANCH PER DIMENSION, and each of the three has a reason to be its own
+	// because the three places are not the same medium (batch 590):
+	//
+	//   * under water the density is its own setting and follows NOTHING else - not
+	//     the clock, because the same amount of light reaches this depth all day,
+	//     and not the rain, because rain lands on the surface and does not reach
+	//     under it;
+	//   * the End has no sun, so there is no dawn, noon, dusk or night there for the
+	//     four Overworld values to mean, and its air is simply its own density;
+	//   * the Nether has no weather and no day either. This is its AIR - the smoke
+	//     columns are a separate medium with their own settings and are not touched
+	//     here;
+	//   * and what is left is the Overworld, which is the one place the four values
+	//     and the rain multiplier were built for.
+	//
+	// ⚠️ The tests are ordered so that water wins over everything: a camera under
+	// water in a dimension other than the Overworld still gets the water density,
+	// which is what "the medium I am standing in" means.
+	float baseDensity;
+
+	if (isEyeInWaterFog == 1) {
+		baseDensity = FOG_DENSITY_UNDERWATER;
+	} else if (EndDimension()) {
+		baseDensity = FOG_DENSITY_END;
+	} else if (NetherDimension()) {
+		baseDensity = FOG_DENSITY_NETHER;
+	} else {
+		baseDensity = FogTimeDensity() * volumetricFogRainFactor;
+	}
 
 	float layer = exp(-max(worldPosition.y - VOLUMETRIC_FOG_BASE, 0.0)
 		/ max(VOLUMETRIC_FOG_HEIGHT, 1.0));
@@ -1221,14 +1343,10 @@ float VolumetricFogDensity(vec3 worldPosition) {
 	// uniform dimming into holes and blobs.
 	float patches = smoothstep(0.35, 0.75, noise);
 
-	// And the time of day, as a single number built in shaders.properties from
-	// the sun's height: at its largest at sunrise and sunset, at its smallest -
-	// zero - at noon, and part way up again through the night. Doing it there
-	// rather than here because the sun's position is one of the quantities the
-	// property file can read and a shader cannot be sure of - the same trap
-	// shadowDistance set in BATCH_LOG.md 171.
-	return VOLUMETRIC_FOG_DENSITY * denseness * layer
-		* volumetricFogTimeFactor * volumetricFogRainFactor
+	// The height layer, the patch structure and the base density, and nothing else:
+	// the time of day and the rain are already inside baseDensity, which is where
+	// the per-dimension choice is made.
+	return baseDensity * layer
 		* mix(1.0, patches, VOLUMETRIC_FOG_NOISE);
 }
 

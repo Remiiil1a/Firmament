@@ -54,7 +54,10 @@ screen.EFFECTS=特效与后期处理
 screen.EFFECTS_LIGHT_SETTINGS=光照特效
 screen.WEATHER_SETTINGS= 雨滴粒子
 screen.FOG_SETTINGS=雾
-screen.FOG_SHAPE_SETTINGS= 形状与时间
+screen.FOG_SHAPE_SETTINGS= 形状
+screen.FOG_DENSITY_SETTINGS= 浓度
+screen.FOG_DIMENSION_SETTINGS= 末地与下界
+screen.FOG_UNDERWATER_SETTINGS= 水下
 screen.EFFECTS_CAMERA_SETTINGS=镜头效果
 screen.EFFECTS_COLOR_SETTINGS=色彩与色调
 screen.EFFECTS_AA_SETTINGS=抗锯齿
@@ -244,7 +247,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 589]
+option.PBR_DEBUG=材质调试视图 [build 590]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -487,8 +490,22 @@ option.RAIN_DROP_AMOUNT.comment=每一格雨柱里横向平铺几次雨滴贴图
 option.RAIN_DROP_SIZE=雨滴粗细
 option.RAIN_DROP_SIZE.comment=每颗雨滴保留原来宽度的百分之多少。调低雨丝变细，1.0 完全不裁。0.1~0.2 接近毛毛细雨，再低就几乎看不见。只作用于雨——雪花按资源包原本的样子画。
 
-option.VOLUMETRIC_FOG_DENSITY=雾的浓度
-option.VOLUMETRIC_FOG_DENSITY.comment=空气有多「厚」，单位是每方块，是整个效果的主控。调高低处会被雾填满，调低光柱会变淡。它也决定光柱随高度衰减的快慢。
+option.FOG_DENSITY_MORNING=清晨浓度
+option.FOG_DENSITY_MORNING.comment=太阳刚升起时空气有多厚，单位是每方块 —— 是本包一直用的那个介质的量。一天的四段互相过渡，所以这个值既是黎明时达到的浓度，也是上午逐渐离开的起点。
+option.FOG_DENSITY_NOON=正午浓度
+option.FOG_DENSITY_NOON.comment=正午时空气有多厚。调低，正午的光柱会消失而清晨与黄昏各自保留；调高，一整天都雾蒙蒙的。
+option.FOG_DENSITY_EVENING=黄昏浓度
+option.FOG_DENSITY_EVENING.comment=太阳落下去时空气有多厚。清晨和黄昏单独成项是有意的：太阳高度相同，但光不是同一种光，想要一个浓、一个清是合理的。
+option.FOG_DENSITY_NIGHT=夜晚浓度
+option.FOG_DENSITY_NIGHT.comment=午夜时空气有多厚。这四个值把一天走成一个闭合的环，所以它也会在日出前交回给清晨的值。
+option.FOG_DENSITY_RAIN=雨天加浓
+option.FOG_DENSITY_RAIN.comment=下雨时雾浓多少，是乘在上面四个浓度中当前那个上的倍率。0 = 不影响；1 = 雨最大时翻倍，用的是雨势的平方，所以小雨几乎看不出来、暴雨会把视野闷住。它同时驱动推进的介质和本包自己的距离雾，而显眼的是后者。只作用于主世界：下界与末地没有天气。
+option.FOG_DENSITY_UNDERWATER=水下浓度
+option.FOG_DENSITY_UNDERWATER.comment=水有多厚，单位是每方块。它是独立的一项、不是空气浓度的倍数 —— 水是另一种介质，这是它自己的旋钮。它刻意既不看时段也不看雨：同一深度一整天收到的光一样多，而雨落在水面之上、到不了水下。
+option.FOG_DENSITY_END=末地浓度
+option.FOG_DENSITY_END.comment=末地里空气有多厚。只有一个值而不是四个：末地没有太阳，那里不存在可供四个值表达的清晨、正午、黄昏、夜晚 —— 而一个在自己管辖的维度里做不了任何事的滑条是骗人的。
+option.FOG_DENSITY_NETHER=下界空气浓度
+option.FOG_DENSITY_NETHER.comment=下界那层稀薄空气有多厚，单位是每方块。这是光柱所在的那层空气，不是烟柱 —— 烟柱在它下面单独一页，属于另一种介质。下界没有白天，所以这一项也不看时钟。
 option.VOLUMETRIC_FOG_HEIGHT=雾的高度
 option.VOLUMETRIC_FOG_HEIGHT.comment=往上多少格，雾的浓度衰减到三分之一：数值越大雾层越厚，越小越贴地。
 option.VOLUMETRIC_FOG_BASE=雾的基准高度
@@ -509,10 +526,6 @@ option.VOLUMETRIC_FOG_OCTAVE_SCALE.comment=每一层比上一层小多少。
 option.VOLUMETRIC_FOG_OCTAVE_FADE=雾的每层减淡
 option.VOLUMETRIC_FOG_OCTAVE_FADE.comment=每一层比上一层弱多少。
 
-option.VOLUMETRIC_FOG_TIME_VARIATION=雾随时间变化
-option.VOLUMETRIC_FOG_TIME_VARIATION.comment=体积雾的浓度是否随游戏时间变化。0 = 全天一样浓；1 = 跟着一天走：日出与日落最浓，上午逐渐消散，正午几乎看不见，入夜后又慢慢加浓。曲线的形状是定好的。
-option.VOLUMETRIC_FOG_RAIN_STRENGTH=雨天加浓
-option.VOLUMETRIC_FOG_RAIN_STRENGTH.comment=下雨时雾浓多少。0 = 不影响；1 = 雨最大时翻倍，而且用的是雨势的平方，小雨几乎看不出来，暴雨会把视野收起来。它同时加浓体积步进的介质和本包自身的距离雾，看得出来的是后一处。只有露天才生效，山洞里不会因此变浓。
 option.VOLUMETRIC_FOG_DENOISE=体积雾降噪
 option.VOLUMETRIC_FOG_DENOISE.comment=体积雾是否在时间上做平均。每一帧每个像素只打一条光线、而且每帧的步进起点都错开，所以单帧就是一次带噪的采样，看上去就是会爬动的颗粒；这一项把前几帧的结果按相机自身的移动对到本帧上累加，站着不动时根本不需要重投影，平均也最长。关掉它，画面上就是这一项存在之前本包画的东西。平均多长见「降噪强度」。
 option.VOLUMETRIC_FOG_DENOISE_STRENGTH=降噪强度

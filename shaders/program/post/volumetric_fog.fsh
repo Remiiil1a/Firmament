@@ -47,7 +47,28 @@
 // to run after the deferred pass, which is where the world's picture and the
 // depth buffer are both complete.
 
-uniform sampler2D depthtex0;
+// The depth the march stops at, WITHOUT the translucent pass in it.
+//
+// ⚠️ depthtex1 and not depthtex0, and that is the fix for the fog vanishing behind
+// glass (batch 590). depthtex0 holds the surface the pixel actually shows, which
+// includes the translucent pass - so at a pane of glass it holds the glass. The
+// march used to break there, which meant that looking through glass accumulated
+// only the hand's width of air between the eye and the pane and NOTHING beyond it:
+// the world past the glass was drawn, but the medium it sits in had never been
+// sampled. Through glass, ice or a Nether portal the fog was simply missing.
+//
+// ⚠️ depthtex1 is the OPAQUE pass alone, so the medium is accumulated all the way
+// to the first thing that actually blocks light. A translucent surface is treated
+// as if it were air, which is right for glass, ice and a portal because they are
+// one block thick and light passes through them; the one-block error in the medium
+// they occupy is far smaller than the whole ray of medium that stopping there threw
+// away.
+//
+// ⚠️ What this does NOT affect: the upscale in composite1 gates its taps by
+// comparing depthtex0 with depthtex0 - fragment against fragment - so which depth
+// the MARCH stopped at is a separate question from which fog texel belongs to which
+// surface. The two are genuinely separable and only the march changes here.
+uniform sampler2D depthtex1;
 
 // The shadow map, opaque casters only.
 //
@@ -151,12 +172,16 @@ uniform vec3 previousCameraPosition;
 // The colour the pack fades what is under water towards, for the medium to take
 // its own colour from down there. A custom uniform, so this stage has it.
 //
-// volumetricFogRainFactor and volumetricFogTimeFactor are deliberately NOT
-// declared here. They belong to the medium's own file below, which is where the
-// density that reads them lives, and an include expands into this same source:
-// declaring one in both places is two declarations of one uniform, which the
-// driver rejects with "declaration ... conflicts with previous declaration".
-// BATCH_LOG.md 176 records it.
+// volumetricFogRainFactor is deliberately NOT declared here. It belongs to the
+// medium's own file below, which is where the density that reads it lives, and an
+// include expands into this same source: declaring it in both places is two
+// declarations of one uniform, which the driver rejects with "declaration ...
+// conflicts with previous declaration". BATCH_LOG.md 176 records it.
+//
+// ⚠️ volumetricFogTimeFactor used to be named here as well. It is gone as of batch
+// 590: the fog's share of the day is now four settings blended by the medium's own
+// file rather than one number built in shaders.properties, so there is no such
+// uniform left either to declare or to avoid declaring.
 uniform vec3 underwaterFogColor;
 
 // The scattered light in rgb, and in a the fraction of what is behind it that
@@ -378,17 +403,17 @@ void main() {
 
 	// ⚠️ The depth is POINT-SAMPLED at one full-resolution pixel, and that is the
 	// fix for the "blurry mosaic at the edges" the author reported (batch 573).
-	// What stood here was `texture(depthtex0, screenCoord)`, and a texture() is a
-	// BILINEAR read: at a quarter-resolution grid it averages the depth of the
-	// four full-resolution pixels around this texel's centre. Away from an edge
-	// those four are the same surface and the average is that surface's depth;
-	// AT an edge they are not - two of them belong to the thing in front and two
-	// to the thing behind - and the average is a distance that belongs to
-	// neither. The march then stops there, so its far end and the surface it is
-	// shaded against slide between the two real distances as the camera moves,
-	// in whole fog texels. That is a mosaic on the fog buffer's own four-pixel
-	// grid, and no filter downstream can remove it: the value was already wrong
-	// when it was written.
+	// What stood here was a plain texture() read of the depth buffer, and a
+	// texture() is a BILINEAR read: at a quarter-resolution grid it averages the
+	// depth of the four full-resolution pixels around this texel's centre. Away
+	// from an edge those four are the same surface and the average is that
+	// surface's depth; AT an edge they are not - two of them belong to the thing
+	// in front and two to the thing behind - and the average is a distance that
+	// belongs to neither. The march then stops there, so its far end and the
+	// surface it is shaded against slide between the two real distances as the
+	// camera moves, in whole fog texels. That is a mosaic on the fog buffer's own
+	// four-pixel grid, and no filter downstream can remove it: the value was
+	// already wrong when it was written.
 	//
 	// Bliss does not have this. Its march takes the depth with texelFetch at the
 	// low-resolution pixel's own index (composite3.fsh's bilateralUpsample reads
@@ -408,8 +433,15 @@ void main() {
 	ivec2 depthPixel = clamp(ivec2(screenCoord * vec2(fullSize)),
 		ivec2(0), fullSize - 1);
 
-	float depth = texelFetch(depthtex0, depthPixel, 0).r;
+	float depth = texelFetch(depthtex1, depthPixel, 0).r;
 
+	// ⚠️ depthtex1 leaves the SKY at the far plane exactly as depthtex0 does, so a
+	// pixel whose only surface is translucent now reads as "nothing opaque here" and
+	// its ray runs the whole march distance. That is the correct answer - there is
+	// air behind the glass - and it costs the full step count on those pixels rather
+	// than stopping early, which is the price of the fix and is what the step count
+	// setting is for.
+	//
 	// The ray, in camera-relative space, from the eye to the surface this pixel
 	// shows - or to the far end of the medium, whichever comes first. Working
 	// camera-relative rather than absolute because that is the space the shadow
@@ -547,6 +579,14 @@ void main() {
 		// to light, because the medium behind an opaque thing is not seen.
 		// Stopping here keeps the saving the surface distance was there for,
 		// without letting it move the ladder.
+		//
+		// ⚠️ "Opaque" is now literal (batch 590). This used to break at depthtex0,
+		// which is the surface the pixel shows INCLUDING the translucent pass - so
+		// a pane of glass stopped the march and the whole medium behind it was
+		// never sampled, which is why the fog was missing behind glass, ice and
+		// Nether portals. depthtex1 is the opaque pass alone, so glass and ice are
+		// treated as the thin air they are for this purpose and the ray runs on to
+		// the first thing that actually blocks light.
 		if (start >= surfaceDistance) {
 			break;
 		}
@@ -1156,13 +1196,18 @@ void main() {
 			//     carry the whole frame's movement into the history and slide the
 			//     fog sideways across a sky that is not moving.
 			//
-			// ⚠️ The split is on the surface being at the far plane, which is the
-			// same test composite1.fsh makes to mean "nothing was drawn here" and
-			// the same depthtex0 the march read - not on surfaceDistance reaching
+			// ⚠️ The split is on the OPAQUE surface being at the far plane, which is
+			// the same test composite1.fsh makes to mean "nothing was drawn here" and
+			// the same depthtex1 the march read - not on surfaceDistance reaching
 			// VOLUMETRIC_FOG_DISTANCE, which is where the MARCH stops and not where
 			// the surface is. The two are different questions: a hill two hundred
 			// blocks away caps the march at 96 and is still a surface the fog
 			// belongs to.
+			//
+			// ⚠️ Opaque, because that is the depth the march now stops at (batch 590).
+			// A pixel showing only glass reads as "far plane" here and takes the sky's
+			// branch of the reprojection, which is right: behind the glass there is
+			// open air, and air is what the sky's anchor is for.
 			//
 			// ⚠️ The held item is not reprojected like the world, for the reason
 			// composite1.fsh gives in full: it is attached to the camera, so it
