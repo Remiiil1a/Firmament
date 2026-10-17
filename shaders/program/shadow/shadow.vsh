@@ -32,12 +32,46 @@ flat out uint materialID;
 
 uniform mat4 shadowModelViewInverse;
 
+// The same matrix the vertex was brought out of above, to carry the displacement
+// back in again. Declared next to its inverse so the pair is read together.
+uniform mat4 shadowModelView;
+
 #include "/environment/materialIDs.glsl"
+
+// The wind, so that the occluder this pass writes is displaced exactly as the
+// geometry lit.vsh draws is. See the note in main() and the one on WaveFoliage in
+// the file itself, which is where the reason and the measurements live.
+#include "/environment/wind.glsl"
 
 void main() {
 	vec4 viewPos = gl_ModelViewMatrix * gl_Vertex;
 	vec4 cameraRelativePos = shadowModelViewInverse * viewPos;
 	materialID = DecodeMaterialID(mc_Entity.x);
+
+	// ⚠️ THE CASTER IS DISPLACED BY THE SAME WIND THE VISIBLE GEOMETRY IS, and
+	// without this the map held the leaves at rest while lit.vsh drew them moving
+	// (batch 587). Three things have to agree for a leaf's shadow to sit on the leaf:
+	// the occluder stored in the map, the geometry on screen, and the coordinate the
+	// lookup asks about. Before this batch only the second of the three moved, so the
+	// leaf's own lit/shadowed pattern slid across its surface by up to a whole
+	// displacement every frame, at the wind's frequency. See the note on WaveFoliage
+	// in /environment/wind.glsl for the measurements.
+	//
+	// ⚠️ The displacement is a WORLD-space vector and cameraRelativePos here is
+	// camera-relative with the world's own axes - both view matrices are built from
+	// the player's yaw and pitch alone - so it applies directly, exactly as it does
+	// in lit.vsh.
+	//
+	// ⚠️ The vertex is moved BEFORE the projection below, so the map stores the leaf
+	// where it will be drawn and not where it was.
+	//
+	// ⚠️ NOT behind a WAVING_FOLIAGE guard, and that is deliberate: the world
+	// shaders define HAS_WAVING_FOLIAGE per program and this one never did, so a
+	// guard on it here would be false and would compile this whole fix out while
+	// every file still looked right. WaveFoliage is a no-op on every material but
+	// leaves and the tops of ground foliage, so a guard would buy nothing anyway.
+	WaveFoliage(materialID, cameraRelativePos);
+	viewPos = shadowModelView * cameraRelativePos;
 
 	// TODO: Deduplicate this, copied from lit.fsh
 	//

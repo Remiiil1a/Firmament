@@ -200,33 +200,12 @@ flat out uint perFace;
 #if defined(HAS_WAVING_FOLIAGE)
 	#define WAVING_FOLIAGE // Waving foliage (optional but basically free).
 
-	uniform vec3 cameraPosition;
-
-	// WindDisplacement
+	// WindDisplacement and WaveFoliage. ⚠️ WaveFoliage used to be defined here; it
+	// moved into the file in batch 587 because the shadow pass needs the same
+	// displacement and a second copy would be a second place for the two to drift
+	// apart. The file also declares cameraPosition for the same reason, so this
+	// program no longer declares it.
 	#include "/environment/wind.glsl"
-
-	void WaveFoliage(uint materialID, inout vec4 cameraRelativePos) {
-		// at_midBlock.xyz is the offset from this vertex to the centre of its
-		// block in 1/64 block units - not in blocks, and not the distance in
-		// blocks. The attribute the loader supplies is a vec4 whose w is the
-		// block's own light level (Iris 1.7 and later); the declaration above
-		// takes only the xyz, so that component is not readable here and
-		// nothing here wants it. Read these numbers as 1/64-block offsets and
-		// the test below is "is this vertex at the top of its block's column".
-		//
-		// So if these are the top vertices, then the offset to the center
-		// will be negative as the center is below these vertices.
-		bool topOfFoliage = at_midBlock.y < 0.0;
-		bool wavingGroundFoliage = materialID == GROUND_FOLIAGE;
-		bool wavingLeaves = materialID == LEAVES;
-
-		if (wavingLeaves || (wavingGroundFoliage && topOfFoliage)) {
-			vec3 worldPos = cameraRelativePos.xyz + cameraPosition;
-			vec3 displacement = WindDisplacement(worldPos);
-			displacement.y = wavingGroundFoliage ? 0.0 : displacement.y;
-			cameraRelativePos.xyz += displacement;
-		}
-	}
 #endif
 
 uint FetchMaterialID(vec3 worldNormal) {
@@ -543,13 +522,27 @@ void main() {
 	perFace = EncodePerFace(
 		worldNormal, faceTangent, tangentHandedness, materialID);
 
-	#if !defined(NEVER_RECEIVES_SHADOWS)
-		shadowPos = ShadowMapPosition(cameraRelativePos, worldNormal);
-	#endif
-
 	#ifdef WAVING_FOLIAGE
 		WaveFoliage(materialID, cameraRelativePos);
 		viewPos = gbufferModelView * cameraRelativePos;
+	#endif
+
+	// ⚠️ THE LOOKUP IS BUILT FROM THE POSITION THE WAVE JUST MOVED, and the order of
+	// these two blocks is the whole of it (batch 587). It used to be the other way
+	// round: the lookup was taken from the resting position and the wave applied
+	// afterwards, so the shadow was asked about where the leaf would have been rather
+	// than where it is drawn. A leaf is built of features one to six shadow texels
+	// across and it moves up to 0.09 of a block, which is one to two texels at the
+	// distances a player stands from one - so the lit/shadowed boundary slid across
+	// part of the leaf every frame, at the wind's frequency. That is the crawling the
+	// author reported through foliage, and it is why it was worst on leaves: nothing
+	// else in the scene is displaced per frame at all.
+	//
+	// ⚠️ Still inside the guard for WAVING_FOLIAGE rather than the shadow test, and
+	// deliberately after it: with waving off, cameraRelativePos is the resting
+	// position and this is exactly where it has always been.
+	#if !defined(NEVER_RECEIVES_SHADOWS)
+		shadowPos = ShadowMapPosition(cameraRelativePos, worldNormal);
 	#endif
 
 	#ifdef LOWER_DISTANT_WATER_HEIGHT
