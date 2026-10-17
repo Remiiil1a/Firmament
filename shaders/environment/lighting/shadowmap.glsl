@@ -81,48 +81,49 @@ const float shadowDistance = 128; // [32 48 64 80 96 112 128 144 160 192 256]
 const float shadowDistanceRenderMul = 1.0;
 const float entityShadowDistanceMul = 0.25;
 
-// Samples the shadow map additional times to soften shadows, and does it with an
-// IRREGULAR kernel rotated per pixel (batch 585).
+// Samples the shadow map additional times to soften shadows, with an IRREGULAR
+// kernel and NO rotation (batch 586).
 //
-// ⚠️ WHY THE KERNEL SHAPE MATTERS MORE THAN HOW MANY TAPS IT HAS. The four taps
-// this used to take sat on the corners of a square, at a fixed radius, in the same
-// orientation for every pixel and every frame. A regular pattern sampled against a
-// regular texel grid produces a regular artefact - a moire where the two grids
-// beat against each other - and on a shadow EDGE, which is where the filter has a
-// gradient to work on, it shows as a crawling texture rather than as softness.
-// That is the author's report exactly: not a hard edge and not a soft one, but an
-// edge that crawls.
+// ⚠️ THE KERNEL SHAPE IS THE POINT; THE ROTATION WAS NOT. This filter was changed
+// twice in two batches and the second change was measured to be worse, so both the
+// measurement and what it replaced are recorded here.
 //
-// ⚠️ And a fixed orientation is the other half. Even a good kernel, used from the
-// same direction every frame, leaves a pattern the eye can follow while the camera
-// moves - the artefact stops being noise and becomes a texture that slides with the
-// world. Rotating it per frame turns that back into noise, and noise at the edge of
-// a shadow is what temporal anti-aliasing is for: this pack resolves the frame in
-// composite1, so a per-frame rotation is averaged away rather than seen.
+// What was wrong first (batch 585, and before that): four taps on the corners of a
+// square, at a fixed radius, in the same orientation for every pixel. A regular
+// pattern sampled against a regular texel grid beats against it into a moire, and
+// on a shadow edge - where a filter has a gradient to work on - that reads as a
+// texture that crawls rather than as softness.
 //
-// ⚠️ Where the kernel comes from and what it actually is: the 16-point list below
-// is the one in the Iris shader tutorial's PCF chapter (4.4, soft shadows), which
-// calls it a Poisson disk. It is NOT one, measured: its closest pair is 0.132 apart
-// where a real Poisson disk of sixteen points would hold about 0.5, so it is
-// clumped, and one point sits at radius 1.219 rather than inside the unit disk.
-// What it does have is what this needs - no lattice, and angular gaps between 0.5
-// and 41 degrees against a uniform 22.5 - so it is blue-noise-like, and blue noise
-// is the property being bought. The names in the file say so.
+// ⚠️ What was wrong SECOND was the fix for the first: the kernel below was rotated
+// per pixel and per frame, on the theory that a changing orientation would break
+// the pattern up. Measured, it does the opposite. A sixteen-point kernel is already
+// irregular enough that neighbouring texels do not share a pattern for a rotation
+// to break, so giving each of them its own angle does not decorrelate anything - it
+// takes a row of neighbouring fog texels and makes their neighbour-to-neighbour
+// contrast 3.46 times WORSE, and their spread across the row 2.86 times worse. In
+// time it makes every frame differ from the last, which is the definition of the
+// artifact being fixed. The numbers are in _team_bfog/fog_jitter_spatial.py.
+//
+// ⚠️ So the rotation is GONE from both filters and the irregular kernel stays. An
+// irregular kernel with no rotation is the same answer every frame for the same
+// camera position, which is what a filter wants: it removes the lattice artefact by
+// where its points are, not by moving them.
+//
+// ⚠️ Where the kernel comes from and what it actually is: the 16-point list below is
+// the one in the Iris shader tutorial's PCF chapter (4.4, soft shadows), which calls
+// it a Poisson disk. It is NOT one, measured: its closest pair is 0.132 apart where
+// a real Poisson disk of sixteen points would hold about 0.5, so it is clumped, and
+// one point sits at radius 1.219 rather than inside the unit disk. What it does have
+// is what this needs - no lattice, and angular gaps between 0.5 and 41 degrees
+// against a uniform 22.5 - so it is blue-noise-like, and blue noise is the property
+// being bought. The names in the file say so.
 #define SOFTER_SHADOWS
 #ifdef SOFTER_SHADOWS
 	// Controls softness and pixelation of shadows
 	#define SHADOW_SOFTNESS 0.5 // [0.05 0.10 0.25 0.33 0.5 0.66]
 
-	// The frame's number, for the rotation below. Guarded because two other files
-	// declare it under guards of their own and a second declaration in one program
-	// is an error on the driver.
-	#if !defined(FRAME_COUNTER_DECLARED)
-		#define FRAME_COUNTER_DECLARED
-		uniform int frameCounter;
-	#endif
-
-	// The kernel, in a unit disk's worth of space. See the note above for what it
-	// is and is not.
+	// The kernel, in a unit disk's worth of space. See the note above for what it is
+	// and is not.
 	const vec2 pcfDisk[16] = vec2[16](
 		vec2(-0.9420, 0.3993), vec2( 0.9456, -0.7689),
 		vec2(-0.0942, -0.9294), vec2( 0.3450, 0.2939),
@@ -134,48 +135,22 @@ const float entityShadowDistanceMul = 0.25;
 		vec2(-0.4630, 0.0860), vec2( 0.2230, -0.8290));
 
 	float SampleShadows(vec3 shadowPos, float softnessScale) {
-		// The old spread was a radius and the taps sat ON it. The kernel above is
-		// mostly inside 1.0 and reaches 1.219, so scaling by the same number would
-		// widen the filter by about a quarter. Dividing by the kernel's own RMS
-		// radius keeps the filter the width the setting says it is.
+		// The kernel's RMS radius is 0.783, so dividing by it keeps the filter the
+		// width the setting says rather than about a quarter wider.
 		float spread = softnessScale * SHADOW_SOFTNESS / shadowMapResolution / 0.783;
-
-		// One angle for the whole kernel, hashed from the fragment's position so
-		// that neighbouring pixels disagree and no coherent pattern survives, and
-		// stepped per frame so that the pattern does not sit still while the camera
-		// moves.
-		//
-		// ⚠️ The frame term is an irrational multiple of the frame counter rather
-		// than a hash of it, so that consecutive frames take angles as far apart as
-		// possible instead of drifting through a slow sequence - a slow sequence
-		// would read as the same crawl at a different speed.
-		//
-		// ⚠️ No Bayer8 or noise texture here: this file is included by the world
-		// shaders, which have neither the noise texture nor a reason to fetch one
-		// for an angle. A hash of the position is one multiply and a fract.
-		float angle = fract(sin(dot(shadowPos.xy, vec2(12.9898, 78.233))) * 43758.5453
-			+ float(frameCounter) * 0.6180339887) * 6.28318530718;
-
-		float cosAngle = cos(angle);
-		float sinAngle = sin(angle);
 
 		float shadow = 0.0;
 
 		for (int i = 0; i < 16; i++) {
-			vec2 offset = pcfDisk[i];
-			vec2 rotated = vec2(
-				offset.x * cosAngle - offset.y * sinAngle,
-				offset.x * sinAngle + offset.y * cosAngle) * spread;
-
+			// Sixteen taps, each a hardware 2x2 compare, so the filter covers
+			// sixty-four texels of the map where the four-tap version covered sixteen.
+			// The artefact was never that the filter was too narrow - it was the shape
+			// of its taps - but the count is what fills the disk evenly instead of
+			// leaving the four corners of a square.
 			shadow += texture(shadowSampler,
-				vec3(shadowPos.xy + rotated, shadowPos.z));
+				vec3(shadowPos.xy + pcfDisk[i] * spread, shadowPos.z));
 		}
 
-		// Sixteen taps rather than four, so this is four times the texture reads the
-		// note below used to describe. Each is a hardware 2x2 compare, so the filter
-		// covers sixty-four texels of the map where it covered sixteen - which is the
-		// point: the artefact was not that the filter was too narrow but that its
-		// taps were in a pattern.
 		return shadow / 16.0;
 	}
 #else

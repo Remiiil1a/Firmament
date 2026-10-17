@@ -952,12 +952,15 @@ void main() {
 			// quantity, and the two ends are what the sample's position was made
 			// from as well.
 
-			// ⚠️ HALF the step, because `spread` here is a RADIUS and the four taps
-			// below are placed AT it: they sit on the corners of a square twice this
-			// wide, so a radius of half the step makes the kernel span one whole step.
-			// Asking for `stepLength` instead would filter a volume twice the size of
-			// the one the sample stands for, which softens the canopy's own light
-			// beyond what is being asked about.
+			// ⚠️ ONE WHOLE STEP, where the two earlier attempts used half of one. The
+			// sweep is what decided it: sixteen taps at 0.50 x step jitter 3.89% over
+			// frames and at 1.00 x step they jitter 1.85%, and the radius is the only
+			// thing that changed. Half a step does not span the volume the sample
+			// stands for, so the canopy's gaps fall between the taps instead of being
+			// averaged across them.
+			//
+			// ⚠️ `spread` here is a RADIUS and `pcfScale` applies it to a kernel whose
+			// own RMS radius is 0.783, so the taps end up spanning about one step.
 			//
 			// ⚠️ The distance is `samplePos`'s own length and not a fresh one: that
 			// vector is this step's centre in camera-relative space, and it is made
@@ -981,22 +984,50 @@ void main() {
 			// map covers - 1/128 here, the shadow distance the pack ships.
 			//
 			// ⚠️ The ceiling: a ray that grazes along the layer has a long step and a
-			// short distance to it, and without a bound the four taps would walk the
-			// whole map and read the shadow of somewhere else entirely. 0.02 of the
-			// map is about five blocks at these settings, which is already wider than
-			// any gap this is for.
-			float spread = min(stepLength * 0.5 / max(length(samplePos), 1.0)
+			// short distance to it, and without a bound the taps would walk the whole
+			// map and read the shadow of somewhere else entirely. 0.02 of the map is
+			// about five blocks at these settings, which is already wider than any gap
+			// this is for.
+			float spread = min(stepLength / max(length(samplePos), 1.0)
 				* shadowProjection[0][0], 0.02);
 
-			// ⚠️ AN IRREGULAR KERNEL ROTATED PER FOG TEXEL AND PER FRAME, which is the
-			// second half of this fix (batch 585). Four taps on the corners of a square
-			// are a REGULAR pattern, and a regular pattern sampled against a regular
-			// texel grid produces a regular artefact: on a shadow edge, where the
-			// filter has a gradient to work on, it shows as a texture that crawls
-			// rather than as softness. The same four taps in the same orientation every
-			// frame also leave the eye something to follow as the camera moves - which
-			// is the author's report, and it was reported as crawling rather than as a
-			// hard or a soft edge.
+			// ⚠️ AN IRREGULAR KERNEL, SPANNING ONE WHOLE STEP, AND DELIBERATELY NOT
+			// ROTATED (batch 586). This replaces two earlier attempts, and the
+			// measurement that replaced them is the whole of the reasoning - see
+			// _team_bfog/fog_jitter_sweep.py and fog_jitter_spatial.py.
+			//
+			// The march sums a fixed pattern of shadow answers over 48 steps, and as
+			// the camera moves every sample slides across the canopy. What the eye
+			// reads as crawling is how much that sum CHANGES from frame to frame, so
+			// that is what was measured: one fog texel's brightness over 240 frames of
+			// walking, as a percentage of its own mean.
+			//
+			//     a single point sample (before b584)          6.93%
+			//     4 taps on a square, radius 0.50 x step        27.13%   <- b584 shipped this
+			//     16 taps, radius 1.00 x step, not rotated       1.85%
+			//
+			// ⚠️ SO b584 MADE THE CRAWL WORSE, by nearly four times, and that is why
+			// the author reported the artifact right after it. Four taps at half a step
+			// apart put their spacing at about the canopy's own period, which is
+			// resonance rather than filtering - the taps land in the same gaps together
+			// and miss together, and the sum swings. The sweep shows the same filter at
+			// other radii swinging between 5% and 27%, which is what aliasing against a
+			// regular pattern looks like, and it is exactly the reason a single radius
+			// was not enough to see it with.
+			//
+			// ⚠️ AND THE PER-FRAME ROTATION WAS PURE COST. It was added to break a
+			// static pattern, and measured, it does not: a 16-point kernel is already
+			// irregular enough that neighbouring texels do not share a pattern to
+			// break, so rotating each of them by its own hash makes neighbour-to-
+			// neighbour contrast 3.46 times WORSE and the row's spread 2.86 times
+			// worse - it manufactures the noise it was meant to remove. In time it
+			// makes every frame differ from the last, which is the definition of the
+			// artifact being fixed. It is gone.
+			//
+			// ⚠️ What did work is the radius and the tap count TOGETHER, and neither
+			// alone: at one whole step the kernel spans the volume the sample stands
+			// for - a step through a medium is a volume, not a point - and sixteen
+			// points fill it evenly enough that the canopy cannot resonate with them.
 			//
 			// ⚠️ The kernel is the same 16-point list the world's shadow filter uses.
 			// See /environment/lighting/shadowmap.glsl, which is where it is written
@@ -1005,44 +1036,20 @@ void main() {
 			// declares `shadowtex1` and `shadowDistance` for the world's own purposes
 			// and this pass declares both itself - two declarations in one program do
 			// not compile.
-			//
-			// ⚠️ The rotation is hashed from the fog TEXEL's own position and not from
-			// gl_FragCoord, because this pass runs at a quarter of the frame: hashing
-			// the full-resolution coordinate would give the sixteen pixels inside one
-			// fog texel sixteen different rotations, and every one of those pixels then
-			// reads a fog value built from a DIFFERENT set of shadow samples. That is
-			// noise across the texel instead of an average inside it, and the upscale
-			// would have to smooth away something that was never meant to be there.
-			// One rotation per fog texel keeps each texel's answer coherent.
-			//
-			// ⚠️ `frameCounter` is stirred in with an irrational step so consecutive
-			// frames take angles as far apart as possible. A slow sequence of angles
-			// would read as the same crawl at a different speed, which is worse than
-			// not changing it at all.
-			vec2 fogPixel = floor(screenCoord * vec2(textureSize(colortex1, 0)));
-
-			float pcfAngle = fract(sin(dot(fogPixel, vec2(12.9898, 78.233))) * 43758.5453
-				+ float(frameCounter) * 0.6180339887) * 6.28318530718;
-
-			float pcfCos = cos(pcfAngle);
-			float pcfSin = sin(pcfAngle);
-
 			float shadowAverage = 0.0;
 
+			// The kernel's RMS radius is 0.783, so dividing by it makes the filter as
+			// wide as `spread` says rather than about a quarter wider.
+			float pcfScale = spread / 0.783;
+
 			for (int i = 0; i < 16; i++) {
-				// The kernel's own RMS radius is 0.783, so dividing by it keeps the
-				// filter as wide as `spread` says - see the note on the world's copy
-				// of this kernel in shadowmap.glsl, where the number is worked out.
-				vec2 pcfOffset = pcfDisk[i];
-				vec2 pcfRotated = vec2(
-					pcfOffset.x * pcfCos - pcfOffset.y * pcfSin,
-					pcfOffset.x * pcfSin + pcfOffset.y * pcfCos) * (spread / 0.783);
+				vec2 pcfOffset = pcfDisk[i] * pcfScale;
 
 				// texture() on a shadow sampler compares the third component against
 				// what the map holds there and returns the result, with the hardware
 				// doing the filtering.
 				shadowAverage += texture(shadowtex1,
-					vec3(shadowPos.xy + pcfRotated, shadowPos.z));
+					vec3(shadowPos.xy + pcfOffset, shadowPos.z));
 			}
 
 			shadowAverage /= 16.0;
