@@ -112,13 +112,22 @@ const vec2 pcfDisk[16] = vec2[16](
 // sure of - the trap shadowDistance set in BATCH_LOG.md 171. Uniforms: none
 uniform float volumetricFogRainFactor;
 
-// The sun's angle, in radians, which is what FogTimeDensity below walks the day
-// with.
+// Then the sun's angle, which is what FogTimeDensity below walks the day with.
+//
+// ⚠️ Zero to ONE, not radians, and getting that wrong is batch 591. The Iris
+// documentation says it plainly: "the angle of the sun within the complete
+// day-night cycle. The value ranges from 0 to 1, where 0 is sunrise, 0.25 is noon,
+// 0.5 is sunset, 0.75 is midnight". Batch 590 divided it by 2*pi anyway - the name
+// says angle and the pack's own habit is radians - so the phase it computed never
+// left 0 to 0.16: the WHOLE day sat inside the first segment of the blend, between
+// the morning and noon values, and the evening and night settings were dead. A
+// player who set the noon density to zero at noon still saw 84 per cent of the
+// morning density, which is how this was found.
 //
 // ⚠️ Asked of the mod rather than derived from worldSunVector, and the reason is
 // the whole point of the four densities: the sun is at the horizon TWICE a day, so
-// a height cannot tell dawn from dusk. `sunAngle` can - it is zero at sunrise, a
-// quarter turn at noon, half a turn at sunset and three quarters at midnight.
+// a height cannot tell dawn from dusk. sunAngle can - it is the day split into
+// quarters, one per density.
 //
 // ⚠️ Not named in BATCH_LOG.md 171's list of quantities a stage cannot rely on:
 // that trap was shadowDistance, which is a pack option some stages are not given.
@@ -233,10 +242,10 @@ vec3 VolumetricFogTint() {
 //
 // ⚠️ The day is walked as an ARC rather than by the sun's height, and the
 // difference matters: the sun is at the horizon twice a day, so its height cannot
-// tell dawn from dusk. The arc comes from `sunAngle`, which is zero at sunrise, a
-// quarter turn at noon, half a turn at sunset and three quarters at midnight - so
-// these four values sit at the four corners of the day and blend linearly between
-// the neighbours. See FogTimeDensity below.
+// tell dawn from dusk. The arc comes from `sunAngle`, which the mod hands over as
+// the day already split into quarters - 0 at sunrise, 0.25 at noon, 0.5 at sunset,
+// 0.75 at midnight - so these four values sit at the four corners of the day and
+// blend linearly between the neighbours. See FogTimeDensity below.
 //
 // ⚠️ All four default to the same number ON PURPOSE. The four-way split is a tool
 // the player reaches for, not a look this pack imposes; a default with thick dawn
@@ -1238,8 +1247,13 @@ float VolumetricFogNoise(vec3 at) {
 // half and midnight at three quarters. Between them the two neighbouring settings
 // blend linearly, so the day is a closed loop with no step anywhere - including at
 // dawn, where midnight hands over to morning.
+//
+// ⚠️ `sunAngle` arrives in exactly that 0..1 form, so the phase is the value itself
+// and nothing is scaled. Batch 591 is the round where that was got wrong in the
+// other direction - see the note on the uniform above for the arithmetic and for
+// what a player saw because of it.
 float FogTimeDensity() {
-	float phase = fract(sunAngle / 6.28318530718);
+	float phase = fract(sunAngle);
 
 	// ⚠️ One `t` for the whole chain rather than one per branch. Four locals with
 	// the same name in four scopes is legal GLSL, but it reads as if they were the
