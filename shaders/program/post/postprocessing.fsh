@@ -390,7 +390,13 @@ void main() {
 			float plumeClear = clamp(
 				length(plumeViewPos) / NETHER_PLUME_CLEAR, 0.0, 1.0);
 
-			vec3 plumeWorldPos = cameraPosition
+			// ⚠️ The 3x3 needs the inverse's fourth column beside it (batch 598):
+			// `plumeViewPos` is measured from the eye the world was DRAWN from, and
+			// view bobbing puts that eye away from `cameraPosition`, so without this
+			// term this view reads the field at a point displaced by the bob - it
+			// would jump with the player's step while the plume it is debugging does
+			// not. The march places its samples the same way; see the note there.
+			vec3 plumeWorldPos = cameraPosition + gbufferModelViewInverse[3].xyz
 				+ mat3(gbufferModelViewInverse) * plumeViewPos;
 
 			finalColor = plumeDepth >= 1.0

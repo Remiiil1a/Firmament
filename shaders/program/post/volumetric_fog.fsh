@@ -104,11 +104,25 @@ uniform sampler2DShadow shadowtex1;
 
 uniform mat4 gbufferProjectionInverse;
 
-// ⚠️ gbufferModelViewInverse used to be declared here and is NOT any more (batch
-// 596). It was read in exactly one place - the ray's direction - and that one place
-// needed the transpose of the forward matrix instead, for the reason written at the
-// use. An unused declaration is not a defect, but it is a standing invitation to use
-// the inexact thing again by habit.
+// The view matrix, inverted, for the ONE thing the fog needs from it: its fourth
+// column.
+//
+// ⚠️ Batch 596 deleted this declaration and batch 598 put it back, and the reason is
+// worth reading before it is deleted a third time. The fog needs the view matrix
+// twice and the two needs are different kinds of quantity:
+//
+//   * a DIRECTION - the ray. Here the translation column does not enter at all, so
+//     the 3x3 block is the whole story, and `mat3(gbufferModelViewInverse)` and
+//     `transpose(mat3(gbufferModelView))` are the same rotation written twice (the
+//     pack checked that against Iris's own source at b502 and it is exactly true).
+//   * a POSITION - where the ray STARTS. Here the fourth column is the whole story,
+//     and no rearrangement of the 3x3 can supply it. See `eyeOffset` below.
+//
+// ⚠️ Batch 596 changed the ray from one spelling of the rotation to the other and
+// expected the sway to stop. It could not have: the two are identical, so for a
+// direction the edit was a no-op, which is exactly what the author reported. The
+// error was never in the ray's direction.
+uniform mat4 gbufferModelViewInverse;
 
 // This frame's view matrix, for the one question the temporal stage asks about the
 // camera: whether it MOVED. See where `cameraStill` is worked out - comparing
@@ -529,29 +543,50 @@ void main() {
 
 	// The ray's direction in the world's axes.
 	//
-	// ⚠️ THE TRANSPOSE OF THE VIEW MATRIX AND NOT ITS INVERSE (batch 596), and this
-	// is the same bug the pack has already fixed twice: the cloud shadows in its
-	// batch 22 and the End's own bodies before that. What the mod hands over as
-	// `gbufferModelViewInverse` is not the exact inverse of `gbufferModelView` while
-	// the camera is bobbing - the pack's own note at environment/sky/end.glsl says so,
-	// and BATCH_LOG.md section 12 records the arithmetic. A direction rebuilt through
-	// the inverse therefore carries a fraction of a degree of error that comes and
-	// goes with the player's footsteps.
+	// ⚠️ WRITTEN AS THE TRANSPOSE OF THE FORWARD MATRIX, which is exact for a
+	// direction - and batch 596 changed it to this from `mat3(gbufferModelViewInverse)`
+	// expecting the fog's sway to stop, which it could not do, because the two are the
+	// same rotation. The pack verified that against Iris's own source and bytecode at
+	// b502 and recorded the conclusion as "the same rotation written twice"; six earlier
+	// attempts to swap between the two had failed for the same reason. The form is kept
+	// because it is the one that needs no inversion, not because it was the fix.
 	//
-	// ⚠️ What turned that error into a visible sway here: the ray feeds BOTH the
-	// medium's own noise and the shadow lookup, and a few tenths of a degree over the
-	// length of the march moves the sample by a block or so - which is several shadow
-	// map texels, and a shadow test is a hard edge. So the shafts' edges moved with
-	// the bobbing while the world they belong to did not. This is the "same class" the
-	// author named: not a formula that is wrong, but an input that is very slightly
-	// wrong, multiplied by something with an edge.
+	// ⚠️ The sway was never here. A direction does not involve the matrix's
+	// translation column, and the translation column is the part that moves when the
+	// player walks. The ray's ORIGIN was the defect - see `eyeOffset` just below.
 	//
-	// ⚠️ For a rotation, the transpose IS the inverse - and unlike the inverse the mod
-	// supplies, it is exact for this pair by construction, because `gbufferModelView`
-	// is the matrix the world was actually drawn with. copy_and_fog.fsh:503 uses
-	// exactly this form for the SSS light direction and
-	// environment/clouds/volumetric.glsl:443-448 for the cloud light.
+	// ⚠️ Where this idiom is genuinely load-bearing: copy_and_fog.fsh:503 and
+	// environment/clouds/volumetric.glsl:443-448, which also convert DIRECTIONS.
 	vec3 rayDirection = normalize(transpose(mat3(gbufferModelView)) * viewPos);
+
+	// Where the ray starts, in camera-relative world space - and it is NOT the origin.
+	//
+	// ⚠️ THE DEFECT EVERY EARLIER ATTEMPT MISSED (batch 598, found by audit).
+	// `viewPos` is a position measured from the eye the world was DRAWN from, and
+	// `gbufferModelView` carries Minecraft's view bobbing, so that eye is not
+	// `cameraPosition` while the player walks. The difference between the two is exactly
+	// the fourth column of the inverse: for M = [R | t], the full inverse of a view-space
+	// point is R^T(v - t) = R^T v - R^T t, and only the first term was being kept. So
+	// every sample this march took - the medium's noise and the shadow lookup alike - was
+	// displaced by R^T t, at the bob's own frequency, and its horizontal part swings with
+	// the player's heading. That is the structure sliding relative to the world.
+	//
+	// ⚠️ Its size is the pack's own measurement and not a guess: BATCH_LOG.md records
+	// that `normalize(worldSunVector)` differs from the exact 4x4 form by 0.03-0.3
+	// degrees, and identifies that difference as this column divided by 100 - so 0.05 to
+	// 0.5 blocks, which is up to four shadow map texels and several pixels of coherent
+	// slide at the distances the shafts are read at.
+	//
+	// ⚠️ The same term is already added in lit.vsh:405 (the terrain - which is exactly
+	// why the terrain's own shadows never moved), composite1.fsh:614 (the TAA anchor) and
+	// lit.vsh:224 (the wind field). This pass was the only world-position rebuild in the
+	// pack that used the 3x3 alone. Bliss adds it too - lib/overworld_fog.glsl:290 is
+	// `gbufferModelViewInverse[3].xyz + cameraPosition + d * rayStartPos` - and so do
+	// Mellow, Sundial and this pack's own ancestor.
+	//
+	// ⚠️ Do NOT "fix" this by pushing the world direction through the 4x4: that
+	// applies the rotation twice. The origin is the term that was missing.
+	vec3 eyeOffset = gbufferModelViewInverse[3].xyz;
 
 	// The offset into the first step, so that neighbouring pixels do not all put
 	// their boundaries in the same place. It is stirred by the frame counter as
@@ -687,7 +722,10 @@ void main() {
 			break;
 		}
 
-		vec3 samplePos = rayDirection * ((start + end) * 0.5);
+		// ⚠️ `eyeOffset` is not decoration (batch 598): everything the march samples is
+		// placed relative to this, so leaving it out displaced every sample by the bob's
+		// own translation. See where it is worked out.
+		vec3 samplePos = eyeOffset + rayDirection * ((start + end) * 0.5);
 
 		#ifdef NETHER_PLUMES
 			// The Nether's smoke, which is a different medium lit by a different
@@ -1435,7 +1473,16 @@ void main() {
 			// disturb. The held item keeps its branch, because it is the one case
 			// where the answer is genuinely different - it is attached to the
 			// camera and does not move like the world.
-			vec3 anchorWorldPos = cameraPosition + rayDirection * FOG_DENOISE_ANCHOR_DISTANCE;
+			// ⚠️ The anchor carries `eyeOffset` as well (batch 598), for the same
+			// reason the march does: it is a WORLD point, and a point built from the
+			// ray's direction alone starts at the view origin rather than at
+			// `cameraPosition`. Leaving it out misplaces the probe by the bob's own
+			// translation - half a block at 64 blocks is about 0.45 degrees, so the
+			// history was read a few pixels from where that world point actually was.
+			// That only blurred the history; it was never the sway. It is fixed here
+			// so that the point this reprojects is the point the march sampled.
+			vec3 anchorWorldPos = cameraPosition + eyeOffset
+				+ rayDirection * FOG_DENOISE_ANCHOR_DISTANCE;
 
 			if (depth <= FOG_DENOISE_HAND_DEPTH) {
 				anchorWorldPos += previousCameraPosition - cameraPosition;
