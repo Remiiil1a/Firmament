@@ -348,6 +348,31 @@ vec3 VolumetricFogTint() {
 // limit, so shortening this does not leave a hole in the distance.
 #define VOLUMETRIC_FOG_DISTANCE 96.0 // [32.0 48.0 64.0 96.0 128.0 192.0 256.0]
 
+// The fraction of that distance over which the medium's density is faded to zero,
+// counted back from the far end (batch 601).
+//
+// ⚠️ Why it exists: the march adds light in proportion to how far it got, with nothing
+// attenuating it in air - so the accumulated medium was a straight ramp that was then
+// CUT at VOLUMETRIC_FOG_DISTANCE. A gradient that stops moving in the middle of a steep
+// ramp is visible, and the author saw exactly that: a bright band with a fixed edge
+// near the horizon, at the distance the march ends.
+//
+// ⚠️ A FRACTION OF THE DISTANCE AND NOT A DISTANCE, so that the two cannot come apart:
+// the player can set the march to anything from 32 to 256 blocks, and a fixed taper
+// length would be a small dent at one setting and most of the march at another. This
+// way the far end of the medium is always the same shape, whatever it is set to.
+//
+// ⚠️ Read where the medium is accumulated. It is a smoothstep, so the density's slope
+// is zero at BOTH ends of the taper - which is what makes the accumulated light arrive
+// at its final value flat rather than at a corner. A linear taper would leave a kink at
+// its own start instead, which is the same defect moved rather than removed.
+//
+// ⚠️ Its cost is brightness and it is paid only at the far end: the near and middle of
+// the march are untouched, and the quarter of the distance it covers gives up about a
+// tenth of the total. That is the price of not being able to see where the medium
+// stops.
+const float VOLUMETRIC_FOG_FAR_TAPER = 0.25;
+
 // How many steps the march takes. This is the cost.
 //
 // The steps are spread quadratically rather than evenly - see the pass - so

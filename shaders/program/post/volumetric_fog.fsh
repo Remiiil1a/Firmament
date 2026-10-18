@@ -1336,7 +1336,37 @@ void main() {
 		// one, so this is a no-op above the surface and the shipped air look does not
 		// move. That is deliberate rather than a happy accident: the air's own
 		// attenuation is a separate question and this batch does not answer it.
-		scatter += stepLight * (density * stepLength) * mediumTransmittance;
+		//
+		// ⚠️ AND THE MARCH'S OWN FAR END FADES OUT (batch 601). Without this the
+		// medium was a straight ramp - light added in proportion to distance, since
+		// nothing attenuates it in air - and that ramp was then CUT at
+		// VOLUMETRIC_FOG_DISTANCE. A gradient that stops moving while it is still
+		// steep reads as an edge, and the author saw it as a bright band with a fixed
+		// horizontal border near the horizon.
+		//
+		// ⚠️ Evaluated at the step's MIDPOINT, because the window is a property of
+		// where the step is rather than of either end of it, and a step at the very
+		// end of the march must be able to come out at zero. The last step overshoots
+		// VOLUMETRIC_FOG_DISTANCE slightly - the dither can push `t1` past one - and
+		// this is what keeps that overshoot from contributing anything.
+		//
+		// ⚠️ smoothstep, so the window's slope is zero at both of its ends. The
+		// accumulated light therefore arrives at its final value flat, and it leaves
+		// the untouched part of the ramp flat too - a linear taper would put a corner
+		// at its own start, which is the same defect moved rather than removed.
+		//
+		// ⚠️ Only the medium takes it. The Nether's plumes do not need it and are
+		// deliberately left alone: they already attenuate their own light
+		// (`absorbance`, NETHER_PLUME_EXTINCTION), so their far end is already flat.
+		// This is for the path that had nothing shaping its far end at all.
+		float stepMid = (start + end) * 0.5;
+		float farTaper = 1.0 - smoothstep(
+			VOLUMETRIC_FOG_DISTANCE * (1.0 - VOLUMETRIC_FOG_FAR_TAPER),
+			VOLUMETRIC_FOG_DISTANCE,
+			stepMid);
+
+		scatter += stepLight * (density * stepLength) * mediumTransmittance
+			* farTaper;
 
 		mediumTransmittance *= WaterAbsorption(
 			isEyeInWaterFog == 1 ? stepLength * (1.0 / 16.0) : 0.0);
