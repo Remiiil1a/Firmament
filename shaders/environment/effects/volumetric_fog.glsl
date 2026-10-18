@@ -112,6 +112,25 @@ const vec2 pcfDisk[16] = vec2[16](
 // sure of - the trap shadowDistance set in BATCH_LOG.md 171. Uniforms: none
 uniform float volumetricFogRainFactor;
 
+// How much of the Overworld's medium there is, by whether the sky reaches it at all:
+// one out in the open, zero in a cave (batch 596).
+//
+// ⚠️ The volumetric fog used to march everywhere its density layer exists, and that
+// layer has no idea what is above it - so a cave under a hill got a full-strength
+// medium lit by a sun it never sees, while the pack's own per-fragment fog had already
+// decided there was no sky there and had turned to its cave colour. The two
+// disagreed, and the shafts inside caves are the visible half of that.
+//
+// ⚠️ Its shape is the pack's EXISTING cave curve and not a second one: eyeSkylight
+// smoothed over ten ticks each way, then smoothstepped over 0 to 0.25, which is
+// exactly what the atmosphere fog uses. So the medium fades out over the same band,
+// and because the input is already smoothed in time the fade is a fade rather than a
+// pop when a player walks through a doorway.
+//
+// ⚠️ Applied ONLY to the Overworld, where there is a sky to be blocked. See the branch
+// in VolumetricFogDensity below.
+uniform float volumetricFogCaveFade;
+
 // Then the sun's angle, which is what FogTimeDensity below walks the day with.
 //
 // ⚠️ Zero to ONE, not radians, and getting that wrong is batch 591. The Iris
@@ -1323,7 +1342,14 @@ float VolumetricFogDensity(vec3 worldPosition) {
 	} else if (NetherDimension()) {
 		baseDensity = FOG_DENSITY_NETHER;
 	} else {
-		baseDensity = FogTimeDensity() * volumetricFogRainFactor;
+		// ⚠️ The cave fade belongs HERE and not on the whole function (batch 596).
+		// `volumetricFogCaveFade` is built from the sky light at the player's eye, and
+		// the Nether and the End have no sky, so there it is zero for reasons that
+		// have nothing to do with caves - multiplying every branch by it would delete
+		// both dimensions' fog. The Overworld is the one place the number means "the
+		// sky cannot see this spot".
+		baseDensity = FogTimeDensity() * volumetricFogRainFactor
+			* volumetricFogCaveFade;
 	}
 
 	float layer = exp(-max(worldPosition.y - VOLUMETRIC_FOG_BASE, 0.0)

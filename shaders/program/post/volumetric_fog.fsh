@@ -103,7 +103,12 @@ uniform sampler2D colortex2;
 uniform sampler2DShadow shadowtex1;
 
 uniform mat4 gbufferProjectionInverse;
-uniform mat4 gbufferModelViewInverse;
+
+// ⚠️ gbufferModelViewInverse used to be declared here and is NOT any more (batch
+// 596). It was read in exactly one place - the ray's direction - and that one place
+// needed the transpose of the forward matrix instead, for the reason written at the
+// use. An unused declaration is not a defect, but it is a standing invitation to use
+// the inexact thing again by habit.
 
 // This frame's view matrix, for the one question the temporal stage asks about the
 // camera: whether it MOVED. See where `cameraStill` is worked out - comparing
@@ -521,8 +526,32 @@ void main() {
 	// How far along the ray there is anything to light. The march does not use
 	// this to place its steps - see below - only to know where to stop.
 	float surfaceDistance = length(viewPos);
-	vec3 rayDirection = normalize(
-		(mat3(gbufferModelViewInverse) * viewPos));
+
+	// The ray's direction in the world's axes.
+	//
+	// ⚠️ THE TRANSPOSE OF THE VIEW MATRIX AND NOT ITS INVERSE (batch 596), and this
+	// is the same bug the pack has already fixed twice: the cloud shadows in its
+	// batch 22 and the End's own bodies before that. What the mod hands over as
+	// `gbufferModelViewInverse` is not the exact inverse of `gbufferModelView` while
+	// the camera is bobbing - the pack's own note at environment/sky/end.glsl says so,
+	// and BATCH_LOG.md section 12 records the arithmetic. A direction rebuilt through
+	// the inverse therefore carries a fraction of a degree of error that comes and
+	// goes with the player's footsteps.
+	//
+	// ⚠️ What turned that error into a visible sway here: the ray feeds BOTH the
+	// medium's own noise and the shadow lookup, and a few tenths of a degree over the
+	// length of the march moves the sample by a block or so - which is several shadow
+	// map texels, and a shadow test is a hard edge. So the shafts' edges moved with
+	// the bobbing while the world they belong to did not. This is the "same class" the
+	// author named: not a formula that is wrong, but an input that is very slightly
+	// wrong, multiplied by something with an edge.
+	//
+	// ⚠️ For a rotation, the transpose IS the inverse - and unlike the inverse the mod
+	// supplies, it is exact for this pair by construction, because `gbufferModelView`
+	// is the matrix the world was actually drawn with. copy_and_fog.fsh:503 uses
+	// exactly this form for the SSS light direction and
+	// environment/clouds/volumetric.glsl:443-448 for the cloud light.
+	vec3 rayDirection = normalize(transpose(mat3(gbufferModelView)) * viewPos);
 
 	// The offset into the first step, so that neighbouring pixels do not all put
 	// their boundaries in the same place. It is stirred by the frame counter as
@@ -1233,10 +1262,11 @@ void main() {
 			// Where this texel was on the previous frame's screen.
 			//
 			// ⚠️ `rayDirection` is ALREADY A WORLD DIRECTION, and that is the one
-			// thing this block has to get right: it was taken through
-			// `mat3(gbufferModelViewInverse)` near the top of main() - see the note
-			// there - and it was never brought back. So neither branch below may
-			// put it through that matrix a second time. Doing so rotates it by the
+			// thing this block has to get right: it was taken through the transpose
+			// of the view matrix near the top of main() - see the note there, which
+			// is also where batch 596 explains why the transpose and not the mod's
+			// inverse - and it was never brought back. So neither branch below may
+			// put it through a view matrix a second time. Doing so rotates it by the
 			// camera's own rotation twice, and the point that comes out is not this
 			// ray: at a yaw of ninety degrees it lands ninety degrees away, the
 			// reprojection reads a texel with nothing to do with this one, and the
