@@ -202,6 +202,22 @@ uniform vec3 previousCameraPosition;
 // is the pack's own alias for the mod's underwater flag - see the note there.
 #include "/environment/effects/volumetric_fog.glsl"
 
+// WaterAbsorption(), for the one thing this pass needs from the water: how much of
+// the light the medium scatters reaches the eye at all (batch 599).
+//
+// ⚠️ The pack's own function rather than a second set of coefficients, and that is the
+// whole point: this is the same function that darkens the water's surface and the
+// terrain seen through it, so the fog inside water attenuates exactly as the water
+// around it does. Its curve is a user option - WATER_CHARACTER picks cold, balanced or
+// tropical, DARK_UNDERWATER scales the whole thing - so the two cannot drift apart the
+// first time either is tuned, and the sliders the player already has for the water
+// govern the fog as well.
+//
+// ⚠️ Its argument is a normalised depth: 1.0 is "as deep as water gets", which this
+// file's callers reach at 15 to 16 blocks. See the note at the use for why the march
+// hands it metres divided by that same 16.
+#include "/environment/water/absorption.glsl"
+
 // distort(), which the shadow map has to be read through - see the note where it
 // is used. The same include lit.vsh and shadowmap.glsl take.
 #include "/lib/distort.glsl"
@@ -675,6 +691,19 @@ void main() {
 	// is already faded per fragment by the pack's own fog, and fading it a
 	// second time here would count it twice. See the note at the top.
 	float absorbance = 1.0;
+
+	// ⚠️ What the medium's OWN scattered light loses on the way back to the eye, and
+	// it is deliberately NOT the variable above (batch 599). The two look alike and
+	// are not the same question: `absorbance` multiplies what is BEHIND the shafts and
+	// is left at one on purpose, because the pack's per-fragment fog has already faded
+	// that, while this weights the light the march itself gathered - which nothing else
+	// has touched. Keeping them apart is what fixes the far end of an underwater march
+	// without darkening the scene behind it a second time.
+	//
+	// ⚠️ One in air, and exactly one: the step below multiplies by
+	// WaterAbsorption(0.0), which is exp(0). So above the surface the sum is the same
+	// number it has always been.
+	float mediumTransmittance = 1.0;
 
 	#ifdef NETHER_PLUMES
 		// ⚠️ Asked once for the pixel rather than once per step. It is a uniform
@@ -1272,7 +1301,38 @@ void main() {
 		vec3 stepLight = fogAmbientColor * 0.5
 			+ mediumColor * (sunVisibility * sunPhase);
 
-		scatter += stepLight * (density * stepLength);
+		// ⚠️ HOW MUCH OF THIS STEP'S LIGHT ACTUALLY REACHES THE EYE (batch 599).
+		//
+		// Until this existed the fog was added with NOTHING attenuating it: every step
+		// contributed in full no matter how far away it was, so under water the far end
+		// of the march accumulated light without limit and read as a glow. Air gets
+		// away with that because the pack's own per-fragment fog fades what is behind
+		// the shafts, and the note on `absorbance` below says as much; water does not,
+		// because there the medium is six times denser AND the water itself absorbs, so
+		// the far field came out bright where it should have been a deep dark blue.
+		//
+		// ⚠️ The argument is the step's LENGTH, not its distance from the eye, because
+		// this is the light lost on the way BACK along that piece of the ray: each step
+		// attenuates by its own thickness, and the running product is the transmittance
+		// from that step to the camera. That is the same quantity the medium's density
+		// is measured in, and it is why the weight is the product and not a distance.
+		//
+		// ⚠️ Divided by 16 because WaterAbsorption's argument is normalised to 1.0 at
+		// full water depth, which both of its other callers reach at 15 to 16 blocks -
+		// 16 here rather than 15 to match the 1/16 slope those callers use, so that a
+		// block of ray and a block of depth cost the same. At that scale
+		// WaterAbsorption(1.0) is exp(-16, -3, -1): the red is gone, the green is at
+		// 5%, the blue at 37%. That is the deep blue-green the pack's own comments call
+		// the correct look for water, reached here by the same arithmetic.
+		//
+		// ⚠️ In air the argument is exactly zero and WaterAbsorption(0.0) is exactly
+		// one, so this is a no-op above the surface and the shipped air look does not
+		// move. That is deliberate rather than a happy accident: the air's own
+		// attenuation is a separate question and this batch does not answer it.
+		scatter += stepLight * (density * stepLength) * mediumTransmittance;
+
+		mediumTransmittance *= WaterAbsorption(
+			isEyeInWaterFog == 1 ? stepLength * (1.0 / 16.0) : 0.0);
 
 	}
 
