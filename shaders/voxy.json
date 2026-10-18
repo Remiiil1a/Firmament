@@ -38,6 +38,7 @@
 		"worldSunVector",
 		"voxyDimension",
 		"rainStrength",
+		"caveFade",
 		"caveFogColor",
 		"eyeSkylight",
 		"isEyeInWater",

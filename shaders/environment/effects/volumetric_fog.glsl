@@ -129,7 +129,7 @@ uniform float volumetricFogRainFactor;
 //
 // ⚠️ Applied ONLY to the Overworld, where there is a sky to be blocked. See the branch
 // in VolumetricFogDensity below.
-uniform float volumetricFogCaveFade;
+uniform float caveFade;
 
 // Then the sun's angle, which is what FogTimeDensity below walks the day with.
 //
@@ -1343,13 +1343,13 @@ float VolumetricFogDensity(vec3 worldPosition) {
 		baseDensity = FOG_DENSITY_NETHER;
 	} else {
 		// ⚠️ The cave fade belongs HERE and not on the whole function (batch 596).
-		// `volumetricFogCaveFade` is built from the sky light at the player's eye, and
+		// `caveFade` is built from the sky light at the player's eye, and
 		// the Nether and the End have no sky, so there it is zero for reasons that
 		// have nothing to do with caves - multiplying every branch by it would delete
 		// both dimensions' fog. The Overworld is the one place the number means "the
 		// sky cannot see this spot".
 		baseDensity = FogTimeDensity() * volumetricFogRainFactor
-			* volumetricFogCaveFade;
+			* caveFade;
 	}
 
 	float layer = exp(-max(worldPosition.y - VOLUMETRIC_FOG_BASE, 0.0)

@@ -289,6 +289,25 @@ vec3 parallaxWaterNormal(
 	uniform vec3 viewOffsetPixelY;
 #endif
 
+// How much of the sky this place can see: one in the open, zero under a roof or in a
+// cave. Built in shaders.properties from the sky light at the player's eye, which the
+// pack smooths over ten ticks each way - so it carries its own transition rather than
+// needing one here.
+//
+// ⚠️ Guarded, and not because it is sometimes absent (batch 597): the Voxy patch reads
+// it in the branch below, and that build is handed its uniforms BY NAME from
+// voxy.json, which lists this one. A declaration here would then be a second
+// declaration of the same name in the same program, which the pack's own source check
+// rules out. So the patch gets it from its list and every other build gets it here -
+// the same arrangement as the two uniforms above, and the reason both are written the
+// way they are.
+//
+// ⚠️ See where the sun and the moon are drawn into the water's reflection, and
+// /environment/effects/volumetric_fog.glsl for the other consumer.
+#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
+	uniform float caveFade;
+#endif
+
 // The reciprocal of one of the two determinants the derivative trace below
 // divides by, held away from zero.
 //
@@ -717,11 +736,22 @@ vec4 TranslucentLighting(
 			// drawn in the End's sky, so a disc of either on the End's water is
 			// a reflection of something that is not there - and it was there,
 			// which is what the user saw. See the note above.
+			// ⚠️ And NOT WHERE THE SKY CANNOT BE SEEN (batch 597): a water surface
+			// under a roof was reflecting a sun that is not above it, which is the
+			// same kind of mistake the End's water made in batch 338 when it
+			// reflected the Overworld's sun. `caveFade` is the pack's own cave curve -
+			// one out in the open, zero in a cave - so the disc fades out as the
+			// player walks under cover rather than vanishing at a threshold.
+			//
+			// ⚠️ It multiplies the disc and not the whole reflection, because that is
+			// what the author asked for and what is wrong: the sky colour behind the
+			// disc is a separate question, and the water under a roof still has to
+			// reflect something.
 			if (materialID == WATER && !EndSkyDimension()) {
 				skyReflection += SkyBodies(
 					(gbufferModelView * vec4(reflected, 0.0)).xyz,
 					normalize(sunPosition),
-					mat3(gbufferModelView));
+					mat3(gbufferModelView)) * caveFade;
 			}
 		#else
 			// The patch's own program. It has neither the view matrix the
@@ -742,7 +772,11 @@ vec4 TranslucentLighting(
 			if (materialID == WATER && !EndSkyDimension()) {
 				// No rotation wanted here: both directions are already in world
 				// space, so the identity is what takes world to world.
-				skyReflection += SkyBodies(reflected, worldSunVector, mat3(1.0));
+				//
+				// ⚠️ And the same cave fade as the branch above (batch 597): the sun
+				// and moon should not be drawn into water that has no sky over it.
+				skyReflection += SkyBodies(reflected, worldSunVector, mat3(1.0))
+					* caveFade;
 			}
 		#endif
 
