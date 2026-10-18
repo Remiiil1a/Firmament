@@ -463,6 +463,21 @@ files in full.
   non-finite distance is refused, and an empty sum falls back to the smoothed
   read rather than to a hole.
 
+**Changed in v1.0.2**
+
+* The volumetric fog's master switch carries the fog's own name now, and the
+  light-shaft options moved onto that page with it; the page's layout is tidied.
+* Three user-visible wording corrections from the comment audit: volumetric cloud
+  cells are 24 blocks (not 12), the reflection blur costs five sky samples (not
+  eight), and `END_GIANT_SIZE`'s "real sun" is 0.0046 (not 0.0045).
+
+**Fixed in v1.0.2**
+
+* The duplicated `skyAmbientLuminance` definition is gone, so Iris no longer logs
+  `Ignoring duplicated custom uniform name`.
+* The `deferred` pass's `==` clause that never took effect is not written at all
+  now; the pass was always on, so nothing changed on screen.
+
 **Changed in v1.0.3**
 
 * The volumetric fog's density is four settings, one per part of the day, walked as
@@ -504,21 +519,6 @@ files in full.
   include inside a branch the build compiles away, a form feed in a comment, a
   four-component constructor given two components, and a float assigned from a
   function returning a vector.
-
-**Changed in v1.0.2**
-
-* The volumetric fog's master switch carries the fog's own name now, and the
-  light-shaft options moved onto that page with it; the page's layout is tidied.
-* Three user-visible wording corrections from the comment audit: volumetric cloud
-  cells are 24 blocks (not 12), the reflection blur costs five sky samples (not
-  eight), and `END_GIANT_SIZE`'s "real sun" is 0.0046 (not 0.0045).
-
-**Fixed in v1.0.2**
-
-* The duplicated `skyAmbientLuminance` definition is gone, so Iris no longer logs
-  `Ignoring duplicated custom uniform name`.
-* The `deferred` pass's `==` clause that never took effect is not written at all
-  now; the pass was always on, so nothing changed on screen.
 
 ## 5. Files
 
