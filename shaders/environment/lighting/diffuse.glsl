@@ -321,7 +321,15 @@ vec3 AmbientSkyLighting(float skyLightStrength, float ambientStrength) {
 	// as 0.074, 0.6 as 0.35 in linear light - and then the sRGB encode at the end
 	// of postprocessing lifts it again. A cave floor at 0.05 is a very dark grey;
 	// making one properly readable takes several times that.
-	#define MIN_AMBIENT_BRIGHTNESS 0.1 // [0.0 0.01 0.03 0.05 0.1 0.2 0.35 0.6]
+	//
+	// ⚠️ The default is 0.02 and not 0.1 (batch 602, the author's setting adopted as
+	// the shipped one), which is BELOW the range's own first step above zero and had
+	// to be added to the list to be selectable at all. It is a floor for places with
+	// no light rather than a brightness in its own right: at the tonemapper's
+	// compression, 0.02 arrives as roughly 0.016 in linear light, which is enough to
+	// keep an unlit cave from being pure black without reading as a glow. The note
+	// above still describes what the higher values do.
+	#define MIN_AMBIENT_BRIGHTNESS 0.02 // [0.0 0.01 0.02 0.03 0.05 0.1 0.2 0.35 0.6]
 
 	// Fade sky ambient lighting away as sky light fades away, as that helps us
 	// rather convincingly approximate indirect lighting. But, have a "minimum"

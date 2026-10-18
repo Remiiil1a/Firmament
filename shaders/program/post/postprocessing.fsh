@@ -107,7 +107,11 @@ uniform sampler2D colortex1;
 // buffer still runs and writes zeros into it. One half-resolution full-screen
 // pass is the price of being able to take the shafts down to nothing without
 // turning the medium off with them.
-#define GODRAYS_STRENGTH 2.0 // [0.0 0.25 0.5 0.75 1.0 1.5 2.0 3.0]
+// ⚠️ Declared here as well as in the medium's own settings file, and the two must
+// carry the same value and the same range or the option means two things at once.
+// The long note on it - including why its default is 5.0 - is at the declaration in
+// /environment/effects/volumetric_fog.glsl.
+#define GODRAYS_STRENGTH 5.0 // [0.0 0.25 0.5 0.75 1.0 1.5 2.0 3.0 4.0 5.0 6.0 8.0 10.0]
 
 // The fog is marched at a quarter of the frame's resolution by default, and the
 // depth-gated filter that puts it back on the frame lives in composite1.fsh - see

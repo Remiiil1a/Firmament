@@ -234,7 +234,15 @@ vec3 VolumetricFogTint() {
 // turned down to nothing without touching anything else. This is also the one
 // option that is stored in the quality profiles, so changing what it means
 // changes every profile at once - which is why it still means "how bright".
-#define GODRAYS_STRENGTH 2.0 // [0.0 0.25 0.5 0.75 1.0 1.5 2.0 3.0]
+//
+// ⚠️ The default is 5.0 and not 1.0 (batch 602, the author's own setting adopted as
+// the shipped one), so the shafts this pack draws by default are five times the
+// exposure built in shaders.properties. ⚠️ 1.0 is the reference the rest of that
+// arithmetic was tuned against and is what the note above describes; 2.0 is what this
+// option shipped at before v1.0.3. Both are still on the slider, so either look can be
+// had back. The shipped profile sets this value too, so the two agree. The range now
+// runs to 10.0, because 5.0 is a working default rather than a ceiling.
+#define GODRAYS_STRENGTH 5.0 // [0.0 0.25 0.5 0.75 1.0 1.5 2.0 3.0 4.0 5.0 6.0 8.0 10.0]
 
 // Whether the shafts are drawn with the camera under water.
 //
@@ -256,8 +264,7 @@ vec3 VolumetricFogTint() {
 // gone: a single master dial times a hard-coded time curve could only scale the
 // whole cycle, so a player who wanted thick dawn mist and a thin noon had no way
 // to ask for it. Each value here is the density at its own part of the day, in the
-// same units the old master dial was in, so 0.004 is the shipped look and all four
-// at 0.004 reproduce exactly what this pack did before.
+// same units the old master dial was in.
 //
 // ⚠️ The day is walked as an ARC rather than by the sun's height, and the
 // difference matters: the sun is at the horizon twice a day, so its height cannot
@@ -266,13 +273,22 @@ vec3 VolumetricFogTint() {
 // 0.75 at midnight - so these four values sit at the four corners of the day and
 // blend linearly between the neighbours. See FogTimeDensity below.
 //
-// ⚠️ All four default to the same number ON PURPOSE. The four-way split is a tool
-// the player reaches for, not a look this pack imposes; a default with thick dawn
-// and bare noon would change the picture for anyone who never opens the menu.
-#define FOG_DENSITY_MORNING 0.004 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
-#define FOG_DENSITY_NOON 0.004 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
+// ⚠️ THE DEFAULTS ARE A CURVE AND NO LONGER A CONSTANT (batch 602, where the author's
+// own settings became the shipped ones). All four used to be 0.004 - the old master
+// dial's value, chosen so that a fresh install reproduced exactly what this pack had
+// always drawn - and they are now thick at dawn, CLEAR AT NOON, moderate at dusk and
+// present at night. That is a deliberate look and not an accident of tuning: the
+// shafts belong to a low sun, and the middle of the day is left with none of this
+// medium at all. ⚠️ Setting all four to the same number still reproduces the flat
+// default this pack shipped before batch 602.
+//
+// ⚠️ Nothing else needs changing to get the flat look back, and nothing in the pack
+// assumes the four are equal: FogTimeDensity is a partition of unity whatever the
+// four values are, which is what day_arc_check.py holds it to.
+#define FOG_DENSITY_MORNING 0.010 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
+#define FOG_DENSITY_NOON 0.0 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
 #define FOG_DENSITY_EVENING 0.004 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
-#define FOG_DENSITY_NIGHT 0.004 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
+#define FOG_DENSITY_NIGHT 0.008 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
 
 // How much thicker the medium is in rain, as a multiplier on whichever of the four
 // above is current.
@@ -281,6 +297,10 @@ vec3 VolumetricFogTint() {
 // rain, and the value scales from there. What it follows is the mod's weather
 // strength rather than a flag, and it is squared, so a drizzle thickens the fog a
 // little and a thunderstorm closes the view in, with no step between the two.
+//
+// ⚠️ The default is 1.0 and not 0.5 (batch 602, the author's setting adopted as the
+// shipped one), so the shipped rain doubles the medium rather than half again. 0.0
+// still means rain changes nothing.
 //
 // ⚠️ Renamed from VOLUMETRIC_FOG_RAIN_STRENGTH in batch 590. The old name called it
 // a strength of its own; what it is is the rain's share of the density, which is
@@ -294,7 +314,7 @@ vec3 VolumetricFogTint() {
 //
 // ⚠️ On the Overworld only. Neither the Nether nor the End has weather, and
 // underwater has a density of its own that deliberately follows neither.
-#define FOG_DENSITY_RAIN 0.5 // [0.0 0.5 1.0 1.5 2.0 3.0]
+#define FOG_DENSITY_RAIN 1.0 // [0.0 0.5 1.0 1.5 2.0 3.0]
 
 // How thick the medium is under water, per block.
 //
@@ -331,7 +351,10 @@ vec3 VolumetricFogTint() {
 
 // How far up, in blocks, the fog has thinned to about a third of its density at
 // the bottom. Larger values make a deeper layer that reaches higher.
-#define VOLUMETRIC_FOG_HEIGHT 24.0 // [8.0 12.0 16.0 24.0 32.0 48.0 64.0]
+//
+// ⚠️ The default is 32.0 and not 24.0 (batch 602, the author's setting adopted as the
+// shipped one), so the shipped layer reaches a third again as high.
+#define VOLUMETRIC_FOG_HEIGHT 32.0 // [8.0 12.0 16.0 24.0 32.0 48.0 64.0]
 
 // The height the fog is measured from, in world blocks. 62 is Minecraft's sea
 // level and where this was tuned, so the layer sits in valleys and along the

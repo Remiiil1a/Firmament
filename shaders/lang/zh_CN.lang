@@ -247,7 +247,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 601]
+option.PBR_DEBUG=材质调试视图 [build 602]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -395,7 +395,7 @@ option.LIGHT_TINT_STRENGTH=光色染色强度
 option.LIGHT_TINT_STRENGTH.comment=表面在多大程度上「变成」附近光源的颜色，而不只是额外叠一层光：只叠光没法把被橙光照亮的墙变蓝，所以这一项还把表面自身的颜色朝附近光拉过去。范围随距离自动衰减，调高颜色更浓。
 
 option.MIN_AMBIENT_BRIGHTNESS=最低环境光亮度
-option.MIN_AMBIENT_BRIGHTNESS.comment=环境光的下限：无论有没有光源照到，每个表面至少有这么亮；没有它时洞穴、下界、末地接近全黑。数值是线性光，默认 0.1 已是原本下限的好几倍——调到暗处看得清为止，0.0 恢复原样。
+option.MIN_AMBIENT_BRIGHTNESS.comment=环境光的下限：无论有没有光源照到，每个表面至少有这么亮；没有它时洞穴、下界、末地接近全黑。数值是线性光，默认 0.02 是「下限」而不是「亮度」——刚好让没有光的洞穴不至于全黑；调到暗处看得清为止，0.0 恢复原样。
 
 option.COLORED_LIGHTS=彩色光源
 option.COLORED_LIGHTS.comment=光源方块是否使用它真正发出的光的颜色——灵魂灯笼的蓝、红石火把的红——而不是所有方块光共用的暖橙色。发光方块取自己光的颜色，周围表面由屏幕空间的光色扩散染色；关闭会去掉这两部分，也最省性能。
@@ -479,7 +479,7 @@ option.VOLUMETRIC_FOG=体积雾
 option.VOLUMETRIC_FOG.comment=是否把空气画成光穿过的介质：雾本身，以及光在其中散射出的光柱。下界的烟柱也归它管，关掉它这三样一起消失。
 
 option.GODRAYS_STRENGTH=体积光总强度
-option.GODRAYS_STRENGTH.comment=体积光的亮度，相对于本包原本画出的强度。它同时管水面上下：水下光柱另有自己的强度，两者相乘，水下用两项、水面以上只用这一项。任意一项设成 0.0，它管的那部分就关掉，画面等同于关掉「体积雾」。1.0 就是本包原本的画面。
+option.GODRAYS_STRENGTH.comment=体积光的亮度，相对于本包原本画出的强度。它同时管水面上下：水下光柱另有自己的强度，两者相乘，水下用两项、水面以上只用这一项。任意一项设成 0.0，它管的那部分就关掉，画面等同于关掉「体积雾」。1.0 是本包一直在用的基准画面；v1.0.3 起默认 5.0（此前默认 2.0），两者都还在滑杆上。
 
 option.RAIN_COLOR_SATURATION=雨滴颜色饱和度
 option.RAIN_COLOR_SATURATION.comment=雨滴本身的颜色浓度。1.0 是贴图原来的淡蓝灰，0.0 是纯灰，调高会把那点颜色推得更明显。只改颜色、不改浓淡——想让雨更实或更虚，用「雨滴粗细」。只作用于雨——雪花按资源包原本的样子画。
@@ -493,13 +493,13 @@ option.RAIN_DROP_SIZE.comment=每颗雨滴保留原来宽度的百分之多少�
 option.FOG_DENSITY_MORNING=清晨浓度
 option.FOG_DENSITY_MORNING.comment=太阳刚升起时空气有多厚，单位是每方块 —— 是本包一直用的那个介质的量。一天的四段互相过渡，所以这个值既是黎明时达到的浓度，也是上午逐渐离开的起点。
 option.FOG_DENSITY_NOON=正午浓度
-option.FOG_DENSITY_NOON.comment=正午时空气有多厚。调低，正午的光柱会消失而清晨与黄昏各自保留；调高，一整天都雾蒙蒙的。
+option.FOG_DENSITY_NOON.comment=正午时空气有多厚。调低，正午的光柱会消失而清晨与黄昏各自保留；调高，一整天都雾蒙蒙的。默认 0.0，也就是正午本来是通透的，这一项是把介质放回白天中间的那个旋钮。
 option.FOG_DENSITY_EVENING=黄昏浓度
 option.FOG_DENSITY_EVENING.comment=太阳落下去时空气有多厚。清晨和黄昏单独成项是有意的：太阳高度相同，但光不是同一种光，想要一个浓、一个清是合理的。
 option.FOG_DENSITY_NIGHT=夜晚浓度
 option.FOG_DENSITY_NIGHT.comment=午夜时空气有多厚。这四个值把一天走成一个闭合的环，所以它也会在日出前交回给清晨的值。
 option.FOG_DENSITY_RAIN=雨天加浓
-option.FOG_DENSITY_RAIN.comment=下雨时雾浓多少，是乘在上面四个浓度中当前那个上的倍率。0 = 不影响；1 = 雨最大时翻倍，用的是雨势的平方，所以小雨几乎看不出来、暴雨会把视野闷住。它同时驱动推进的介质和本包自己的距离雾，而显眼的是后者。只作用于主世界：下界与末地没有天气。
+option.FOG_DENSITY_RAIN.comment=下雨时雾浓多少，是乘在上面四个浓度中当前那个上的倍率。0 = 不影响；1 = 雨最大时翻倍，用的是雨势的平方，所以小雨几乎看不出来、暴雨会把视野闷住。默认 1.0。它同时驱动推进的介质和本包自己的距离雾，而显眼的是后者。只作用于主世界：下界与末地没有天气。
 option.FOG_DENSITY_UNDERWATER=水下浓度
 option.FOG_DENSITY_UNDERWATER.comment=水有多厚，单位是每方块。它是独立的一项、不是空气浓度的倍数 —— 水是另一种介质，这是它自己的旋钮。它刻意既不看时段也不看雨：同一深度一整天收到的光一样多，而雨落在水面之上、到不了水下。
 option.FOG_DENSITY_END=末地浓度
@@ -507,7 +507,7 @@ option.FOG_DENSITY_END.comment=末地里空气有多厚。只有一个值而不�
 option.FOG_DENSITY_NETHER=下界空气浓度
 option.FOG_DENSITY_NETHER.comment=下界那层稀薄空气有多厚，单位是每方块。这是光柱所在的那层空气，不是烟柱 —— 烟柱在它下面单独一页，属于另一种介质。下界没有白天，所以这一项也不看时钟。
 option.VOLUMETRIC_FOG_HEIGHT=雾的高度
-option.VOLUMETRIC_FOG_HEIGHT.comment=往上多少格，雾的浓度衰减到三分之一：数值越大雾层越厚，越小越贴地。
+option.VOLUMETRIC_FOG_HEIGHT.comment=往上多少格，雾的浓度衰减到三分之一：数值越大雾层越厚，越小越贴地。默认 32。
 option.VOLUMETRIC_FOG_BASE=雾的基准高度
 option.VOLUMETRIC_FOG_BASE.comment=雾从哪个高度开始算起；62 是 Minecraft 的海平面，雾因此积在山谷和水面一带，到山丘上就变薄。调高抬起整层雾，调低把浓雾压到地表以下，那里只有洞穴看得到。
 option.VOLUMETRIC_FOG_DISTANCE=步进距离

@@ -34,7 +34,7 @@ Those same terms also require, for any modified version:
   modified version anywhere else;
 * that the **file name include the same thing**, for which the terms suggest the
   suffix `-edit-of-coderbot-Steadfast` - hence
-  `Firmament-v1.0.2-edit-of-coderbot-Steadfast.zip`;
+  `Firmament-v1.0.3-edit-of-coderbot-Steadfast.zip`;
 * that the GPL and those terms are kept, and that nothing suggests this is an
   official Steadfast release. **It is not.** coderbot does not support it, and
   bug reports about it do not belong in Steadfast's issue tracker.
@@ -462,6 +462,48 @@ files in full.
   could leave a black dot on an edge. The reads are held inside the image, a
   non-finite distance is refused, and an empty sum falls back to the smoothed
   read rather than to a hole.
+
+**Changed in v1.0.3**
+
+* The volumetric fog's density is four settings, one per part of the day, walked as
+  an arc around the sun's clock; the End has one density rather than four, the
+  Nether's air has its own, and water has one that follows neither the clock nor the
+  rain. The layer's height, the rain multiplier and the shafts' strength are
+  settings too, and the shafts' range now reaches 10.0.
+* The shipped defaults are a curve: 0.010 at dawn, 0.0 at noon, 0.004 at dusk,
+  0.008 at night, a 32-block layer, rain doubling the medium, shafts at 5.0 and a
+  minimum ambient brightness of 0.02. **An existing picture changes.** Four equal
+  densities of 0.004 and a strength of 2.0 restore what v1.0.2 drew.
+* The medium is lit rather than painted: it takes an ambient term, so air the sun
+  does not reach is no longer black, and a scattering phase, so its brightness
+  depends on the angle between the view and the sun.
+* The march stops at the first opaque surface rather than the first surface, so
+  glass, ice and Nether portals no longer swallow the fog behind them; it ends with
+  a fade rather than a cut; it is temporally denoised; and its upscale rejects taps
+  belonging to a different surface. The shadow filter is an irregular sixteen-point
+  kernel spanning a whole step, with no per-frame rotation.
+* Water and caves: the medium ends at the water's surface when seen from above, is
+  tinted by the water and attenuates its own light underwater, fades out where the
+  sky cannot reach it, and no longer draws the sun or the moon into a water surface
+  with no sky above it.
+
+**Fixed in v1.0.3**
+
+* The light shafts no longer sway as the player walks: the march placed its ray from
+  the camera's position, where the depth buffer's rays start from the eye the world
+  was drawn from, and view bobbing moves that eye away from it.
+* The fog no longer swims when the camera is turned: the denoise's fast path for a
+  camera that has not moved tested only its position, which a rotation does not
+  change.
+* Noon's density setting now applies: `sunAngle` is the day split into quarters
+  rather than an angle in radians, and dividing it by 2π confined the whole day to
+  the first quarter, out of reach of the evening and night values.
+* Looking down at water no longer accumulates fog inside it.
+* Several builds did not compile, each reported by the driver rather than by this
+  project's own checks: a variable declared in a branch and read outside it, an
+  include inside a branch the build compiles away, a form feed in a comment, a
+  four-component constructor given two components, and a float assigned from a
+  function returning a vector.
 
 **Changed in v1.0.2**
 

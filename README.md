@@ -56,6 +56,9 @@ screenshots are kept in the repository and are not part of the download.
   under water as well, running along the same light axis as the ones above it, and
   brightened where the ripples on the surface gather them. Their strength is a
   setting, and the underwater shafts have a multiplier of their own on top of it.
+  They are lit as a medium rather than painted on the frame: their brightness
+  depends on the angle between the view and the sun, and air the sun does not reach
+  is still lit by the sky rather than left black.
 * **Enchantment glint brightness** - the sparkle on an enchanted item or a piece
   of armour can be made brighter. The game adds the glint's own colour to the
   frame, so the light it contributes grows with the square of the setting: at the
@@ -80,7 +83,12 @@ screenshots are kept in the repository and are not part of the download.
   the frame, at a quarter of the frame's resolution and lit by the shadow map, so
   the shafts through a canopy are cast by it. The medium is a world-locked noise
   drifting with the same wind the clouds use, so it never slides with the camera,
-  and rain thickens it.
+  and rain thickens it. **Its density is a setting per part of the day** - dawn,
+  noon, dusk and night - and per dimension: the End has one value, the Nether's air
+  one of its own, and water one that follows neither the clock nor the rain. It
+  fades out where the sky cannot reach it and above the surface of water seen from
+  outside, and the last stretch of the march fades rather than stopping, so the
+  medium has no visible edge.
 * **Rain particles** - the rain texture can be tiled across each column and each
   drop's width kept or trimmed, and its colour taken out or pushed. Snow is drawn
   by the same program and is **not** touched by any of it: which of the two a
@@ -90,7 +98,9 @@ screenshots are kept in the repository and are not part of the download.
   lunar phases, carried by the pack, so the disc on the water and its phase are
   the ones the sky is showing. Each body is trimmed against the sky's size
   separately, and the axis they orbit about is a setting of its own - the two
-  rise in the east, set in the west, and cross the sky at an angle.
+  rise in the east, set in the west, and cross the sky at an angle. They fade out
+  on water that has no sky above it, so a cave pool no longer reflects a sun it
+  cannot see.
 * **Temporal antialiasing** - on by default, with the history weighted by how far
   the pixel moved: strength `0.85`, jitter radius `1.0` and a history clamp of
   `1.0`.
@@ -112,7 +122,7 @@ screenshots are kept in the repository and are not part of the download.
 
 ## Installation
 
-1. Drop `Firmament-v1.0.2-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
+1. Drop `Firmament-v1.0.3-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
    Do not unzip it.
 2. Pick it in **Video Settings → Shader Packs**.
 3. In the shader options, `Materials (PBR) → Material format` follows the

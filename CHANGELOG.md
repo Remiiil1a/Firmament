@@ -16,6 +16,79 @@ report problems in this project, not in Steadfast's.
 
 ---
 
+## v1.0.3 - 2026-10-18
+
+The volumetric fog and the volumetric light, rebuilt. What shipped in v1.0.2 was a
+medium with one colour, one density and a shadow test; what ships now has a time of
+day, a dimension, a scattering phase, an ambient term, a temporal denoise, an ending
+that fades rather than stops, and different behaviour above, below and out of water.
+The shipped defaults for the fog and for the shafts are new as well, and both are the
+author's own settings.
+
+### Changed
+
+* **The fog's density is four settings, one per part of the day** - morning, noon,
+  evening and night - walked as an arc around the sun's own clock rather than from its
+  height. A height cannot work here: the sun is at the horizon twice a day, so dawn
+  and dusk would have to be the same value. The End gets one density instead of four,
+  because it has no sun for four to describe; the Nether's air gets its own, separate
+  from its smoke columns; and water gets its own, following neither the clock nor the
+  rain.
+* **The shipped defaults are a curve now, where they used to be a constant.** Densities
+  are 0.010 at dawn, 0.0 at noon, 0.004 at dusk and 0.008 at night; the layer reaches
+  32 blocks where it reached 24; rain doubles the medium; the light shafts ship at 5.0
+  where they shipped at 2.0, with the slider's range extended to 10.0 to match; and the
+  minimum ambient brightness is 0.02, a floor for unlit places rather than a brightness
+  of its own. **An existing picture will change.** Setting the four densities back to
+  0.004 and the strength back to 2.0 restores what v1.0.2 drew.
+* **The medium is lit rather than painted.** It has an ambient term, so fog the sun
+  does not reach is no longer black; and a scattering phase, so its brightness depends
+  on the angle between the ray and the sun. Until this it was exactly as bright seen
+  from the sun's side as from the far side.
+* **Glass, ice and Nether portals no longer swallow the fog behind them.** The march
+  stops at the first *opaque* surface rather than at the first surface, so the medium
+  runs on past a pane instead of ending at it.
+* **Water.** Looking down into water from above, the medium now ends at the water's
+  surface, identified by a mark the water's own program writes rather than by a guess
+  about depth or height. Under water the medium is tinted by the water and attenuates
+  its own light with the pack's own water absorption, so the far end sinks into deep
+  blue instead of glowing. The sun and the moon are no longer drawn into a water
+  surface that has no sky above it.
+* **Caves.** The medium fades out where the sky cannot reach it, on the same curve the
+  pack's own distance fog already used, so the two no longer disagree in a doorway.
+* **The march itself**: 48 steps by default rather than 24, spread quadratically; a
+  far-end fade so the medium reaches its end instead of being cut off; a temporal
+  denoise; an upscale that rejects taps belonging to a different surface rather than
+  only weighting them down; and a shadow filter that is an irregular sixteen-point
+  kernel spanning a whole step, with no per-frame rotation.
+* **The fog's menu is five pages** where it was two: the four densities, the layer's
+  shape, the other two dimensions, and under water.
+
+### Fixed
+
+* **The shafts no longer sway as the player walks.** The march placed its ray from the
+  camera's position, but the depth buffer's rays start from the eye the world was
+  drawn from - and view bobbing moves that eye away from it. Every sample the march
+  took, for the medium's own noise and for the shadow lookup alike, was displaced by
+  that difference, whose horizontal part swings with the player's heading. The same
+  omission was in the denoise's anchor and in the plume debug view.
+* **The fog no longer swims when the camera is turned.** The denoise's "the camera has
+  not moved" fast path tested only the camera's *position*, and a rotation does not
+  move it - so a player spinning on the spot took that path and had the history read
+  from the same screen texel, which after a rotation shows a different part of the
+  world.
+* **Noon's density setting now applies.** `sunAngle` is the day already split into
+  quarters, not an angle in radians; it was being divided by 2π, so the whole day sat
+  inside the first quarter and the evening and night values could never be reached.
+  Setting noon to zero and still seeing fog is how this was found.
+* **Looking down at water no longer accumulates fog inside it.**
+* **Several builds did not compile**, each reported by the driver and none by this
+  project's own checks, and all are fixed: a variable declared inside a branch and read
+  outside it; an include living in a branch the build compiles away; a stray form feed
+  in a comment; a four-component constructor given two components; and a float assigned
+  from a function returning a vector. The check scripts now cover the two of those that
+  can be stated as properties of the source.
+
 ## v1.0.2 - 2026-10-12
 
 A small update: menu tidying, two long-standing warnings closed, and a pass over
