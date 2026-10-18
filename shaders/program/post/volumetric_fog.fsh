@@ -703,7 +703,14 @@ void main() {
 	// ⚠️ One in air, and exactly one: the step below multiplies by
 	// WaterAbsorption(0.0), which is exp(0). So above the surface the sum is the same
 	// number it has always been.
-	float mediumTransmittance = 1.0;
+	// ⚠️ A VEC3 AND NOT A FLOAT, and the type is the whole point rather than a
+	// formality (batch 600). WaterAbsorption is per channel - red is absorbed many
+	// times faster than blue, which is what makes deep water blue instead of grey -
+	// so the weight this multiplies the scatter by has to carry that per-channel
+	// difference. A single float here would have meant one colour fading uniformly,
+	// which is a different and worse picture, and writing it as a float is a hard
+	// error at compile time rather than a subtle one at runtime.
+	vec3 mediumTransmittance = vec3(1.0);
 
 	#ifdef NETHER_PLUMES
 		// ⚠️ Asked once for the pixel rather than once per step. It is a uniform
