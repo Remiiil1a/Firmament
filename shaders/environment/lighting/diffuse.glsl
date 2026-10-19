@@ -757,8 +757,8 @@ vec3 DiffuseLightingImpl(
 	specularColor = vec3(0.0);
 
 	// Part of approximating subsurface scattering
-	bool subsurfaceScatter = fragment.materialID == SUBSURFACE_SCATTERING \
-		|| fragment.materialID == GROUND_FOLIAGE \
+	bool subsurfaceScatter = fragment.materialID == SUBSURFACE_SCATTERING
+		|| fragment.materialID == GROUND_FOLIAGE
 		|| fragment.materialID == LEAVES;
 
 	// Strength of the ambient lighting contribution (sky & min ambient)

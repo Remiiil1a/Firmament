@@ -25,6 +25,13 @@
 #define DIMENSION_NETHER
 
 
+// `layout(location = N) out ...` is a 330 feature, and this program declares
+// `#version 150`. Declaring the extension is what makes the two legal together;
+// every desktop driver exposes it in a compatibility profile, which is why this
+// has always worked without being said. The layout is kept rather than dropped
+// so that nothing about which output goes to which buffer changes (batch 603).
+#extension GL_ARB_explicit_attrib_location : enable
+
 // The threshold is applied here, before the picture is reduced, and that order
 // is the opposite of what it looks like it should be. Testing after the blur
 // would be cheaper - there would be a quarter of the pixels to test - and it is

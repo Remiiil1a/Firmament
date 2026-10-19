@@ -21,6 +21,10 @@
 
 // Whether to enable fancy translucent effects. When disabled, translucents are
 // rendered with the same shading as solids.
+// No #version here - Voxy supplies one for this patch. Same extension and
+// same reason as the composite programs: see composite.fsh (batch 603).
+#extension GL_ARB_explicit_attrib_location : enable
+
 #define FANCY_TRANSLUCENTS
 #ifdef FANCY_TRANSLUCENTS
 	#define TRANSLUCENT

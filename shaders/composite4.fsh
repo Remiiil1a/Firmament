@@ -19,6 +19,13 @@
 
 #version 150 compatibility
 
+// `layout(location = N) out ...` is a 330 feature, and this program declares
+// `#version 150`. Declaring the extension is what makes the two legal together;
+// every desktop driver exposes it in a compatibility profile, which is why this
+// has always worked without being said. The layout is kept rather than dropped
+// so that nothing about which output goes to which buffer changes (batch 603).
+#extension GL_ARB_explicit_attrib_location : enable
+
 // SMAA's first stage: which pixels have an edge between them and their
 // neighbours, written into colortex10 for the two passes after this one.
 //

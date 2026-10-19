@@ -25,6 +25,13 @@
 #define DIMENSION_NETHER
 
 
+// `layout(location = N) out ...` is a 330 feature, and this program declares
+// `#version 150`. Declaring the extension is what makes the two legal together;
+// every desktop driver exposes it in a compatibility profile, which is why this
+// has always worked without being said. The layout is kept rather than dropped
+// so that nothing about which output goes to which buffer changes (batch 603).
+#extension GL_ARB_explicit_attrib_location : enable
+
 // The other half of composite9's blur, and the reason it reads colortex14 and
 // writes colortex13: colortex13 is what composite9 read, and a pass cannot read
 // and write one buffer at the same time. The two quarter-resolution buffers are

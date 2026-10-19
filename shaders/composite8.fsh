@@ -20,6 +20,13 @@
 
 #version 150 compatibility
 
+// `layout(location = N) out ...` is a 330 feature, and this program declares
+// `#version 150`. Declaring the extension is what makes the two legal together;
+// every desktop driver exposes it in a compatibility profile, which is why this
+// has always worked without being said. The layout is kept rather than dropped
+// so that nothing about which output goes to which buffer changes (batch 603).
+#extension GL_ARB_explicit_attrib_location : enable
+
 // The wide half of the bloom, built by reducing what composite7 kept rather
 // than by blurring it very widely at half resolution. Reducing is not only
 // cheaper - each texel here stands for sixteen of the original frame's, so the
