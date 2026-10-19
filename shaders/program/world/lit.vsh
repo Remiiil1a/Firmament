@@ -191,6 +191,17 @@ in vec4 at_tangent;
 #include "/environment/materialIDs.glsl"
 flat out uint perFace;
 
+// The raw block ID, before FetchMaterialID has had its say.
+//
+// The two portal surfaces need it because FetchMaterialID deliberately answers
+// GLASS for the nether portal: a portal is drawn as a translucent surface, so that
+// is the material the lighting must see and the one the material maps are generated
+// against. But a surface whose colour is going to be replaced wholesale needs to
+// know it is a portal, and by then the material no longer says so - the first
+// version of PORTAL_EFFECTS tested the material and could never match. Same value
+// FetchMaterialID started from, kept instead of discarded.
+flat out uint rawMaterialID;
+
 // Temporal anti-aliasing: the sub-pixel offset this frame is rendered with.
 // Uniforms: frameCounter, viewWidth, viewHeight, and taaJitter, which is not
 // declared here - shaders.properties computes it and declares it as a custom
@@ -493,6 +504,12 @@ void main() {
 
 	vec3 worldNormal = FetchWorldNormal();
 	uint materialID = FetchMaterialID(worldNormal);
+
+	#if defined(HAS_BLOCK_ATTRIBUTES)
+		rawMaterialID = DecodeMaterialID(mc_Entity.x);
+	#else
+		rawMaterialID = 0u;
+	#endif
 
 	// Note: The vertex normal isn't actually guaranteed to be the same for all
 	// vertices of a triangle, but this is the case in practice for almost all
