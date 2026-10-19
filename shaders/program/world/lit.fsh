@@ -508,65 +508,80 @@ float PortalFbm(vec3 p) {
 	return sum;
 }
 
-// The nether portal: a rift. The fields are sized in BLOCKS rather than in quad
-// coordinates, so one portal of any size shows one continuous pattern; the drift is
-// fast enough to read as flow and slow enough for the temporal resolve to keep up.
+// The nether portal: a rift. The fields are sized in BLOCKS, so one portal of any
+// size shows one continuous pattern, and the drift is a slow flow of the field
+// itself. Nothing here depends on the view: the author was explicit that a portal's
+// surface should not slide around as the camera turns, so this branch reads only the
+// surface's own world position and the clock.
 vec3 PortalRift(vec2 p, float t) {
-	vec2 q = p * 2.4;
-	vec2 flow = vec2(t * 0.16, -t * 0.24);
-	float warp = PortalFbm(vec3(q + flow * 0.5, t * 0.18));
-	float veins = PortalFbm(vec3(q * 1.8 + vec2(warp) * 1.8 + flow, t * 0.26));
-	float fine = PortalFbm(vec3(q * 6.5 + flow * 2.2, t * 0.40));
-	float folded = smoothstep(0.36, 0.80, veins + fine * 0.30);
-	float core = smoothstep(0.52, 1.0, warp * 0.45 + veins * 0.55 + fine * 0.25);
-	vec3 colour = mix(NETHER_PORTAL_TINT * 0.05, NETHER_PORTAL_TINT * 0.95, folded);
-	colour += vec3(1.0, 0.88, 1.0) * core * core * 1.35;
-	// A slow brightness wave travelling through the rift, so that a camera that is
-	// not moving still sees the surface move.
-	colour *= 0.88 + 0.12 * sin(p.x * 1.3 + p.y * 1.7 - t * 1.1);
+	vec2 q = p * 2.0;
+	vec2 flow = vec2(t * 0.10, -t * 0.15);
+	float warp = PortalFbm(vec3(q + flow * 0.35, t * 0.10));
+	float veins = PortalFbm(vec3(q * 1.7 + vec2(warp) * 1.7 + flow, t * 0.16));
+	float fine = PortalFbm(vec3(q * 5.5 + flow * 1.6, t * 0.26));
+	float folded = smoothstep(0.26, 0.74, veins + fine * 0.35);
+	float core = smoothstep(0.44, 0.94, warp * 0.35 + veins * 0.50 + fine * 0.35);
+	// Denser and more saturated than the first version, which read as a pale wash:
+	// the deep end stays close to black and the lit veins are pushed past the tint
+	// towards magenta, so the colour survives the tonemap.
+	vec3 deep = NETHER_PORTAL_TINT * 0.12;
+	vec3 lit = mix(NETHER_PORTAL_TINT, vec3(1.0, 0.45, 1.0), 0.30) * 1.15;
+	vec3 colour = mix(deep, lit, folded);
+	colour += vec3(1.0, 0.85, 1.0) * core * core * 1.50;
 	return colour;
 }
 
-// The end portal and its gateway: a well.
+// The end portal and its gateway: a well, marched rather than painted.
 //
-// The depth is built rather than sampled - there is no picture of the dimension
-// behind the gate to sample. Three star layers sit at different WORLD scales and
-// turn at different rates, so they separate and slide against each other; that
-// differential motion is the depth cue a flat quad can honestly give. The base is
-// black on purpose: the nebula is a tint over the dark, never a background colour.
-// The cells are smooth kernels rather than hard steps, so a star cannot pop as the
-// eye or the surface moves.
-vec3 PortalWell(vec2 p, float t) {
-	vec2 q = p * 1.5;
-	float dust = PortalFbm(vec3(q * 0.9, t * 0.035));
-	vec3 colour = vec3(0.004, 0.005, 0.012);
-
-	for (int layer = 0; layer < 3; layer++) {
-		float speed = (0.05 + 0.07 * float(layer)) * (layer == 1 ? -1.0 : 1.0);
-		float ang = t * speed;
-		mat2 rot = mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
-		vec2 s = rot * q * (4.0 + 6.0 * float(layer)) + float(layer) * 13.0;
-		vec2 cell = floor(s);
-		vec2 f = fract(s) - 0.5;
-		float h = PortalHash(vec3(cell, float(layer) * 7.0 + 1.0));
-		vec2 jitter = vec2(PortalHash(vec3(cell, 3.1)),
-			PortalHash(vec3(cell, 5.7))) - 0.5;
-		float d = length(f - jitter * 0.7);
-		float size = 0.12 + 0.10 * (1.0 - float(layer) * 0.4);
-		float brightness = (0.65 - 0.17 * float(layer)) * step(0.865, h);
-		colour += vec3(0.55, 0.82, 1.0) * smoothstep(size, 0.0, d) * brightness;
+// WHY A MARCH. A flat quad can only show depth if the pattern is allowed to depend
+// on where the eye is, and the honest way to do that is the one Bliss uses: walk a
+// short distance INTO the portal along the view ray and accumulate what is there,
+// with the near steps visible and the far ones absorbed. A field sampled once on the
+// surface - what the first two versions did - cannot look deep whatever it is made
+// of, because there is no inside to it.
+//
+// WHY ABSOLUTE WORLD COORDINATES. A camera-relative coordinate slides whenever the
+// camera moves, because the same world point's camera-relative position changes with
+// the camera. That is what the reported shaking and popping was: the pattern was
+// welded to the camera rather than to the portal. Adding cameraPosition back puts
+// every sample in the world, so the surface is still and only the parallax of the
+// march answers the view - which is what a window should do.
+//
+// The step offsets are dithered by a function of the PIXEL only, never of the frame:
+// a per-frame offset would shimmer under the temporal resolve, and the temporal
+// resolve is the only thing keeping a ten-step march from banding.
+vec3 PortalWell(vec2 facePos, vec2 faceDir, float facing, float t) {
+	const int STEPS = 10;
+	const float MARCH_DEPTH = 3.5;
+	vec2 dither = vec2(
+		fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453),
+		fract(sin(dot(gl_FragCoord.xy, vec2(39.3468, 11.135))) * 24634.6345)) - 0.5;
+	vec2 stepDir = faceDir / max(0.12, -facing) * (MARCH_DEPTH / float(STEPS));
+	float absorbance = 1.0;
+	vec3 colour = vec3(0.0);
+	for (int i = 0; i < STEPS; i++) {
+		float stepT = float(i + 1) / float(STEPS);
+		vec2 uv = facePos + stepDir * (float(i) + 0.65 + dither.x * 0.7);
+		float dust = PortalNoise(vec3(uv * 0.8, t * 0.03 + stepT));
+		float stars = step(0.972, PortalHash(floor(vec3(uv * 5.0, stepT * 3.0))));
+		float density = dust * (0.35 + 0.55 * stepT);
+		float coeff = exp(-density * (2.0 + 2.5 * stepT));
+		vec3 lighting = mix(vec3(0.10, 0.42, 0.48), vec3(0.34, 0.22, 0.62),
+			dust) * (0.20 + 0.85 * stepT)
+			+ vec3(0.60, 0.85, 1.0) * stars * (0.5 + stepT);
+		colour += (lighting - lighting * coeff) * absorbance;
+		absorbance *= coeff;
 	}
-
-	colour += mix(vec3(0.10, 0.42, 0.48), vec3(0.34, 0.22, 0.62),
-		dust) * dust * 0.10;
-	return colour;
+	// What is left of the ray falls into the void: the base is black, never a
+	// luminous nebula, as the author asked for.
+	return colour + vec3(0.004, 0.005, 0.012) * absorbance;
 }
 
-vec3 PortalSurface(int kind, vec2 facePosition, float t) {
+vec3 PortalSurface(int kind, vec2 facePos, vec2 faceDir, float facing, float t) {
 	if (kind == 1) {
-		return PortalRift(facePosition, t);
+		return PortalRift(facePos, t);
 	}
-	return PortalWell(facePosition, t);
+	return PortalWell(facePos, faceDir, facing, t);
 }
 
 
@@ -702,21 +717,32 @@ void main() {
 
 		#ifdef PORTAL_EFFECTS
 			if (portalKind != 0) {
-								// A coordinate that runs across the whole portal instead of across one block
-				// face: the face's world position, projected onto the two world axes the face
-				// does not point along. The per-quad texture coordinate this replaced gave every
-				// block its own copy of the pattern, which is exactly the tiling that was seen.
+												// Absolute world position: the pattern has to be anchored to the WORLD, not
+				// to the camera - see the note above PortalWell for what went wrong when it
+				// was the camera's.
+				vec3 portalAbsPos = portalWorldPos + cameraPosition;
+
+				// Two of the world's axes, chosen by the face's dominant normal, and the view
+				// direction taken through the same choice: the march and the pattern must agree
+				// on which plane they are in.
 				vec3 faceAxes = abs(worldNormal);
+				vec3 portalViewDir = normalize(portalWorldPos);
 				vec2 portalFacePos;
+				vec2 portalFaceDir;
 				if (faceAxes.y > faceAxes.x && faceAxes.y > faceAxes.z) {
-					portalFacePos = portalWorldPos.xz;
+					portalFacePos = portalAbsPos.xz;
+					portalFaceDir = portalViewDir.xz;
 				} else if (faceAxes.x > faceAxes.z) {
-					portalFacePos = portalWorldPos.zy;
+					portalFacePos = portalAbsPos.zy;
+					portalFaceDir = portalViewDir.zy;
 				} else {
-					portalFacePos = portalWorldPos.xy;
+					portalFacePos = portalAbsPos.xy;
+					portalFaceDir = portalViewDir.xy;
 				}
 
-				vec3 portalColour = PortalSurface(portalKind, portalFacePos, timeSeconds);
+				vec3 portalColour = PortalSurface(
+					portalKind, portalFacePos, portalFaceDir,
+					dot(portalViewDir, worldNormal), timeSeconds);
 
 				gl_FragData[0] = vec4(portalColour, 1.0);
 
