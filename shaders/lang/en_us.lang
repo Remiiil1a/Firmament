@@ -505,7 +505,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 608]
+option.PBR_DEBUG=Material debug view [build 609]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1139,7 +1139,7 @@ option.COLORED_SHADOWS_PORTAL.comment=Whether a nether portal tints the light \
 
 option.PORTAL_EFFECTS=Portal surfaces
 option.PORTAL_EFFECTS.comment=Whether the nether portal is drawn as a slow-moving violet rift and the end portal as a well of stars, instead of the texture the game scrolls across them. The pattern is sampled at each fragment's own world position, so it slides behind the frame as you walk past. Off returns both to the vanilla textures.
-option.PORTAL_LIGHT=Portal glow on nearby surfaces
+option.PORTAL_LIGHT=Portal light spread
 option.PORTAL_LIGHT.comment=Whether a portal also lights the ground around it with its own colour. The surface is drawn at its own brightness either way; this only decides how much the glow spilling onto the surroundings is worth.
 option.PORTAL_DEBUG=Portal identification view
 option.PORTAL_DEBUG.comment=Paints the two portals in flat colours so you can tell whether the pack recognises them: magenta is the nether portal, cyan the end portal, yellow the end gateway. Anything else turning one of those colours means the identification is matching a block it should not. Diagnostic tool; leave off.

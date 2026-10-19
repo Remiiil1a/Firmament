@@ -202,6 +202,20 @@ flat out uint perFace;
 // FetchMaterialID started from, kept instead of discarded.
 flat out uint rawMaterialID;
 
+#if defined(PORTAL_EFFECTS) || defined(PORTAL_DEBUG)
+	// The portal pattern's coordinate: this vertex's own position in the world,
+	// relative to the camera.
+	//
+	// ⚠️ Interpolated from here rather than rebuilt in the fragment, and that
+	// difference is the whole reason this varying exists. The fragment can rebuild a
+	// position - that is what cameraRelativePos in lit.fsh is - but it starts from
+	// gl_FragCoord, which carries this pack's TAA jitter; a field sampled from it
+	// shimmers every frame and pops with distance. A varying is exact. Being a world
+	// position, it also agrees across the blocks of one portal, so the pattern runs
+	// continuously over all of them instead of drawing a separate copy on each.
+	out vec3 portalWorldPos;
+#endif
+
 // Temporal anti-aliasing: the sub-pixel offset this frame is rendered with.
 // Uniforms: frameCounter, viewWidth, viewHeight, and taaJitter, which is not
 // declared here - shaders.properties computes it and declares it as a custom
@@ -580,6 +594,11 @@ void main() {
 	#endif
 
 	// Transform to clip position.
+	#if defined(PORTAL_EFFECTS) || defined(PORTAL_DEBUG)
+		// After every displacement the vertex has been given: what the portal
+		// pattern must follow is the surface as it is drawn.
+		portalWorldPos = cameraRelativePos.xyz;
+	#endif
 	gl_Position = gl_ProjectionMatrix * viewPos;
 
 	// Temporal anti-aliasing: shift this frame's sample position inside the

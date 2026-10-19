@@ -16,6 +16,22 @@
 
 // Modified 2026-09-13 by Remiiil1a for Firmament - v0.1 (edit of coderbot's Steadfast).
 
+// --- portal surfaces -------------------------------------------------------
+//
+// These live here rather than beside the code that reads them because BOTH stages
+// need them. The pattern is built from a position the vertex stage interpolates,
+// so the two stages have to agree on whether that varying exists at all - and a
+// file only one stage includes cannot say so.
+//
+// PORTAL_EFFECTS replaces the nether portal's and the end portals' surfaces with
+// procedural ones. PORTAL_LIGHT additionally lets a portal's colour spread onto
+// what stands around it; it is off by default because it changes the light of the
+// room, not just the look of the door. PORTAL_DEBUG paints them flat so that the
+// identification can be checked in game.
+#define PORTAL_EFFECTS
+//#define PORTAL_LIGHT
+//#define PORTAL_DEBUG
+
 // Generic material without special effects
 const uint GENERIC = 0u;
 

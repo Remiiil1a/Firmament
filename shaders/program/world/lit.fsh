@@ -428,6 +428,13 @@ flat in uint perFace;
 // portal is identified by this value and not by materialID below.
 flat in uint rawMaterialID;
 
+#if defined(PORTAL_EFFECTS) || defined(PORTAL_DEBUG)
+	// The portal pattern's coordinate, from lit.vsh: this fragment's place in the world,
+	// interpolated from the vertices rather than rebuilt from gl_FragCoord - see the
+	// note where it is written.
+	in vec3 portalWorldPos;
+#endif
+
 
 // --- portal surfaces ---------------------------------------------------------
 //
@@ -439,24 +446,25 @@ flat in uint rawMaterialID;
 // it sat in the block atlas, which it does not. A block entity's number arrives as
 // the blockEntityId uniform, and block.10039 gives the end portal one.
 //
-// WHY THE PATTERN LIVES IN THE FACE'S OWN COORDINATES, and not in world space. The
-// first version sampled a field at the fragment's reconstructed world position. That
-// failed twice over, and the author's report caught both: the pack applies TAA jitter
-// in the vertex stage, so a position rebuilt from gl_FragCoord moves by a fraction of
-// a pixel every frame - which a high-frequency field turns into shimmer and popping,
-// worse with distance; and a world-anchored pattern slides across the frame whenever
-// the camera moves, which reads as the portal shaking rather than as depth. A pattern
-// sampled on the quad's own texture coordinate is part of the surface: it cannot
-// slide, pop, or react to the camera. Depth is built into the pattern instead.
+// WHY THE PATTERN IS SAMPLED IN WORLD POSITION, INTERPOLATED RATHER THAN REBUILT.
+// Two earlier attempts failed, and each failure named the next constraint. Sampled at
+// the position the FRAGMENT rebuilds from gl_FragCoord, it shimmers and pops: that
+// position carries this pack's TAA jitter, and the error grows with distance. Sampled
+// on the quad's own texture coordinate, it is rock steady but every block gets its own
+// copy of the pattern - which is the block-by-block surface the author reported.
+// What is wanted is a coordinate that is continuous across the blocks AND exact: the
+// world position the VERTEX stage interpolates (portalWorldPos in lit.vsh), projected
+// onto the face. It belongs to the world rather than to the camera, so it cannot
+// shimmer, and every block of one portal shares it, so the pattern runs over all of
+// them. Depth is built into the pattern instead; see PortalWell.
 //
 // WHY THE TWO BRANCHES IN main() WRITE ALL SIX BUFFERS. The attachment list at the
 // bottom of this file is fixed, and a fragment that leaves after writing one buffer
 // leaves five holding whatever was drawn there last - stale sky light, a stale
 // reflection material, a stale highlight for the bloom to subtract. The same note
 // appears above the writes at the end of the file.
-#define PORTAL_EFFECTS
-#define PORTAL_LIGHT
-//#define PORTAL_DEBUG
+// The switches themselves are in /environment/materialIDs.glsl: the vertex stage
+// has to see them too, because it decides whether portalWorldPos exists.
 
 // How much light a portal is treated as giving off. The bleed pass spreads this onto
 // the surfaces around the portal; the surface itself is drawn at its own brightness,
@@ -500,70 +508,68 @@ float PortalFbm(vec3 p) {
 	return sum;
 }
 
-// The nether portal: a rift, drawn on the face's own coordinates.
-vec3 PortalRift(vec2 uv, float t) {
-	vec2 q = uv - 0.5;
-	float r = length(q);
-	float warp = PortalFbm(vec3(q * 3.0, t * 0.06));
-	float veins = PortalFbm(vec3(q * 6.5 + vec2(warp) * 1.4, t * 0.04));
-	float folded = smoothstep(0.30, 0.88, veins);
-	float core = smoothstep(0.42, 1.0, warp * 0.55 + veins * 0.65);
-	vec3 colour = mix(NETHER_PORTAL_TINT * 0.08, NETHER_PORTAL_TINT * 0.85, folded);
-	colour += vec3(1.0, 0.86, 1.0) * core * core * 1.15;
-	// The frame pulls the pattern down to a thin glowing seam instead of ending
-	// the quad abruptly at the obsidian.
-	colour *= mix(0.35, 1.0, smoothstep(0.62, 0.30, r));
+// The nether portal: a rift. The fields are sized in BLOCKS rather than in quad
+// coordinates, so one portal of any size shows one continuous pattern; the drift is
+// fast enough to read as flow and slow enough for the temporal resolve to keep up.
+vec3 PortalRift(vec2 p, float t) {
+	vec2 q = p * 2.4;
+	vec2 flow = vec2(t * 0.16, -t * 0.24);
+	float warp = PortalFbm(vec3(q + flow * 0.5, t * 0.18));
+	float veins = PortalFbm(vec3(q * 1.8 + vec2(warp) * 1.8 + flow, t * 0.26));
+	float fine = PortalFbm(vec3(q * 6.5 + flow * 2.2, t * 0.40));
+	float folded = smoothstep(0.36, 0.80, veins + fine * 0.30);
+	float core = smoothstep(0.52, 1.0, warp * 0.45 + veins * 0.55 + fine * 0.25);
+	vec3 colour = mix(NETHER_PORTAL_TINT * 0.05, NETHER_PORTAL_TINT * 0.95, folded);
+	colour += vec3(1.0, 0.88, 1.0) * core * core * 1.35;
+	// A slow brightness wave travelling through the rift, so that a camera that is
+	// not moving still sees the surface move.
+	colour *= 0.88 + 0.12 * sin(p.x * 1.3 + p.y * 1.7 - t * 1.1);
 	return colour;
 }
 
-// The end portal and its gateway: a well, also on the face's coordinates.
+// The end portal and its gateway: a well.
 //
-// The depth here is built rather than sampled. Three star layers turn at different
-// rates and different scales, and that differential motion is what a flat quad can
-// offer in place of a real parallax - which would need the dimension behind the
-// gate, and there is no such picture to sample. The base is BLACK on purpose: the
-// nebula is a tint over the dark, never a background colour. The accretion ring is a
-// bright torus at a fixed radius, broken up by the same dust field so that it reads
-// as matter rather than as a drawn circle.
-vec3 PortalWell(vec2 uv, float t) {
-	vec2 q = uv - 0.5;
-	float r = length(q);
-	float dust = PortalFbm(vec3(q * 2.2, t * 0.02));
+// The depth is built rather than sampled - there is no picture of the dimension
+// behind the gate to sample. Three star layers sit at different WORLD scales and
+// turn at different rates, so they separate and slide against each other; that
+// differential motion is the depth cue a flat quad can honestly give. The base is
+// black on purpose: the nebula is a tint over the dark, never a background colour.
+// The cells are smooth kernels rather than hard steps, so a star cannot pop as the
+// eye or the surface moves.
+vec3 PortalWell(vec2 p, float t) {
+	vec2 q = p * 1.5;
+	float dust = PortalFbm(vec3(q * 0.9, t * 0.035));
 	vec3 colour = vec3(0.004, 0.005, 0.012);
 
 	for (int layer = 0; layer < 3; layer++) {
-		float speed = (0.025 + 0.035 * float(layer)) * (layer == 1 ? -1.0 : 1.0);
+		float speed = (0.05 + 0.07 * float(layer)) * (layer == 1 ? -1.0 : 1.0);
 		float ang = t * speed;
 		mat2 rot = mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
-		vec2 s = rot * q * (8.0 + 5.0 * float(layer));
+		vec2 s = rot * q * (4.0 + 6.0 * float(layer)) + float(layer) * 13.0;
 		vec2 cell = floor(s);
 		vec2 f = fract(s) - 0.5;
 		float h = PortalHash(vec3(cell, float(layer) * 7.0 + 1.0));
 		vec2 jitter = vec2(PortalHash(vec3(cell, 3.1)),
 			PortalHash(vec3(cell, 5.7))) - 0.5;
 		float d = length(f - jitter * 0.7);
-		float size = 0.05 + 0.045 * (1.0 - float(layer) * 0.4);
-		float brightness = (0.55 - 0.15 * float(layer)) * step(0.84, h);
+		float size = 0.12 + 0.10 * (1.0 - float(layer) * 0.4);
+		float brightness = (0.65 - 0.17 * float(layer)) * step(0.865, h);
 		colour += vec3(0.55, 0.82, 1.0) * smoothstep(size, 0.0, d) * brightness;
 	}
 
 	colour += mix(vec3(0.10, 0.42, 0.48), vec3(0.34, 0.22, 0.62),
-		dust) * dust * 0.12;
-
-	float ring = smoothstep(0.045, 0.0, abs(r - 0.30));
-	colour += vec3(0.50, 0.80, 1.0) * ring * (0.35 + 0.65 * dust) * 0.85;
-
-	// A soft darkening towards the frame, so the gate settles into its stone.
-	colour *= 1.0 - smoothstep(0.40, 0.70, r) * 0.55;
+		dust) * dust * 0.10;
 	return colour;
 }
 
-vec3 PortalSurface(int kind, vec2 uv, float t) {
+vec3 PortalSurface(int kind, vec2 facePosition, float t) {
 	if (kind == 1) {
-		return PortalRift(uv, t);
+		return PortalRift(facePosition, t);
 	}
-	return PortalWell(uv, t);
+	return PortalWell(facePosition, t);
 }
+
+
 
 void main() {
 
@@ -696,25 +702,21 @@ void main() {
 
 		#ifdef PORTAL_EFFECTS
 			if (portalKind != 0) {
-				// The face's own coordinate. A world program's texcoord names a place in the
-				// block atlas, so the sprite's bounds turn it back into 0..1 across the quad;
-				// a block entity's texture is not in that atlas and already arrives as its own
-				// coordinate. Guarded, because this body is compiled by programs with no texture
-				// at all - the ones that can never reach here.
-				vec2 portalUV = vec2(0.5);
-				#if !defined(NO_GTEXTURE)
-					#if defined(PBR_ATLAS) || defined(PBR_MATERIALS_ANY_TEXTURE)
-						vec2 spriteHalf = pbrSpriteBounds.zw;
-						portalUV = (portalKind == 1
-							&& spriteHalf.x > 0.0 && spriteHalf.y > 0.0)
-							? (texcoord - pbrSpriteBounds.xy) / (2.0 * spriteHalf) + 0.5
-							: texcoord;
-					#else
-						portalUV = texcoord;
-					#endif
-				#endif
+								// A coordinate that runs across the whole portal instead of across one block
+				// face: the face's world position, projected onto the two world axes the face
+				// does not point along. The per-quad texture coordinate this replaced gave every
+				// block its own copy of the pattern, which is exactly the tiling that was seen.
+				vec3 faceAxes = abs(worldNormal);
+				vec2 portalFacePos;
+				if (faceAxes.y > faceAxes.x && faceAxes.y > faceAxes.z) {
+					portalFacePos = portalWorldPos.xz;
+				} else if (faceAxes.x > faceAxes.z) {
+					portalFacePos = portalWorldPos.zy;
+				} else {
+					portalFacePos = portalWorldPos.xy;
+				}
 
-				vec3 portalColour = PortalSurface(portalKind, portalUV, timeSeconds);
+				vec3 portalColour = PortalSurface(portalKind, portalFacePos, timeSeconds);
 
 				gl_FragData[0] = vec4(portalColour, 1.0);
 
