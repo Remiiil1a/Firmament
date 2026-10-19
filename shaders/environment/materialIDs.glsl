@@ -146,6 +146,18 @@ const uint NETHER_PORTAL = 38u;
 // that option is what mixes this with white.
 const vec3 NETHER_PORTAL_TINT = vec3(0.60, 0.20, 1.0);
 
+// The two portal surfaces that are BLOCK ENTITIES keep their numbers raw.
+//
+// They arrive as the blockEntityId uniform rather than through mc_Entity, so
+// DecodeMaterialID does not apply to them and they never become materials - these
+// are the numbers block.properties gives them. 10039 is new and belongs to the end
+// portal alone; 10012 is the light ID the end rod and the end gateway already
+// shared, and the gateway is the one block that is both a light source and a portal
+// surface, so it is the same uniform either way. See PORTAL_EFFECTS in
+// /program/world/lit.fsh for what reads them.
+const float END_PORTAL_BLOCK_ID = 10039.0;
+const float END_GATEWAY_BLOCK_ID = 10012.0;
+
 // Whether the light that has passed through stained glass arrives coloured, so
 // that a red pane puts a red patch of sunlight on the floor rather than a
 // shadow with a hole in it. Also the switch for the nether portal's own glow -

@@ -109,6 +109,16 @@ uniform mat4 gbufferModelView;
 	uniform float frameTimeCounter;
 #endif
 
+// The block entity being drawn. The two portal surfaces that are block entities -
+// the end portal and the gateway that shares its renderer - have no mc_Entity to
+// arrive in, so their block.properties number reaches this file here instead.
+// Declared behind the same guard as everything else the pack adds, because Voxy
+// compiles these programs against a uniform list of its own and a name it does not
+// know is a compile error there. See END_PORTAL_BLOCK_ID in materialIDs.glsl.
+#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
+	uniform int blockEntityId;
+#endif
+
 // Whether to freeze animations (useful for testing).
 //#define FREEZE_ANIMATION_TIMER
 #ifdef FREEZE_ANIMATION_TIMER
@@ -412,6 +422,119 @@ uniform vec2 windowToNdc;
 #include "/lib/encoding/face.glsl"
 flat in uint perFace;
 
+
+// --- portal surfaces ---------------------------------------------------------
+//
+// WHY THE END PORTAL NEEDS AN ID OF ITS OWN. The nether portal has had one since
+// block.10038 was written: it is chunk geometry, so block.properties reaches a
+// program as mc_Entity and becomes a material. The end portal and the gateway that
+// shares its renderer are BLOCK ENTITIES: they never carry mc_Entity, so until now
+// they arrived here as anonymous surfaces, and their texture was even decoded as if
+// it sat in the block atlas, which it does not. A block entity's number arrives as
+// the blockEntityId uniform, and block.10039 gives the end portal one.
+//
+// WHY THE EFFECT IS PROCEDURAL RATHER THAN A BETTER-FILTERED TEXTURE. Both portals
+// are a single flat quad, so anything read from their texture can only scroll across
+// it. A 3D noise field sampled at the FRAGMENT'S OWN WORLD POSITION sits in space
+// instead, so walking past a portal slides the pattern behind the frame the way
+// something behind it would - which is the whole of the window illusion.
+//
+// WHY THE TWO BRANCHES IN main() WRITE ALL SIX BUFFERS. The attachment list at the
+// bottom of this file is fixed, and a fragment that leaves after writing one buffer
+// leaves five holding whatever was drawn there last - stale sky light, a stale
+// reflection material, a stale highlight for the bloom to subtract. The same note
+// appears above the writes at the end of the file.
+#define PORTAL_EFFECTS
+#define PORTAL_LIGHT
+//#define PORTAL_DEBUG
+
+// How much light a portal is treated as giving off. The bleed pass spreads this onto
+// the surfaces around the portal; the surface itself is drawn at its own brightness,
+// so this only decides how loud the glow on the surroundings is.
+const float PORTAL_LIGHT_STRENGTH = 2.0;
+
+// Three-dimensional value noise. The pack's other noise helpers read a 2D noise
+// texture and have no depth, which is the one thing this effect cannot do without:
+// the density has to depend on how far behind the surface the sample is. Three
+// octaves is 24 hashes, on a surface that covers a small part of the screen.
+float PortalHash(vec3 p) {
+	p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
+	p *= 17.0;
+	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float PortalNoise(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(
+		mix(mix(PortalHash(i + vec3(0.0, 0.0, 0.0)),
+		        PortalHash(i + vec3(1.0, 0.0, 0.0)), f.x),
+		    mix(PortalHash(i + vec3(0.0, 1.0, 0.0)),
+		        PortalHash(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+		mix(mix(PortalHash(i + vec3(0.0, 0.0, 1.0)),
+		        PortalHash(i + vec3(1.0, 0.0, 1.0)), f.x),
+		    mix(PortalHash(i + vec3(0.0, 1.0, 1.0)),
+		        PortalHash(i + vec3(1.0, 1.0, 1.0)), f.x), f.y),
+		f.z);
+}
+
+float PortalFbm(vec3 p) {
+	float sum = 0.0;
+	float amplitude = 0.5;
+	for (int i = 0; i < 3; i++) {
+		sum += PortalNoise(p) * amplitude;
+		p = p * 2.03 + vec3(11.7, 5.3, 7.1);
+		amplitude *= 0.5;
+	}
+	return sum;
+}
+
+// The nether portal: a rift. Two warped fields, the second sampled at an offset the
+// first chooses, which is what makes the veins look folded into each other rather
+// than painted on. The tint is NETHER_PORTAL_TINT - the same violet the coloured
+// shadows give the light this portal casts - so the surface and the light it throws
+// are the same colour by construction.
+vec3 PortalRift(vec3 p, float t) {
+	vec3 drift = vec3(0.0, -t * 0.35, 0.0);
+	float w = PortalFbm(p * 1.6 + drift);
+	vec3 q = p * 2.4 + drift * 1.7 + vec3(w, -w, w * 0.5) * 2.2;
+	float v = PortalFbm(q);
+	float veins = smoothstep(0.30, 0.85, v);
+	float core = smoothstep(0.52, 1.0, w * 0.55 + v * 0.65);
+	vec3 colour = mix(NETHER_PORTAL_TINT * 0.22, NETHER_PORTAL_TINT * 1.35, veins);
+	return colour + vec3(1.0, 0.88, 1.0) * core * core * 1.5;
+}
+
+// The end portal and its gateway: a well. The stars are hashed cells sampled on
+// rays that step away from the surface along the view direction, so the three layers
+// separate in depth as the eye moves and the gate reads as a hole rather than a
+// picture. The dust is the same field at a lower frequency, and the two colours are
+// the End's own nebula pair, violet and teal - see the constants in end.glsl.
+vec3 PortalWell(vec3 p, vec3 viewDir, float t) {
+	const vec3 violet = vec3(0.34, 0.22, 0.62);
+	const vec3 teal = vec3(0.10, 0.42, 0.48);
+	float dust = 0.0;
+	float stars = 0.0;
+	float scale = 2.6;
+	for (int i = 0; i < 3; i++) {
+		vec3 q = p * scale + viewDir * (float(i) * 0.9 + 0.5) + vec3(0.0, t * 0.02, 0.0);
+		dust += PortalNoise(q * 0.7) * (1.0 - float(i) * 0.3);
+		stars += step(0.978, PortalHash(floor(q * 4.0))) * (1.0 - float(i) * 0.28);
+		scale *= 1.9;
+	}
+	vec3 colour = mix(vec3(0.004, 0.004, 0.010), mix(violet, teal, dust * 0.5 + 0.5),
+		0.35 + 0.45 * dust);
+	return colour + vec3(0.55, 0.85, 1.0) * stars * 1.6;
+}
+
+vec3 PortalSurface(int kind, vec3 p, vec3 viewDir, float t) {
+	if (kind == 1) {
+		return PortalRift(p, t);
+	}
+	return PortalWell(p, viewDir, t);
+}
+
 void main() {
 
 	// End debug: paint everything this program draws in a flat color, so that an
@@ -506,6 +629,70 @@ void main() {
 
 	uint materialID = DecodePerFaceMaterialID(perFace);
 	vec3 worldNormal = DecodePerFaceWorldNormal(perFace);
+
+	// --- portal surfaces -------------------------------------------------------
+	// Detection first, the debug view second, the effect last: the debug view has to
+	// work with the effect off, because its whole job is to say whether the two portal
+	// surfaces are being identified at all. See the long note above PortalRift.
+	#if defined(PORTAL_EFFECTS) || defined(PORTAL_DEBUG)
+		int portalKind = 0;
+		if (materialID == NETHER_PORTAL) {
+			portalKind = 1;
+		}
+		#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
+			else if (blockEntityId == int(END_PORTAL_BLOCK_ID)) {
+				portalKind = 2;
+			} else if (blockEntityId == int(END_GATEWAY_BLOCK_ID)) {
+				portalKind = 3;
+			}
+		#endif
+
+		#ifdef PORTAL_DEBUG
+			if (portalKind != 0) {
+				// Magenta nether, cyan end portal, yellow gateway: the colour names what
+				// the pack believes it is looking at. Written with the whole attachment list
+				// so that a debug run leaves no stale buffer behind.
+				vec3 debugColour = portalKind == 1 ? vec3(1.0, 0.0, 1.0)
+					: (portalKind == 2 ? vec3(0.0, 1.0, 1.0) : vec3(1.0, 1.0, 0.0));
+				gl_FragData[0] = vec4(debugColour, 1.0);
+				gl_FragData[1] = vec4(0.0);
+				gl_FragData[2] = vec4(0.0);
+				gl_FragData[3] = vec4(0.0);
+				gl_FragData[4] = vec4(0.0);
+				gl_FragData[5] = vec4(0.0);
+				return;
+			}
+		#endif
+
+		#ifdef PORTAL_EFFECTS
+			if (portalKind != 0) {
+				vec3 portalColour = PortalSurface(portalKind, cameraRelativePos,
+					normalize(cameraRelativePos), timeSeconds);
+
+				gl_FragData[0] = vec4(portalColour, 1.0);
+
+				// No sky light: this is not a surface the sky lights, it is a hole with
+				// light in it, and zero here also keeps it out of the reflection data.
+				gl_FragData[1] = vec4(0.0);
+
+				// The colour the bleed pass spreads onto whatever stands around the
+				// portal. Off leaves the light of the room alone and only changes the door.
+				#ifdef PORTAL_LIGHT
+					gl_FragData[2] = vec4(portalColour * PORTAL_LIGHT_STRENGTH, 1.0);
+				#else
+					gl_FragData[2] = vec4(0.0);
+				#endif
+
+				// A neutral normal at roughness 1.0: there is no material here for the
+				// environment pass to reflect, and it must not try.
+				gl_FragData[3] = vec4(worldNormal, 1.0);
+				gl_FragData[4] = vec4(0.0);
+				gl_FragData[5] = vec4(0.0);
+				return;
+			}
+		#endif
+	#endif
+
 
 	// Whether the world's own lighting treats this face as a light source.
 	//

@@ -51,6 +51,7 @@ profile.comment=\
 	§a物理 (WIP)§r - Steadfast 自己未完成的风格，原样保留；上游也没有为它写过说明。
 
 screen.EFFECTS=特效与后期处理
+screen.PORTAL=传送门
 screen.EFFECTS_LIGHT_SETTINGS=光照特效
 screen.WEATHER_SETTINGS= 雨滴粒子
 screen.FOG_SETTINGS=雾
@@ -247,7 +248,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 604]
+option.PBR_DEBUG=材质调试视图 [build 607]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -684,6 +685,13 @@ option.SHADOW_SOFTNESS= 阴影柔和度
 option.SHADOW_SOFTNESS.comment=四个阴影采样点之间的间距，越大越柔和、越模糊。数值很小时采样点互相重叠，多出来的采样没有意义。
 option.SHADOW_DISTORT_FACTOR= 阴影形变系数
 option.SHADOW_DISTORT_FACTOR.comment=背向光源的表面上，阴影采样位置沿法线被推开多远。这是阴影偏移里固定的那部分：调低让接触阴影更贴近、更黑，表面出现本不该有的自阴影就调高。
+option.PORTAL_EFFECTS=传送门表面
+option.PORTAL_EFFECTS.comment=是否把地狱传送门画成缓慢流动的紫色裂隙、把末地传送门画成一口星井，而不是用游戏在上面滚动的那张贴图。图案按世界坐标取样，所以走过去时它会像在门框后面滑动。关掉则两根门都回到原版贴图。
+option.PORTAL_LIGHT=传送门对周围地面的照明
+option.PORTAL_LIGHT.comment=传送门是否也用自己的颜色照亮周围的地面。门面本身的亮度不受这一项影响；它只决定溢到周围的光值多少。
+option.PORTAL_DEBUG=传送门识别视图
+option.PORTAL_DEBUG.comment=用纯色画出两根传送门，用来确认包是否认得出它们：品红 = 地狱门，青 = 末地门，黄 = 末地折跃门。若别的方块也亮起这几种颜色，说明识别匹配到了不该匹配的东西。诊断工具，平时关着。
+
 option.DIRECTIONAL_SKYLIGHT_SHADING= 定向天光着色
 option.DIRECTIONAL_SKYLIGHT_SHADING.comment=天光是否随表面朝向变化，让朝上的面更亮。关掉后所有面收到一样的天光，更平，底面太暗就用它。
 option.NIGHT_SKY_LIGHTING= 夜晚天空光照模式
