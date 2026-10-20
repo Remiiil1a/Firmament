@@ -508,83 +508,82 @@ float PortalFbm(vec3 p) {
 	return sum;
 }
 
-// The nether portal: a rift. The fields are sized in BLOCKS, so one portal of any
-// size shows one continuous pattern, and the drift is a slow flow of the field
-// itself. Nothing here depends on the view: the author was explicit that a portal's
-// surface should not slide around as the camera turns, so this branch reads only the
-// surface's own world position and the clock.
-vec3 PortalRift(vec2 p, float t) {
-	vec2 q = p * 2.0;
-	vec2 flow = vec2(t * 0.10, -t * 0.15);
-	float warp = PortalFbm(vec3(q + flow * 0.35, t * 0.10));
-	float veins = PortalFbm(vec3(q * 1.7 + vec2(warp) * 1.7 + flow, t * 0.16));
-	float fine = PortalFbm(vec3(q * 5.5 + flow * 1.6, t * 0.26));
-	float folded = smoothstep(0.26, 0.74, veins + fine * 0.35);
-	float core = smoothstep(0.44, 0.94, warp * 0.35 + veins * 0.50 + fine * 0.35);
-	// Denser and more saturated than the first version, which read as a pale wash:
-	// the deep end stays close to black and the lit veins are pushed past the tint
-	// towards magenta, so the colour survives the tonemap.
-	vec3 deep = NETHER_PORTAL_TINT * 0.12;
-	vec3 lit = mix(NETHER_PORTAL_TINT, vec3(1.0, 0.45, 1.0), 0.30) * 1.15;
-	vec3 colour = mix(deep, lit, folded);
-	colour += vec3(1.0, 0.85, 1.0) * core * core * 1.50;
-	return colour;
+// BOTH PORTALS ARE DRAWN AS A MEDIUM BEHIND THEIR SURFACE, not as a pattern on it:
+// the fragment walks a few short steps into the plane along the view ray and
+// accumulates what it finds, so the near layers are visible and the far ones are
+// absorbed. That is what produces depth - a field sampled once on the quad cannot,
+// whatever it is made of. Bliss's end portal is built this way, and the author asked
+// for the nether portal to get the same treatment.
+//
+// The two differ only in what the medium contains: the nether's is a dense violet
+// plasma with folding veins, the end's is near-black dust with sparse stars.
+//
+// THE STARS ARE SMOOTH KERNELS around hashed points, not whole cells. The previous
+// version tested a hash per cell with step(), so every star was a square a fifth of
+// a block across - which is exactly the blocky look the author reported. A kernel
+// with a jittered centre inside the cell is round at any distance.
+float PortalStars(vec3 q) {
+	vec3 cell = floor(q * 6.0);
+	vec3 f = fract(q * 6.0) - 0.5;
+	float h = PortalHash(cell);
+	vec3 offset = vec3(PortalHash(cell + vec3(3.1, 0.0, 0.0)),
+		PortalHash(cell + vec3(5.7, 0.0, 0.0)),
+		PortalHash(cell + vec3(9.3, 0.0, 0.0))) - 0.5;
+	float d = length(f - offset * 0.7);
+	float size = 0.08 + 0.10 * PortalHash(cell + vec3(13.7, 0.0, 0.0));
+	return smoothstep(size, 0.0, d) * step(0.90, h);
 }
 
-// The end portal and its gateway: a well, marched rather than painted.
-//
-// WHY A MARCH. A flat quad can only show depth if the pattern is allowed to depend
-// on where the eye is, and the honest way to do that is the one Bliss uses: walk a
-// short distance INTO the portal along the view ray and accumulate what is there,
-// with the near steps visible and the far ones absorbed. A field sampled once on the
-// surface - what the first two versions did - cannot look deep whatever it is made
-// of, because there is no inside to it.
-//
-// WHY ABSOLUTE WORLD COORDINATES. A camera-relative coordinate slides whenever the
-// camera moves, because the same world point's camera-relative position changes with
-// the camera. That is what the reported shaking and popping was: the pattern was
-// welded to the camera rather than to the portal. Adding cameraPosition back puts
-// every sample in the world, so the surface is still and only the parallax of the
-// march answers the view - which is what a window should do.
-//
-// The step offsets are dithered by a function of the PIXEL only, never of the frame:
-// a per-frame offset would shimmer under the temporal resolve, and the temporal
-// resolve is the only thing keeping a ten-step march from banding.
-vec3 PortalWell(vec2 facePos, vec2 faceDir, float facing, float t) {
-	const int STEPS = 10;
-	const float MARCH_DEPTH = 3.5;
-	vec2 dither = vec2(
-		fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453),
-		fract(sin(dot(gl_FragCoord.xy, vec2(39.3468, 11.135))) * 24634.6345)) - 0.5;
-	vec2 stepDir = faceDir / max(0.12, -facing) * (MARCH_DEPTH / float(STEPS));
+// What one step of each medium contains. Kept apart from the march so that the two
+// portals stay recognisably the same effect seen through different substances.
+void PortalMedium(int kind, vec3 q, float t, out vec3 emission, out float density) {
+	if (kind == 1) {
+		float warp = PortalNoise(vec3(q.xy * 1.6, q.z * 1.2 + t * 0.15));
+		float veins = PortalNoise(vec3(
+			q.xy * 3.1 + vec2(warp) * 1.4 + vec2(t * 0.10, -t * 0.15),
+			q.z * 3.1 + t * 0.20));
+		float folded = smoothstep(0.34, 0.86, veins);
+		emission = mix(NETHER_PORTAL_TINT * 0.55, vec3(1.0, 0.62, 1.0) * 1.15,
+			folded);
+		density = 0.35 + 0.65 * warp;
+	} else {
+		float dust = PortalNoise(vec3(q.xy * 0.9, t * 0.02));
+		float stars = PortalStars(q);
+		emission = vec3(0.05, 0.10, 0.16) * dust * 0.5
+			+ vec3(0.75, 0.90, 1.0) * stars;
+		density = 0.06 + 0.10 * dust;
+	}
+}
+
+// Twenty steps rather than ten: the author's report was that the surface read as
+// grain, which is what too few samples of a noisy medium looks like. The offset is
+// per PIXEL and never per frame - the temporal resolve is what keeps a stepped
+// march from banding, and handing it a new noise field every frame is what makes it
+// shimmer instead. It is also only half a step wide, so it decorrelates the steps
+// without turning into speckle of its own.
+vec3 PortalSurface(int kind, vec2 facePos, vec2 faceDir, float facing, float t) {
+	const int STEPS = 20;
+	float marchDepth = kind == 1 ? 2.5 : 4.0;
+	vec2 stepDir = faceDir / max(0.10, -facing) * (marchDepth / float(STEPS));
+	float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)))
+		* 43758.5453);
 	float absorbance = 1.0;
 	vec3 colour = vec3(0.0);
 	for (int i = 0; i < STEPS; i++) {
-		float stepT = float(i + 1) / float(STEPS);
-		vec2 uv = facePos + stepDir * (float(i) + 0.65 + dither.x * 0.7);
-		float dust = PortalNoise(vec3(uv * 0.8, t * 0.03 + stepT));
-		float stars = step(0.972, PortalHash(floor(vec3(uv * 5.0, stepT * 3.0))));
-		float density = dust * (0.35 + 0.55 * stepT);
-		float coeff = exp(-density * (2.0 + 2.5 * stepT));
-		vec3 lighting = mix(vec3(0.10, 0.42, 0.48), vec3(0.34, 0.22, 0.62),
-			dust) * (0.20 + 0.85 * stepT)
-			+ vec3(0.60, 0.85, 1.0) * stars * (0.5 + stepT);
-		colour += (lighting - lighting * coeff) * absorbance;
+		float stepT = (float(i) + 0.5 + jitter * 0.5) / float(STEPS);
+		vec2 uv = facePos + stepDir * (float(i) + 1.0);
+		vec3 q = vec3(uv, stepT * marchDepth);
+		vec3 emission;
+		float density;
+		PortalMedium(kind, q, t, emission, density);
+		float coeff = exp(-density * 3.0);
+		colour += emission * absorbance * (1.0 - coeff);
 		absorbance *= coeff;
 	}
-	// What is left of the ray falls into the void: the base is black, never a
-	// luminous nebula, as the author asked for.
-	return colour + vec3(0.004, 0.005, 0.012) * absorbance;
+	vec3 background = kind == 1 ? vec3(0.030, 0.000, 0.060)
+		: vec3(0.004, 0.005, 0.012);
+	return colour + background * absorbance;
 }
-
-vec3 PortalSurface(int kind, vec2 facePos, vec2 faceDir, float facing, float t) {
-	if (kind == 1) {
-		return PortalRift(facePos, t);
-	}
-	return PortalWell(facePos, faceDir, facing, t);
-}
-
-
 
 void main() {
 
