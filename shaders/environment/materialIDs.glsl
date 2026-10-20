@@ -162,6 +162,18 @@ const uint NETHER_PORTAL = 38u;
 // that option is what mixes this with white.
 const vec3 NETHER_PORTAL_TINT = vec3(0.60, 0.20, 1.0);
 
+// The nether portal's own surface, which is a different colour from the light it
+// casts. The author sampled the vanilla portal particles and asked for the surface to
+// sit near that hue: sRGB (214, 63, 206), which in linear is what is written below.
+//
+// ⚠️ Deliberately NOT the same constant as NETHER_PORTAL_TINT. That one is a LIGHT
+// colour: it is mixed into the sunlight under a portal, and it was chosen with a
+// channel budget (peak at 1.0, Rec709 luminance 0.343) so that a saturated colour
+// does not also dim the ground. This one is a pigment: it is the colour of the
+// surface itself, seen directly and then tonemapped, so it can be as saturated as the
+// particles are and needs none of that arithmetic.
+const vec3 PORTAL_RIFT_TINT = vec3(0.67, 0.05, 0.62);
+
 // The two portal surfaces that are BLOCK ENTITIES keep their numbers raw.
 //
 // They arrive as the blockEntityId uniform rather than through mc_Entity, so

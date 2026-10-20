@@ -543,22 +543,35 @@ vec3 PortalRiftLayer(vec2 q, float t, float depth) {
 	// own middle, which is what gives the surface something with an edge.
 	float filament = 1.0 - smoothstep(0.0, 0.10, abs(v - 0.5));
 	float glow = smoothstep(0.25, 0.62, v) * 0.35;
-	vec3 hot = mix(NETHER_PORTAL_TINT, vec3(1.0, 0.55, 1.0), 0.35);
+	// The author sampled the vanilla portal particles: sRGB (214, 63, 206). The
+	// surface follows that hue; NETHER_PORTAL_TINT stays the LIGHT colour it was
+	// chosen to be.
+	vec3 hot = mix(PORTAL_RIFT_TINT, vec3(1.0, 0.45, 0.95), 0.30) * 1.20;
 	return hot * (filament * 1.35 + glow) * (1.0 - depth * 0.12);
 }
 
 vec3 PortalWell(vec2 facePos, vec2 parallax, float t) {
-	// A faint violet nebula rather than black: the author asked for the End's own
-	// colour to be in the gate, not only in its stars.
-	float dust = PortalNoise(vec3(facePos * 0.22, t * 0.008));
+	// ⚠️ The star field is fed a direction built from a LOCAL coordinate, not from
+	// the portal's absolute world position. EndStarfield lays a sixty-cell grid over
+	// whatever direction it is handed, so what decides how many stars the gate shows
+	// is how much that direction varies ACROSS the gate. Feeding it the world
+	// position made a gate two hundred blocks from the origin vary by less than one
+	// cell from edge to edge, so the whole surface sampled a single cell - a black
+	// gate whenever that cell held no star, which is what shipped in b613. The
+	// modulo keeps the coordinate local while leaving it anchored to the world, so
+	// the stars still do not slide when the camera moves.
+	vec2 anchored = mod(facePos, 64.0);
+	float dust = PortalNoise(vec3(anchored * 0.22, t * 0.008));
+	// A violet haze rather than plain black: the author asked for the End's own
+	// colour to be in the gate and not only in its stars.
 	vec3 colour = mix(END_GIANT_NEBULA_VIOLET, END_GIANT_NEBULA_TEAL, dust)
-		* dust * 0.05;
+		* (0.035 + 0.060 * dust);
 	for (int layer = 0; layer < 3; layer++) {
 		float depth = 0.9 + 1.4 * float(layer);
-		vec2 q = facePos + parallax * depth;
-		// The pack's own starfield, fed a direction built from the layer's place:
-		// the same function, options and tint the sky uses.
-		vec3 starDir = normalize(vec3(q * 0.06, 1.0 + depth * 0.4));
+		vec2 q = anchored + parallax * depth;
+		// The pack's own starfield: same function, same options, same END_STAR_TINT
+		// as the sky. 0.08 per block puts about six cells across a three-block gate.
+		vec3 starDir = normalize(vec3(q * 0.08, 1.0 + depth * 0.4));
 		colour += EndStarfield(starDir) * (1.0 - 0.22 * float(layer));
 	}
 	return colour;
@@ -575,7 +588,7 @@ vec3 PortalSurface(int kind, vec2 facePos, vec2 parallax, float t) {
 			colour += PortalRiftLayer(q, t, float(layer)) * absorb * alpha;
 			absorb *= 1.0 - alpha * 0.75;
 		}
-		return colour + vec3(0.020, 0.0, 0.045) * absorb;
+		return colour + vec3(0.030, 0.0, 0.048) * absorb;
 	}
 	return PortalWell(facePos, parallax, t);
 }
