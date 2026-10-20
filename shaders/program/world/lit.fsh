@@ -583,26 +583,38 @@ vec3 PortalStars(vec2 p, float cells, float seed, float t) {
 // crossed; the substance itself is one. The seams that three separate layers leave
 // are what this removes.
 vec3 PortalRift(vec2 p, vec2 parallax, float t) {
-	const int STEPS = 5;
+	const int STEPS = 10;
+	// A static, per-pixel phase offset: it breaks the banding of discrete samples
+	// without adding anything that changes between frames, which the temporal resolve
+	// would turn into shimmer.
+	float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)))
+		* 43758.5453);
+	// The warp is computed ONCE, outside the walk. It is the medium's low-frequency
+	// structure; recomputing it per sample made consecutive samples differ quickly
+	// enough to read as separate planes, which is the discontinuity the author saw.
+	float warp = PortalFbm(vec3(p * 0.9, t * 0.10));
 	vec3 colour = vec3(0.0);
 	float transmittance = 1.0;
 	for (int i = 0; i < STEPS; i++) {
-		float depth = float(i) / float(STEPS - 1);
+		float depth = (float(i) + 0.5 + jitter) / float(STEPS);
 		// Each sample sits at its own depth along the view's slope through the surface:
-		// the real parallax the author chose over a still surface.
-		vec2 q = p + parallax * (0.5 + depth * 2.4);
-		// The same field throughout. The depth term folds its features slowly, which is
-		// what makes consecutive samples read as one body rather than as three planes.
-		float warp = PortalFbm(vec3(q * 0.9, t * 0.10 + depth * 0.7));
+		// the real parallax the author chose over a still surface. By the author's
+		// request the first plane is now 1.0 block behind the face and the last 5.8 -
+		// twice the spacing of b617.
+		vec2 q = p + parallax * (1.0 + depth * 4.8);
+		// One field at one scale, and its depth phase moves SLOWLY: that plus the ten
+		// samples is what makes the walk read as one body instead of stepping.
 		float veins = PortalFbm(vec3(q * 2.2 + vec2(warp) * 1.6,
-			t * 0.16 + depth * 1.9));
+			t * 0.16 + depth * 0.55));
 		// A vein is where the field crosses its own middle: thin bright filaments
 		// rather than blobs, which is what gives the surface an edge.
 		float filament = 1.0 - smoothstep(0.0, 0.10, abs(veins - 0.5));
 		float glow = smoothstep(0.25, 0.62, veins) * 0.35;
 		// The far end is denser and dimmer: more substance to cross, less light out.
-		float density = (0.35 + 0.75 * depth) * (0.5 + warp);
-		float absorb = exp(-density * 1.4);
+		// The per-step extinction is gentler than when there were five samples, so the
+		// total the ray crosses is about the same.
+		float density = (0.30 + 0.60 * depth) * (0.5 + warp);
+		float absorb = exp(-density * 0.70);
 		vec3 hot = mix(PORTAL_RIFT_TINT, vec3(1.0, 0.45, 0.95), 0.30)
 			* 1.20 * (1.0 - 0.35 * depth);
 		colour += hot * (filament * 1.35 + glow) * (1.0 - absorb)
@@ -628,7 +640,9 @@ vec3 PortalVoid(vec2 p, vec2 parallax, float t) {
 		vec2 drift = vec2(driftSpeed, -driftSpeed * 0.6) * t;
 		// The same parallax as the nether gate: each star layer sits at its own depth,
 		// so they separate as the eye moves - the one cue a flat quad cannot fake.
-		vec2 q = p + parallax * (0.6 + depth * 1.2) + drift + depth * 13.0;
+		// By the author's request: the first star layer is 1.2 blocks behind the face
+		// and the spacing is doubled, so the layers separate twice as far as in b617.
+		vec2 q = p + parallax * (1.2 + depth * 2.4) + drift + depth * 13.0;
 		float haze = PortalFbm(vec3(q * 0.5, t * 0.008 + depth * 1.7));
 		colour += PortalStars(q, cells, 1.0 + depth * 7.0, t)
 			* brightness * visibility;
