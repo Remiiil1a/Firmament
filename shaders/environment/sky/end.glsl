@@ -276,12 +276,10 @@ float EndBodyAngle(vec3 worldDir, vec3 axis) {
 // close enough to look right and wrong enough to shear the band as it turned.
 const vec3 END_GIANT_NEBULA_AXIS = vec3(0.36108, 0.30090, 0.88265);
 
-// The nebula band's two colours. A nebula in one colour reads as a stain rather
-// than as a cloud, and this pair is the one the End's own palette suggests: its
-// violet, with a cold cyan to give the band somewhere to go.
-const vec3 END_GIANT_NEBULA_VIOLET = vec3(0.34, 0.22, 0.62);
-const vec3 END_GIANT_NEBULA_TEAL = vec3(0.10, 0.42, 0.48);
-
+// The nebula band's two colours moved to /environment/sky/end_palette.glsl in
+// batch 613, with the star field before them: the portal effect includes the
+// palette unconditionally, and a colour that only exists when the sky happens to
+// be compiled in is a colour that breaks the programs which do not include it.
 // The whole sky turned by however far it has turned so far.
 //
 // Rodrigues' rotation about the band's axis. Applied to the starfield and to

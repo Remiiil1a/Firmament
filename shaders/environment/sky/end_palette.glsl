@@ -209,4 +209,10 @@ vec3 EndStarfield(vec3 worldDir) {
 	return tint * (star * magnitude * 1.6 * END_STAR_BRIGHTNESS);
 }
 
+// The nebula band's two colours. A nebula in one colour reads as a stain rather
+// than as a cloud, and this pair is the one the End's own palette suggests: its
+// violet, with a cold cyan to give the band somewhere to go.
+const vec3 END_GIANT_NEBULA_VIOLET = vec3(0.34, 0.22, 0.62);
+const vec3 END_GIANT_NEBULA_TEAL = vec3(0.10, 0.42, 0.48);
+
 #endif // END_PALETTE_GLSL_INCLUDED
