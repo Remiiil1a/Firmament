@@ -23,12 +23,17 @@
 // so the two stages have to agree on whether that varying exists at all - and a
 // file only one stage includes cannot say so.
 //
-// PORTAL_EFFECTS replaces the nether portal's and the end portals' surfaces with
-// procedural ones. PORTAL_LIGHT additionally lets a portal's colour spread onto
-// what stands around it; it is off by default because it changes the light of the
-// room, not just the look of the door. PORTAL_DEBUG paints them flat so that the
-// identification can be checked in game.
-#define PORTAL_EFFECTS
+// THREE SWITCHES, ONE PER SURFACE (batch 617). They were one option, which made the
+// pack all-or-nothing: an author who disliked the nether gate lost the end one with
+// it. A surface whose look is a matter of taste should be switchable on its own.
+//
+// PORTAL_LIGHT additionally lets any enabled portal's colour spread onto what stands
+// around it; it is off by default because it changes the light of the room, not just
+// the look of the door. PORTAL_DEBUG paints all three flat so that the identification
+// can be checked in game.
+#define PORTAL_NETHER
+#define PORTAL_END
+#define PORTAL_GATEWAY
 //#define PORTAL_LIGHT
 //#define PORTAL_DEBUG
 

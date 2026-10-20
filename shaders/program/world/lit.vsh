@@ -202,7 +202,7 @@ flat out uint perFace;
 // FetchMaterialID started from, kept instead of discarded.
 flat out uint rawMaterialID;
 
-#if defined(PORTAL_EFFECTS) || defined(PORTAL_DEBUG)
+#if defined(PORTAL_NETHER) || defined(PORTAL_END) || defined(PORTAL_GATEWAY) || defined(PORTAL_DEBUG)
 	// The portal pattern's coordinate: this vertex's own position in the world,
 	// relative to the camera.
 	//
@@ -594,7 +594,7 @@ void main() {
 	#endif
 
 	// Transform to clip position.
-	#if defined(PORTAL_EFFECTS) || defined(PORTAL_DEBUG)
+	#if defined(PORTAL_NETHER) || defined(PORTAL_END) || defined(PORTAL_GATEWAY) || defined(PORTAL_DEBUG)
 		// After every displacement the vertex has been given: what the portal
 		// pattern must follow is the surface as it is drawn.
 		portalWorldPos = cameraRelativePos.xyz;

@@ -131,7 +131,7 @@ uniform mat4 gbufferModelView;
 
 // The End's palette: the star-tint option and the two nebula colours. Included
 // UNCONDITIONALLY since b616 - the portal's stars follow END_STAR_TINT, and an
-// include that exists only inside PORTAL_EFFECTS is exactly how turning that option
+// include that exists only inside a portal switch is exactly how turning one
 // off once broke every lit program (b614). The palette has an include guard and
 // declares no uniforms, so it is safe here.
 #include "/environment/sky/end_palette.glsl"
@@ -140,7 +140,7 @@ uniform mat4 gbufferModelView;
 // palette is in /environment/materialIDs.glsl with the rest of the pack's constants,
 // and its star field is its own. The batch-612 attempt to borrow the End sky's
 // framework ended with the gate needing a file that only some programs include, which
-// is how turning PORTAL_EFFECTS off produced C1503 in the basic program (b615).
+// is how turning the portal effect off once produced C1503 in basic (b615).
 
 // The color of each light source's light. Uniforms: none.
 #include "/environment/lighting/light_colors.glsl"
@@ -441,7 +441,7 @@ flat in uint perFace;
 // portal is identified by this value and not by materialID below.
 flat in uint rawMaterialID;
 
-#if defined(PORTAL_EFFECTS) || defined(PORTAL_DEBUG)
+#if defined(PORTAL_NETHER) || defined(PORTAL_END) || defined(PORTAL_GATEWAY) || defined(PORTAL_DEBUG)
 	// The portal pattern's coordinate, from lit.vsh: this fragment's place in the world,
 	// interpolated from the vertices rather than rebuilt from gl_FragCoord - see the
 	// note where it is written.
@@ -479,10 +479,10 @@ flat in uint rawMaterialID;
 // The switches themselves are in /environment/materialIDs.glsl: the vertex stage
 // has to see them too, because it decides whether portalWorldPos exists.
 
-// ⚠️ Everything from here to the end of PortalSurface is inside PORTAL_EFFECTS. It
-// used to be outside it while the include it depends on was inside, so turning the
-// option off removed the include and kept the code - C1503 in every lit program.
-#ifdef PORTAL_EFFECTS
+// ⚠️ Everything from here to the end of PortalSurface is inside the portal switches. It
+// used to be outside them while the include it depends on was inside, so turning
+// an option off removed the include and kept the code - C1503 in every lit program.
+#if defined(PORTAL_NETHER) || defined(PORTAL_END) || defined(PORTAL_GATEWAY)
 
 // How much light a portal is treated as giving off. The bleed pass spreads this onto
 // the surfaces around the portal; the surface itself is drawn at its own brightness,
@@ -528,27 +528,23 @@ float PortalFbm(vec3 p) {
 
 // THE PORTALS HAVE A FRAMEWORK OF THEIR OWN, AND IT SAMPLES THE WORLD.
 //
-// The author's brief was three things at once: do not borrow the End sky's framework
-// for the gate; a world-anchored coordinate was producing seams and offsets; and the
-// surface must not shift when the view bobs. One decision answers all three: THE
-// PATTERN IS A FUNCTION OF THE SURFACE'S WORLD POSITION AND THE CLOCK, AND OF NOTHING
-// ELSE. There is no view direction in it and no camera term in it, so
+// The coordinate is the surface's own world position, projected onto the face, taken
+// from the vertex stage rather than rebuilt in the fragment: a rebuilt position
+// carries the temporal jitter (b607) and the modulo that a borrowed framework needed
+// seamed at every wrap (b615). A world position has neither problem.
 //
-//   * it cannot shift when the camera turns or bobs, because nothing that changes
-//     with the view is an input;
-//   * it cannot seam, because a world position has no wrap - the modulo that caused
-//     the seams is gone with the framework that needed it;
-//   * it runs continuously across the blocks of one portal, because neighbouring
-//     blocks share the coordinate.
+// DEPTH has two sources, and both are the author's calls: PARALLAX (b616) - each
+// sample sits at its own depth along the view's slope through the surface, using the
+// eye the geometry was drawn with - and the grading of the pattern itself, near
+// larger, brighter and faster than far. Parallax is view-dependent by construction;
+// that trade was accepted explicitly, and the grading is what remains if it ever has
+// to be switched off.
 //
-// DEPTH is built into the pattern rather than borrowed from parallax: three layers at
-// different world scales, the far ones smaller, dimmer and cooler, with the near ones
-// drawn over them. That is the depth a painting has - the honest kind for a surface
-// that is not allowed to react to where the eye is.
-//
-// THE STARS ARE THE GATE'S OWN, not the sky's: a cell grid in world units with one
-// point per cell, drawn as a smooth kernel so it cannot alias into squares, and sized
-// in blocks so it looks the same at any distance.
+// THE STARS ARE THE GATE'S OWN, but they answer to the SKY'S OPTIONS (b617):
+// END_STAR_DENSITY decides how many cells hold one, END_STAR_SIZE how big it is,
+// END_STAR_BRIGHTNESS how bright, END_STAR_TINT what colour. They are relative to the
+// sky's defaults, so the shipped look is unchanged while the four settings still do
+// what they say - turn the sky's stars down and the gate's follow.
 vec3 PortalStars(vec2 p, float cells, float seed, float t) {
 	vec2 s = p * cells;
 	vec2 cell = floor(s);
@@ -557,9 +553,13 @@ vec3 PortalStars(vec2 p, float cells, float seed, float t) {
 	vec2 offset = vec2(PortalHash(vec3(cell, seed + 3.1)),
 		PortalHash(vec3(cell, seed + 5.7))) - 0.5;
 	float magnitude = 0.35 + 0.65 * PortalHash(vec3(cell, seed + 9.3));
-	float radius = 0.10 + 0.10 * magnitude;
+	// Size scales against the sky's DEFAULT (2.0), so the shipped look is what it
+	// always was at that value and the option still does what it says.
+	float radius = (0.10 + 0.10 * magnitude) * (END_STAR_SIZE / 2.0);
 	float d = length(f - offset * 0.7);
 	float kernel = smoothstep(radius, 0.0, d);
+	// END_STAR_DENSITY uses the sky's own threshold formula, 0.04 * density.
+	float present = step(roll, 0.04 * END_STAR_DENSITY);
 	// FADE (batch 616): each star breathes on a phase of its own, so the gate moves
 	// with the camera still. Slow enough for the temporal resolve to follow.
 	float phase = PortalHash(vec3(cell, seed + 13.7)) * 6.2831;
@@ -569,43 +569,47 @@ vec3 PortalStars(vec2 p, float cells, float seed, float t) {
 	vec3 cool = mix(vec3(0.72, 0.82, 1.0), vec3(0.60, 0.40, 1.15), END_STAR_TINT);
 	vec3 warm = mix(vec3(1.0, 0.86, 0.72), vec3(0.85, 0.58, 1.10), END_STAR_TINT);
 	vec3 tint = mix(cool, warm, PortalHash(vec3(cell, seed + 17.3)));
-	return tint * kernel * step(0.92, roll) * magnitude * fade;
+	return tint * kernel * present * magnitude * fade
+		* (END_STAR_BRIGHTNESS / 3.0);
 }
 
-// The nether portal: a violet plasma in three layers, in the colour the author
-// sampled from the vanilla particles.
+// The nether portal: ONE body of violet plasma, integrated along the view ray
+// (batch 617) rather than three stacked pictures.
+//
+// The author asked for the three parallax layers to be integrated into one continuous
+// effect. So this walks the ray through a single medium - the same field at the same
+// scale at every depth, displaced only by the parallax - and composites front to back
+// with a transmittance. What changes with depth is how much substance the light has
+// crossed; the substance itself is one. The seams that three separate layers leave
+// are what this removes.
 vec3 PortalRift(vec2 p, vec2 parallax, float t) {
-	// DEPTH WITHOUT THE EYE (batch 616). The near layer is the largest, brightest and
-	// fastest; the far one the smallest, dimmest and slowest; and each layer's dense
-	// plasma hides part of the layers behind it. That hierarchy is what reads as
-	// depth. A flat quad cannot offer the parallax kind without sliding with the
-	// view, which the author rejected two batches ago.
-	vec3 colour = vec3(0.030, 0.0, 0.048);
-	float visibility = 1.0;
-	for (int layer = 0; layer < 3; layer++) {
-		float depth = float(layer);
-		vec2 flow = vec2(t * 0.12, -t * 0.18) * (1.0 - depth * 0.25);
-		// PARALLAX, restored by the author's decision (b616): each layer is offset by
-		// the view's own slope through the surface, in proportion to how far back it is,
-		// so the layers slide against each other as the eye moves. It is view-dependent
-		// by construction - that is the trade the author accepted for real depth - and
-		// the eye it uses is the one the geometry was drawn with, never a rebuilt one.
-		vec2 q = (p + parallax * (0.5 + depth * 1.1)) * (1.0 + depth * 0.55)
-			+ depth * 17.0;
-		float warp = PortalFbm(vec3(q * 0.7 + flow * 0.4, t * 0.12 + depth * 3.1));
-		vec2 warped = q * 2.6 + vec2(warp) * 1.8 + flow;
-		float v = PortalFbm(vec3(warped, t * 0.18 + depth * 5.7));
-		// Thin bright filaments rather than blobs: a vein is where the field crosses its
-		// own middle, which is what gives the surface something with an edge.
-		float filament = 1.0 - smoothstep(0.0, 0.10, abs(v - 0.5));
-		float glow = smoothstep(0.25, 0.62, v) * 0.35;
-		vec3 hot = mix(PORTAL_RIFT_TINT, vec3(1.0, 0.45, 0.95), 0.30) * 1.20;
-		float brightness = pow(0.60, depth);
-		colour += hot * (filament * 1.35 + glow) * brightness * visibility;
-		// Occlusion: what is dense in this layer is in front of the next one.
-		visibility *= mix(1.0, 0.50, v);
+	const int STEPS = 5;
+	vec3 colour = vec3(0.0);
+	float transmittance = 1.0;
+	for (int i = 0; i < STEPS; i++) {
+		float depth = float(i) / float(STEPS - 1);
+		// Each sample sits at its own depth along the view's slope through the surface:
+		// the real parallax the author chose over a still surface.
+		vec2 q = p + parallax * (0.5 + depth * 2.4);
+		// The same field throughout. The depth term folds its features slowly, which is
+		// what makes consecutive samples read as one body rather than as three planes.
+		float warp = PortalFbm(vec3(q * 0.9, t * 0.10 + depth * 0.7));
+		float veins = PortalFbm(vec3(q * 2.2 + vec2(warp) * 1.6,
+			t * 0.16 + depth * 1.9));
+		// A vein is where the field crosses its own middle: thin bright filaments
+		// rather than blobs, which is what gives the surface an edge.
+		float filament = 1.0 - smoothstep(0.0, 0.10, abs(veins - 0.5));
+		float glow = smoothstep(0.25, 0.62, veins) * 0.35;
+		// The far end is denser and dimmer: more substance to cross, less light out.
+		float density = (0.35 + 0.75 * depth) * (0.5 + warp);
+		float absorb = exp(-density * 1.4);
+		vec3 hot = mix(PORTAL_RIFT_TINT, vec3(1.0, 0.45, 0.95), 0.30)
+			* 1.20 * (1.0 - 0.35 * depth);
+		colour += hot * (filament * 1.35 + glow) * (1.0 - absorb)
+			* transmittance;
+		transmittance *= absorb;
 	}
-	return colour;
+	return colour + vec3(0.030, 0.0, 0.048) * transmittance;
 }
 
 // The end portal and its gateway: a void with the gate's own stars in it.
@@ -638,12 +642,15 @@ vec3 PortalVoid(vec2 p, vec2 parallax, float t) {
 }
 
 vec3 PortalSurface(int kind, vec2 facePos, vec2 parallax, float t) {
+	// kind 1 is the nether portal; 2 and 3 are the end portal and the gateway, which
+	// share their renderer and therefore their look. The three are switched
+	// separately (PORTAL_NETHER / PORTAL_END / PORTAL_GATEWAY) but drawn by two bodies.
 	if (kind == 1) {
 		return PortalRift(facePos, parallax, t);
 	}
 	return PortalVoid(facePos, parallax, t);
 }
-#endif // PORTAL_EFFECTS
+#endif // any portal surface enabled
 
 void main() {
 
@@ -744,7 +751,7 @@ void main() {
 	// Detection first, the debug view second, the effect last: the debug view has to
 	// work with the effect off, because its whole job is to say whether the two portal
 	// surfaces are being identified at all. See the long note above PortalRift.
-	#if defined(PORTAL_EFFECTS) || defined(PORTAL_DEBUG)
+	#if defined(PORTAL_NETHER) || defined(PORTAL_END) || defined(PORTAL_GATEWAY) || defined(PORTAL_DEBUG)
 		int portalKind = 0;
 		if (rawMaterialID == NETHER_PORTAL) {
 			portalKind = 1;
@@ -775,9 +782,22 @@ void main() {
 			}
 		#endif
 
-		#ifdef PORTAL_EFFECTS
-			if (portalKind != 0) {
-												// The surface's own place in the world. Everything the pattern is made of
+		#if defined(PORTAL_NETHER) || defined(PORTAL_END) || defined(PORTAL_GATEWAY)
+			// Which surface this configuration draws. portalKind says what the pack is
+			// looking at; these switches say whether that one is turned on. A surface whose
+			// switch is off is left entirely to the game - vanilla texture and all.
+			int effectKind = 0;
+			#ifdef PORTAL_NETHER
+				if (portalKind == 1) { effectKind = 1; }
+			#endif
+			#ifdef PORTAL_END
+				if (portalKind == 2) { effectKind = 2; }
+			#endif
+			#ifdef PORTAL_GATEWAY
+				if (portalKind == 3) { effectKind = 3; }
+			#endif
+			if (effectKind != 0) {
+				// The surface's own place in the world. Everything the pattern is made of
 				// comes from this and from the clock - nothing that moves with the camera - so
 				// the effect cannot shift when the view bobs, and being a world position it has
 				// no wrap to seam at.
@@ -811,7 +831,7 @@ void main() {
 					/ max(0.15, -dot(portalViewDir, worldNormal)) * 0.75;
 
 				vec3 portalColour = PortalSurface(
-					portalKind, portalFacePos, portalParallax, timeSeconds);
+					effectKind, portalFacePos, portalParallax, timeSeconds);
 
 				gl_FragData[0] = vec4(portalColour, 1.0);
 

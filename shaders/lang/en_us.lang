@@ -505,7 +505,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 616]
+option.PBR_DEBUG=Material debug view [build 617]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1137,8 +1137,12 @@ option.COLORED_SHADOWS_PORTAL.comment=Whether a nether portal tints the light \
 	is not drawn on translucent surfaces, so a portal does not colour its own \
 	faces.
 
-option.PORTAL_EFFECTS=Portal surfaces
-option.PORTAL_EFFECTS.comment=Whether the nether portal is drawn as a slow-moving violet rift and the end portal as a well of stars, instead of the texture the game scrolls across them. The pattern is sampled at each fragment's own world position, so it slides behind the frame as you walk past. Off returns both to the vanilla textures.
+option.PORTAL_NETHER=Nether portal surface
+option.PORTAL_NETHER.comment=Whether the nether portal is drawn as a body of violet plasma that flows and has depth, instead of the texture the game scrolls across it. The colour is taken from the vanilla portal particles. Off returns it to the vanilla texture and leaves the end portals alone.
+option.PORTAL_END=End portal surface
+option.PORTAL_END.comment=Whether the end portal is drawn as a void full of stars rather than the game's flat star texture. Its stars follow the End sky's density, brightness, size and tint settings, so the two cannot drift apart. Off returns it to the vanilla texture.
+option.PORTAL_GATEWAY=End gateway surface
+option.PORTAL_GATEWAY.comment=The same surface on the end gateway, the beam the dragon leaves behind. Separate from the portal switch because the two are met in very different situations; they share their look.
 option.PORTAL_LIGHT=Portal light spread
 option.PORTAL_LIGHT.comment=Whether a portal also lights the ground around it with its own colour. The surface is drawn at its own brightness either way; this only decides how much the glow spilling onto the surroundings is worth.
 option.PORTAL_DEBUG=Portal identification view
