@@ -129,6 +129,13 @@ uniform mat4 gbufferModelView;
 
 #include "/environment/materialIDs.glsl"
 
+// The End's palette: the star-tint option and the two nebula colours. Included
+// UNCONDITIONALLY since b616 - the portal's stars follow END_STAR_TINT, and an
+// include that exists only inside PORTAL_EFFECTS is exactly how turning that option
+// off once broke every lit program (b614). The palette has an include guard and
+// declares no uniforms, so it is safe here.
+#include "/environment/sky/end_palette.glsl"
+
 // The portal effect depends on NOTHING outside this file's normal includes: its
 // palette is in /environment/materialIDs.glsl with the rest of the pack's constants,
 // and its star field is its own. The batch-612 attempt to borrow the End sky's
@@ -542,7 +549,7 @@ float PortalFbm(vec3 p) {
 // THE STARS ARE THE GATE'S OWN, not the sky's: a cell grid in world units with one
 // point per cell, drawn as a smooth kernel so it cannot alias into squares, and sized
 // in blocks so it looks the same at any distance.
-float PortalStars(vec2 p, float cells, float seed) {
+vec3 PortalStars(vec2 p, float cells, float seed, float t) {
 	vec2 s = p * cells;
 	vec2 cell = floor(s);
 	vec2 f = fract(s) - 0.5;
@@ -552,18 +559,39 @@ float PortalStars(vec2 p, float cells, float seed) {
 	float magnitude = 0.35 + 0.65 * PortalHash(vec3(cell, seed + 9.3));
 	float radius = 0.10 + 0.10 * magnitude;
 	float d = length(f - offset * 0.7);
-	return smoothstep(radius, 0.0, d) * step(0.92, roll) * magnitude;
+	float kernel = smoothstep(radius, 0.0, d);
+	// FADE (batch 616): each star breathes on a phase of its own, so the gate moves
+	// with the camera still. Slow enough for the temporal resolve to follow.
+	float phase = PortalHash(vec3(cell, seed + 13.7)) * 6.2831;
+	float fade = 0.60 + 0.40 * sin(t * 0.8 + phase);
+	// TINT follows END_STAR_TINT, the option the sky's own stars answer to: at 1.0
+	// that is the violet the author asked for; at 0.0 a blue-white.
+	vec3 cool = mix(vec3(0.72, 0.82, 1.0), vec3(0.60, 0.40, 1.15), END_STAR_TINT);
+	vec3 warm = mix(vec3(1.0, 0.86, 0.72), vec3(0.85, 0.58, 1.10), END_STAR_TINT);
+	vec3 tint = mix(cool, warm, PortalHash(vec3(cell, seed + 17.3)));
+	return tint * kernel * step(0.92, roll) * magnitude * fade;
 }
 
 // The nether portal: a violet plasma in three layers, in the colour the author
 // sampled from the vanilla particles.
-vec3 PortalRift(vec2 p, float t) {
+vec3 PortalRift(vec2 p, vec2 parallax, float t) {
+	// DEPTH WITHOUT THE EYE (batch 616). The near layer is the largest, brightest and
+	// fastest; the far one the smallest, dimmest and slowest; and each layer's dense
+	// plasma hides part of the layers behind it. That hierarchy is what reads as
+	// depth. A flat quad cannot offer the parallax kind without sliding with the
+	// view, which the author rejected two batches ago.
 	vec3 colour = vec3(0.030, 0.0, 0.048);
-	float absorb = 1.0;
+	float visibility = 1.0;
 	for (int layer = 0; layer < 3; layer++) {
 		float depth = float(layer);
-		vec2 flow = vec2(t * 0.12, -t * 0.18) * (1.0 + depth * 0.35);
-		vec2 q = p * (1.0 + depth * 0.35) + depth * 17.0;
+		vec2 flow = vec2(t * 0.12, -t * 0.18) * (1.0 - depth * 0.25);
+		// PARALLAX, restored by the author's decision (b616): each layer is offset by
+		// the view's own slope through the surface, in proportion to how far back it is,
+		// so the layers slide against each other as the eye moves. It is view-dependent
+		// by construction - that is the trade the author accepted for real depth - and
+		// the eye it uses is the one the geometry was drawn with, never a rebuilt one.
+		vec2 q = (p + parallax * (0.5 + depth * 1.1)) * (1.0 + depth * 0.55)
+			+ depth * 17.0;
 		float warp = PortalFbm(vec3(q * 0.7 + flow * 0.4, t * 0.12 + depth * 3.1));
 		vec2 warped = q * 2.6 + vec2(warp) * 1.8 + flow;
 		float v = PortalFbm(vec3(warped, t * 0.18 + depth * 5.7));
@@ -572,30 +600,48 @@ vec3 PortalRift(vec2 p, float t) {
 		float filament = 1.0 - smoothstep(0.0, 0.10, abs(v - 0.5));
 		float glow = smoothstep(0.25, 0.62, v) * 0.35;
 		vec3 hot = mix(PORTAL_RIFT_TINT, vec3(1.0, 0.45, 0.95), 0.30) * 1.20;
-		float alpha = 0.55 - 0.12 * depth;
-		colour += hot * (filament * 1.35 + glow) * (1.0 - depth * 0.12)
-			* absorb * alpha;
-		absorb *= 1.0 - alpha * 0.75;
+		float brightness = pow(0.60, depth);
+		colour += hot * (filament * 1.35 + glow) * brightness * visibility;
+		// Occlusion: what is dense in this layer is in front of the next one.
+		visibility *= mix(1.0, 0.50, v);
 	}
 	return colour;
 }
 
 // The end portal and its gateway: a void with the gate's own stars in it.
-vec3 PortalVoid(vec2 p, float t) {
-	float dust = PortalFbm(vec3(p * 0.45, t * 0.010));
-	vec3 colour = vec3(0.004, 0.003, 0.010)
-		+ mix(PORTAL_VOID_VIOLET, PORTAL_VOID_TEAL, dust) * (0.04 + 0.10 * dust);
-	colour += PORTAL_STAR_TINT * PortalStars(p, 6.0, 1.0) * 1.00;
-	colour += PORTAL_STAR_TINT * PortalStars(p, 11.0, 7.0) * 0.65;
-	colour += PORTAL_STAR_TINT * PortalStars(p, 17.0, 13.0) * 0.40;
+vec3 PortalVoid(vec2 p, vec2 parallax, float t) {
+	// DEPTH WITHOUT THE EYE (batch 616), as in PortalRift: three layers graded from
+	// near (large, bright, fast) to far (small, dim, slow), each with its own haze
+	// that hides part of the ones behind it. The stars fade on their own phases, so
+	// the gate is never completely still.
+	vec3 colour = vec3(0.0);
+	float visibility = 1.0;
+	for (int layer = 0; layer < 3; layer++) {
+		float depth = float(layer);
+		float cells = 4.0 * pow(2.6, depth);
+		float brightness = pow(0.55, depth);
+		float driftSpeed = 0.045 * pow(0.45, depth);
+		vec2 drift = vec2(driftSpeed, -driftSpeed * 0.6) * t;
+		// The same parallax as the nether gate: each star layer sits at its own depth,
+		// so they separate as the eye moves - the one cue a flat quad cannot fake.
+		vec2 q = p + parallax * (0.6 + depth * 1.2) + drift + depth * 13.0;
+		float haze = PortalFbm(vec3(q * 0.5, t * 0.008 + depth * 1.7));
+		colour += PortalStars(q, cells, 1.0 + depth * 7.0, t)
+			* brightness * visibility;
+		// The layer's own haze, and the occlusion it casts on the layers behind it.
+		colour += mix(PORTAL_VOID_VIOLET, PORTAL_VOID_TEAL, haze)
+			* haze * 0.05 * visibility;
+		visibility *= mix(1.0, 0.45, haze);
+	}
+	colour += vec3(0.004, 0.003, 0.010) * visibility;
 	return colour;
 }
 
-vec3 PortalSurface(int kind, vec2 facePos, float t) {
+vec3 PortalSurface(int kind, vec2 facePos, vec2 parallax, float t) {
 	if (kind == 1) {
-		return PortalRift(facePos, t);
+		return PortalRift(facePos, parallax, t);
 	}
-	return PortalVoid(facePos, t);
+	return PortalVoid(facePos, parallax, t);
 }
 #endif // PORTAL_EFFECTS
 
@@ -741,15 +787,31 @@ void main() {
 				// has to run across the plane the face lies in.
 				vec3 faceAxes = abs(worldNormal);
 				vec2 portalFacePos;
+				vec2 portalFaceDir;
+				// The direction from the DRAWN eye to this fragment. portalWorldPos comes from
+				// the vertex stage in the space the geometry was drawn in, so normalizing it is
+				// that direction exactly - never the fragment's rebuilt position, which carries
+				// the temporal jitter.
+				vec3 portalViewDir = normalize(portalWorldPos);
 				if (faceAxes.y > faceAxes.x && faceAxes.y > faceAxes.z) {
 					portalFacePos = portalAbsPos.xz;
+					portalFaceDir = portalViewDir.xz;
 				} else if (faceAxes.x > faceAxes.z) {
 					portalFacePos = portalAbsPos.zy;
+					portalFaceDir = portalViewDir.zy;
 				} else {
 					portalFacePos = portalAbsPos.xy;
+					portalFaceDir = portalViewDir.xy;
 				}
 
-				vec3 portalColour = PortalSurface(portalKind, portalFacePos, timeSeconds);
+				// How far a layer slides for a given view angle: the slope of the view ray
+				// through the surface, softened by 0.75 and floored so a grazing look cannot
+				// send the layers off to infinity.
+				vec2 portalParallax = portalFaceDir
+					/ max(0.15, -dot(portalViewDir, worldNormal)) * 0.75;
+
+				vec3 portalColour = PortalSurface(
+					portalKind, portalFacePos, portalParallax, timeSeconds);
 
 				gl_FragData[0] = vec4(portalColour, 1.0);
 
