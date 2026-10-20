@@ -129,6 +129,15 @@ uniform mat4 gbufferModelView;
 
 #include "/environment/materialIDs.glsl"
 
+// The portal's stars ARE the End's stars. EndStarfield is the same function the
+// sky uses - it lives in the palette file since batch 612 for exactly this reason
+// - so the gate inherits END_STAR_DENSITY, END_STAR_BRIGHTNESS, END_STAR_SIZE and,
+// what the author asked for, END_STAR_TINT. Its colours cannot drift away from the
+// sky's, because there is only one copy of them.
+#ifdef PORTAL_EFFECTS
+	#include "/environment/sky/end_palette.glsl"
+#endif
+
 // The color of each light source's light. Uniforms: none.
 #include "/environment/lighting/light_colors.glsl"
 
@@ -508,81 +517,67 @@ float PortalFbm(vec3 p) {
 	return sum;
 }
 
-// BOTH PORTALS ARE DRAWN AS A MEDIUM BEHIND THEIR SURFACE, not as a pattern on it:
-// the fragment walks a few short steps into the plane along the view ray and
-// accumulates what it finds, so the near layers are visible and the far ones are
-// absorbed. That is what produces depth - a field sampled once on the quad cannot,
-// whatever it is made of. Bliss's end portal is built this way, and the author asked
-// for the nether portal to get the same treatment.
+// BOTH PORTALS ARE BUILT FROM PARALLAX LAYERS, not from a marched volume.
 //
-// The two differ only in what the medium contains: the nether's is a dense violet
-// plasma with folding veins, the end's is near-black dust with sparse stars.
+// WHY THE MARCH WENT AWAY. A march samples a noisy medium twenty times per pixel
+// and sums the results; with any high-frequency content in it - stars, veins - the
+// sum is a speckle field, and no amount of denoise in this pack removes a couple
+// of bright samples per pixel. What the author kept seeing as grain was that.
+// Three discrete layers have no such failure: each layer is evaluated exactly once
+// and is smooth in itself. The depth cue is the same one that works anywhere - the
+// layers are offset by the view parallax and therefore slide against each other as
+// the eye moves, near layers faster than far ones.
 //
-// THE STARS ARE SMOOTH KERNELS around hashed points, not whole cells. The previous
-// version tested a hash per cell with step(), so every star was a square a fifth of
-// a block across - which is exactly the blocky look the author reported. A kernel
-// with a jittered centre inside the cell is round at any distance.
-float PortalStars(vec3 q) {
-	vec3 cell = floor(q * 6.0);
-	vec3 f = fract(q * 6.0) - 0.5;
-	float h = PortalHash(cell);
-	vec3 offset = vec3(PortalHash(cell + vec3(3.1, 0.0, 0.0)),
-		PortalHash(cell + vec3(5.7, 0.0, 0.0)),
-		PortalHash(cell + vec3(9.3, 0.0, 0.0))) - 0.5;
-	float d = length(f - offset * 0.7);
-	float size = 0.08 + 0.10 * PortalHash(cell + vec3(13.7, 0.0, 0.0));
-	return smoothstep(size, 0.0, d) * step(0.90, h);
+// The two portals differ only in what their layers contain: the nether's are violet
+// filaments on near-black, the end's are the pack's own starfield on a faint violet
+// nebula.
+//
+// The start of each layer's field is offset by a constant per layer, so the layers
+// are genuinely different field instances and do not line up into one picture.
+vec3 PortalRiftLayer(vec2 q, float t, float depth) {
+	vec2 flow = vec2(t * 0.12, -t * 0.18) * (1.0 + depth * 0.35);
+	float warp = PortalFbm(vec3(q * 0.7 + flow * 0.4, t * 0.12 + depth * 3.1));
+	vec2 warped = q * 2.6 + vec2(warp) * 1.8 + flow;
+	float v = PortalFbm(vec3(warped, t * 0.18 + depth * 5.7));
+	// Thin bright filaments rather than blobs: a vein is where the field crosses its
+	// own middle, which is what gives the surface something with an edge.
+	float filament = 1.0 - smoothstep(0.0, 0.10, abs(v - 0.5));
+	float glow = smoothstep(0.25, 0.62, v) * 0.35;
+	vec3 hot = mix(NETHER_PORTAL_TINT, vec3(1.0, 0.55, 1.0), 0.35);
+	return hot * (filament * 1.35 + glow) * (1.0 - depth * 0.12);
 }
 
-// What one step of each medium contains. Kept apart from the march so that the two
-// portals stay recognisably the same effect seen through different substances.
-void PortalMedium(int kind, vec3 q, float t, out vec3 emission, out float density) {
+vec3 PortalWell(vec2 facePos, vec2 parallax, float t) {
+	// A faint violet nebula rather than black: the author asked for the End's own
+	// colour to be in the gate, not only in its stars.
+	float dust = PortalNoise(vec3(facePos * 0.22, t * 0.008));
+	vec3 colour = mix(END_GIANT_NEBULA_VIOLET, END_GIANT_NEBULA_TEAL, dust)
+		* dust * 0.05;
+	for (int layer = 0; layer < 3; layer++) {
+		float depth = 0.9 + 1.4 * float(layer);
+		vec2 q = facePos + parallax * depth;
+		// The pack's own starfield, fed a direction built from the layer's place:
+		// the same function, options and tint the sky uses.
+		vec3 starDir = normalize(vec3(q * 0.06, 1.0 + depth * 0.4));
+		colour += EndStarfield(starDir) * (1.0 - 0.22 * float(layer));
+	}
+	return colour;
+}
+
+vec3 PortalSurface(int kind, vec2 facePos, vec2 parallax, float t) {
 	if (kind == 1) {
-		float warp = PortalNoise(vec3(q.xy * 1.6, q.z * 1.2 + t * 0.15));
-		float veins = PortalNoise(vec3(
-			q.xy * 3.1 + vec2(warp) * 1.4 + vec2(t * 0.10, -t * 0.15),
-			q.z * 3.1 + t * 0.20));
-		float folded = smoothstep(0.34, 0.86, veins);
-		emission = mix(NETHER_PORTAL_TINT * 0.55, vec3(1.0, 0.62, 1.0) * 1.15,
-			folded);
-		density = 0.35 + 0.65 * warp;
-	} else {
-		float dust = PortalNoise(vec3(q.xy * 0.9, t * 0.02));
-		float stars = PortalStars(q);
-		emission = vec3(0.05, 0.10, 0.16) * dust * 0.5
-			+ vec3(0.75, 0.90, 1.0) * stars;
-		density = 0.06 + 0.10 * dust;
+		vec3 colour = vec3(0.0);
+		float absorb = 1.0;
+		for (int layer = 0; layer < 3; layer++) {
+			float depth = 0.5 + 0.9 * float(layer);
+			vec2 q = facePos + parallax * depth;
+			float alpha = 0.55 - 0.12 * float(layer);
+			colour += PortalRiftLayer(q, t, float(layer)) * absorb * alpha;
+			absorb *= 1.0 - alpha * 0.75;
+		}
+		return colour + vec3(0.020, 0.0, 0.045) * absorb;
 	}
-}
-
-// Twenty steps rather than ten: the author's report was that the surface read as
-// grain, which is what too few samples of a noisy medium looks like. The offset is
-// per PIXEL and never per frame - the temporal resolve is what keeps a stepped
-// march from banding, and handing it a new noise field every frame is what makes it
-// shimmer instead. It is also only half a step wide, so it decorrelates the steps
-// without turning into speckle of its own.
-vec3 PortalSurface(int kind, vec2 facePos, vec2 faceDir, float facing, float t) {
-	const int STEPS = 20;
-	float marchDepth = kind == 1 ? 2.5 : 4.0;
-	vec2 stepDir = faceDir / max(0.10, -facing) * (marchDepth / float(STEPS));
-	float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)))
-		* 43758.5453);
-	float absorbance = 1.0;
-	vec3 colour = vec3(0.0);
-	for (int i = 0; i < STEPS; i++) {
-		float stepT = (float(i) + 0.5 + jitter * 0.5) / float(STEPS);
-		vec2 uv = facePos + stepDir * (float(i) + 1.0);
-		vec3 q = vec3(uv, stepT * marchDepth);
-		vec3 emission;
-		float density;
-		PortalMedium(kind, q, t, emission, density);
-		float coeff = exp(-density * 3.0);
-		colour += emission * absorbance * (1.0 - coeff);
-		absorbance *= coeff;
-	}
-	vec3 background = kind == 1 ? vec3(0.030, 0.000, 0.060)
-		: vec3(0.004, 0.005, 0.012);
-	return colour + background * absorbance;
+	return PortalWell(facePos, parallax, t);
 }
 
 void main() {
@@ -739,9 +734,12 @@ void main() {
 					portalFaceDir = portalViewDir.xy;
 				}
 
+				// How far the layers slide for a given view angle: larger when the eye is
+				// glancing along the surface than when it looks straight into it.
+				vec2 portalParallax = portalFaceDir
+					/ max(0.10, -dot(portalViewDir, worldNormal));
 				vec3 portalColour = PortalSurface(
-					portalKind, portalFacePos, portalFaceDir,
-					dot(portalViewDir, worldNormal), timeSeconds);
+					portalKind, portalFacePos, portalParallax, timeSeconds);
 
 				gl_FragData[0] = vec4(portalColour, 1.0);
 
