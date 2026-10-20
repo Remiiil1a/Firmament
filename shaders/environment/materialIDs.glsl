@@ -173,6 +173,14 @@ const vec3 NETHER_PORTAL_TINT = vec3(0.60, 0.20, 1.0);
 // surface itself, seen directly and then tonemapped, so it can be as saturated as the
 // particles are and needs none of that arithmetic.
 const vec3 PORTAL_RIFT_TINT = vec3(0.67, 0.05, 0.62);
+// The end gate's own palette. These are the End's colours - the same violet and teal
+// the sky's nebula uses - but they live here rather than being read from the sky
+// framework: the gate is not the sky and should not depend on a file that only some
+// programs include. The star tint is its own too, a cool white that reads as starlight
+// against the violet rather than as a copy of the sky's.
+const vec3 PORTAL_VOID_VIOLET = vec3(0.34, 0.22, 0.62);
+const vec3 PORTAL_VOID_TEAL = vec3(0.10, 0.42, 0.48);
+const vec3 PORTAL_STAR_TINT = vec3(0.80, 0.86, 1.10);
 
 // The two portal surfaces that are BLOCK ENTITIES keep their numbers raw.
 //

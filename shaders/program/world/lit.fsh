@@ -129,14 +129,11 @@ uniform mat4 gbufferModelView;
 
 #include "/environment/materialIDs.glsl"
 
-// The portal's stars ARE the End's stars. EndStarfield is the same function the
-// sky uses - it lives in the palette file since batch 612 for exactly this reason
-// - so the gate inherits END_STAR_DENSITY, END_STAR_BRIGHTNESS, END_STAR_SIZE and,
-// what the author asked for, END_STAR_TINT. Its colours cannot drift away from the
-// sky's, because there is only one copy of them.
-#ifdef PORTAL_EFFECTS
-	#include "/environment/sky/end_palette.glsl"
-#endif
+// The portal effect depends on NOTHING outside this file's normal includes: its
+// palette is in /environment/materialIDs.glsl with the rest of the pack's constants,
+// and its star field is its own. The batch-612 attempt to borrow the End sky's
+// framework ended with the gate needing a file that only some programs include, which
+// is how turning PORTAL_EFFECTS off produced C1503 in the basic program (b615).
 
 // The color of each light source's light. Uniforms: none.
 #include "/environment/lighting/light_colors.glsl"
@@ -475,6 +472,11 @@ flat in uint rawMaterialID;
 // The switches themselves are in /environment/materialIDs.glsl: the vertex stage
 // has to see them too, because it decides whether portalWorldPos exists.
 
+// ⚠️ Everything from here to the end of PortalSurface is inside PORTAL_EFFECTS. It
+// used to be outside it while the include it depends on was inside, so turning the
+// option off removed the include and kept the code - C1503 in every lit program.
+#ifdef PORTAL_EFFECTS
+
 // How much light a portal is treated as giving off. The bleed pass spreads this onto
 // the surfaces around the portal; the surface itself is drawn at its own brightness,
 // so this only decides how loud the glow on the surroundings is.
@@ -517,81 +519,85 @@ float PortalFbm(vec3 p) {
 	return sum;
 }
 
-// BOTH PORTALS ARE BUILT FROM PARALLAX LAYERS, not from a marched volume.
+// THE PORTALS HAVE A FRAMEWORK OF THEIR OWN, AND IT SAMPLES THE WORLD.
 //
-// WHY THE MARCH WENT AWAY. A march samples a noisy medium twenty times per pixel
-// and sums the results; with any high-frequency content in it - stars, veins - the
-// sum is a speckle field, and no amount of denoise in this pack removes a couple
-// of bright samples per pixel. What the author kept seeing as grain was that.
-// Three discrete layers have no such failure: each layer is evaluated exactly once
-// and is smooth in itself. The depth cue is the same one that works anywhere - the
-// layers are offset by the view parallax and therefore slide against each other as
-// the eye moves, near layers faster than far ones.
+// The author's brief was three things at once: do not borrow the End sky's framework
+// for the gate; a world-anchored coordinate was producing seams and offsets; and the
+// surface must not shift when the view bobs. One decision answers all three: THE
+// PATTERN IS A FUNCTION OF THE SURFACE'S WORLD POSITION AND THE CLOCK, AND OF NOTHING
+// ELSE. There is no view direction in it and no camera term in it, so
 //
-// The two portals differ only in what their layers contain: the nether's are violet
-// filaments on near-black, the end's are the pack's own starfield on a faint violet
-// nebula.
+//   * it cannot shift when the camera turns or bobs, because nothing that changes
+//     with the view is an input;
+//   * it cannot seam, because a world position has no wrap - the modulo that caused
+//     the seams is gone with the framework that needed it;
+//   * it runs continuously across the blocks of one portal, because neighbouring
+//     blocks share the coordinate.
 //
-// The start of each layer's field is offset by a constant per layer, so the layers
-// are genuinely different field instances and do not line up into one picture.
-vec3 PortalRiftLayer(vec2 q, float t, float depth) {
-	vec2 flow = vec2(t * 0.12, -t * 0.18) * (1.0 + depth * 0.35);
-	float warp = PortalFbm(vec3(q * 0.7 + flow * 0.4, t * 0.12 + depth * 3.1));
-	vec2 warped = q * 2.6 + vec2(warp) * 1.8 + flow;
-	float v = PortalFbm(vec3(warped, t * 0.18 + depth * 5.7));
-	// Thin bright filaments rather than blobs: a vein is where the field crosses its
-	// own middle, which is what gives the surface something with an edge.
-	float filament = 1.0 - smoothstep(0.0, 0.10, abs(v - 0.5));
-	float glow = smoothstep(0.25, 0.62, v) * 0.35;
-	// The author sampled the vanilla portal particles: sRGB (214, 63, 206). The
-	// surface follows that hue; NETHER_PORTAL_TINT stays the LIGHT colour it was
-	// chosen to be.
-	vec3 hot = mix(PORTAL_RIFT_TINT, vec3(1.0, 0.45, 0.95), 0.30) * 1.20;
-	return hot * (filament * 1.35 + glow) * (1.0 - depth * 0.12);
+// DEPTH is built into the pattern rather than borrowed from parallax: three layers at
+// different world scales, the far ones smaller, dimmer and cooler, with the near ones
+// drawn over them. That is the depth a painting has - the honest kind for a surface
+// that is not allowed to react to where the eye is.
+//
+// THE STARS ARE THE GATE'S OWN, not the sky's: a cell grid in world units with one
+// point per cell, drawn as a smooth kernel so it cannot alias into squares, and sized
+// in blocks so it looks the same at any distance.
+float PortalStars(vec2 p, float cells, float seed) {
+	vec2 s = p * cells;
+	vec2 cell = floor(s);
+	vec2 f = fract(s) - 0.5;
+	float roll = PortalHash(vec3(cell, seed));
+	vec2 offset = vec2(PortalHash(vec3(cell, seed + 3.1)),
+		PortalHash(vec3(cell, seed + 5.7))) - 0.5;
+	float magnitude = 0.35 + 0.65 * PortalHash(vec3(cell, seed + 9.3));
+	float radius = 0.10 + 0.10 * magnitude;
+	float d = length(f - offset * 0.7);
+	return smoothstep(radius, 0.0, d) * step(0.92, roll) * magnitude;
 }
 
-vec3 PortalWell(vec2 facePos, vec2 parallax, float t) {
-	// ⚠️ The star field is fed a direction built from a LOCAL coordinate, not from
-	// the portal's absolute world position. EndStarfield lays a sixty-cell grid over
-	// whatever direction it is handed, so what decides how many stars the gate shows
-	// is how much that direction varies ACROSS the gate. Feeding it the world
-	// position made a gate two hundred blocks from the origin vary by less than one
-	// cell from edge to edge, so the whole surface sampled a single cell - a black
-	// gate whenever that cell held no star, which is what shipped in b613. The
-	// modulo keeps the coordinate local while leaving it anchored to the world, so
-	// the stars still do not slide when the camera moves.
-	vec2 anchored = mod(facePos, 64.0);
-	float dust = PortalNoise(vec3(anchored * 0.22, t * 0.008));
-	// A violet haze rather than plain black: the author asked for the End's own
-	// colour to be in the gate and not only in its stars.
-	vec3 colour = mix(END_GIANT_NEBULA_VIOLET, END_GIANT_NEBULA_TEAL, dust)
-		* (0.035 + 0.060 * dust);
+// The nether portal: a violet plasma in three layers, in the colour the author
+// sampled from the vanilla particles.
+vec3 PortalRift(vec2 p, float t) {
+	vec3 colour = vec3(0.030, 0.0, 0.048);
+	float absorb = 1.0;
 	for (int layer = 0; layer < 3; layer++) {
-		float depth = 0.9 + 1.4 * float(layer);
-		vec2 q = anchored + parallax * depth;
-		// The pack's own starfield: same function, same options, same END_STAR_TINT
-		// as the sky. 0.08 per block puts about six cells across a three-block gate.
-		vec3 starDir = normalize(vec3(q * 0.08, 1.0 + depth * 0.4));
-		colour += EndStarfield(starDir) * (1.0 - 0.22 * float(layer));
+		float depth = float(layer);
+		vec2 flow = vec2(t * 0.12, -t * 0.18) * (1.0 + depth * 0.35);
+		vec2 q = p * (1.0 + depth * 0.35) + depth * 17.0;
+		float warp = PortalFbm(vec3(q * 0.7 + flow * 0.4, t * 0.12 + depth * 3.1));
+		vec2 warped = q * 2.6 + vec2(warp) * 1.8 + flow;
+		float v = PortalFbm(vec3(warped, t * 0.18 + depth * 5.7));
+		// Thin bright filaments rather than blobs: a vein is where the field crosses its
+		// own middle, which is what gives the surface something with an edge.
+		float filament = 1.0 - smoothstep(0.0, 0.10, abs(v - 0.5));
+		float glow = smoothstep(0.25, 0.62, v) * 0.35;
+		vec3 hot = mix(PORTAL_RIFT_TINT, vec3(1.0, 0.45, 0.95), 0.30) * 1.20;
+		float alpha = 0.55 - 0.12 * depth;
+		colour += hot * (filament * 1.35 + glow) * (1.0 - depth * 0.12)
+			* absorb * alpha;
+		absorb *= 1.0 - alpha * 0.75;
 	}
 	return colour;
 }
 
-vec3 PortalSurface(int kind, vec2 facePos, vec2 parallax, float t) {
-	if (kind == 1) {
-		vec3 colour = vec3(0.0);
-		float absorb = 1.0;
-		for (int layer = 0; layer < 3; layer++) {
-			float depth = 0.5 + 0.9 * float(layer);
-			vec2 q = facePos + parallax * depth;
-			float alpha = 0.55 - 0.12 * float(layer);
-			colour += PortalRiftLayer(q, t, float(layer)) * absorb * alpha;
-			absorb *= 1.0 - alpha * 0.75;
-		}
-		return colour + vec3(0.030, 0.0, 0.048) * absorb;
-	}
-	return PortalWell(facePos, parallax, t);
+// The end portal and its gateway: a void with the gate's own stars in it.
+vec3 PortalVoid(vec2 p, float t) {
+	float dust = PortalFbm(vec3(p * 0.45, t * 0.010));
+	vec3 colour = vec3(0.004, 0.003, 0.010)
+		+ mix(PORTAL_VOID_VIOLET, PORTAL_VOID_TEAL, dust) * (0.04 + 0.10 * dust);
+	colour += PORTAL_STAR_TINT * PortalStars(p, 6.0, 1.0) * 1.00;
+	colour += PORTAL_STAR_TINT * PortalStars(p, 11.0, 7.0) * 0.65;
+	colour += PORTAL_STAR_TINT * PortalStars(p, 17.0, 13.0) * 0.40;
+	return colour;
 }
+
+vec3 PortalSurface(int kind, vec2 facePos, float t) {
+	if (kind == 1) {
+		return PortalRift(facePos, t);
+	}
+	return PortalVoid(facePos, t);
+}
+#endif // PORTAL_EFFECTS
 
 void main() {
 
@@ -713,7 +719,8 @@ void main() {
 				vec3 debugColour = portalKind == 1 ? vec3(1.0, 0.0, 1.0)
 					: (portalKind == 2 ? vec3(0.0, 1.0, 1.0) : vec3(1.0, 1.0, 0.0));
 				gl_FragData[0] = vec4(debugColour, 1.0);
-				gl_FragData[1] = vec4(0.0);
+				// Same mark as the effect branch: the diagnostic must not be fogged either.
+				gl_FragData[1] = vec4(0.0, 1.0, 0.0, 0.0);
 				gl_FragData[2] = vec4(0.0);
 				gl_FragData[3] = vec4(0.0);
 				gl_FragData[4] = vec4(0.0);
@@ -724,41 +731,40 @@ void main() {
 
 		#ifdef PORTAL_EFFECTS
 			if (portalKind != 0) {
-												// Absolute world position: the pattern has to be anchored to the WORLD, not
-				// to the camera - see the note above PortalWell for what went wrong when it
-				// was the camera's.
+												// The surface's own place in the world. Everything the pattern is made of
+				// comes from this and from the clock - nothing that moves with the camera - so
+				// the effect cannot shift when the view bobs, and being a world position it has
+				// no wrap to seam at.
 				vec3 portalAbsPos = portalWorldPos + cameraPosition;
 
-				// Two of the world's axes, chosen by the face's dominant normal, and the view
-				// direction taken through the same choice: the march and the pattern must agree
-				// on which plane they are in.
+				// Two of the world's axes, chosen by the face's dominant normal: the coordinate
+				// has to run across the plane the face lies in.
 				vec3 faceAxes = abs(worldNormal);
-				vec3 portalViewDir = normalize(portalWorldPos);
 				vec2 portalFacePos;
-				vec2 portalFaceDir;
 				if (faceAxes.y > faceAxes.x && faceAxes.y > faceAxes.z) {
 					portalFacePos = portalAbsPos.xz;
-					portalFaceDir = portalViewDir.xz;
 				} else if (faceAxes.x > faceAxes.z) {
 					portalFacePos = portalAbsPos.zy;
-					portalFaceDir = portalViewDir.zy;
 				} else {
 					portalFacePos = portalAbsPos.xy;
-					portalFaceDir = portalViewDir.xy;
 				}
 
-				// How far the layers slide for a given view angle: larger when the eye is
-				// glancing along the surface than when it looks straight into it.
-				vec2 portalParallax = portalFaceDir
-					/ max(0.10, -dot(portalViewDir, worldNormal));
-				vec3 portalColour = PortalSurface(
-					portalKind, portalFacePos, portalParallax, timeSeconds);
+				vec3 portalColour = PortalSurface(portalKind, portalFacePos, timeSeconds);
 
 				gl_FragData[0] = vec4(portalColour, 1.0);
 
-				// No sky light: this is not a surface the sky lights, it is a hole with
-				// light in it, and zero here also keeps it out of the reflection data.
-				gl_FragData[1] = vec4(0.0);
+				// The MEDIUM BOUNDARY mark, and it is what makes the surface read as opaque.
+				// The colour write is already opaque - blending is premultiplied alpha, so
+				// alpha 1 kills the destination term - but the volumetric fog does not read the
+				// framebuffer: it marches to the first surface it is TOLD about, and its idea of
+				// what is solid is this buffer's green channel (see volumetric_fog.fsh, batch
+				// 593). Written as zero, the portal said air-keep-marching, so the fog integrated
+				// the medium behind the gate and composite1 painted it back on top: that is the
+				// terrain and plume the author could see through the surface.
+				// Green = stop the medium here, at the portal's own depth in depthtex0.
+				// Red stays zero: this surface is not lit by the sky and must stay out of the
+				// reflection data downstream.
+				gl_FragData[1] = vec4(0.0, 1.0, 0.0, 0.0);
 
 				// The colour the bleed pass spreads onto whatever stands around the
 				// portal. Off leaves the light of the room alone and only changes the door.
