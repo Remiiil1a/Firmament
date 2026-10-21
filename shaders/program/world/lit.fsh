@@ -569,8 +569,10 @@ vec3 PortalStars(vec2 p, float cells, float seed, float t) {
 	vec3 cool = mix(vec3(0.72, 0.82, 1.0), vec3(0.60, 0.40, 1.15), END_STAR_TINT);
 	vec3 warm = mix(vec3(1.0, 0.86, 0.72), vec3(0.85, 0.58, 1.10), END_STAR_TINT);
 	vec3 tint = mix(cool, warm, PortalHash(vec3(cell, seed + 17.3)));
+	// PORTAL_STAR_GAIN raises the default brightness; END_STAR_BRIGHTNESS still
+	// scales on top of it, so the sky page keeps control of both.
 	return tint * kernel * present * magnitude * fade
-		* (END_STAR_BRIGHTNESS / 3.0);
+		* (END_STAR_BRIGHTNESS / 3.0) * PORTAL_STAR_GAIN;
 }
 
 // The nether portal: ONE body of violet plasma, integrated along the view ray
@@ -596,12 +598,21 @@ vec3 PortalRift(vec2 p, vec2 parallax, float t) {
 	vec3 colour = vec3(0.0);
 	float transmittance = 1.0;
 	for (int i = 0; i < STEPS; i++) {
-		float depth = (float(i) + 0.5 + jitter) / float(STEPS);
+		float fraction = (float(i) + 0.5 + jitter) / float(STEPS);
+		// SQUARED FRACTION, the same crowding the pack's PBR parallax uses
+		// (PbrParallaxMapping in environment/lighting/pbr.glsl): samples bunch towards
+		// the shallow end and thin out with depth. The author asked for exactly this
+		// scheme here, and the reason is the same in both places - the near surface is
+		// where a screen pixel spans the least depth, so it needs the most samples.
+		float depth = fraction * fraction;
 		// Each sample sits at its own depth along the view's slope through the surface:
 		// the real parallax the author chose over a still surface. By the author's
 		// request the first plane is now 1.0 block behind the face and the last 5.8 -
 		// twice the spacing of b617.
-		vec2 q = p + parallax * (1.0 + depth * 4.8);
+		// From 0.2 blocks behind the face to six, with the gaps growing as the
+		// squared depth does: the first samples sit almost on the surface, which is what
+		// stops the noise near the plane the author reported.
+		vec2 q = p + parallax * (0.2 + depth * 5.8);
 		// One field at one scale, and its depth phase moves SLOWLY: that plus the ten
 		// samples is what makes the walk read as one body instead of stepping.
 		float veins = PortalFbm(vec3(q * 2.2 + vec2(warp) * 1.6,

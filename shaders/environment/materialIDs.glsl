@@ -186,6 +186,13 @@ const vec3 PORTAL_RIFT_TINT = vec3(0.67, 0.05, 0.62);
 const vec3 PORTAL_VOID_VIOLET = vec3(0.34, 0.22, 0.62);
 const vec3 PORTAL_VOID_TEAL = vec3(0.10, 0.42, 0.48);
 const vec3 PORTAL_STAR_TINT = vec3(0.80, 0.86, 1.10);
+// The gate's stars are brighter than the sky's AT THE SAME SETTING (batch 619),
+// because they are seen against a lit room rather than against the End's black sky
+// and the author asked for them to read as light rather than as dust. This is a
+// gain ON TOP of END_STAR_BRIGHTNESS, not a replacement for it: the sky option still
+// scales the gate's stars proportionally, so turning the sky's stars down still
+// turns the gate's down.
+const float PORTAL_STAR_GAIN = 1.70;
 
 // The two portal surfaces that are BLOCK ENTITIES keep their numbers raw.
 //
