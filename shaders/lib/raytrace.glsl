@@ -278,3 +278,455 @@ bool Raytrace(
 	// No hit on this iteration, return the valid hit if we had one.
 	return hasHitPos;
 }
+
+// How many bisections the screen-space trace may spend on a hit it has found.
+//
+// The coarse ladder says which interval the surface is in; this says how finely
+// to place the answer inside it. Five halvings take a step-sized interval to a
+// thirty-second of itself, which near the surface is centimetres, and at the
+// far end of the world is about what the depth buffer itself can tell apart out
+// there. It is not an option because it is not a trade: one bisection that is
+// refused costs a depth fetch and changes nothing, and the count that matters
+// for cost is the option above.
+#define SCREEN_REFINEMENT_STEPS 5
+
+// Where a projected coordinate leaves the [-1, 1] box, along a ray.
+//
+// The coordinate is (a + t * da) / (w + t * dw) - the projection's own
+// arithmetic with the division still to be done - and setting it to either edge
+// gives one candidate per edge. Only a positive candidate is anywhere the ray
+// is going, and 1.0e30 is a stand-in for "neither edge": a ray parallel to an
+// edge never leaves it, which is not an error and must not end the march.
+float ScreenEdgeParameter(float a, float w, float da, float dw) {
+	float t = 1.0e30;
+
+	// Declared here rather than inside either branch, and for a reason the
+	// project's harness enforces: a name declared inside a block and read
+	// after it is the shape of the C1503 that shipped in batch 570, and the
+	// check that catches it cannot tell a second declaration in a sibling
+	// block from a leak out of the first. The two branches below assign this
+	// one instead of each declaring their own.
+	float candidate = 0.0;
+
+	float denomination = da - dw;
+	if (denomination != 0.0) {
+		candidate = (w - a) / denomination;
+		if (candidate > 0.0) {
+			t = min(t, candidate);
+		}
+	}
+
+	denomination = da + dw;
+	if (denomination != 0.0) {
+		candidate = (-w - a) / denomination;
+		if (candidate > 0.0) {
+			t = min(t, candidate);
+		}
+	}
+
+	return t;
+}
+
+// One sample of the screen-space ladder: the ray parameter at the point of the
+// march that is a fraction u of the way across the screen.
+//
+// u is a fraction of the SCREEN and not of the ray's length, which is the whole
+// of what makes this ladder different from a march in metres. A screen
+// coordinate is (start + t * direction) / (w + t * dw), so the parameter that
+// puts a sample on it is one rearrangement. Placing the samples evenly in u and
+// then solving each one is what makes them dense over the floor and sparse at
+// the horizon: at a fixed step across the screen, the step across the world
+// grows with the distance.
+//
+// The axis solved from is the one with the longer travel - see the caller - so
+// that neither a ray crossing the screen sideways nor one crossing it
+// vertically runs into a denominator of nearly zero. A ray exactly parallel to
+// that axis has no solution, and the -1 it returns is refused by the caller's
+// forward-progress test.
+float ScreenLadderParameter(
+	vec4 startClip,
+	vec4 directionClip,
+	float startAxis,
+	float endAxis,
+	float startOnAxis,
+	float directionOnAxis,
+	float u
+) {
+	float axis = mix(startAxis, endAxis, u);
+	float axisDenomination = directionClip.w * axis - directionOnAxis;
+
+	if (axisDenomination == 0.0) {
+		return -1.0;
+	}
+
+	return (startOnAxis - axis * startClip.w) / axisDenomination;
+}
+
+// The material reflection's trace, in the screen rather than in the world.
+//
+// Raytrace above marches in metres from the surface, and doubles: a 24-step
+// budget puts its samples at 2, 6, 14, 30, 62, 126 and 254 - seven of them
+// inside a 256-block world, and the rest of the budget past the end of it. That
+// is a water tracer. Water reflects the sky and the land beyond it, both of
+// which are large, and whether a particular step landed on one of them barely
+// matters; a block reflects a block four metres away, which falls between the
+// second and third samples, and whether it is found comes down to whether the
+// depth buffer disagrees with the ray by less than half a step. It usually does
+// not, and the reflection shows sky where the block is.
+//
+// This one marches in the screen instead. Its samples are evenly spaced between
+// the pixel the ray leaves and the pixel it runs into - the edge of the window,
+// or the far plane if it never leaves - so the perspective divide does the
+// spacing: samples crowd together over the floor, where the reflections people
+// look at are, and spread out towards the horizon, where the geometry they
+// would find is hundreds of blocks away and a step can afford to be large.
+// The material reflections are the only caller: water keeps the march above,
+// which is what its own thickness rule and its own history were tuned against.
+//
+// Three other things come from the same place and cannot be separated from it:
+//
+// - The tolerance is the depth one step of this ladder covers, not a number of
+//   metres. A grazing ray covers almost no depth per step and is therefore
+//   tested almost exactly; a ray that runs away from the camera is allowed to
+//   be wrong by the amount its own step is already wrong by, and no more. This
+//   is the difference between a reflection that is missing and one that is
+//   drawn from the wrong place.
+// - A hit is bisected onto the surface before it is sampled, so the colour
+//   that comes back is the surface's own rather than the far side of the step
+//   that went over it. Without this, a coarse ladder trades holes for stretched
+//   reflections instead of closing them.
+// - The ray stops at the edge of the window. There is nothing behind the window
+//   to read, and a sample fetched there is whatever the texture's edge happens
+//   to hold, which reads as a reflection of a place that does not exist.
+//
+// Measured in _team_bfog/ssr_step_model.py, over a cross-section of a world of
+// one-metre steps and walls: of the reflections really present, the world-space
+// ladder at this pack's 24 steps finds 37% and accepts a wrong surface for most
+// of the rest; this one, at the same 24 and with the five bisections above,
+// finds 97%.
+bool ScreenSpaceRaytrace(
+	sampler2D depthBuffer,
+	mat4 gbufferProjection,
+	mat4 gbufferProjectionInverse,
+	vec3 viewPos,
+	vec3 reflectDirection,
+	vec2 windowToNdc,
+	// Where in the first cell of the ladder to start, in [0, 1). See the note
+	// on the ladder below: without this the ladder is a fixed lattice in the
+	// screen, and a lattice plus a point sample is a moire.
+	float dither,
+	out vec2 hitPos,
+	out vec3 hitViewPos
+) {
+	// The same refusal Raytrace makes, for the same reason: a reflection that
+	// points back at the viewer reflects the viewer, and there is no camera in
+	// the depth buffer to find.
+	if (dot(viewPos, reflectDirection) < 0.0) {
+		return false;
+	}
+
+	// The ray in the projection's own coordinates, where a point on it is
+	// start + t * direction with the division by w still to be done. Keeping it
+	// in that form is what lets the march below place a sample at a chosen
+	// screen coordinate exactly: a screen coordinate is a ratio of two of these
+	// components, so solving for the parameter that produces one is a single
+	// linear equation, and nothing has to iterate or approximate to place it.
+	vec4 startClip = gbufferProjection * vec4(viewPos, 1.0);
+	vec4 directionClip = gbufferProjection * vec4(reflectDirection, 0.0);
+
+	if (startClip.w <= 0.0) {
+		return false;
+	}
+
+	// How far the ray may go before it is no longer on the screen: out of the
+	// left or right, out of the top or bottom, past the far plane, or back
+	// through the plane the camera sits on. Whichever comes first ends it.
+	float maxT = min(
+		ScreenEdgeParameter(startClip.x, startClip.w, directionClip.x, directionClip.w),
+		ScreenEdgeParameter(startClip.y, startClip.w, directionClip.y, directionClip.w));
+
+	// The far plane is the projection's own z = 1, which is the same solve.
+	float farDenomination = directionClip.z - directionClip.w;
+	if (farDenomination != 0.0) {
+		float farCandidate = (startClip.w - startClip.z) / farDenomination;
+		if (farCandidate > 0.0) {
+			maxT = min(maxT, farCandidate);
+		}
+	}
+
+	// And the plane through the camera, for a ray that turns back towards it:
+	// past that point its w is negative and every sample of it projects to the
+	// same place.
+	if (directionClip.w < 0.0) {
+		maxT = min(maxT, -startClip.w / directionClip.w);
+	}
+
+	if (!(maxT > 0.0)) {
+		return false;
+	}
+
+	// Nothing in a world is a million blocks away, and a bound that far out
+	// means the solve above found no edge and no far plane for this ray at all.
+	// Marching to it would multiply the clip coordinates by a number that large
+	// and lose every digit worth having.
+	if (maxT > 1.0e6) {
+		return false;
+	}
+
+	vec4 endClip = startClip + directionClip * maxT;
+
+	// The pixel the ray leaves from. A sample that has not left it yet reads
+	// the fragment's own surface, and accepting that would be a reflection of
+	// the surface at its own pixel: invisible at best, and it would end the
+	// march before it went anywhere.
+	vec2 startNdc = startClip.xy / startClip.w;
+
+	// The ladder is even in the SCREEN, and that is the whole difference from
+	// the march above - not "more steps". Placing samples evenly along the ray
+	// in metres is what the world-space ladder already did, and it is why its
+	// second sample is six metres out. Solving each sample's parameter from a
+	// screen coordinate instead is what crowds them onto the floor and lets
+	// them thin out towards the horizon, because that is where a fixed step
+	// across the screen becomes a large step across the world.
+	//
+	// The axis with the longer screen travel is the one solved from, so that a
+	// ray crossing the screen sideways is not solved from a vertical delta of
+	// nearly zero, and vice versa.
+	vec2 endNdc = endClip.xy / endClip.w;
+	bool alongX = abs(endNdc.x - startNdc.x) >= abs(endNdc.y - startNdc.y);
+	float startAxis = alongX ? startNdc.x : startNdc.y;
+	float endAxis = alongX ? endNdc.x : endNdc.y;
+	float startOnAxis = alongX ? startClip.x : startClip.y;
+	float directionOnAxis = alongX ? directionClip.x : directionClip.y;
+
+	// Where the last sample that was still in front of the scene was, so that
+	// a cornered surface can be bisected between the two. In front to begin
+	// with, since the ray starts on a surface and not behind it.
+	float frontU = 0.0;
+	float frontPenetration = 0.0;
+
+	// The view Z of the previous sample, which is what the tolerance below is
+	// measured against. It has to be the step that was actually taken and not
+	// the span divided by the count: this ladder is even in the screen, and one
+	// step near the horizon covers hundreds of times the depth of one step over
+	// the floor. A single average would be metres of slack where the reflections
+	// are and centimetres where they are not.
+	float previousZ = -startClip.w;
+
+	// The first sample the ray went behind anything at, for the fallback at the
+	// end of the function.
+	bool hasBehind = false;
+	float behindU = 0.0;
+
+	for (int i = 1; i <= RAYMARCH_STEPS; i++) {
+		// The ladder, offset by a fraction of a cell that differs per pixel and
+		// per frame. This is not noise for its own sake: the ladder is a fixed
+		// lattice in the screen, each cell is a large step at the far end, and
+		// what the caller does with the answer is a single point sample of the
+		// colour buffer - so without an offset, neighbouring pixels land on the
+		// same lattice points and the reflection shows the lattice as bands.
+		// Offsetting each pixel differently turns a coherent band into
+		// per-pixel noise, which is what the temporal resolve downstream can
+		// average; the three packs that were compared for this all do it.
+		float u = (float(i) - dither) / float(RAYMARCH_STEPS);
+		float sampleT = ScreenLadderParameter(
+			startClip, directionClip,
+			startAxis, endAxis, startOnAxis, directionOnAxis, u);
+
+		// The solve puts the sample where the ladder says, and nothing has
+		// bounded it yet: as the coordinate approaches the point the ray
+		// converges to, the parameter runs away to an infinity the depth buffer
+		// has no answer for. The march was given a bound when it computed where
+		// the ray leaves the screen, and that is what this holds it to.
+		if (!(sampleT > 0.0)) {
+			break;
+		}
+		if (sampleT > maxT) {
+			sampleT = maxT;
+		}
+
+		vec4 sampleClip = startClip + directionClip * sampleT;
+
+		if (sampleClip.w <= 0.0) {
+			break;
+		}
+
+		vec3 sampleNdc = sampleClip.xyz / sampleClip.w;
+		vec2 sampleScreen = sampleNdc.xy * 0.5 + 0.5;
+
+		if (sampleScreen.x < 0.0 || sampleScreen.x > 1.0
+			|| sampleScreen.y < 0.0 || sampleScreen.y > 1.0) {
+			break;
+		}
+
+		float rayZ = -sampleClip.w;
+		float stepDepth = abs(rayZ - previousZ);
+
+		// Still inside the pixel the ray left from, so not yet anywhere. The
+		// depth is carried forward all the same, or the step that does count
+		// would be measured from further back than it really is.
+		//
+		// Two pixels rather than one, because the surface itself is in the depth
+		// buffer and a sample one pixel out is still standing on it: accepting
+		// it draws the surface's own colour as its reflection, which reads as
+		// the reflection being made of the surface. Bliss rejects a hit within
+		// about two thousandths of the screen for the same reason.
+		if (all(lessThan(abs(sampleNdc.xy - startNdc), windowToNdc * 2.0))) {
+			frontU = u;
+			frontPenetration = 0.0;
+			previousZ = rayZ;
+			continue;
+		}
+
+		// What the depth buffer holds at this pixel.
+		float surfaceDepth = texture(depthBuffer, sampleScreen).x;
+
+		// A pixel the world does not cover holds the clear value, and nothing
+		// can be met there. That is not a reason to stop the march: a ray that
+		// passes over the sky and comes back onto the world - over the edge of a
+		// block and onto the wall behind it - still has the rest of the ladder
+		// to walk, and stopping at the first sky pixel is what leaves the
+		// reflection showing sky along every silhouette. The sample is skipped
+		// instead, the way the surface's own pixels are, and the march carries
+		// on.
+		if (surfaceDepth >= 1.0) {
+			frontU = u;
+			frontPenetration = 0.0;
+			previousZ = rayZ;
+			continue;
+		}
+
+		// As a view Z.
+		vec4 surfaceHomogeneous = gbufferProjectionInverse * vec4(
+			sampleNdc.xy,
+			surfaceDepth * 2.0 - 1.0,
+			1.0);
+		float surfaceZ = surfaceHomogeneous.z / surfaceHomogeneous.w;
+
+		// Both are negative, and further from the eye is more negative, so the
+		// ray being behind the surface is the surface's Z being the larger of
+		// the two. How far behind is the penetration.
+		//
+		// The tolerance is the depth this one step covered: a sample is at most
+		// one step behind the surface it has just crossed, so that is what it
+		// takes to accept a crossing. A surface further behind than the step was
+		// deep is not one this ray went through - it is something standing
+		// further away than the place the ray has reached. The floor under it is
+		// for a step so nearly parallel to the screen that it covers no depth at
+		// all: the crossing still has to be inside the interval.
+		float tolerance = max(stepDepth, 0.02);
+		float penetration = surfaceZ - rayZ;
+
+		// A surface the ray has gone behind, remembered in case nothing better
+		// turns up. See the note where it is used, at the end of the function.
+		if (!hasBehind && penetration > 0.0) {
+			hasBehind = true;
+			behindU = u;
+		}
+
+		if (penetration > 0.0 && penetration <= tolerance) {
+			// The surface is somewhere between the last sample in front of it
+			// and this one. Bisect that interval, keeping the two ends apart:
+			// nothing here needs to assume the surface is flat, only that it
+			// was in front at one end and behind at the other.
+			float loU = frontU;
+			float hiU = u;
+
+			// A previous sample that was already behind has left no front end
+			// to bisect towards - the ray went behind this surface in one step
+			// and stayed there - so the coarse sample is the answer. Bisecting
+			// an interval whose both ends are behind would only spend the five
+			// fetches to arrive at the same place.
+			if (frontPenetration <= 0.0) {
+				for (int j = 0; j < SCREEN_REFINEMENT_STEPS; j++) {
+					float midU = 0.5 * (loU + hiU);
+					float midT = ScreenLadderParameter(
+						startClip, directionClip,
+						startAxis, endAxis, startOnAxis, directionOnAxis, midU);
+					vec4 midClip = startClip + directionClip * midT;
+					vec3 midNdc = midClip.xyz / midClip.w;
+					vec2 midScreen = midNdc.xy * 0.5 + 0.5;
+
+					vec4 midHomogeneous = gbufferProjectionInverse * vec4(
+						midNdc.xy,
+						texture(depthBuffer, midScreen).x * 2.0 - 1.0,
+						1.0);
+					float midSurfaceZ = midHomogeneous.z / midHomogeneous.w;
+
+					if (-midClip.w < midSurfaceZ) {
+						hiU = midU; // behind: the surface is nearer than this
+					} else {
+						loU = midU; // in front: it is further than this
+					}
+				}
+			}
+
+			// The near end of the last interval is the crossing itself.
+			float hitT = ScreenLadderParameter(
+				startClip, directionClip,
+				startAxis, endAxis, startOnAxis, directionOnAxis, hiU);
+			vec4 hitClip = startClip + directionClip * min(hitT, maxT);
+			vec3 hitNdc = hitClip.xyz / hitClip.w;
+			vec2 hitScreen = hitNdc.xy * 0.5 + 0.5;
+
+			// The surface's own position, which is what the caller's history
+			// and its edge fade are both about.
+			vec4 hitHomogeneous = gbufferProjectionInverse * vec4(
+				hitNdc.xy,
+				texture(depthBuffer, hitScreen).x * 2.0 - 1.0,
+				1.0);
+
+			hitPos = hitScreen;
+			hitViewPos = hitHomogeneous.xyz / hitHomogeneous.w;
+			return true;
+		}
+
+		frontU = u;
+		frontPenetration = penetration;
+		previousZ = rayZ;
+	}
+
+	// Nothing was crossed cleanly, but the ray did go behind something. Take
+	// that.
+	//
+	// This is the author's decision of 2026-10-22, and it is a trade rather than
+	// a fix. The pixels it serves are the ones at a silhouette: the reflected
+	// ray leaves the surface, immediately leaves what is on screen with it, and
+	// finds nothing at all - so the caller's sky fallback fills them, and every
+	// edge of every block picks up a rim of sky. A surface the ray has gone
+	// behind is at least the thing standing there, so it is a better answer than
+	// the sky even when it is not exactly on the ray. The three packs this was
+	// compared against all make the same trade - Bliss accepts a surface up to
+	// 0.19 to 0.90 of the distance behind the ray, uncapped, which is why its
+	// reflections fill the silhouette and why it stretches.
+	//
+	// Deliberately not bisected. A bisected version of a wrong answer is still a
+	// wrong answer, and the five fetches would buy an edge that is straighter
+	// than the truth deserves; the coarse sample is what the same trade costs
+	// everyone else.
+	if (hasBehind) {
+		float behindT = ScreenLadderParameter(
+			startClip, directionClip,
+			startAxis, endAxis, startOnAxis, directionOnAxis, behindU);
+		vec4 behindClip = startClip + directionClip * min(behindT, maxT);
+		vec3 behindNdc = behindClip.xyz / behindClip.w;
+
+		// Clamped because a sample that landed a thousandth of a pixel outside
+		// would otherwise fetch the texture's edge, which is not a place.
+		vec2 behindScreen = clamp(
+			behindNdc.xy * 0.5 + 0.5,
+			vec2(0.0),
+			vec2(1.0));
+
+		vec4 behindHomogeneous = gbufferProjectionInverse * vec4(
+			behindNdc.xy,
+			texture(depthBuffer, behindScreen).x * 2.0 - 1.0,
+			1.0);
+
+		hitPos = behindScreen;
+		hitViewPos = behindHomogeneous.xyz / behindHomogeneous.w;
+		return true;
+	}
+
+	return false;
+}

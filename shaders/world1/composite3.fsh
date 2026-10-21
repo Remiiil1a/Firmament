@@ -41,6 +41,14 @@
 // reads it, adds the reflection, and writes the result back to it. Nothing here
 // reads colortex4.
 //
+// Recorded, because it was tried and taken back out (BATCH_LOG b621 §14-§17): the
+// reflection was briefly written to colortex9 here and added by the last pass
+// instead, so that a filter could read its neighbours before it was composited.
+// The filter is gone - it softened the mirror's own reflections more than it
+// softened the thing it was added for - and so is the split, because a second
+// pass and a buffer that is only written under an option are both a cost this
+// pass does not need to pay for nothing.
+//
 // An earlier version of this paragraph said composite1 "leaves colortex4 behind
 // unused" and that the reflection traced over it. That was wrong twice over:
 // colortex4 is not the resolved frame, and the include reads colortex3.
@@ -70,6 +78,17 @@ uniform sampler2D colortex2;
 // The depth of the surface each pixel shows, translucents included. It is the
 // one the reflection's "is this pixel seen through water" test needs.
 uniform sampler2D depthtex0;
+
+// The held item's depth, which the opaque buffer knows nothing about.
+//
+// The hand is drawn over the world after the opaque pass, and it writes its own
+// depth buffer rather than depthtex1 - so at a pixel the hand covers, depthtex1
+// still describes the surface BEHIND it. A reflection computed from that surface
+// and added to the pixel lands on the hand, which is how a held iron block came
+// to be shaded with the floor's reflection. Once the composite below started
+// replacing rather than adding, it also scaled the hand's own colour down by that
+// reflection's weight, and the item went dark.
+uniform sampler2D depthtex2;
 
 uniform mat4 gbufferProjectionInverse;
 
@@ -169,7 +188,13 @@ void main() {
 		// which is a reflection of the wrong thing from the wrong place.
 		float reflectionDepth = texelFetch(depthtex1, pixel, 0).r;
 
-		if (reflectionDepth < 1.0) {
+		// Whether the hand is in front of whatever this pixel's opaque depth
+		// describes - see the note on depthtex2 above. A pixel the item covers is
+		// the item's to shade, and no reflection of the world behind it may be
+		// computed for it, let alone replace any of its colour.
+		bool handInFront = texelFetch(depthtex2, pixel, 0).r < reflectionDepth;
+
+		if (reflectionDepth < 1.0 && !handInFront) {
 			vec3 reflectionNdc = vec3(
 				gl_FragCoord.xy * windowToNdc,
 				reflectionDepth * 2.0) - 1.0;
@@ -189,10 +214,26 @@ void main() {
 			bool seenThrough = texelFetch(depthtex0, pixel, 0).r
 				< texelFetch(depthtex1, pixel, 0).r;
 
+			// How much of the environment this pixel takes, as a colour, out of
+			// the function as well as the colour it takes: with energy
+			// conservation on, that fraction is what the reflection replaces in
+			// the picture below rather than something added to it.
+			vec3 reflectionWeight;
+
+			// Whether the trace found the world, and how far away what it found
+			// was. Both are read by the reflection debug view below, which marks
+			// the pixels that fell back to the sky in red and the hits that are
+			// close enough to be this block's own geometry in green.
+			bool reflectionHit;
+			float reflectionHitDistance;
+
 			vec3 environmentReflection = EnvironmentReflection(
 				reflectionViewPos,
 				texelFetch(colortex2, pixel, 0).r,
-				seenThrough);
+				seenThrough,
+				reflectionWeight,
+				reflectionHit,
+				reflectionHitDistance);
 
 			// How far from the eye this reflection was worked out, which is what
 			// the next frame compares its own distance against. A distance
@@ -336,7 +377,50 @@ void main() {
 			// amount of looking at the picture tells them apart. See
 			// PBR_DEBUG_REFLECTION in pbr.glsl, and its entry in the lang files.
 			#if PBR_DEBUG == PBR_DEBUG_REFLECTION
-				resolved = environmentReflection * 4.0;
+				// ⚠️ The mark, which is how a boundary in this reflection was
+				// finally told apart from content in it.
+				//
+				//   red   - the trace found NOTHING and the pixel shows the sky
+				//   green - the trace found something very close to the fragment,
+				//           which is this block's own geometry (a groove wall, a
+				//           bevel lip) and is not reflected any more
+				//   none  - the trace found the world, and what is shown is the
+				//           reflection itself
+				//
+				// Four rounds of reading code could not answer which of those a line
+				// was; one screenshot of this view did.
+				vec3 reflectionMark = vec3(0.0);
+
+				if (!reflectionHit) {
+					reflectionMark = vec3(0.35, 0.0, 0.0);
+				} else if (reflectionHitDistance < PBR_MIN_REFLECTION_DISTANCE) {
+					reflectionMark = vec3(0.0, 0.35, 0.0);
+				}
+
+				resolved = environmentReflection * 4.0 + reflectionMark;
+			#elif defined(PBR_ENERGY_CONSERVATION)
+				// The reflection REPLACES the fraction of the picture it stands
+				// for instead of being added to it.
+				//
+				// This is the difference between a metal and a metal with a white
+				// film over it, and it is the one structural thing the packs this
+				// was compared against do differently: Bliss composites
+				// mix(DarkenedDiffuseLighting, reflection, F0), and the fraction
+				// there is the same Fresnel this pass has already worked out as
+				// `reflectionWeight`.
+				//
+				// Added rather than replaced, a full-strength reflection at a
+				// grazing angle sits on top of a full diffuse response, so the
+				// surface is brighter than the light falling on it and its own
+				// colour is diluted toward the sky's - which is what "washed out"
+				// is, on glass, on emerald and on gold at the same time.
+				//
+				// It rides on PBR_ENERGY_CONSERVATION rather than being
+				// unconditional, because it is the same bargain that option makes
+				// for the direct light, and turning the option off has to give the
+				// old additive look back.
+				resolved = resolved * (vec3(1.0) - reflectionWeight)
+					+ environmentReflection;
 			#else
 				resolved += environmentReflection;
 			#endif

@@ -49,6 +49,39 @@ uniform mat4 gbufferProjection;
 uniform mat4 gbufferModelView;
 
 uniform vec2 windowToNdc;
+
+// How big a step between one pixel and its neighbour counts as an edge, in blocks.
+//
+// Five centimetres: a block edge is a step of a whole block, and the texels either
+// side of it are what the test is looking for, while the flattest face in the game
+// does not step at all. It is the middle of a range where the answer is the same
+// for everything from a groove to a wall corner.
+const float PBR_EDGE_SKY_MARGIN = 0.05;
+
+// The distance from the eye to the surface a depth buffer value describes.
+//
+// The depth buffer holds 1/z interpolated, so a threshold on it directly would be
+// tight close up and useless far away; this undoes the projection's own division.
+// Taken from the third row of the projection, which is where the near and far
+// planes are encoded, so it works for whatever projection the shader was handed.
+float ViewDistanceFromDepth(float depth) {
+	float ndcZ = depth * 2.0 - 1.0;
+	float viewZ = -gbufferProjection[3][2] / (ndcZ + gbufferProjection[2][2]);
+
+	// The sign depends on the projection's handedness; the distance does not.
+	return abs(viewZ);
+}
+
+// How close a hit has to be to the fragment before it counts as this block's own
+// geometry rather than as something being reflected, in blocks.
+//
+// Half a block: a groove between two tiles is a sixteenth of one deep and a bevel
+// is a few centimetres, while the nearest thing a surface legitimately reflects -
+// a wall across a corridor - is a metre or more away. Anything in between is a
+// cliff face, where being wrong costs a reflection nobody can tell is missing.
+const float PBR_MIN_REFLECTION_DISTANCE = 0.5;
+
+
 // The environment this fragment reflects, in linear RGB.
 //
 // Zero wherever there is nothing to reflect anything - see
@@ -64,10 +97,26 @@ uniform vec2 windowToNdc;
 //   translucent - water, ice, glass. The caller answers it because it is a
 //   question about the two depth buffers, and only the caller has both; see
 //   the note on it below for what it is for.
+// reflectionWeightOut: how much of the environment this pixel ends up taking, as
+//   a colour. The caller uses it to take that fraction *out* of the picture
+//   under PBR_ENERGY_CONSERVATION, so that the reflection replaces the light it
+//   stands for instead of being added on top of it. See the note on it where it
+//   is filled in.
+// reflectionHitOut: whether the trace found the world at all. Read by the
+//   reflection debug view, which paints the pixels that fell back to the sky:
+//   that is how a boundary in the reflection is told apart from a boundary in
+//   the material without guessing, which took several rounds to learn.
+// reflectionHitDistanceOut: how far from the fragment the hit was, in blocks, and
+//   zero where there was no hit. Used by the same debug view to mark the hits
+//   that are near enough to be this block's own geometry, and by the body to
+//   refuse them.
 vec3 EnvironmentReflection(
 	vec3 viewPos,
 	float skyLight,
-	bool seenThrough
+	bool seenThrough,
+	out vec3 reflectionWeightOut,
+	out bool reflectionHitOut,
+	out float reflectionHitDistanceOut
 ) {
 	#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
 		// A fragment that is being seen through something translucent is given
@@ -95,6 +144,10 @@ vec3 EnvironmentReflection(
 		// there - which is exactly when this happens, and exactly when a
 		// reflection drawn here would be drawn in the wrong place.
 		if (seenThrough) {
+			reflectionWeightOut = vec3(0.0);
+
+			reflectionHitOut = false;
+			reflectionHitDistanceOut = 0.0;
 			return vec3(0.0);
 		}
 
@@ -118,6 +171,10 @@ vec3 EnvironmentReflection(
 		float metalness = step(0.5, metalID);
 
 		if (!PbrReflectionPossible(worldNormal, roughness, f0)) {
+			reflectionWeightOut = vec3(0.0);
+
+			reflectionHitOut = false;
+			reflectionHitDistanceOut = 0.0;
 			return vec3(0.0);
 		}
 
@@ -130,6 +187,10 @@ vec3 EnvironmentReflection(
 		float reflectionWeight = PbrReflectionSmoothness(roughness, metalness);
 
 		if (reflectionWeight <= 1.0e-4) {
+			reflectionWeightOut = vec3(0.0);
+
+			reflectionHitOut = false;
+			reflectionHitDistanceOut = 0.0;
 			return vec3(0.0);
 		}
 
@@ -243,21 +304,76 @@ vec3 EnvironmentReflection(
 				vec2 hitPos;
 				vec3 hitViewPos;
 
-				// Tracing the reflected ray through the depth buffer finds
-				// whatever is on screen along it. The thickness control is the
-				// tolerance for accepting a hit: a surface as smooth as this one
-				// shows every artefact of a stretched reflection, so it is kept
-				// tight.
-				if (Raytrace(
+				// The trace itself is ScreenSpaceRaytrace, in lib/raytrace.glsl,
+				// and the note at its head is where the reason it is not the
+				// world-space Raytrace lives. In one line: what has to be found
+				// here is a block four metres away, and a ladder that doubles
+				// puts its second sample at six and its third at fourteen.
+				//
+				// windowToNdc is handed over because the trace needs to know
+				// where one pixel ends and the next begins: the fragment's own
+				// surface is in the depth buffer too, and a sample that has not
+				// left the pixel the ray started from is still standing on it.
+				// Where in the first cell of the ladder this pixel starts, and
+				// it has to move from frame to frame as well as from pixel to
+				// pixel. The note at the head of the trace says why a fixed
+				// starting point is not good enough; this is the value that
+				// makes it not fixed. The frame term walks by the golden ratio,
+				// so the sequence does not repeat on a short cycle and the
+				// reflection's own temporal resolve averages the lattice away
+				// instead of reinforcing it.
+				float traceDither = fract(
+					Bayer8(gl_FragCoord.xy) * 1.32
+					+ float(frameCounter) * 0.618034);
+
+				if (ScreenSpaceRaytrace(
 					depthtex1,
 					gbufferProjection,
 					gbufferProjectionInverse,
 					viewPos,
 					mat3(gbufferModelView) * worldReflected,
-					vec2(0.5, 1.0),
+					windowToNdc,
+					traceDither,
 					hitPos,
 					hitViewPos
 				)) {
+					reflectionHitOut = true;
+					reflectionHitDistanceOut = length(hitViewPos - viewPos);
+
+					// ⚠️ A hit THIS close to the fragment is the block's own
+					// geometry, and reflecting it draws a one-pixel bright line along
+					// every block edge.
+					//
+					// This is the conclusion the debug view finally made possible: the
+					// lines were not red, so they are hits and not fallbacks - the
+					// trace really does find something there - and what it finds is a
+					// surface a few centimetres away: the wall of the groove between
+					// two tiles, the lip of a bevel. Those are thin on screen and lit
+					// by the open sky above them, so a mirror floor shows them as a
+					// bright line, and the trace is answering correctly about
+					// something the surface should not be reflecting at all.
+					//
+					// Refused rather than hidden: with no reflection the pixel keeps
+					// its own shading, which under energy conservation is what a
+					// weight of zero means. Returning the sky instead - which is what
+					// the distance test of 2026-09-22 did - is the mistake that made
+					// the line wider.
+					//
+					// Note what this is NOT: that test compared the hit's distance
+					// from the CAMERA with the fragment's, and so threw away every
+					// legitimate hit that happened to sit nearer the camera than the
+					// surface it was reflected in - whole plateaus lost their
+					// reflection. This compares the hit's distance from the FRAGMENT,
+					// which is a question about the geometry being reflected and not
+					// about where the camera stands.
+					if (reflectionHitDistanceOut < PBR_MIN_REFLECTION_DISTANCE) {
+						reflectionWeightOut = vec3(0.0);
+						reflectionHitOut = false;
+						reflectionHitDistanceOut = 0.0;
+
+						return vec3(0.0);
+					}
+
 					// Removed 2026-09-22: the test that stood beside the call
 					// above, `length(hitViewPos) > length(viewPos)`. This is
 					// why it went, what is drawn without it, and what to look
@@ -356,6 +472,70 @@ vec3 EnvironmentReflection(
 			}
 		#endif
 
+		#if defined(PBR_SSR)
+			// ⚠️ A miss beside a depth step is not the surface's environment, it is
+			// a hole in the trace, and it shows as a line the colour of the sky.
+			//
+			// This is what the whole seam was. The clue that settled it came from
+			// the author looking at a SMP dusk: the line was the colour of the
+			// sunset, so it was the SKY - the trace failing and falling back - and
+			// not a highlight, not a self-hit and not reflection content. It reads
+			// as a line because a miss is a one-pixel-wide event: at the depth step
+			// between two blocks the ladder steps over the neighbour entirely, the
+			// trace finds nothing, and that fragment alone shows sky while the ones
+			// beside it show the world.
+			//
+			// So the sky is not used when the fragment sits on an edge. Refused
+			// rather than dimmed: with no reflection the pixel keeps its own
+			// shading, and a block edge that is not reflecting is invisible
+			// against a block edge that is, while a sky-coloured line is the most
+			// visible thing in the frame.
+			//
+			// The test is on the linear distance to the surface each neighbour
+			// shows, not on the raw depth value: raw depth is not linear in
+			// distance, so a threshold on it would be tight close up and useless far
+			// away. Five centimetres separates the two sides of a block edge from
+			// the texels either side of it, and nothing else on a flat face.
+			if (!reflectionHitOut) {
+				ivec2 centrePixel = ivec2(gl_FragCoord.xy);
+				ivec2 frameSize = ivec2(textureSize(depthtex1, 0));
+
+				float centreDistance = ViewDistanceFromDepth(
+					texelFetch(depthtex1, centrePixel, 0).r);
+
+				// The four neighbours along the axes. Written out rather than
+				// indexed from an array so that the loop has no array to build:
+				// this runs on every missed pixel of every reflective surface.
+				float worstStep = 0.0;
+
+				for (int i = 0; i < 4; i++) {
+					ivec2 offset = ivec2(0);
+					if (i == 0) offset = ivec2(-1, 0);
+					if (i == 1) offset = ivec2(1, 0);
+					if (i == 2) offset = ivec2(0, -1);
+					if (i == 3) offset = ivec2(0, 1);
+
+					ivec2 neighbourPixel = clamp(
+						centrePixel + offset,
+						ivec2(0),
+						frameSize - 1);
+
+					float neighbourDistance = ViewDistanceFromDepth(
+						texelFetch(depthtex1, neighbourPixel, 0).r);
+
+					worstStep = max(
+						worstStep,
+						abs(neighbourDistance - centreDistance));
+				}
+
+				if (worstStep > PBR_EDGE_SKY_MARGIN) {
+					reflectionWeightOut = vec3(0.0);
+
+					return vec3(0.0);
+				}
+			}
+		#endif
+
 		// The smoothness gate is the one that decides whether this surface
 		// reflects anything at all - see PbrReflectionSmoothness. It scales the
 		// traced result as well as the sky, because both are answering the same
@@ -373,11 +553,47 @@ vec3 EnvironmentReflection(
 			PBR_METAL_REFLECTION_STRENGTH,
 			metalness);
 
-		return strength
+		// Nothing to reflect is not the same as reflecting black.
+		//
+		// The weight below is what the caller takes OUT of the picture when it
+		// replaces instead of adding, so it may only be as large as what the
+		// reflection actually brings back. Indoors, underground and wherever the
+		// sky is out of sight, the environment here is nothing at all - and a
+		// weight of nearly one against an environment of zero is a surface
+		// multiplied towards black and given nothing in its place. That is what
+		// happened to metals: their Fresnel is high at every angle, so they lost
+		// most of their own light to a reflection that had no light in it.
+		//
+		// The floor is a luminance of a fiftieth, which is the point where a
+		// reflection stops being able to stand in for a surface's own colour.
+		float environmentLuminance = dot(
+			environment,
+			vec3(0.2126, 0.7152, 0.0722));
+		float environmentPresent = smoothstep(0.0, 0.02, environmentLuminance);
+
+		// How much of the environment this surface takes, as a colour, before the
+		// environment itself is multiplied in.
+		//
+		// Reported separately as well as used below, because the caller needs it:
+		// with PBR_ENERGY_CONSERVATION on, the reflection REPLACES that fraction
+		// of the picture instead of being added to it, which is the difference
+		// between a metal and a metal with a white film over it. Bliss composites
+		// the same way - mix(DarkenedDiffuseLighting, reflection, F0) - and it is
+		// why its metals stay the colour of their metal.
+		vec3 weight = strength
 			* PbrReflectionFresnel(f0, PbrMetalF82(metalID), NdotV, roughness)
 			* reflectionWeight
-			* environment;
+			* environmentPresent;
+		reflectionWeightOut = clamp(weight, vec3(0.0), vec3(1.0));
+
+		return weight * environment;
 	#else
+		// Nothing here reflects anything, so nothing may be taken out of the
+		// picture in its name either.
+		reflectionWeightOut = vec3(0.0);
+
+		reflectionHitOut = false;
+		reflectionHitDistanceOut = 0.0;
 		return vec3(0.0);
 	#endif
 }

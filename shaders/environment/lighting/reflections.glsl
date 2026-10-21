@@ -41,6 +41,61 @@
 // reaches the fragment - is written into the buffers by the programs that draw
 // surfaces and read back here; see the material outputs at the bottom of lit.fsh.
 
+// A normal that can be reflected around.
+//
+// This is outside the option guard below because the material buffers are written
+// whether or not the reflection is on - see the note on the writes at the bottom of
+// lit.fsh - and this is applied on the way in.
+//
+// The normal map is free to point anywhere, and at the outermost texels of a block
+// sprite most packs put a bevel that tilts it outward by twenty degrees or more. On
+// a floor seen at a shallow angle that is enough to turn it past the eye: N·V goes
+// negative, and everything downstream reads that as the most extreme grazing angle
+// there is rather than as "this texel is not facing you".
+//
+// Two things follow from that, and together they are the bright line along every
+// block edge - recorded in BATCH_LOG b621 section 31, measured in
+// _team_bfog/bevel_facing_model.py:
+//
+//   * Fresnel is asked for the reflectance at a grazing angle and answers with its
+//     maximum, 1.0 - a full mirror - where the texel next door answers with the few
+//     percent a floor actually reflects. 1.7x brighter at six degrees of camera
+//     elevation, 2.4x at ten, 6.3x at twenty.
+//   * reflect() sends the ray INTO the surface, and the sky model clamps every
+//     direction below the horizon onto the horizon, which is the brightest ring of
+//     the sky. That is why the line is the colour of the sky and follows it through
+//     the day: it was the sunset at dusk.
+//
+// So the mapped normal is pulled back towards the face it is painted on as it turns
+// edge-on, and left alone everywhere else. The blend is keyed on the GEOMETRIC
+// visibility rather than on a fixed threshold, which is what makes it safe to apply
+// to every surface: a bump tilted three degrees - which is what a normal map is for
+// - is pulled back by exactly nothing at any viewing angle, because the two numbers
+// below are measured in the same units, while a bevel that has turned past half of
+// the face's own visibility is pulled most of the way back to the face.
+//
+// The alternative, refusing the reflection where the mapped normal faces away, was
+// considered and rejected: it turns a bright one-pixel line into a one-pixel band of
+// no reflection, which is the same artefact in a different colour.
+vec3 PbrVisibleNormal(
+	vec3 mappedNormal,
+	vec3 faceNormal,
+	vec3 viewDirection
+) {
+	float faceVisibility = dot(faceNormal, viewDirection);
+	float mappedVisibility = dot(mappedNormal, viewDirection);
+
+	// The half is the whole design: a normal within half of the face's own
+	// visibility is left completely alone, and only a texel that has turned further
+	// than that is pulled towards the face at all.
+	float pull = 1.0 - smoothstep(
+		0.0,
+		max(0.5 * faceVisibility, 1.0e-3),
+		mappedVisibility);
+
+	return normalize(mix(mappedNormal, faceNormal, pull));
+}
+
 #if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
 
 	// The direction the environment is sampled in, in world space.

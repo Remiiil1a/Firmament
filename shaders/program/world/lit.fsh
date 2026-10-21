@@ -1630,7 +1630,35 @@ void main() {
 			// Hand the material on to the environment reflection, which the
 			// deferred pass applies. Set after the albedo is resolved so that a
 			// metal reflects with the colour it actually has.
-			reflectionNormal = pbrNormal;
+			//
+			// ⚠️ The normal goes through PbrVisibleNormal on the way out, which
+			// pulls a mapped normal back towards the face it is painted on as it
+			// turns past the eye. A bevel texel that faces away from the viewer
+			// otherwise reflects at full Fresnel along a ray that points into the
+			// floor, and that is the line the colour of the sky along every block
+			// edge: see the note on the function, and BATCH_LOG b621 section 31.
+			// ⚠️ Only where the reflection exists. reflections.glsl is included
+			// under this same pair of options - see its include at the top of this
+			// file - so with both off the function is not there to call, and the
+			// state with both off is reachable: the sky half is off by default and
+			// the screen-space half is on, so turning the screen-space half off is
+			// exactly it.
+			//
+			// That combination compiled nowhere in this project's own checks: the
+			// shipped configuration has PBR_SSR on, so the default run never saw
+			// it, and the check that would have - a run with PBR_SSR forced off -
+			// was the one not run alongside this change. It was found in game, as a
+			// C1503 on PbrVisibleNormal in every terrain program.
+			#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
+				reflectionNormal = PbrVisibleNormal(
+					pbrNormal,
+					worldNormal,
+					normalize(-cameraRelativePos));
+			#else
+				// Nothing reads the material buffer with both off, so the value
+				// written is the unadjusted normal it always was.
+				reflectionNormal = pbrNormal;
+			#endif
 			reflectionRoughness = pbr.roughness;
 			reflectionF0 = pbr.f0;
 			reflectionMetalID = pbr.metalID;

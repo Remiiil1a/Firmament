@@ -949,6 +949,11 @@ vec3 DiffuseLightingImpl(
 	// is removed in the colour it was added in, rather than in white.
 	specularColor = specular * directLightColor * shadowTint;
 
+	// The sun's own highlight, before the environment stand-in below is added to
+	// the same variable. Only this one is taken back out of the albedo multiply
+	// at the end - see the note there.
+	vec3 directHighlight = specularColor;
+
 	#if defined(PBR_SURFACE) && defined(PBR_SPECULAR)
 		// Ice is left out while PBR_TRANSLUCENT is on: its reflections are drawn
 		// by TranslucentLighting, which has both a direction and a screen-space
@@ -999,7 +1004,22 @@ vec3 DiffuseLightingImpl(
 
 	// Emission is deliberately not added here: it is added by the caller, so
 	// that everything that glows goes through one place. See lit.fsh.
-	return surfaceColor * lighting;
+	//
+	// ⚠️ Only the SUN's highlight is taken back out of the albedo multiply, and
+	// put back tinted the way the material itself tints it - white for a
+	// dielectric, the surface colour for a metal. That is what Bliss does with
+	// its metalAlbedoTint (lib/specular.glsl:370), and it is right for a
+	// highlight: it is the light source seen in the surface, and a dielectric
+	// does not colour the light it reflects.
+	//
+	// ⚠️ The environment stand-in is deliberately NOT treated that way. It
+	// stands in for the light around the fragment rather than for a source, and
+	// taking it out of the albedo multiply turns it into a white wash over every
+	// dark material - which is what it did: at night and in the Nether, where
+	// there is no sun to make a highlight and all that is left is that stand-in,
+	// every surface went pale. It stays inside the multiply, as it always was.
+	return surfaceColor * (lighting - directHighlight)
+		+ directHighlight * mix(vec3(1.0), surfaceColor, pbr.metalness);
 }
 
 // Lighting for everything that has no PBR material data: entities, held items,

@@ -131,6 +131,23 @@
 // and Steadfast tonemaps its highlights down on top of that, so a physically
 // correct highlight is far less visible than most people expect from a
 // "reflective" material. Raise this if materials still look flat.
+//
+// ⚠️ 2.0 as of batch 621 section 33, chosen by eye by the author after comparing
+// 1.0 and 2.0 in game. The history matters more than the number:
+//
+//   * 2.0 was the shipped value for a long time, with energy conservation off - a
+//     highlight doubled to survive the tonemapper, on a body with no budget for it.
+//   * 1.0 arrived with energy conservation switched ON, as the pair that balances.
+//     It is the physically consistent setting, and what it costs is visible: iron,
+//     gold and copper went a step dark, because a metal has no diffuse response
+//     here and this number scales the only light it has besides its reflection.
+//   * 2.0 is back, with conservation still on. That combination is deliberately
+//     over budget - the surface reflects more than arrives - which is what makes
+//     the metals read the way the author wants. It is a look, not a physics claim.
+//
+// 1.0 plus conservation remains the balanced pair, and it is one constant away; if
+// the over-budget highlight ever starts reading as the crystal it did before, that
+// is the value to compare against.
 #define PBR_SPECULAR_STRENGTH 2.0 // [1.0 1.25 1.5 2.0 2.5 3.0 4.0 6.0]
 
 // How big the sun and the moon are, as far as the highlight they make on a
@@ -150,7 +167,16 @@
 //
 // Only the highlight is affected. The sun and moon drawn in the sky are a disc
 // of their own and do not change size with this.
-#define PBR_LIGHT_SIZE 1.0 // [0.0 1.0 2.0 3.0 4.0 6.0 8.0]
+//
+// ⚠️ 4.0 as of batch 621 section 33, chosen by eye by the author alongside the
+// specular strength above. It is the "exaggerated for the look of it" use the
+// paragraph above describes, not the real angular size: at 4.0 the disc a polished
+// block shows is about two degrees across instead of half, which is what makes a
+// highlight read as a highlight at Minecraft's field of view rather than as a
+// single blown pixel. It is also what the two settings were tuned against - the
+// strength above and this one together - so changing one alone will move the look
+// out from under the other.
+#define PBR_LIGHT_SIZE 4.0 // [0.0 1.0 2.0 3.0 4.0 6.0 8.0]
 
 // Whether to weight the diffuse light by the part of it that the surface did
 // not reflect, which is what keeps diffuse and specular from adding up to more
@@ -160,20 +186,21 @@
 // the light that hits it and lets the rest through into the material, and that
 // transmitted part is what the diffuse response is made of. Steadfast adds the
 // two together without that split, which is why a shiny surface can be brighter
-// than the light falling on it, and why a metal - which reflects most of the
-// light and should have almost no diffuse response at all - still takes half a
-// diffuse response and reads as shiny plastic rather than as metal.
+// than the light falling on it.
 //
-// Off by default because it changes the brightness of everything with a
-// specular map at once. Turning it on is worth pairing with a specular strength
-// of 1.0 above: that is the value at which the budget is balanced, and 2.0 was
-// only ever a way of fighting the tonemapper without it.
+// ⚠️ ON by default since batch 621, paired with a specular strength of 1.0
+// above. It was off while the highlight was doubled to make it visible at all,
+// and the two together are what the author described from a world of LabPBR
+// materials: iron that reads as a crystal rather than as metal. With the budget
+// in place the doubled highlight is simply twice the light that arrived, which
+// is exactly the look being reported.
 //
 // Note that this makes bright metals (gold, silver, aluminium) noticeably
 // darker in caves and at night, which is correct - a metal that is not reflecting
-// anything and is not lit by anything is dark - but it is a large enough change
-// in look to be worth trying rather than assuming.
-//#define PBR_ENERGY_CONSERVATION
+// anything and is not lit by anything is dark - and that is the part of this
+// change most likely to be noticed. 0.0 here and a strength of 2.0 above is the
+// old behaviour, if the look needs to go back.
+#define PBR_ENERGY_CONSERVATION
 #ifdef PBR_ENERGY_CONSERVATION
 	// The test below is what makes Iris
 	// register this as a boolean option. The actual use is in diffuse.glsl.
@@ -1290,9 +1317,31 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 
 		tangent = normalize(tangent);
 
-		vec3 bitangent = cross(tangent, worldNormal) * worldTangent.w;
+		// w is the handedness and nothing else, so it may only decide the sign
+		// of the second axis. Multiplying by it raw makes the axis as long as
+		// w is, and a loader that writes 0 where it could not decide - which
+		// Iris itself warns about - would then scale the axis to nothing and
+		// take the normal map's green channel with it, leaving a surface that
+		// has relief in one direction only.
+		vec3 bitangent = cross(tangent, worldNormal)
+			* (worldTangent.w < 0.0 ? -1.0 : 1.0);
 
-		return mat3(tangent, bitangent, worldNormal);
+		// A tangent parallel to the normal leaves no second axis to build, and
+		// the frame would be two axes and a hole.
+		float bitangentLength = dot(bitangent, bitangent);
+
+		if (bitangentLength < 1.0e-8) {
+			return PbrCotangentFrame(worldNormal, gradients);
+		}
+
+		// Unit length so that the frame is a rotation: the cross product of two
+		// unit vectors is only unit when they are perpendicular, and a decoded
+		// normal turned by a frame that scales one axis comes out at the wrong
+		// angle rather than at a wrong scale.
+		return mat3(
+			tangent,
+			bitangent * inversesqrt(bitangentLength),
+			worldNormal);
 	}
 #endif
 
@@ -1327,6 +1376,23 @@ vec3 PbrNormal(mat3 frame, vec2 texCoord, PbrGradients gradients) {
 		return frame[2];
 	#else
 		vec2 tangentNormalXY = PbrTangentNormalXY(texCoord, gradients);
+
+		// A texel with no normal map in it decodes to (-1, -1): length sqrt(2),
+		// so 1 - dot is negative and the Z below clamps to zero. That is not a
+		// flat normal by any reading - it is a 45 degree bend along the tangent
+		// plane, in a fixed direction, which lights every unmapped surface from
+		// the same diagonal whatever the sun does. The blank atlas texel beside
+		// a sprite decodes the same way, and a sample that reaches it does the
+		// same thing to the band of the face it covers.
+		//
+		// LabPBR's own formula has no answer here - the square root is of a
+		// negative number - so a surface with no normal to give has to fall
+		// back to the face normal it already had, which is what the reference
+		// packs do (Sundial starts from the geometric normal and overwrites it
+		// only when a map supplies one).
+		if (dot(tangentNormalXY, tangentNormalXY) > 1.0 + 1.0e-4) {
+			return frame[2];
+		}
 
 		// Past a certain distance the normal map is finer than a pixel, so the
 		// perturbation it describes cannot be resolved and sampling it only
