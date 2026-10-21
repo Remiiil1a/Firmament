@@ -52,6 +52,12 @@ screenshots are kept in the repository and are not part of the download.
   ground in the colour of the pane, and a nether portal tints the light around it
   with its own glow. How much colour the light takes on is a setting, and the
   portal's glow can be switched off on its own.
+* **Portal surfaces** - the nether portal is drawn as a body of violet plasma with
+  real parallax, and the end portal and the end gateway as a void full of stars that
+  fade on their own phases, instead of the game's scrolling textures. The colour
+  follows the vanilla portal particles. Each of the three has a switch of its own,
+  and the gate's stars answer to the same four settings that draw the End sky's
+  stars. **The nether gate ships off**; the two end surfaces ship on.
 * **Volumetric light, above and below the waterline** - the light shafts are drawn
   under water as well, running along the same light axis as the ones above it, and
   brightened where the ripples on the surface gather them. Their strength is a
@@ -122,8 +128,10 @@ screenshots are kept in the repository and are not part of the download.
 
 ## Installation
 
-1. Drop `Firmament-v1.0.3-edit-of-coderbot-Steadfast.zip` into `.minecraft/shaderpacks/`.
-   Do not unzip it.
+1. Download the **latest release** - the newest zip on the project's releases page -
+   and drop it into `.minecraft/shaderpacks/`. Do not unzip it, and do not rename it:
+   the file name must keep ending in `-edit-of-coderbot-Steadfast` (see the licence
+   below).
 2. Pick it in **Video Settings → Shader Packs**.
 3. In the shader options, `Materials (PBR) → Material format` follows the
    resource pack: leave it on `LabPBR` if you use one, set it to `Off` if not.
@@ -147,6 +155,9 @@ screenshots are kept in the repository and are not part of the download.
 * **The glint option only ever makes the sparkle brighter.** It cannot recolour
   it: Minecraft multiplies the enchantment's colour in before this pack sees the
   layer, so any second colour could only take light away.
+* **The nether portal's surface ships off**, by the author's choice rather than by
+  accident: it is the one of the three whose look was least settled.
+  `Portals → Nether portal surface` turns it on.
 * Everything in `NOTICE.md` about what is and is not covered by Steadfast.
 
 ## Credits

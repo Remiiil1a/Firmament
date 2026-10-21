@@ -16,6 +16,51 @@ report problems in this project, not in Steadfast's.
 
 ---
 
+## v1.0.4 - 2026-10-21
+
+The nether portal, the end portal and the end gateway are drawn by the pack now,
+instead of by the game's scrolling textures. Each of the three has a switch of its
+own, and the two end surfaces' stars are drawn by the same four settings that draw
+the End sky's, so the gate cannot drift away from the sky above it.
+
+### Added
+
+* **Portal surfaces** - the nether portal is a body of violet plasma with real depth;
+  the end portal and the end gateway are a void full of stars that fade on their own
+  phases. The colour comes from the vanilla portal particles, so the door still
+  belongs to the game's own palette. Three switches, one per surface: **the nether
+  gate ships off**, the two end surfaces ship on.
+* **A Portals page in the shader options** with those switches, the portal's own
+  light spread and an identification view that paints the three surfaces flat.
+* **The gate's stars answer to the End sky's settings** - `END_STAR_DENSITY`,
+  `END_STAR_SIZE`, `END_STAR_BRIGHTNESS` and `END_STAR_TINT` draw the gate's stars as
+  well as the sky's. A gain on the pack's side keeps them reading as light against a
+  lit room rather than as dust against a black sky.
+* **The portal's light can still spread onto the ground** - the coloured glow around a
+  portal is a switch of its own, off by default.
+
+### Changed
+
+* The nether portal's surface is a **volume integrated along the view ray** rather
+  than a stack of layers: the samples crowd towards the surface, the way the pack's
+  own PBR parallax march does, and the far end is denser and dimmer.
+* The three surfaces have **real parallax**: each layer is offset by the view's slope
+  through the surface, in proportion to its depth. A surface that never moved with
+  the view was tried and judged flat.
+
+### Fixed
+
+* Turning a portal surface off no longer makes the shader fail to compile: the
+  include a surface needed was removed with the option while the code that used it
+  stayed.
+* The nether portal no longer shows the terrain and the volumetric fog through it: it
+  marks itself as a boundary of the medium, the same mark water already writes.
+* The end gate no longer goes black away from the world origin: its star field is
+  sampled in the surface's own world position, so a distant gate no longer falls
+  inside a single star cell.
+* The surface no longer turns a little further with each step as the player moves;
+  what moves now is the deliberate parallax.
+
 ## v1.0.3 - 2026-10-18
 
 The volumetric fog and the volumetric light, rebuilt. What shipped in v1.0.2 was a

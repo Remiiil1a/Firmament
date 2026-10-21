@@ -34,7 +34,7 @@ Those same terms also require, for any modified version:
   modified version anywhere else;
 * that the **file name include the same thing**, for which the terms suggest the
   suffix `-edit-of-coderbot-Steadfast` - hence
-  `Firmament-v1.0.3-edit-of-coderbot-Steadfast.zip`;
+  `Firmament-<version>-edit-of-coderbot-Steadfast.zip`;
 * that the GPL and those terms are kept, and that nothing suggests this is an
   official Steadfast release. **It is not.** coderbot does not support it, and
   bug reports about it do not belong in Steadfast's issue tracker.
@@ -519,6 +519,25 @@ files in full.
   include inside a branch the build compiles away, a form feed in a comment, a
   four-component constructor given two components, and a float assigned from a
   function returning a vector.
+
+**Changed in v1.0.4**
+
+* The nether portal, the end portal and the end gateway are drawn by the pack: three
+  surfaces, three switches, each with real parallax. The nether gate ships off.
+* The two end surfaces' stars are drawn by the same four settings that draw the End
+  sky's stars (`END_STAR_DENSITY`, `END_STAR_SIZE`, `END_STAR_BRIGHTNESS`,
+  `END_STAR_TINT`), with a gain on the pack's side so they read as light rather than
+  as dust.
+
+**Fixed in v1.0.4**
+
+* Turning a portal surface off no longer fails to compile: the include a surface
+  needed was removed with the option while the code that used it stayed.
+* The nether portal no longer shows the terrain and the volumetric fog behind it: it
+  marks itself as a boundary of the medium, the mark water already writes.
+* The end gate no longer renders black away from the world origin: its star field is
+  sampled in the surface's own world position rather than in a coordinate a distant
+  gate barely varies across.
 
 ## 5. Files
 
