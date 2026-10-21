@@ -31,7 +31,12 @@
 // around it; it is off by default because it changes the light of the room, not just
 // the look of the door. PORTAL_DEBUG paints all three flat so that the identification
 // can be checked in game.
-#define PORTAL_NETHER
+//
+// THE NETHER GATE IS OFF BY DEFAULT (batch 620, the author's setting, not a defect).
+// The end surfaces are on: they are the ones the author is shipping. A default-off
+// boolean is spelt the way Iris reads one - commented out - and the #ifdef above
+// the code is what makes it an option rather than dead text.
+//#define PORTAL_NETHER
 #define PORTAL_END
 #define PORTAL_GATEWAY
 //#define PORTAL_LIGHT
@@ -190,9 +195,10 @@ const vec3 PORTAL_STAR_TINT = vec3(0.80, 0.86, 1.10);
 // because they are seen against a lit room rather than against the End's black sky
 // and the author asked for them to read as light rather than as dust. This is a
 // gain ON TOP of END_STAR_BRIGHTNESS, not a replacement for it: the sky option still
+// scales it, and the author set this to 3.0 in batch 620 after judging 1.7 too dim.
 // scales the gate's stars proportionally, so turning the sky's stars down still
 // turns the gate's down.
-const float PORTAL_STAR_GAIN = 1.70;
+const float PORTAL_STAR_GAIN = 3.00;
 
 // The two portal surfaces that are BLOCK ENTITIES keep their numbers raw.
 //
