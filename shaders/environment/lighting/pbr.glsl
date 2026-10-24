@@ -248,6 +248,20 @@ const float PBR_DEFAULT_F0 = 0.04;
 // a measurement: nothing in the shader can know what a dropped item is made of.
 const float PBR_ENTITY_ROUGHNESS = 0.15;
 
+// The gate value below which an entity is given that fallback anyway.
+//
+// Zero was the wrong question for one batch. A material that clears zero can still
+// come out at a few hundredths, where the reflection exists and cannot be seen - and
+// a dropped item reflecting by a fraction of a percent reads exactly like one that
+// does not reflect at all. 0.35 is the point where a reflection stops being a hint
+// and starts being a reflection.
+//
+// The other side of the same judgement, and the reason this is a threshold rather
+// than an override of every entity: a mob reflects visibly on whatever the atlas
+// handed it, which the author confirmed from the game, so its gate is already well
+// clear of this and it is left alone.
+const float PBR_ENTITY_REFLECTION_MIN = 0.35;
+
 // Whether to look up the LabPBR hardcoded metal types (iron, gold, copper, and
 // so on). With this off, those materials are shaded as albedo-based metals
 // instead, which is a much closer approximation than treating a metal as a

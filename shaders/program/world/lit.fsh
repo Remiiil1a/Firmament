@@ -1053,14 +1053,25 @@ void main() {
 				// a reflectance, and the reflection was refused, because the gate
 				// also needs the surface to be smooth enough.
 				//
-				// PbrReflectionSmoothness is the gate itself rather than an
-				// approximation of it, so this substitutes exactly where the
-				// reflection would have come out at zero and nowhere else. Mobs get
-				// it too - the shader cannot tell a dropped item from a pig - which
-				// is the intended reading of PBR_ENTITIES: entities get a material
-				// response. See PBR_ENTITY_ROUGHNESS for the value and why it is not
-				// the default-material one.
-				if (PbrReflectionSmoothness(pbr.roughness, pbr.metalness) <= 1.0e-4) {
+				// The test is a threshold on the gate rather than "the gate came out at
+				// exactly zero", which is what it was for one batch. Zero was the
+				// wrong question: a material can clear zero and still come out at a
+				// handful of hundredths, where the reflection exists and cannot be
+				// seen - and a dropped item that reflects by a fraction of a percent
+				// reads exactly like one that does not reflect at all. Mobs are the
+				// other side of the same coin and the reason this is a judgement:
+				// they reflect visibly already, on whatever the atlas handed them,
+				// and their gate is well clear of this threshold, so they are left
+				// alone. Where it does fire, the surface gets the plain glossy
+				// dielectric below rather than the atlas material it happened to
+				// land on.
+				//
+				// PbrReflectionPossible first, because a roughness of exactly 1.0 or
+				// a reflectance of zero refuses the reflection before the gate is
+				// even asked - and a blank atlas texel is a good way to get either.
+				if (!PbrReflectionPossible(pbrNormal, pbr.roughness, pbr.f0)
+					|| PbrReflectionSmoothness(pbr.roughness, pbr.metalness)
+						< PBR_ENTITY_REFLECTION_MIN) {
 					pbr.roughness = PBR_ENTITY_ROUGHNESS;
 					pbr.f0 = vec3(PBR_DEFAULT_F0);
 					pbr.metalness = 0.0;
