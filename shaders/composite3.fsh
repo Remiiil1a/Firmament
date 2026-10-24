@@ -372,27 +372,46 @@ void main() {
 			// amount of looking at the picture tells them apart. See
 			// PBR_DEBUG_REFLECTION in pbr.glsl, and its entry in the lang files.
 			#if PBR_DEBUG == PBR_DEBUG_REFLECTION
-				// ⚠️ The mark, which is how a boundary in this reflection was
-				// finally told apart from content in it.
+				// ⚠️ A READOUT, not a picture of the reflection, and that is the whole
+				// point of the change (batch 627).
 				//
-				//   red   - the trace found NOTHING and the pixel shows the sky
-				//   green - the trace found something very close to the fragment,
-				//           which is this block's own geometry (a groove wall, a
-				//           bevel lip) and is not reflected any more
-				//   none  - the trace found the world, and what is shown is the
-				//           reflection itself
+				// Every round of this investigation guessed which gate had refused a
+				// surface, and each guess cost a build and a screenshot. Three numbers
+				// settle it at a glance, and none of them is visible in any other debug
+				// view:
 				//
-				// Four rounds of reading code could not answer which of those a line
-				// was; one screenshot of this view did.
-				vec3 reflectionMark = vec3(0.0);
+				//   red   - the reflectance the material buffer holds, 0..1
+				//   green - the smoothness gate that reflectance and the roughness
+				//           produce, 0..1, after the metal threshold is applied
+				//   blue  - zero where the trace fell back to the sky; otherwise how
+				//           far the hit was, a quarter of the way up the channel per
+				//           block, saturating at four blocks. A dim blue is a hit on
+				//           something a few centimetres away, which is the case that
+				//           used to be indistinguishable from a miss.
+				//
+				// A surface with no reflection is now diagnosable from one frame: black
+				// means nothing was written to the material buffers at all, red with no
+				// green means the reflectance cannot reach the gate, green with no blue
+				// means the trace is what failed. For a dropped item against a block
+				// side by side that is the whole question.
+				//
+				// ⚠️ It also has to COMPILE, which the previous version did not: it
+				// still referenced PBR_MIN_REFLECTION_DISTANCE after that constant was
+				// deleted in batch 622, and nothing in the check chain ever compiles a
+				// debug view, so the break was invisible until someone asked for the
+				// view. The chain now has a stage that checks every PBR_ identifier used
+				// in the tree is defined somewhere.
+				vec4 readMaterial = texelFetch(colortex7, pixel, 0);
+				vec4 readReflectance = texelFetch(colortex8, pixel, 0);
+				float readMetalness = step(0.5, readReflectance.a * 255.0);
 
-				if (!reflectionHit) {
-					reflectionMark = vec3(0.35, 0.0, 0.0);
-				} else if (reflectionHitDistance < PBR_MIN_REFLECTION_DISTANCE) {
-					reflectionMark = vec3(0.0, 0.35, 0.0);
-				}
-
-				resolved = environmentReflection * 4.0 + reflectionMark;
+				resolved = vec3(
+					clamp(dot(readReflectance.rgb, vec3(0.33333)), 0.0, 1.0),
+					clamp(PbrReflectionSmoothness(readMaterial.w, readMetalness),
+						0.0, 1.0),
+					reflectionHit
+						? clamp(reflectionHitDistance * 0.25, 0.0, 1.0)
+						: 0.0);
 			#elif defined(PBR_ENERGY_CONSERVATION)
 				// The reflection REPLACES the fraction of the picture it stands
 				// for instead of being added to it.
