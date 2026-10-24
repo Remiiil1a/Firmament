@@ -50,37 +50,9 @@ uniform mat4 gbufferModelView;
 
 uniform vec2 windowToNdc;
 
-// How big a step between one pixel and its neighbour counts as an edge, in blocks.
-//
-// Five centimetres: a block edge is a step of a whole block, and the texels either
-// side of it are what the test is looking for, while the flattest face in the game
-// does not step at all. It is the middle of a range where the answer is the same
-// for everything from a groove to a wall corner.
-const float PBR_EDGE_SKY_MARGIN = 0.05;
-
-// The distance from the eye to the surface a depth buffer value describes.
-//
-// The depth buffer holds 1/z interpolated, so a threshold on it directly would be
-// tight close up and useless far away; this undoes the projection's own division.
-// Taken from the third row of the projection, which is where the near and far
-// planes are encoded, so it works for whatever projection the shader was handed.
-float ViewDistanceFromDepth(float depth) {
-	float ndcZ = depth * 2.0 - 1.0;
-	float viewZ = -gbufferProjection[3][2] / (ndcZ + gbufferProjection[2][2]);
-
-	// The sign depends on the projection's handedness; the distance does not.
-	return abs(viewZ);
-}
-
-// How close a hit has to be to the fragment before it counts as this block's own
-// geometry rather than as something being reflected, in blocks.
-//
-// Half a block: a groove between two tiles is a sixteenth of one deep and a bevel
-// is a few centimetres, while the nearest thing a surface legitimately reflects -
-// a wall across a corridor - is a metre or more away. Anything in between is a
-// cliff face, where being wrong costs a reflection nobody can tell is missing.
-const float PBR_MIN_REFLECTION_DISTANCE = 0.5;
-
+// ⚠️ Removed in batch 622: PBR_EDGE_SKY_MARGIN, PBR_MIN_REFLECTION_DISTANCE and
+// ViewDistanceFromDepth. Both constants guarded a refusal that turned out to be
+// aimed at the wrong cause - see the two removal notes in the body.
 
 // The environment this fragment reflects, in linear RGB.
 //
@@ -118,7 +90,7 @@ vec3 EnvironmentReflection(
 	out bool reflectionHitOut,
 	out float reflectionHitDistanceOut
 ) {
-	#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
+	#if defined(PBR_SSR)
 		// A fragment that is being seen through something translucent is given
 		// no reflection at all, and the reason for that is not about the
 		// surface - it is about where the reflection would be put.
@@ -215,10 +187,8 @@ vec3 EnvironmentReflection(
 			dot(-viewPos, view * vec3(0.0, 0.0, 1.0))));
 		float NdotV = max(dot(worldNormal, viewDirection), 1.0e-4);
 
-		vec3 worldReflected = PbrReflectionDirection(
-			worldNormal,
-			viewDirection,
-			roughness);
+		vec3 worldReflected =
+			PbrReflectionDirection(worldNormal, viewDirection);
 
 		// How wide the cone of directions this surface reflects over is, and how
 		// many pixels that comes to on screen.
@@ -340,40 +310,18 @@ vec3 EnvironmentReflection(
 					reflectionHitOut = true;
 					reflectionHitDistanceOut = length(hitViewPos - viewPos);
 
-					// ⚠️ A hit THIS close to the fragment is the block's own
-					// geometry, and reflecting it draws a one-pixel bright line along
-					// every block edge.
+					// ⚠️ Removed in batch 622: this refused every hit closer than
+					// half a block, on the theory that the bright line along block
+					// edges was the trace sampling a groove wall or a bevel lip. It
+					// was not that - it was a mapped normal turned past the eye,
+					// fixed in PbrVisibleNormal - and the refusal cost the
+					// reflection at the angles where it matters most: on a surface
+					// seen almost edge-on the ray runs nearly parallel to it, so its
+					// first honest hit is routinely within half a block, and the band
+					// of floor near the horizon lost the sky it should have shown.
 					//
-					// This is the conclusion the debug view finally made possible: the
-					// lines were not red, so they are hits and not fallbacks - the
-					// trace really does find something there - and what it finds is a
-					// surface a few centimetres away: the wall of the groove between
-					// two tiles, the lip of a bevel. Those are thin on screen and lit
-					// by the open sky above them, so a mirror floor shows them as a
-					// bright line, and the trace is answering correctly about
-					// something the surface should not be reflecting at all.
-					//
-					// Refused rather than hidden: with no reflection the pixel keeps
-					// its own shading, which under energy conservation is what a
-					// weight of zero means. Returning the sky instead - which is what
-					// the distance test of 2026-09-22 did - is the mistake that made
-					// the line wider.
-					//
-					// Note what this is NOT: that test compared the hit's distance
-					// from the CAMERA with the fragment's, and so threw away every
-					// legitimate hit that happened to sit nearer the camera than the
-					// surface it was reflected in - whole plateaus lost their
-					// reflection. This compares the hit's distance from the FRAGMENT,
-					// which is a question about the geometry being reflected and not
-					// about where the camera stands.
-					if (reflectionHitDistanceOut < PBR_MIN_REFLECTION_DISTANCE) {
-						reflectionWeightOut = vec3(0.0);
-						reflectionHitOut = false;
-						reflectionHitDistanceOut = 0.0;
-
-						return vec3(0.0);
-					}
-
+					// The distance is still reported, because the debug view marks
+					// near hits with it.
 					// Removed 2026-09-22: the test that stood beside the call
 					// above, `length(hitViewPos) > length(viewPos)`. This is
 					// why it went, what is drawn without it, and what to look
@@ -468,70 +416,6 @@ vec3 EnvironmentReflection(
 						(1.0 - max(hitPosAbs.x, hitPosAbs.y)) / 0.10);
 
 					environment = mix(environment, hitColor, edgeFade);
-				}
-			}
-		#endif
-
-		#if defined(PBR_SSR)
-			// ⚠️ A miss beside a depth step is not the surface's environment, it is
-			// a hole in the trace, and it shows as a line the colour of the sky.
-			//
-			// This is what the whole seam was. The clue that settled it came from
-			// the author looking at a SMP dusk: the line was the colour of the
-			// sunset, so it was the SKY - the trace failing and falling back - and
-			// not a highlight, not a self-hit and not reflection content. It reads
-			// as a line because a miss is a one-pixel-wide event: at the depth step
-			// between two blocks the ladder steps over the neighbour entirely, the
-			// trace finds nothing, and that fragment alone shows sky while the ones
-			// beside it show the world.
-			//
-			// So the sky is not used when the fragment sits on an edge. Refused
-			// rather than dimmed: with no reflection the pixel keeps its own
-			// shading, and a block edge that is not reflecting is invisible
-			// against a block edge that is, while a sky-coloured line is the most
-			// visible thing in the frame.
-			//
-			// The test is on the linear distance to the surface each neighbour
-			// shows, not on the raw depth value: raw depth is not linear in
-			// distance, so a threshold on it would be tight close up and useless far
-			// away. Five centimetres separates the two sides of a block edge from
-			// the texels either side of it, and nothing else on a flat face.
-			if (!reflectionHitOut) {
-				ivec2 centrePixel = ivec2(gl_FragCoord.xy);
-				ivec2 frameSize = ivec2(textureSize(depthtex1, 0));
-
-				float centreDistance = ViewDistanceFromDepth(
-					texelFetch(depthtex1, centrePixel, 0).r);
-
-				// The four neighbours along the axes. Written out rather than
-				// indexed from an array so that the loop has no array to build:
-				// this runs on every missed pixel of every reflective surface.
-				float worstStep = 0.0;
-
-				for (int i = 0; i < 4; i++) {
-					ivec2 offset = ivec2(0);
-					if (i == 0) offset = ivec2(-1, 0);
-					if (i == 1) offset = ivec2(1, 0);
-					if (i == 2) offset = ivec2(0, -1);
-					if (i == 3) offset = ivec2(0, 1);
-
-					ivec2 neighbourPixel = clamp(
-						centrePixel + offset,
-						ivec2(0),
-						frameSize - 1);
-
-					float neighbourDistance = ViewDistanceFromDepth(
-						texelFetch(depthtex1, neighbourPixel, 0).r);
-
-					worstStep = max(
-						worstStep,
-						abs(neighbourDistance - centreDistance));
-				}
-
-				if (worstStep > PBR_EDGE_SKY_MARGIN) {
-					reflectionWeightOut = vec3(0.0);
-
-					return vec3(0.0);
 				}
 			}
 		#endif

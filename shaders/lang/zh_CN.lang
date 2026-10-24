@@ -187,14 +187,8 @@ option.PBR_LIGHT_SIZE.comment=太阳与月亮在材质高光里「有多大」�
 option.PBR_ENERGY_CONSERVATION=能量守恒
 option.PBR_ENERGY_CONSERVATION.comment=是否用表面没有反射掉的那部分光来加权漫反射，使漫反射与高光相加不会超过入射的总光量。没有它，光滑表面能亮过入射光，而本应几乎没有漫反射的金属仍会保留一半、看起来像亮塑料。默认关闭，因为它会一次性改变所有带高光贴图的材质亮度；建议配合把「高光强度」设为 1.0。明亮的金属在洞穴与夜间会明显变暗，值得先试。
 
-option.PBR_REFLECTIONS=天空反射
-option.PBR_REFLECTIONS.comment=材质是否以带方向、带粗糙度的方式反射天空，而不是反射周围光线的均匀一片。开启后颜色取自反射方向上的天空模型，粗糙表面还会把反射方向朝自身法线偏折；它只反射天空、不反射世界，而每个被覆盖的像素都要计算一次天空模型，是这里最昂贵的一项。
-
-option.PBR_REFLECTIONS_STRENGTH=天空反射强度
-option.PBR_REFLECTIONS_STRENGTH.comment=天空反射的强度，1.0 是调校时使用的取值。「天空反射」关闭时无效；在室内与地下也无效，因为那里没有天空可反射。
-
-option.PBR_REFLECTIONS_ROUGHNESS=粗糙度扩散
-option.PBR_REFLECTIONS_ROUGHNESS.comment=粗糙表面把反射方向朝自身法线偏折多少：1.0 时完全粗糙的表面朝向正上方，也就是它上方天空的平均色；0.0 时粗糙度完全不影响方向，粗糙表面会显示与抛光表面相同的镜面倒影。「天空反射」关闭时无效。
+option.PBR_REFLECTIONS_STRENGTH=反射强度
+option.PBR_REFLECTIONS_STRENGTH.comment=非金属材质的反射强度，1.0 是调校时使用的取值。反射关闭时无效；在室内与地下也无效，因为那里没有天空可反射。
 
 option.PBR_REFLECTION_SKY_MIN=反射所需天空曝光
 option.PBR_REFLECTION_SKY_MIN.comment=表面需要看到多少天空，才会反射天空。Minecraft 的天空光会在屋檐下横向扩散，也会穿过玻璃，因此方块可能被照得像在户外却看不到任何天空——把这一项保持在高位，就能挡住浅洞穴地板上的抛光方块映出正午天空。透过玻璃窗受光的表面与露天表面无法区分。它只影响反射中的天空部分。
@@ -248,7 +242,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 621]
+option.PBR_DEBUG=材质调试视图 [build 622]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图

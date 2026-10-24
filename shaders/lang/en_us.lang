@@ -363,25 +363,10 @@ option.PBR_ENERGY_CONSERVATION.comment=Weights the diffuse light by the part \
 	strength of 1.0. Bright metals go noticeably darker in caves and at night - \
 	worth trying rather than assuming.
 
-option.PBR_REFLECTIONS=Sky reflections
-option.PBR_REFLECTIONS.comment=Whether a material reflects the sky, with a \
-	direction and a roughness, instead of a flat wash of the light around it. \
-	With it on, the color comes from the sky model along the reflected ray, and a \
-	rough surface has that ray bent towards its own normal; it reflects the sky \
-	and not the world, and one sky model evaluation per covered pixel makes it \
-	the most expensive option here.
-
-option.PBR_REFLECTIONS_STRENGTH=Sky reflection strength
-option.PBR_REFLECTIONS_STRENGTH.comment=How strong the sky reflection is; 1.0 \
-	is the value it was tuned at. Has no effect while Sky reflections is off, nor \
-	indoors or underground, where there is no sky to reflect.
-
-option.PBR_REFLECTIONS_ROUGHNESS=Roughness spread
-option.PBR_REFLECTIONS_ROUGHNESS.comment=How far a rough surface bends the \
-	reflected ray towards its own normal: at 1.0 it looks straight up and shows \
-	the average sky above it, at 0.0 roughness does not affect the direction and \
-	it shows the mirror image a polished surface does. No effect while Sky \
-	reflections is off.
+option.PBR_REFLECTIONS_STRENGTH=Reflection strength
+option.PBR_REFLECTIONS_STRENGTH.comment=How strong the reflection is on anything that is not a \
+	metal; 1.0 is the value it was tuned at. Has no effect when the reflection is \
+	off, nor indoors or underground, where there is no sky to reflect.
 
 option.PBR_REFLECTION_SKY_MIN=Sky needed to reflect
 option.PBR_REFLECTION_SKY_MIN.comment=How much sky a surface has to see before \
@@ -505,7 +490,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 621]
+option.PBR_DEBUG=Material debug view [build 622]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \

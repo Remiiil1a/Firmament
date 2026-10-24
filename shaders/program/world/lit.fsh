@@ -236,7 +236,7 @@ uniform vec2 windowToNdc;
 // Both options rather than the sky one alone: the file's own guard is the same
 // pair, and the hand's reflection below is a traced one - it needs these
 // whether or not the sky half of the world's reflection is switched on.
-#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
+#if defined(PBR_SSR)
 	#include "/environment/lighting/reflections.glsl"
 #endif
 
@@ -1037,6 +1037,36 @@ void main() {
 				// starts from PbrNone and would overwrite it.
 				pbr.selfShadow = pbrSelfShadow;
 			#endif
+
+			#if defined(PBR_ENTITIES) && defined(PBR_SSR) && !defined(TRANSLUCENT)
+				// ⚠️ An entity whose material cannot reflect at all gets a plain
+				// glossy dielectric instead, which is what makes a dropped item
+				// reflect the world rather than only catching a highlight.
+				//
+				// The material above came out of the block atlas, because that is
+				// the only atlas the loaders build material maps for - see the note
+				// in gbuffers_entities.fsh - so what an item is shaded with is
+				// whatever block's material happens to sit at its coordinate. The
+				// header of that file already records the visible consequence for
+				// mobs; for a dropped item it showed as the opposite of a
+				// reflection: the highlight arrived, because a highlight needs only
+				// a reflectance, and the reflection was refused, because the gate
+				// also needs the surface to be smooth enough.
+				//
+				// PbrReflectionSmoothness is the gate itself rather than an
+				// approximation of it, so this substitutes exactly where the
+				// reflection would have come out at zero and nowhere else. Mobs get
+				// it too - the shader cannot tell a dropped item from a pig - which
+				// is the intended reading of PBR_ENTITIES: entities get a material
+				// response. See PBR_ENTITY_ROUGHNESS for the value and why it is not
+				// the default-material one.
+				if (PbrReflectionSmoothness(pbr.roughness, pbr.metalness) <= 1.0e-4) {
+					pbr.roughness = PBR_ENTITY_ROUGHNESS;
+					pbr.f0 = vec3(PBR_DEFAULT_F0);
+					pbr.metalness = 0.0;
+					pbr.metalID = 0.0;
+				}
+			#endif
 		}
 
 	#endif
@@ -1649,7 +1679,7 @@ void main() {
 			// it, and the check that would have - a run with PBR_SSR forced off -
 			// was the one not run alongside this change. It was found in game, as a
 			// C1503 on PbrVisibleNormal in every terrain program.
-			#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
+			#if defined(PBR_SSR)
 				reflectionNormal = PbrVisibleNormal(
 					pbrNormal,
 					worldNormal,
@@ -1817,8 +1847,7 @@ void main() {
 				// position above.
 				vec3 handViewReflected = handView * PbrReflectionDirection(
 					pbrNormal,
-					viewDirection,
-					pbr.roughness);
+					viewDirection);
 
 				float handNdotV = max(dot(pbrNormal, viewDirection), 1.0e-4);
 

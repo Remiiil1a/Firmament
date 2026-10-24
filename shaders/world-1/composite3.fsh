@@ -175,7 +175,7 @@ void main() {
 	// compared it.
 	float reflectionDistanceStored = 1.0e4;
 
-	#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
+	#if defined(PBR_SSR)
 		// The view position is rebuilt here rather than passed in: this pass has
 		// only the pixel it is writing, and every buffer it needs is read by
 		// coordinate.

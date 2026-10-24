@@ -96,34 +96,24 @@ vec3 PbrVisibleNormal(
 	return normalize(mix(mappedNormal, faceNormal, pull));
 }
 
-#if defined(PBR_REFLECTIONS) || defined(PBR_SSR)
+#if defined(PBR_SSR)
 
 	// The direction the environment is sampled in, in world space.
 	//
-	// A rough surface scatters the reflection over too wide a range of directions
-	// to show a mirror image, so the ray is bent towards the normal as roughness
-	// grows - by the product of the roughness and PBR_REFLECTIONS_ROUGHNESS, so
-	// at what ships (0.0) the roughness does not move the direction at all. At a
-	// factor of 1.0 a fully rough surface samples along its own normal: for the
-	// ground that is straight up, which is the average of the sky over it rather
-	// than a reflection of anything in particular, and for any other surface it
-	// is whichever way that surface faces, which is not up.
-	//
-	// The mixture is renormalized because mixing two unit vectors does not
-	// produce one, and both the sky model and the raytracer need a direction.
+	// A plain mirror reflection, and deliberately nothing else. It used to be bent
+	// towards the normal as roughness grew, by an option (PBR_REFLECTIONS_ROUGHNESS)
+	// that shipped at 0.0 - which is to say it did nothing - and both the option and
+	// the bending are gone as of batch 622. The reason is in the note that option
+	// carried: bending the centre of the lobe moves the reflection, which is not
+	// what roughness does. Roughness spreads it, and the spreading is
+	// PBR_REFLECTION_BLUR, applied where the reflection is sampled.
 	vec3 PbrReflectionDirection(
 		vec3 worldNormal,
-		vec3 viewDirection,
-		float roughness
+		vec3 viewDirection
 	) {
 		// reflect() expects the direction the view ray is travelling in, whereas
 		// viewDirection points back towards the camera, hence the negation.
-		vec3 reflected = reflect(-viewDirection, worldNormal);
-
-		return normalize(mix(
-			reflected,
-			worldNormal,
-			clamp(roughness * PBR_REFLECTIONS_ROUGHNESS, 0.0, 1.0)));
+		return reflect(-viewDirection, worldNormal);
 	}
 
 	// Fresnel by the model Adobe uses, which interpolates between the
@@ -329,4 +319,4 @@ vec3 PbrVisibleNormal(
 			skyLight);
 	}
 
-#endif // PBR_REFLECTIONS || PBR_SSR
+#endif // PBR_SSR

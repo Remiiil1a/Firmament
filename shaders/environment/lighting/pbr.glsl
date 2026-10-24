@@ -225,6 +225,23 @@
 // is asking for a surface that reflects nothing, which no real material does.
 const float PBR_DEFAULT_F0 = 0.04;
 
+// The roughness an ENTITY falls back to when its material cannot be reflected at
+// all - a dropped item, a mob, anything drawn by a program that has no material
+// maps of its own.
+//
+// Why it exists, and why it is not PBR_DEFAULT_ROUGHNESS above: an entity program
+// reads the block atlas, because that is the only atlas the loaders build material
+// maps for - see the note in gbuffers_entities.fsh - so what it gets is whatever
+// block's material happens to sit at its coordinate. The visible result was that a
+// dropped item carried a specular highlight from that random material and then
+// failed the reflection gate, so it had a highlight and no reflection.
+//
+// 0.25 is smooth enough to clear PBR_REFLECTION_SMOOTHNESS_MIN at its default of
+// 0.5 (the gate measures 1 - sqrt(roughness), which is about 0.5 here) and still
+// rough enough to look like a painted surface rather than a mirror. It is a look,
+// not a measurement: nothing in the shader can know what a dropped item is made of.
+const float PBR_ENTITY_ROUGHNESS = 0.25;
+
 // Whether to look up the LabPBR hardcoded metal types (iron, gold, copper, and
 // so on). With this off, those materials are shaded as albedo-based metals
 // instead, which is a much closer approximation than treating a metal as a
@@ -672,38 +689,19 @@ const float PBR_WETNESS_DARKENING = 0.66;
 	// translucent.glsl.
 #endif
 
-// Whether the environment a material reflects gets a direction and a roughness,
-// instead of being a flat wash of the ambient light.
+// ⚠️ Batch 622 removed PBR_REFLECTIONS ("sky reflection") and
+// PBR_REFLECTIONS_ROUGHNESS. The author's reasoning: the screen-space
+// reflection below reflects the sky too - it falls back to the sky model along
+// the reflected ray wherever the trace finds nothing - so a second option that
+// did only the sky half was a switch over nothing, and the strength and the sky
+// exposure it introduced belong to the reflection as a whole.
 //
-// PbrAmbientSpecular below is a stand-in for image-based lighting that is cheap
-// enough to run everywhere, and it is honest about being one: it reflects the
-// light around the fragment equally in every direction, so a surface reflects
-// exactly the same thing whichever way it faces, and roughness only scales how
-// much of it there is. Turning this on asks the sky model for the colour along
-// the reflected ray instead, which is what makes a polished surface outdoors
-// look like something reflecting a sky rather than like something lit by it.
-//
-// By itself this reflects the sky and not the world: the reflection is looked up
-// in the sky model along the reflected ray, so a metal outdoors picks up the sky
-// and anything indoors or underground picks up nothing but its own ambient
-// light. PBR_SSR below is what adds the world.
-//
-// It is applied in a composite pass rather than where the surface is drawn -
-// composite3, which includes environment_reflection.glsl, and which the rest of
-// the pack calls the deferred pass - because that is the first point at which the
-// depth buffer describes a finished frame - see the note on PBR_SSR. The material
-// it needs (normal, roughness, reflectance) is written into two buffers by the
-// programs that draw surfaces, and read back there.
-//
-// Noticeably more expensive than the term it replaces: one sky model evaluation
-// per covered pixel. Off by default for that reason. PBR_REFLECTIONS_STRENGTH is
-// the control for how visible it is, and this pack ships with it turned down.
-//#define PBR_REFLECTIONS
-#ifdef PBR_REFLECTIONS
-	// The test below is what makes Iris
-	// register this as a boolean option. The actual use is in copy_and_fog.fsh.
-#endif
-
+// What that means for the code: the environment reflection is now one feature,
+// guarded by PBR_SSR alone. Its sky half is not optional - it is the answer a
+// missed ray gets, and every surface too rough to show a mirror image gets it as
+// well. PBR_REFLECTIONS_STRENGTH is still the dielectric strength and
+// PBR_REFLECTION_SKY_MIN still sets how much open sky a surface needs before it
+// reflects any of it, both now for that one feature.
 // How strong that reflection is. 1.0 is the value it was tuned at.
 #define PBR_REFLECTIONS_STRENGTH 0.25 // [0.25 0.5 0.75 1.0 1.5 2.0]
 
@@ -720,28 +718,6 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // about the scene rather than about the physics.
 #define PBR_METAL_REFLECTION_STRENGTH 1.0 // [0.25 0.5 0.75 1.0 1.5 2.0]
 
-// How far a rough surface bends the reflected ray towards its own normal, as a
-// fraction of the roughness range.
-//
-// This defaults to 0.0, which is to say it does nothing, and it should stay
-// there. What it does at 1.0 is distort the reflection: a surface of roughness
-// 0.2 has its reflected ray pulled a fifth of the way towards the normal - the
-// mix factor is roughness * this option, in PbrReflectionDirection - and the
-// reflection of anything in front of it arrives shifted and misshapen even
-// though the thing reflected was in plain sight.
-//
-// It was written to stand in for roughness, on the reasoning that a rough
-// surface reflects an average of the sky over it and looking straight up is
-// that average. The problem is that it is not what roughness does. A GGX lobe
-// is centred on the mirror direction and spread around it; bending the centre
-// moves the reflection, which no amount of roughness does. The blur is what
-// spreads it, and the blur is separate - see PBR_REFLECTION_BLUR.
-//
-// With the normal map off, a block face is flat and its reflection should be a
-// plain mirror. Any remaining distortion is this, which is how it was found.
-//
-// Raise it and the distortion comes back; there is no reason to.
-#define PBR_REFLECTIONS_ROUGHNESS 0.0 // [0.0 0.5 0.75 1.0]
 
 // Whether a reflection may include the world and not only the sky, by tracing
 // the reflected ray through the depth buffer.
@@ -2470,12 +2446,12 @@ vec3 PbrDebugColor(
 	// to it - but it is cheap, it responds to the material and to the light
 	// around it, and it is what makes every surface read as a material.
 	//
-	// PBR_REFLECTIONS is what supplies the direction and the roughness described
-	// above, by reflecting the sky along the reflected ray (PbrReflectionDirection
-	// in reflections.glsl, evaluated by EnvironmentReflection in
-	// environment_reflection.glsl). With it on, this term keeps only what the sky cannot
-	// do - the light indoors and underground, which has no direction to
-	// reflect.
+	// The screen-space reflection is what supplies the direction and the
+	// roughness described above, by reflecting the sky along the reflected ray
+	// (PbrReflectionDirection in reflections.glsl, evaluated by
+	// EnvironmentReflection in environment_reflection.glsl). With it on, this term
+	// keeps only what the sky cannot do - the light indoors and underground, which
+	// has no direction to reflect.
 	vec3 PbrAmbientSpecular(
 		PbrSurface pbr,
 		vec3 worldNormal,
@@ -2483,9 +2459,9 @@ vec3 PbrDebugColor(
 		// The ambient and block light reaching this fragment, standing in for
 		// the environment that it reflects.
 		vec3 indirectLighting,
-		// How much sky reaches this fragment; only read when PBR_REFLECTIONS is
-		// on, where it decides how much of this term the directional reflection
-		// in reflections.glsl has taken over.
+		// How much sky reaches this fragment; only read when PBR_SSR is on, where
+		// it decides how much of this term the directional reflection in
+		// reflections.glsl has taken over.
 		float skyLight
 	) {
 		float NdotV = max(dot(worldNormal, viewDirection), 1.0e-4);
@@ -2495,7 +2471,7 @@ vec3 PbrDebugColor(
 		// coherent reflection.
 		float smoothness = 1.0 - pbr.roughness;
 
-		#ifdef PBR_REFLECTIONS
+		#ifdef PBR_SSR
 			// PbrReflectionDirection reflects the sky with a direction and a
 			// roughness, which is exactly what this term was standing in for. Wherever that
 			// one is doing the job - a surface smooth enough to show a coherent
