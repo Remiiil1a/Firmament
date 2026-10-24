@@ -1050,7 +1050,15 @@ void main() {
 				pbr.selfShadow = pbrSelfShadow;
 			#endif
 
-			#if defined(PBR_ENTITIES) && defined(PBR_SSR) && !defined(TRANSLUCENT)
+			// ⚠️ AFTER_DEFERRED only, since batch 630, and that is the whole of why a
+			// mob must not come through here: the clamp below smooths whatever it is
+			// given, and a mob already reflects - it is drawn before the deferred pass,
+			// so its own material is read normally. Smoothing that material was what
+			// put a large white highlight on every animal in the world. What needs the
+			// clamp is the entity drawn AFTER the deferred pass, whose material the
+			// deferred reflection never sees: it is given its own trace in batch 629,
+			// and that trace needs a surface the gate accepts.
+			#if defined(PBR_ENTITIES) && defined(PBR_SSR) && defined(AFTER_DEFERRED)
 				// ⚠️ An entity whose material cannot reflect at all gets a plain
 				// glossy dielectric instead, which is what makes a dropped item
 				// reflect the world rather than only catching a highlight.
