@@ -464,13 +464,31 @@ vec3 EnvironmentReflection(
 		// between a metal and a metal with a white film over it. Bliss composites
 		// the same way - mix(DarkenedDiffuseLighting, reflection, F0) - and it is
 		// why its metals stay the colour of their metal.
+		// ⚠️ The clamp is applied once and the clamped value is what is returned, and
+		// that is not tidiness - it is the difference between a metal and a blown-out
+		// white mirror (batch 626).
+		//
+		// With PBR_SPECULAR_STRENGTH at 2.0 a metal's weight is routinely above one:
+		// iron's reflectance is 0.78, so 2.0 * 0.78 is 1.56. The composite below
+		// subtracts `weight` from the picture and adds the reflection back in its
+		// place, so an unclamped weight subtracts one at most - the clamp on the
+		// weight the caller reads - and adds one and a half. The surface then reflects
+		// half again more than the light that reached it, its own colour is replaced by
+		// more than all of it, and what is left on screen is a pale wash where the
+		// metal's reflectance should have been visible. It went unnoticed until the
+		// strength was raised from 1.0, which is the only value at which every weight
+		// was already below one.
+		//
+		// A surface cannot reflect more than all of the environment it stands in, which
+		// is what the clamp says; the strength then only decides how quickly a surface
+		// gets there, not how far past it goes.
 		vec3 weight = strength
 			* PbrReflectionFresnel(f0, PbrMetalF82(metalID), NdotV, roughness)
 			* reflectionWeight
 			* environmentPresent;
 		reflectionWeightOut = clamp(weight, vec3(0.0), vec3(1.0));
 
-		return weight * environment;
+		return reflectionWeightOut * environment;
 	#else
 		// Nothing here reflects anything, so nothing may be taken out of the
 		// picture in its name either.
