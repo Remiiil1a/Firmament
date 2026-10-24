@@ -385,20 +385,22 @@ void main() {
 				// settle it at a glance, and none of them is visible in any other debug
 				// view:
 				//
-				//   red   - the reflectance the material buffer holds, 0..1
+				//   red   - the reflectance the material buffer holds, times four so
+				//           that a dielectric's few percent is visible at all
 				//   green - the smoothness gate that reflectance and the roughness
 				//           produce, 0..1, after the metal threshold is applied
-				//   blue  - zero where the trace fell back to the sky; otherwise how
-				//           far the hit was, a quarter of the way up the channel per
-				//           block, saturating at four blocks. A dim blue is a hit on
-				//           something a few centimetres away, which is the case that
-				//           used to be indistinguishable from a miss.
+				//   blue  - 1 where the material buffers were actually written for this
+				//           pixel (the stored normal is a unit vector) and 0 where they
+				//           were not
 				//
-				// A surface with no reflection is now diagnosable from one frame: black
-				// means nothing was written to the material buffers at all, red with no
-				// green means the reflectance cannot reach the gate, green with no blue
-				// means the trace is what failed. For a dropped item against a block
-				// side by side that is the whole question.
+				// A surface with no reflection is now diagnosable from one frame:
+				//   blue 0            - the program that drew this pixel never wrote the
+				//                       material buffers at all
+				//   blue 1, green 0   - the material is there and too rough to reflect
+				//   blue 1, green > 0 - it should reflect, so whatever is missing is
+				//                       further down
+				// For a dropped item against a block side by side that is the whole
+				// question, and it is three colours rather than three builds.
 				//
 				// ⚠️ It also has to COMPILE, which the previous version did not: it
 				// still referenced PBR_MIN_REFLECTION_DISTANCE after that constant was
@@ -406,17 +408,37 @@ void main() {
 				// debug view, so the break was invisible until someone asked for the
 				// view. The chain now has a stage that checks every PBR_ identifier used
 				// in the tree is defined somewhere.
+				// ⚠️ Red is scaled by four so that a dielectric`s few percent is not
+				// indistinguishable from zero on screen: 0.04 arrives as 0.16.
+				//
 				vec4 readMaterial = texelFetch(colortex7, pixel, 0);
 				vec4 readReflectance = texelFetch(colortex8, pixel, 0);
 				float readMetalness = step(0.5, readReflectance.a * 255.0);
 
+				// Blue has three states rather than two, because "the buffers were never
+				// written", "they were written and the trace missed" and "the trace hit"
+				// are three different faults, and a screenshot can hold all of them:
+				//
+				//   0.0        nothing was written - the program never filled colortex7
+				//   0.35       written, and the pixel fell back to the sky
+				//   0.5 .. 1.0 written, and the trace hit; brighter means farther, so a
+				//              very dim hit is something a few centimetres away
+				float readWritten = dot(readMaterial.xyz, readMaterial.xyz) > 0.5
+					? 1.0
+					: 0.0;
+
+				float readBlue = readWritten;
+				if (readWritten > 0.5) {
+					readBlue = reflectionHit
+						? clamp(0.5 + reflectionHitDistance * 0.125, 0.5, 1.0)
+						: 0.35;
+				}
+
 				resolved = vec3(
-					clamp(dot(readReflectance.rgb, vec3(0.33333)), 0.0, 1.0),
+					clamp(dot(readReflectance.rgb, vec3(0.33333)) * 4.0, 0.0, 1.0),
 					clamp(PbrReflectionSmoothness(readMaterial.w, readMetalness),
 						0.0, 1.0),
-					reflectionHit
-						? clamp(reflectionHitDistance * 0.25, 0.0, 1.0)
-						: 0.0);
+					readBlue);
 			#elif defined(PBR_ENERGY_CONSERVATION)
 				// The reflection REPLACES the fraction of the picture it stands
 				// for instead of being added to it.
