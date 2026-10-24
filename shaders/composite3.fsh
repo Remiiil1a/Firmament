@@ -346,10 +346,46 @@ void main() {
 					reflectionHistoryWeight = 0.0;
 				}
 
+				// ⚠️ The history is CLAMPED against this frame before it is mixed, and
+				// the clamp also decides how much of it survives (batch 635, from the
+				// comparative audit).
+				//
+				// This buffer is the reflection's own history and it had no bound of any
+				// kind: the only gates on it were the off-screen/NaN tests and the
+				// distance disocclusion, and neither can see a surface move on its own -
+				// an animated piece of armour keeps the same distance from the eye and
+				// the same screen position, so every test passed and 85% of a reflection
+				// computed for a ray that no longer exists was kept, frame after frame.
+				// That is the trail on worn armour; changing the weight floor could never
+				// fix it, because the motion is invisible to the reprojection.
+				//
+				// All three packs this was compared against bound their history against
+				// the current frame, and Bliss does it in the form copied here: clamp the
+				// history into a band around the current value, then pull the mixed
+				// result back towards the current value in proportion to how far the
+				// clamp had to move it (Bliss-Shader-Unstable/shaders/dimensions/
+				// composite5.fsh:389-393). A history that is close to the current frame
+				// is untouched; one that had to be dragged a long way is mostly discarded,
+				// which is exactly "this reflection no longer exists".
+				//
+				// The band is 35% either side, which is where Bliss puts it: wide enough
+				// that a noisy reflection still accumulates - the whole reason this
+				// history exists - and narrow enough that a ghost is outside it.
+				vec3 reflectionHistoryClamped = clamp(
+					reflectionHistory.rgb,
+					environmentReflection * (1.0 - 0.35),
+					environmentReflection * (1.0 + 0.35));
+
+				float reflectionHistoryMoved = clamp(
+					length(reflectionHistoryClamped - reflectionHistory.rgb)
+						/ max(length(reflectionHistory.rgb), 1.0e-4),
+					0.0,
+					1.0);
+
 				environmentReflection = mix(
 					environmentReflection,
-					reflectionHistory.rgb,
-					reflectionHistoryWeight);
+					reflectionHistoryClamped,
+					reflectionHistoryWeight * (1.0 - reflectionHistoryMoved));
 			#endif
 
 			// The reflection is checked here, before anything is done with it,

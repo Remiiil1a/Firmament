@@ -83,6 +83,11 @@ uniform sampler2D colortex3;
 // reflections use.)
 uniform sampler2D depthtex0;
 
+// The depth without the hand and without translucents (batch 635). The hand is in
+// depthtex0 and absent from this one, so comparing the two is how a hand pixel is
+// recognised without a mask buffer - the same pair composite3 uses.
+uniform sampler2D depthtex2;
+
 // The volumetric fog, which this pass composites into the frame in front of the
 // resolve. See the note where it is added, near the bottom of the file.
 uniform sampler2D colortex1;
@@ -645,7 +650,13 @@ void main() {
 	//
 	// It is inert while the camera is still, because the reprojection round-trips
 	// onto the anchor there and the coordinate comes out the same either way.
-	bool handPixel = anchorDepth <= TAA_HAND_DEPTH;
+	// Recognised by the buffers rather than by the depth threshold: the hand is in
+	// depthtex0 and absent from depthtex2, so anything the two disagree about is
+	// something depthtex2 does not have. (The threshold the translation cancellation
+	// above uses is Mellow's guess at the same question; this reads the answer.)
+	ivec2 handTexel = ivec2(gl_FragCoord.xy);
+	bool handPixel = texelFetch(depthtex0, handTexel, 0).r
+		< texelFetch(depthtex2, handTexel, 0).r;
 
 	vec3 reprojectFrom = anchorDepth > TAA_HAND_DEPTH
 		? anchorWorldPos
@@ -979,6 +990,26 @@ void main() {
 		// Left half, what this pass was handed; right half, what it made of it.
 		// See the note on TAA_DEBUG in lib/taa.glsl for how to read it.
 		shown = gl_FragCoord.x < viewWidth * 0.5 ? currentRaw : resolved;
+
+		// ⚠️ And the one fact the source cannot settle (batch 635, from the TAA
+		// audit): whether the held item's own depth is in depthtex0 at all.
+		//
+		// The whole question of why the hand is not anti-aliased turns on it. If the
+		// hand is in depthtex0, this pass has a usable anchor for it and the hand is
+		// being resolved at the full weight already - so the jagged edge comes from
+		// somewhere after this pass. If it is not, every hand pixel anchors on the world
+		// behind it, the far plane divides by a zero and the history is thrown away -
+		// which is exactly "no anti-aliasing at all, however still the camera is".
+		//
+		// PAINTED RED WHERE THE HAND IS IN depthtex0. One screenshot of a first-person
+		// hand with TAA_DEBUG on answers it: red hand - it is in the buffer, look
+		// downstream; hand unchanged - it is not, and the fix is a mask rather than
+		// anything in this pass's arithmetic.
+		ivec2 debugTexel = ivec2(gl_FragCoord.xy);
+		if (texelFetch(depthtex0, debugTexel, 0).r
+			< texelFetch(depthtex2, debugTexel, 0).r) {
+			shown = vec3(1.0, 0.0, 0.0);
+		}
 	#endif
 
 	// VOLUMETRIC FOG: THE COMPOSITE
