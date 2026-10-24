@@ -78,6 +78,11 @@ uniform sampler2D colortex3;
 // reflections use.)
 uniform sampler2D depthtex0;
 
+// The held item's own depth, which neither of the buffers above contains (the
+// hand is drawn with a depth attachment of its own; see the note where this is
+// used, beside the reprojection).
+uniform sampler2D depthtex2;
+
 // The volumetric fog, which this pass composites into the frame in front of the
 // resolve. See the note where it is added, near the bottom of the file.
 uniform sampler2D colortex1;
@@ -640,8 +645,28 @@ void main() {
 	// from the one copy of that arithmetic, in /lib/reproject.glsl.
 	Reprojection reprojection =
 		ReprojectWorldPosition(reprojectFrom, anchorCoord);
-	vec2 previousScreenCoord =
-		screenCoord + (reprojection.previousCoord - anchorCoord);
+
+	// ⚠️ The held item, which this pass could not resolve at all (batch 632).
+	//
+	// Neither depth buffer above contains the hand: it is drawn with a depth
+	// attachment of its own, depthtex2, and it covers whatever the world has
+	// behind it. So every test below was asking about the world BEHIND the hand,
+	// the answer was always that the pixel had moved with it, and the history was
+	// rejected on every frame - which is why the hand was the one part of the
+	// picture with no anti-aliasing at all, however still the camera was.
+	//
+	// It does not need reprojecting. The hand is attached to the camera: it sits at
+	// the same place on screen from one frame to the next, so its history is its
+	// own previous pixel and the coordinate is the one it already has. The
+	// neighbourhood clamp a few lines below is what keeps this safe when the item
+	// does move - a swinging hand cannot drag colour from where it was, because
+	// the history is still bounded by what the current frame shows around it.
+	bool handPixel = texelFetch(depthtex2, ivec2(gl_FragCoord), 0).r
+		< texelFetch(depthtex0, ivec2(gl_FragCoord), 0).r;
+
+	vec2 previousScreenCoord = handPixel
+		? screenCoord
+		: screenCoord + (reprojection.previousCoord - anchorCoord);
 
 	// Both the neighbourhood and the history are read from the current frame's
 	// screen space, so anything that was off screen or behind the camera last
@@ -659,8 +684,8 @@ void main() {
 	// screen. It is intermittent because it needs the reprojection to land on a
 	// w of zero, which is why it reads as a black blot that appears and goes away
 	// again as the view turns. See BATCH_LOG.md 129.
-	bool offScreen = reprojection.offScreen;
-	bool behindCamera = reprojection.behindCamera;
+	bool offScreen = handPixel ? false : reprojection.offScreen;
+	bool behindCamera = handPixel ? false : reprojection.behindCamera;
 
 	// Gather the neighbourhood of the current frame, which serves two purposes:
 	// it bounds what the history is allowed to say, and it provides the blurred
