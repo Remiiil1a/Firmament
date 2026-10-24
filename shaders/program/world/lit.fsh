@@ -171,8 +171,11 @@ uniform mat4 gbufferModelView;
 	#include "/environment/sky.glsl"
 #endif
 
-#if defined(TRANSLUCENT) || defined(EXPLICIT_OPAQUE_DEPTH_TEST)
-	// Used for SSR tracing and for depth-testing on DH translucents
+#if defined(TRANSLUCENT) || defined(EXPLICIT_OPAQUE_DEPTH_TEST) \
+	|| (defined(AFTER_DEFERRED) && defined(PBR_ENTITIES) && defined(PBR_SSR))
+	// Used for SSR tracing and for depth-testing on DH translucents, and for the
+	// trace an entity drawn after the deferred pass takes for itself - see the
+	// note beside PBR_ENTITIES further down.
 	uniform sampler2D depthtex1;
 #endif
 
@@ -272,8 +275,17 @@ uniform vec2 windowToNdc;
 // that writes it has not run yet, so what is there is the last finished frame.
 // That is the same one-frame-old picture Mellow's reflection reads (gaux1,
 // with gaux1Clear set so that it survives), and it is the only one there is:
-// the item is drawn while the frame it belongs to is still being filled.
-#if defined(PBR_HAND_ITEMS) && defined(PBR_SSR)
+
+// ⚠️ The bundle below also serves an entity drawn after the deferred pass
+// (batch 629): gbuffers_entities_translucent.fsh - the program the third-person
+// player, its armour, whatever it holds and the dropped items are drawn by -
+// defines AFTER_DEFERRED, so it runs after composite3. The material this file
+// writes for it therefore arrives after the pass that would have used it, which
+// is why a dropped item had a highlight and no reflection while a mob had both.
+// The trace this bundle exists for is the answer, and it is the hand's answer for
+// the hand's reason: trace here, against the last finished frame.
+#if (defined(PBR_HAND_ITEMS) || (defined(AFTER_DEFERRED) && defined(PBR_ENTITIES))) \
+	&& defined(PBR_SSR)
 	uniform sampler2D depthtex2;
 	uniform sampler2D colortex4;
 
@@ -1948,6 +1960,71 @@ void main() {
 				}
 
 				fragmentColor.rgb += handWeight * handEnvironment;
+			#endif
+
+			// ⚠️ An entity drawn after the deferred pass reflects here, the way the
+			// hand does, because the deferred pass has already run when this program
+			// draws (batch 629). See the declaration at the top of this file for why
+			// a dropped item needs it and a mob does not.
+			#if defined(AFTER_DEFERRED) && defined(PBR_ENTITIES) && defined(PBR_SSR)
+				{
+					mat3 entityView = mat3(gbufferModelView);
+					vec3 entityViewPos = entityView * cameraRelativePos;
+
+					vec3 entityViewReflected = entityView * PbrReflectionDirection(
+						pbrNormal,
+						viewDirection);
+
+					float entityNdotV = max(dot(pbrNormal, viewDirection), 1.0e-4);
+
+					// The same weight the deferred pass would have used, clamped the
+					// same way: a surface reflects at most all of the environment it
+					// stands in. See the note in environment_reflection.glsl.
+					vec3 entityWeight = clamp(mix(
+						PBR_REFLECTIONS_STRENGTH,
+						PBR_METAL_REFLECTION_STRENGTH,
+						clamp(pbr.metalness, 0.0, 1.0))
+						* PbrReflectionFresnel(
+							pbr.f0,
+							PbrMetalF82(pbr.metalID),
+							entityNdotV,
+							pbr.roughness)
+						* PbrReflectionSmoothness(pbr.roughness, pbr.metalness),
+						vec3(0.0),
+						vec3(1.0));
+
+					// No sky fallback, for the hand`s reason: a face turned towards
+					// the camera reflects what is behind the player, and a wash of sky
+					// over an item reads as the item going pale.
+					vec3 entityEnvironment = vec3(0.0);
+
+					vec2 entityHitPos;
+					vec3 entityHitViewPos;
+
+					// depthtex1, not depthtex2: this is not the hand, and the world
+					// it reflects is the opaque one.
+					if (Raytrace(
+						depthtex1,
+						gbufferProjection,
+						gbufferProjectionInverse,
+						entityViewPos,
+						entityViewReflected,
+						vec2(0.5, 1.0),
+						entityHitPos,
+						entityHitViewPos)
+						&& length(entityHitViewPos) > length(entityViewPos)) {
+
+						vec2 entityHitAbs = abs(entityHitPos * 2.0 - 1.0);
+						float entityHitFade = min(
+							1.0,
+							(1.0 - max(entityHitAbs.x, entityHitAbs.y)) / 0.10);
+
+						entityEnvironment =
+							texture(colortex4, entityHitPos).rgb * entityHitFade;
+					}
+
+					fragmentColor.rgb += entityWeight * entityEnvironment;
+				}
 			#endif
 		#else
 			fragmentColor.rgb = DiffuseLighting(surface);
