@@ -1058,24 +1058,52 @@ void main() {
 				// wrong question: a material can clear zero and still come out at a
 				// handful of hundredths, where the reflection exists and cannot be
 				// seen - and a dropped item that reflects by a fraction of a percent
-				// reads exactly like one that does not reflect at all. Mobs are the
-				// other side of the same coin and the reason this is a judgement:
-				// they reflect visibly already, on whatever the atlas handed them,
-				// and their gate is well clear of this threshold, so they are left
-				// alone. Where it does fire, the surface gets the plain glossy
-				// dielectric below rather than the atlas material it happened to
-				// land on.
+				// reads exactly like one that does not reflect at all.
+				//
+				// It can fire for a mob as well as for an item, and that is fine now
+				// only because of what it does below: a mob whose atlas material lands
+				// under the threshold is made smoother, not made different. The batch
+				// that got this wrong also reported the mobs as unaffected, which the
+				// author then disproved with an iron golem - so the claim was removed
+				// rather than left to be believed twice.
 				//
 				// PbrReflectionPossible first, because a roughness of exactly 1.0 or
 				// a reflectance of zero refuses the reflection before the gate is
 				// even asked - and a blank atlas texel is a good way to get either.
+				//
+				// ⚠️ What it may change is the ROUGHNESS and nothing else, and that is
+				// the whole of the lesson from the batch before this one. That batch
+				// replaced the material outright - roughness, reflectance and metalness
+				// together - and an iron golem stopped reflecting: the atlas hands it
+				// iron, it is a metal, and forcing it to a non-metal dielectric took
+				// away exactly the mirrored response that made it reflect. A material
+				// the pack did supply describes what the surface is made of; a threshold
+				// is no reason to argue with it.
+				//
+				// So: clamp the roughness down until the surface is smooth enough to
+				// reflect, and touch the reflectance only where it is unusable in its own
+				// right - which is the blank texel case, and there the metalness has to
+				// go with it because a metal with no reflectance is not a metal.
+				//
+				// The reference this was checked against does the same thing from the
+				// other end: Bliss never overwrites a material in the deferred pass, it
+				// computes a visibility and blends the reflection out. Keeping the
+				// material is the invariant both have.
+				//
+				// The reflectance is replaced only where it is ZERO, which is the one
+				// case where there is no material to keep - a blank atlas texel - and
+				// there the metalness has to go with it, because a metal with no
+				// reflectance is not a metal.
 				if (!PbrReflectionPossible(pbrNormal, pbr.roughness, pbr.f0)
 					|| PbrReflectionSmoothness(pbr.roughness, pbr.metalness)
 						< PBR_ENTITY_REFLECTION_MIN) {
-					pbr.roughness = PBR_ENTITY_ROUGHNESS;
-					pbr.f0 = vec3(PBR_DEFAULT_F0);
-					pbr.metalness = 0.0;
-					pbr.metalID = 0.0;
+					if (dot(pbr.f0, pbr.f0) <= 1.0e-8) {
+						pbr.f0 = vec3(PBR_DEFAULT_F0);
+						pbr.metalness = 0.0;
+						pbr.metalID = 0.0;
+					}
+
+					pbr.roughness = min(pbr.roughness, PBR_ENTITY_ROUGHNESS);
 				}
 			#endif
 		}
