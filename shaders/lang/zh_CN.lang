@@ -199,9 +199,6 @@ option.PBR_REFLECTION_SMOOTHNESS_MIN.comment=表面要多光滑才会反射天�
 option.PBR_METAL_REFLECTION_STRENGTH=金属反射强度
 option.PBR_METAL_REFLECTION_STRENGTH.comment=金属的环境反射有多强，与其它材质共用的那个总强度分开；那个总强度本来就不是为金属设的。1.0 与参考资源包对齐；某个场景里金属太亮就调低。
 
-option.PBR_REFLECTION_BLUR=反射模糊半径
-option.PBR_REFLECTION_BLUR.comment=粗糙度为 1.0 时，世界倒影被铺开多远（单位：像素）。粗糙表面不该显示像光滑表面那样的锐利镜像：同一个像素上会落下一整个锥角的方向，把采样铺开到这个锥上，拉丝或磨砂金属才看起来是拉丝或磨砂。只有通过反射门槛的表面才付这份开销，每个这样的像素 5 次天空采样。
-
 option.PBR_SSR=屏幕空间反射
 option.PBR_SSR.comment=材质的反射是否可以包含世界而不只是天空，做法是让反射射线穿过深度缓冲去追踪。只有天空反射时，所有带反射率的表面都会染上同一层天空色；开启后，抛光方块会映出地形、树木以及射线在屏幕上找到的一切。它只能反射屏幕内、且只能取上一帧，射线没打中任何东西时回退到天空。开销很大，帧率吃紧时可以先关掉。
 
@@ -242,7 +239,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 630]
+option.PBR_DEBUG=材质调试视图 [build 631]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图

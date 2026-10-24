@@ -391,14 +391,6 @@ option.PBR_METAL_REFLECTION_STRENGTH.comment=How strong a metal's environment \
 	not about metals at all. 1.0 matches the reference packs; turn it down if \
 	metals are too bright in a scene.
 
-option.PBR_REFLECTION_BLUR=Reflection blur
-option.PBR_REFLECTION_BLUR.comment=How far the reflection of the world is \
-	spread out at a roughness of 1.0, in pixels. A rough surface should not show \
-	the sharp mirror image a smooth one does: a whole cone of directions arrives \
-	at the same pixel, and spreading the sample over the cone is what makes \
-	brushed or frosted metal read that way. Only surfaces past the reflection \
-	gate pay, five sky samples instead of one.
-
 option.PBR_SSR=Screen-space reflections
 option.PBR_SSR.comment=Whether a reflection may include the world and not only \
 	the sky, by tracing the reflected ray through the depth buffer. Sky \
@@ -490,7 +482,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 630]
+option.PBR_DEBUG=Material debug view [build 631]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \

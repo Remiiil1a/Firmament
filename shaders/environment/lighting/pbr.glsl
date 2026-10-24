@@ -765,25 +765,12 @@ const float PBR_WETNESS_DARKENING = 0.66;
 	// register this as a boolean option. The actual use is in copy_and_fog.fsh.
 #endif
 
-// The most the reflection may be spread out, in pixels.
-//
-// A rough surface does not reflect what a mirror reflects: a whole cone of
-// directions arrives at the same pixel, and one sharp sample of that cone shows
-// the mirror image the surface should not have. Spreading the sample over the
-// cone is what makes a brushed or frosted metal read as brushed or frosted
-// rather than as a mirror with its colours dimmed, and at 0.0 the reflection is
-// as sharp as it is with no material data at all.
-//
-// The radius depends on roughness and not on distance, which is worth knowing
-// before wondering why a distant reflection is not blurrier: a cone of a given
-// angle covers about the same number of pixels whatever it lands on, because the
-// screen-space size of the cone grows exactly as fast as the thing it spreads
-// over shrinks.
-//
-// Only surfaces the reflection gate lets through pay for this, which is a small
-// part of any scene - see PbrReflectionSmoothness. Each of those pays eight
-// samples instead of one.
-#define PBR_REFLECTION_BLUR 64.0 // [0.0 16.0 32.0 48.0 64.0 96.0]
+// ⚠️ Batch 631 removed PBR_REFLECTION_BLUR, and the eight-tap ring it fed, from the
+// traced half of the reflection. The author judged that the metal reflections do not
+// need it: what the trace finds is a picture, and spreading it blurred the picture than
+// the surface was showing. The sky half still averages over the cone its roughness
+// opens, because the sky is not a picture - it is a range of directions, and one sample
+// of a range is arbitrary.
 
 // How many steps the reflection trace may take.
 //
@@ -793,7 +780,7 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // are two very different propositions. More steps find more
 // hits and refine the ones they find better, and the cost is paid whether or not
 // anything is found at all.
-#define PBR_SSR_STEPS 24 // [8 12 16 24 32]
+#define PBR_SSR_STEPS 12 // [8 12 16 24 32]
 
 // How much sky a surface has to see before it reflects any of it.
 //

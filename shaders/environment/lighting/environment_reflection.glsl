@@ -216,7 +216,7 @@ vec3 EnvironmentReflection(
 		float coneAngle = clamp(roughness, 0.0, 1.0);
 		float pixelsPerRadian = gbufferProjection[1][1]
 			/ max(windowToNdc.y, 1.0e-6);
-		float blurPixels = min(coneAngle * pixelsPerRadian, PBR_REFLECTION_BLUR);
+		float blurPixels = coneAngle * pixelsPerRadian;
 
 		// The sky, which is what an environment reflection is made of on its own,
 		// and which is also where a trace that finds nothing ends up.
@@ -370,41 +370,20 @@ vec3 EnvironmentReflection(
 					// this one is being drawn from is complete in depth but not in
 					// colour at this point in the pipeline.
 					//
-					// Spread over the cone the surface's roughness opens, which
-					// is the difference between a frosted metal and a mirror
-					// with its colours turned down - see PBR_REFLECTION_BLUR. A
-					// mirror takes one sample because one direction is all it
-					// reflects, and a rough surface taking one sample is taking
-					// one arbitrary direction out of many and calling it the
-					// answer, which is what makes it look like noise rather than
-					// like roughness.
+					// One sample, and this is where the traced half used to be spread
+					// over the cone the surface's roughness opens - an eight-tap ring
+					// with PBR_REFLECTION_BLUR capping how far it reached. Both the
+					// ring and the option are gone as of batch 631: the author judged
+					// that the metal reflections no longer need it, and without it the
+					// reflection is the sharp picture the trace actually found.
 					//
-					// The taps are two rings of four, at half radius and full,
-					// the same shape the water reflections blur theirs with: it
-					// costs one sample per direction and is even enough that the
-					// ring does not show in the result.
-					vec3 hitColor;
-					if (blurPixels < 0.75) {
-						// Smooth enough that taps this close together would only
-						// add cost and noise.
-						hitColor = texture(colortex3, hitPos).rgb;
-					} else {
-						vec2 pixelSize = windowToNdc * 0.5;
-						vec3 blurred = vec3(0.0);
-
-						for (int i = 0; i < 8; i++) {
-							float angle = float(i) * 0.7853982;
-							float ringScale = i < 4 ? 0.5 : 1.0;
-							vec2 offset = vec2(cos(angle), sin(angle))
-								* (blurPixels * ringScale);
-
-							blurred += texture(
-								colortex3,
-								hitPos + offset * pixelSize).rgb;
-						}
-
-						hitColor = blurred * 0.125;
-					}
+					// ⚠️ The SKY half still averages over the cone - see above - and
+					// that asymmetry is deliberate. The sky is not a picture of
+					// anything: a rough surface sees a whole range of sky directions
+					// at once, so one sample of that range is an arbitrary choice
+					// rather than an answer. The traced half is a picture, and one
+					// sample of a picture is that picture.
+					vec3 hitColor = texture(colortex3, hitPos).rgb;
 
 					// Fade the result out near the edge of the screen, where the
 					// ray is about to leave the buffer and there is nothing more
