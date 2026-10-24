@@ -236,11 +236,17 @@ const float PBR_DEFAULT_F0 = 0.04;
 // dropped item carried a specular highlight from that random material and then
 // failed the reflection gate, so it had a highlight and no reflection.
 //
-// 0.25 is smooth enough to clear PBR_REFLECTION_SMOOTHNESS_MIN at its default of
-// 0.5 (the gate measures 1 - sqrt(roughness), which is about 0.5 here) and still
-// rough enough to look like a painted surface rather than a mirror. It is a look,
-// not a measurement: nothing in the shader can know what a dropped item is made of.
-const float PBR_ENTITY_ROUGHNESS = 0.25;
+// 0.15, and the number has to be read against the gate rather than by eye: the gate
+// measures 1 - sqrt(roughness) and starts at 0.5, so 0.25 - the value this shipped
+// with for one batch - lands exactly ON the threshold, where the gate returns zero
+// and the reflection is refused. It also made the substitution self-defeating: the
+// test that decides whether to substitute asks whether the gate came out at zero, so
+// a value that produces zero keeps asking, and keeps getting the same value.
+//
+// 0.15 gives a gate of about 0.47: past the threshold with room to spare, and still
+// rough enough to look like a painted surface rather than a mirror. It is a look, not
+// a measurement: nothing in the shader can know what a dropped item is made of.
+const float PBR_ENTITY_ROUGHNESS = 0.15;
 
 // Whether to look up the LabPBR hardcoded metal types (iron, gold, copper, and
 // so on). With this off, those materials are shaded as albedo-based metals
@@ -2471,7 +2477,18 @@ vec3 PbrDebugColor(
 		// coherent reflection.
 		float smoothness = 1.0 - pbr.roughness;
 
-		#ifdef PBR_SSR
+		// ⚠️ Not for the hand, and that exclusion is not a detail (batch 623).
+		//
+		// The step-back below is worth making only where the deferred reflection will
+		// actually replace this term, and the deferred pass does not cover the hand:
+		// the hand is drawn over the world with a depth buffer of its own, so
+		// composite3 skips those pixels outright - see the depthtex2 test in that
+		// pass. Retargeting this guard from the old sky-reflection option to PBR_SSR
+		// in batch 622 therefore took the environment response away from held items
+		// without giving them anything back, and a held metal - which has no diffuse
+		// response at all - came out black. Batches 621 section 20 and 623 are the
+		// same mistake twice: the hand is not part of the deferred frame.
+		#if defined(PBR_SSR) && !defined(PBR_HAND_ITEMS)
 			// PbrReflectionDirection reflects the sky with a direction and a
 			// roughness, which is exactly what this term was standing in for. Wherever that
 			// one is doing the job - a surface smooth enough to show a coherent
