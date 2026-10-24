@@ -192,7 +192,16 @@ void main() {
 		// describes - see the note on depthtex2 above. A pixel the item covers is
 		// the item's to shade, and no reflection of the world behind it may be
 		// computed for it, let alone replace any of its colour.
-		bool handInFront = texelFetch(depthtex2, pixel, 0).r < reflectionDepth;
+		// ⚠️ Which buffer holds the hand, corrected in batch 634 from the TAA audit:
+		// Iris and OptiFine both document depthtex2 as the depth WITHOUT the hand and
+		// without translucents, so the hand is in depthtex0 and absent from depthtex2 -
+		// the opposite of what this test assumed until now, which made it false at every
+		// pixel and left the hand shaded with the reflection of the wall behind it.
+		// Comparing against depthtex2 this way is true exactly where something is in the
+		// frame that depthtex2 does not have. Translucents satisfy it too, and they are
+		// already refused above by seenThrough.
+		bool handInFront = texelFetch(depthtex0, pixel, 0).r
+			< texelFetch(depthtex2, pixel, 0).r;
 
 		if (reflectionDepth < 1.0 && !handInFront) {
 			vec3 reflectionNdc = vec3(
@@ -323,9 +332,17 @@ void main() {
 				float reflectionStillness =
 					exp(-dot(reflectionVelocity, reflectionVelocity));
 
+				// ⚠️ The floor is 0.35 rather than 0.7 since batch 634, and the reason is the
+				// armour: a reflection is a function of the REFLECTED world, and the only
+				// reprojection this pass has is the camera's, so a surface that moves on its
+				// own - a worn piece, a held one, anything animated - keeps a reflection
+				// computed for a ray that no longer exists. At 0.7 that is a six-frame tail,
+				// and the trail on a piece of armour was that tail. Halving the floor halves
+				// it; the cost is a noisier reflection on anything that moves, which is the
+				// same trade the scene's resolve makes for the same reason.
 				float reflectionHistoryWeight = reflectionDisoccluded
 					? 0.0
-					: TAA_STRENGTH * mix(0.7, 1.0, reflectionStillness);
+					: TAA_STRENGTH * mix(0.35, 1.0, reflectionStillness);
 
 				// The weight is computed from the coordinate, so a coordinate that
 				// is not a number would make it one - and a NaN weight is not

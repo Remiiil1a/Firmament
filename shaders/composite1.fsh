@@ -632,6 +632,16 @@ void main() {
 	// by rotation alone, which is a small error in a small part of the frame.
 	const float TAA_HAND_DEPTH = 0.56;
 
+	// ⚠️ The held item, keyed on the predicate the branch below already trusts
+	// (batch 634, from the TAA audit). The hand is attached to the camera, so it
+	// sits at the same place on screen from one frame to the next: its history is
+	// its own previous pixel, and it does not need the world`s reprojection - which
+	// on a moving camera is what drags its history along and smears a sword mid-swing.
+	//
+	// It is inert while the camera is still, because the reprojection round-trips
+	// onto the anchor there and the coordinate comes out the same either way.
+	bool handPixel = anchorDepth <= TAA_HAND_DEPTH;
+
 	vec3 reprojectFrom = anchorDepth > TAA_HAND_DEPTH
 		? anchorWorldPos
 		: anchorWorldPos + (previousCameraPosition - cameraPosition);
@@ -640,11 +650,12 @@ void main() {
 	// from the one copy of that arithmetic, in /lib/reproject.glsl.
 	Reprojection reprojection =
 		ReprojectWorldPosition(reprojectFrom, anchorCoord);
-	vec2 previousScreenCoord =
-		screenCoord + (reprojection.previousCoord - anchorCoord);
+	vec2 previousScreenCoord = handPixel
+		? screenCoord
+		: screenCoord + (reprojection.previousCoord - anchorCoord);
 
-	bool offScreen = reprojection.offScreen;
-	bool behindCamera = reprojection.behindCamera;
+	bool offScreen = handPixel ? false : reprojection.offScreen;
+	bool behindCamera = handPixel ? false : reprojection.behindCamera;
 
 	// Gather the neighbourhood of the current frame, which serves two purposes:
 	// it bounds what the history is allowed to say, and it provides the blurred
