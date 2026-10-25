@@ -532,11 +532,21 @@ void main() {
 			//
 			// Where there is no normal there is nothing to ask: Voxy and the DH
 			// terrain write no material buffer - the gap the ambient occlusion above
-			// already documents - so those pixels keep the weight they had.
+			// already documents.
+			//
+			// Batch 649: and that absence is now a reason to skip the effect rather
+			// than to assume the surface faces the sun. The author's screenshots show
+			// LOD water going black at dusk with long dark stripes across it, which is
+			// this effect running at a grazing angle on a surface whose material was
+			// never written - so the water mask below could not recognise it either.
+			// Nothing here can tell a Voxy lake from Voxy stone, and shading a lake like
+			// the land around it is what went wrong; leaving it unshadowed is the
+			// failure that does not exist on screen.
 			vec4 sssMaterial = texelFetch(colortex7, ivec2(gl_FragCoord), 0);
+			bool sssHasMaterial = dot(sssMaterial.xyz, sssMaterial.xyz) > 0.5;
 			float sssNdotL = 1.0;
 
-			if (dot(sssMaterial.xyz, sssMaterial.xyz) > 0.5) {
+			if (sssHasMaterial) {
 				sssNdotL = clamp(dot(
 					normalize(sssMaterial.xyz),
 					normalize(shadowLightPosition)), 0.0, 1.0);
@@ -545,7 +555,7 @@ void main() {
 			float sssWeight = SSS_STRENGTH * sssSunFade * sssNdotL * smoothstep(
 				sssReach * 0.85, sssReach * 1.15, sssDistance);
 
-			if (sssWeight > 0.0 && !sssTranslucent && sssWater < 0.5) {
+			if (sssWeight > 0.0 && sssHasMaterial && !sssTranslucent && sssWater < 0.5) {
 				float lit = ScreenSpaceShadow(
 					depthtex1,
 					gbufferProjection,
