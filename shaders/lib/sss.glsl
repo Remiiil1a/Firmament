@@ -86,7 +86,12 @@
 	// How many steps the ray takes, spread evenly across the ray's length on
 	// screen. More steps mean the samples sit closer together, which is what
 	// keeps the shadow's edge from breaking up into the gaps between them.
-	#define SSS_STEPS 32 // [8 12 16 24 32 48]
+	//
+	// Batch 651 raised it from 32, and the reason is not the edge: the step length
+	// is also the smallest thickness the crossing test can resolve, so a coarse
+	// step turns a slope into a ladder of bands that pass and fail in turn. See the
+	// note on the crossing width below.
+	#define SSS_STEPS 48 // [16 24 32 48 64]
 
 	// How high above the receiver the ray has to be able to climb, in blocks, and
 	// the length that implies.
@@ -441,7 +446,23 @@ float SssScreenNoise(vec2 fragCoord) {
 			// entered, not the distance the ray may spend inside one.
 			float depthTolerance = travelled * SSS_THICKNESS_RATE;
 			float tolerance = max(0.05, depthTolerance);
-			float thickness = max(SSS_THICKNESS, stepInBlocks * 1.5);
+
+			// Batch 651: the width no longer multiplies the step, and that 1.5 was
+			// the stripes.
+			//
+			// The width has to cover one step, or a thin occluder can be stepped
+			// over - that part is right. Multiplying it by a step and a half as well
+			// made it cover a step and a half of DISTANCE, and since batch 645 a step
+			// is a world distance that grows with the reach: at ninety blocks a step
+			// is three blocks, so the band became four and a half. On a slope the ray
+			// grazes, that is wide enough for every sample to find the surface it is
+			// walking along, so the terrain shadows itself in regular bands - which is
+			// what the author's screenshot shows, stripes running with the contours
+			// rather than shadows of anything.
+			//
+			// Covered once, not once and a half, and the step is smaller because
+			// SSS_STEPS went up. Thin occluders stay caught; slopes stop laddering.
+			float thickness = max(SSS_THICKNESS, stepInBlocks);
 
 			// The crossing test, and it is an ordinary comparison rather than a pair of
 			// smoothsteps now that the decision is binary (batch 646). A sample occludes when
