@@ -543,56 +543,34 @@ void main() {
 
 			float sssSunFade = smoothstep(0.0, 0.01745, abs(sssLightWorld.y));
 
-			// Batch 644: how much of the sun this surface can be receiving. A
-			// surface turned away from it must not be darkened by the shadow of a
-			// light it was never getting. This is the cheap form of that rule; the
-			// real form takes only the direct sunlight back out and leaves the sky
-			// light and the ambient, which this pass cannot do because the forward
-			// rendering has already summed every term into one colour (see the note
-			// on SSS_DARK_LIMIT in lib/sss.glsl). NdotL asks the same question once,
-			// and for free.
+			// The geometric normal's dot with the light, in WORLD space on both sides,
+			// which is what the ported screen-space shadow takes (batch 654).
 			//
-			// Where there is no normal there is nothing to ask: Voxy and the DH
-			// terrain write no material buffer - the gap the ambient occlusion above
-			// already documents - so those pixels keep the weight they had. Asking a
-			// pixel with no normal for NdotL and assuming the answer would be wrong
-			// either way; leaving the weight alone is at least the behaviour the
-			// effect already had over distant terrain.
+			// It decides how much of the result to keep: a surface the sun is lighting
+			// squarely is where the shadow map is most reliable, so the reference fades
+			// the screen-space guess out there and keeps it for the grazing surfaces -
+			// which is exactly the low-sun case this effect matters in. colortex7 holds
+			// a world-space normal and sssLightWorld is the light in the same space;
+			// batch 653's note has what happened when the two sides were in different
+			// spaces.
 			//
-			// What does NOT happen any more is refusing the effect for want of a
-			// material (batch 649 did that, and batch 650 took it back out). Distant
-			// terrain is the whole reason this effect exists, so removing it there was
-			// the wrong answer to the water problem. The right one is to write the
-			// water mask where the water is drawn: the Voxy programs decode the block
-			// id already, and they write colortex2.g again since batch 650, so the
-			// mask below now answers for LOD water as well.
+			// Where there is no normal - Voxy and the DH terrain write no material
+			// buffer - the answer is zero rather than one, because zero is the value
+			// that leaves that fade fully open. Distant terrain is the whole reason the
+			// effect exists and it must not be the case it refuses.
 			vec4 sssMaterial = texelFetch(colortex7, ivec2(gl_FragCoord), 0);
 			bool sssHasMaterial = dot(sssMaterial.xyz, sssMaterial.xyz) > 0.5;
-			float sssNdotL = 1.0;
+			float sssNdotL = 0.0;
 
 			if (sssHasMaterial) {
-				// Batch 653: the two sides of this dot product were in different
-				// spaces, and that is why the effect darkened surfaces it should have
-				// left alone.
-				//
-				// colortex7 holds a WORLD-space normal (the surface programs write
-				// DecodePerFaceWorldNormal, and environment_reflection.glsl reads it as
-				// a world normal). shadowLightPosition is VIEW space - the pack's own
-				// notes on the uniform say so. Dotting one against the other is a
-				// number that changes when the camera turns, so a slope facing the sun
-				// could come out back-lit and a surface in shade could come out lit; the
-				// author's screenshots of a stepped hillside with every top face
-				// darkened are what that looks like.
-				//
-				// sssLightWorld above is already the sun's direction in world space -
-				// the transpose of the view rotation, the same quantity the sun-height
-				// fade uses - so this is the comparison that was meant, for free.
-				sssNdotL = clamp(dot(
-					normalize(sssMaterial.xyz),
-					sssLightWorld), 0.0, 1.0);
+				sssNdotL = clamp(dot(normalize(sssMaterial.xyz), sssLightWorld), 0.0, 1.0);
 			}
 
-			float sssWeight = SSS_STRENGTH * sssSunFade * sssNdotL * smoothstep(
+			// Faded in past the shadow distance. This is the pack's policy about WHERE
+			// the effect applies, not part of the ported march: inside that distance the
+			// shadow map is both more accurate and already paid for. The march's own
+			// distance fade is inside ScreenSpaceShadow.
+			float sssWeight = SSS_STRENGTH * sssSunFade * smoothstep(
 				sssReach * 0.85, sssReach * 1.15, sssDistance);
 
 			if (sssWeight > 0.0 && !sssTranslucent && sssWater < 0.5) {
@@ -601,11 +579,11 @@ void main() {
 					gbufferProjection,
 					gbufferProjectionInverse,
 					sssViewPos,
-					// Whichever body is lighting the world, which is what this
-					// whole effect has to follow to work at night as well as by
-					// day. It reverses when the two change places, and the fade
-					// below is what covers that moment.
-					normalize(shadowLightPosition));
+					// Whichever body is lighting the world, in view space, which is
+					// what the ported march expects.
+					normalize(shadowLightPosition),
+					sssNdotL,
+					SssScreenNoise(gl_FragCoord.xy));
 
 				// The weight is capped, and that cap is the difference between a
 				// dark shadow and a black hole in the picture.

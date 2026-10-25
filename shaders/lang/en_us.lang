@@ -482,7 +482,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 653]
+option.PBR_DEBUG=Material debug view [build 654]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1494,6 +1494,10 @@ option.SSS_DARK_LIMIT.comment=The most this effect may darken a pixel, as a \
 	whole colour, already one number by this point, so strength and darkness were \
 	one dial - at full strength a fully occluded pixel keeps a quarter of its \
 	colour, which on a dim surface is a hole rather than a shadow.
+option.SSS_SAMPLES=Ray samples
+option.SSS_SAMPLES.comment=How many samples the ray takes across a fixed \
+	length of screen. More samples cost more and only make the same ray finer: \
+	the shadow is the same length at every setting.
 
 option.SSS_STEPS=Ray steps
 option.SSS_STEPS.comment=How many steps the ray takes. More steps means finer \

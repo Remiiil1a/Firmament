@@ -19,24 +19,55 @@
 // Screen-space shadows.
 //
 // The shadow map only covers a fixed distance around the player, and terrain
-// beyond it - Distant Horizons' level of detail terrain, Voxy's, and in general
-// anything drawn past the shadow distance - gets light from the sun and casts
-// none of its own. On a landscape with hills that is the most conspicuous thing
-// about the distance: a valley sits in full sun no matter what stands between it
-// and the sun.
+// beyond it gets light from the sun and casts none of its own. On a landscape
+// with hills that is the most conspicuous thing about the distance: a valley
+// sits in full sun no matter what stands between it and the sun.
 //
 // This walks a ray from the fragment towards the sun through the depth buffer
-// instead. Whatever the buffer says is in the way, is in the way - and the depth
-// buffer holds everything that writes depth, so terrain drawn by another mod
-// casts shadows here just like the pack's own does.
+// instead, and whatever the buffer says is in the way is in the way.
 //
-// It is faded in over the shadow distance rather than applied everywhere, and
-// what that means at this point in the file is the caller's blend and not this
-// file's: inside that distance the shadow map is both more accurate and already
-// paid for, so this contributes nothing there, and past the end of the fade
-// window it is the only shadow the distance has. The two are both partly on
-// across the window itself, which is what keeps the seam from showing. See the
-// note at the call in program/post/copy_and_fog.fsh for how the window is built.
+// ---- batch 654: this file is a PORT, not our own design ----
+//
+// Everything from here down is Sundial-Lite's `screenSpaceShadow`, taken from
+// programs/deferred/Deferred11.frag:169-258 together with its screen-edge helper
+// in libs/GbufferData.glsl:444-458, and adapted to this pack's buffers. It is
+// kept structurally identical on purpose: the pack is being aligned against that
+// reference, and batches 636 to 653 were spent discovering - one symptom at a
+// time - that our own implementation did not work. Its symptoms were flat grey
+// shadows, then banded slopes that shadowed themselves, then stripes that the
+// step count did not change. Rather than keep diagnosing our own arithmetic, the
+// arithmetic is now the reference's.
+//
+// What was adapted, and nothing else:
+//
+//  * the depth buffer. Sundial reads a packed float32 depth out of colortex6 and
+//    has a negative-depth branch for its LOD terrain. In this pack the LOD
+//    terrain (Voxy) writes the same depth textures as the vanilla world - see
+//    BATCH_LOG 3090, and the note in voxy.json that refuses
+//    excludeLodsFromVanillaDepth for exactly this reason - so the plain depth
+//    texture can be sampled and the LOD branch is not needed.
+//  * the hand. Sundial remaps the hand's depth with MC_HAND_DEPTH and offsets it.
+//    This pack's receiver is the opaque surface, where the hand is not present at
+//    all, so both are dropped rather than carried as dead weight.
+//  * porosity. Sundial's occlusion test is `shadow *= clamp(absorption - hit, 0, 1)`
+//    where absorption is 1.0 exactly for a non-porous surface, which makes it a
+//    hard binary decision for solid terrain. This pack has roughness where Sundial
+//    has porosity, and roughness is not the same quantity, so porosity is passed
+//    as zero and the expression collapses to the solid case - which is what the
+//    effect is for here. Foliage translucency is a separate feature in this pack
+//    (PBR_SUBSURFACE) and is not this file's business.
+//  * the sub-texel refinement. Sundial re-reads the depth with textureGather and
+//    bilinearly reconstructs the four taps around a hit. textureGather needs GLSL
+//    4.0 and this pack is #version 150, so the refinement is a plain bilinear
+//    texture fetch at the sample coordinate, which asks the same question.
+//  * the noise. Sundial reads two values from a blue-noise texture; this pack has
+//    no such texture bound for this pass, so SssScreenNoise below provides the one
+//    value the march uses, in the same 0..1 role.
+//
+// The shadow's own distance fade is INSIDE the function (shadowWeight below), and
+// that is why the caller no longer applies one of its own: batches 645-651 each
+// added a fade, a reach or a threshold at the call site, and every one of them was
+// a substitute for this.
 
 // Whether to cast shadows for terrain the shadow map does not reach.
 //
@@ -47,171 +78,41 @@
 // option if the macro is referenced by an #ifdef or #ifndef somewhere.
 #define SCREENSPACE_SHADOWS
 #ifdef SCREENSPACE_SHADOWS
-	// How dark the shadows get, where 1.0 is as dark as the sun's own
-	// contribution could be. It is applied to the whole colour rather than to
-	// the sunlight alone, because by the time this pass runs the two are already
-	// added together - so a value near 1.0 also takes some sky light with it.
-	#define SSS_STRENGTH 0.5 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.75 0.8 0.9 1.0]
+	// How much of the result to apply, where 1.0 would apply all of it. It is
+	// applied to the whole colour rather than to the sunlight alone, because by the
+	// time this pass runs the two are already added together - so a value near 1.0
+	// also takes some sky light with it. Sundial applies its version to the sun term
+	// only; this pass does not have that option.
+	#define SSS_STRENGTH 0.6 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.75 0.8 0.9 1.0]
 
-	// The most this effect is allowed to darken a pixel by, as a fraction of its
-	// own colour. 0.9 is the behaviour this had before the option existed, and it
-	// is the default; lowering it keeps the distance shadows from ever getting
-	// close to black.
-	//
-	// It exists because of what it multiplies. SSS_STRENGTH above already says
-	// this is applied to the whole colour rather than to the sunlight alone - by
-	// the time this pass runs, the direct light, the sky light, the ambient and
-	// the reflection have all been added into one number, and there is no way to
-	// take the sun back out of it. So the effect's strength and its risk are the
-	// same dial: at full strength a fully occluded pixel keeps a quarter of its
-	// colour, which on a dim surface is not a shadow but a hole. This separates
-	// the two - how much of the effect to use, and how dark it may ever get.
-	//
-	// Batch 642 moved both defaults down - SSS_STRENGTH to 0.5 and this to
-	// 0.55 - because the effect stopped averaging in batch 641 and started
-	// deciding, and a decision reaches zero where an average never did. Until 641
-	// this cap could not bind at all (the weight peaked below it), so the buffer
-	// here is the first one written against a result that actually gets there:
-	// the author's report was that the shadows had structure and were too dark.
-	//
-	// The earlier note about a black blot is kept in BATCH_LOG.md 155 rather than
-	// here, because it no longer describes this option's default: turning the whole
-	// effect off never stopped that blot, so the value was never the cause.
-	//
-	// The correct fix for the argument above is still to attenuate the sunlight
-	// alone, which needs the surface programs to keep the direct and indirect parts
-	// apart - the next step in this sequence. See BATCH_LOG.md 154.
+	// The most this effect may darken a pixel by, as a fraction of its own colour.
 	#define SSS_DARK_LIMIT 0.55 // [0.0 0.25 0.4 0.5 0.55 0.6 0.7 0.8 0.9]
 
-	// How many steps the ray takes, spread evenly across the ray's length on
-	// screen. More steps mean the samples sit closer together, which is what
-	// keeps the shadow's edge from breaking up into the gaps between them.
-	//
-	// Batch 651 raised it from 32, and the reason is not the edge: the step length
-	// is also the smallest thickness the crossing test can resolve, so a coarse
-	// step turns a slope into a ladder of bands that pass and fail in turn. See the
-	// note on the crossing width below.
-	#define SSS_STEPS 48 // [16 24 32 48 64]
+	// How many samples the ray takes. Sundial's default is 12 and the step length
+	// is fixed independently of this, so raising it samples the same ray more
+	// finely rather than reaching further.
+	#define SSS_SAMPLES 12 // [6 8 9 10 12 14 16 18 20 25 30]
 
-	// How high above the receiver the ray has to be able to climb, in blocks, and
-	// the length that implies.
-	//
-	// This used to be the ray's length, and a fixed one. The two are different
-	// questions. A ridge shadows a valley when the ray clears the ridge's height,
-	// and how far away that is depends entirely on how high the sun is: at a high
-	// sun the same height is reached in a fraction of the distance it takes at a
-	// low one. A fixed length was therefore too long overhead and too short at the
-	// angles that matter - the low ones, where the shadows are long and where a
-	// fixed 48 blocks reached barely a dozen blocks of height (batch 645).
-	#define SSS_LENGTH 24.0 // [8.0 16.0 24.0 32.0 48.0]
+	// The step, as a fraction of the screen, from Sundial's
+	// `stepSize *= 0.003 * 12.0 / SCREEN_SPACE_SHADOW_SAMPLES`. The 12 is their
+	// reference sample count, and it stays here so that the total reach is the same
+	// 0.036 of the screen at any setting of SSS_SAMPLES - which is what makes the
+	// shadow's length independent of the step count, and independent of the field
+	// of view.
+	const float SSS_SCREEN_STEP = 0.003;
 
-	// The cap on that division and the floor on the elevation it divides by. A sun
-	// just above the horizon would otherwise ask for a ray hundreds of blocks long,
-	// which is both wrong for a screen-space effect - the depth buffer holds a few
-	// dozen blocks at most out here - and the most expensive case there is.
-	const float SSS_MAX_LENGTH = 96.0;
-	const float SSS_MIN_ELEVATION = 0.05;
-
-	// How much of the screen the ray may cross, in screen units - 0.07 is seven
-	// percent of the shorter side's worth of screen space, and it is the bound that
-	// makes the effect independent of the field of view (batch 647).
-	//
-	// The reference packs both work this way: their reach is a fixed fraction of the
-	// screen, which is why zooming in shortens their shadows instead of stretching
-	// them. Seven percent is a little wider than either uses, because this pack has
-	// no working shadow map out where the effect runs and needs a little more reach
-	// to find the ridge.
-	const float SSS_SCREEN_REACH = 0.07;
-
-	// How thick an occluder is allowed to be, as a fraction of how far along the
-	// ray it was met.
-	//
-	// A ray that runs into a hill meets its surface almost exactly where it
-	// reaches it. A ray that merely passes *in front of* something - an entity,
-	// the held block, a tree nearer the camera than the terrain being shaded -
-	// meets that thing hundreds of blocks short, and that is not an occluder.
-	// The window below is what tells the two apart, and the distance it is
-	// measured over is in blocks, in view space.
-	//
-	// The two constants below are not the window on their own: the test that
-		// Batch 646 changed what the window bounds, and that is the fix rather than a
-		// change of numbers. It bounds the CROSSING: how far behind a surface the ray may
-		// be at the sample where it first goes behind it. It used to bound the BURIAL -
-		// how deep inside the surface the ray was - and because the loop kept walking after
-		// the ray went in, that window closed on the penetration depth two samples later.
-		// Two consequences, both visible: a mountain and a leaf counted the same, and a
-		// surface the ray entered steeply - a cliff face - left the window almost at once
-		// and cast almost nothing. A crossing test has neither.
-		//
-		// SSS_THICKNESS is the width of that crossing in blocks; SSS_THICKNESS_RATE is the
-		// bias below it, which grows with distance because the depth buffer precision does.
-	// Sundial measures it in the depth buffer's own units instead, as a fraction
-	// of the distance. That is not portable to this pack's depth buffer: those
-	// units are not linear in distance, so out at the range this feature works
-	// over the entire distant world sits in the last thousandth of the range and
-	// a window expressed in them stops distinguishing anything from anything
-	// else. Trying it caught nearly every sample and turned the whole distance
-	// black, which is what this comment is here to stop anyone repeating.
-	//
-	// Batch 640 sharpened both of these, and the step count above, because the
-	// report was that the shadows are blurry and the cause was arithmetic rather
-	// than taste.
-	//
-	// The ray took 12 steps across 48 blocks - one sample every 4 blocks - so an
-	// edge could only land on one of thirteen places along it and the result read
-	// as a gradient. At 32 steps a sample falls every 1.5 blocks and the edge lands
-	// where it belongs.
-	//
-	// The base thickness was 2 blocks. A tree's branch, a fence post, the lip of a
-	// leaf canopy - anything thinner than two blocks - was too thin to count as an
-	// occluder at all, and geometry that cannot occlude leaves a smooth wash where
-	// its shadow should be. It is 0.75 now, with half the rate, which is what turns
-	// those into shadows without turning everything into one.
-	const float SSS_THICKNESS = 1.5;
-	const float SSS_THICKNESS_RATE = 0.01;
-
-	// What the blocked fraction of the ray is multiplied by before the shadow is
-	// worked out - the dial for how dark a shadow gets.
-	//
-	// A ray that runs into a hillside is usually blocked over *part* of its
-	// length rather than all of it: the far end of the ray passes over the hill
-	// and comes out the other side, or the sample spacing steps past it. So the
-	// fraction comes out well below one even for a shadow that should be solid,
-	// and the shadow reads as faint. This is what to raise for that.
-	//
-	// It multiplies the *fraction*, never the per-sample count, so the result
-	// still does not depend on the step count.
-	#define SSS_GAIN 2.0 // [1.0 1.25 1.5 1.75 2.0 2.5 3.0 4.0]
-
-	// SSS_GAIN, SSS_FULL_OCCLUSION and SSS_STEP_LIMIT described the old 
-	// fractional logic, which is gone in batch 641. They are marked deprecated here 
-	// rather than deleted in the same batch: SSS_GAIN is still listed in the menu and 
-	// removing it means editing the profile, the slider list and both language files, 
-	// which is a separate, safe change. Nothing reads them any more.
-
-	// How much of the ray has to be blocked before the shadow is as dark as it
-	// gets. The shadow is the *fraction* of the ray the depth buffer says is
-	// blocked, so this is the whole of the tuning: a ray that runs into a hill is
-	// blocked at nearly every sample and goes dark, and one that is blocked at a
-	// few reads as light shading.
-	//
-	// It is deliberately a fraction rather than a running darkening applied per
-	// occluded sample. Multiplying the light down once per hit made the result
-	// depend on how many samples there were at all: raising the step count
-	// darkened the image further even where nothing had changed, because whatever
-	// the test wrongly counts as an occluder - and out at this range the depth
-	// buffer is coarse enough that it will count some - gets more chances the
-	// more samples are taken. That was measured from the driver's seat, by
-	// lowering the step count until the darkening went away.
-	const float SSS_FULL_OCCLUSION_DEPRECATED = 1.0;
-
-	// The loop below needs a constant bound, so the option above selects how many
-	// of a fixed set of iterations actually run.
-	const int SSS_STEP_LIMIT_DEPRECATED = 32;
+	// Sundial's shadowDistance, used by the effect's own fade at the end. The
+	// caller's shadow distance is a different number and is not consulted.
+	const float SSS_DISTANCE = 120.0;
 #endif
 
 // The frame number, so that the dither below can move from frame to frame.
 uniform int frameCounter;
+
+// The size of one texel, for the origin nudge in ScreenSpaceShadow. Declared here
+// rather than assumed: this file is included by more than one program and not all
+// of them declare it themselves.
+uniform vec2 texelSize;
 
 // Cheap per-pixel value in 0..1, used to offset the first step of the ray so that
 // neighbouring pixels do not march through the same sample positions.
@@ -220,9 +121,8 @@ uniform int frameCounter;
 // the temporal filter can do anything about this noise. A value that depended on
 // the pixel alone is the *same* value in the history as it is in the current
 // frame, so averaging the two averages the noise with itself and keeps it in
-// full: it is a fixed pattern baked into the image, and no amount of history
-// removes a pattern that never changes. Noise is only removable over time if it
-// is different every frame, which is what the shift below makes it.
+// full. Noise is only removable over time if it is different every frame, which
+// is what the shift below makes it.
 //
 // Sundial does exactly this to the dither its own screen-space effects use
 // (bayer64Temporal, in libs/Common.glsl): an ordered pattern shifted by an
@@ -236,266 +136,144 @@ float SssScreenNoise(vec2 fragCoord) {
 	return fract(noise + shift);
 }
 
-// The shadow at one fragment, as a fraction of the light that reaches it: 1.0
-// where nothing is in the way, and darker the more of the ray the depth buffer
-// says is blocked.
-//
-// viewPos is this fragment's position in view space and lightDirection points
-// from it towards the sun, also in view space. No surface normal is needed: the
-// ray only asks whether something stands between this point and the light.
 #ifdef SCREENSPACE_SHADOWS
+	// How far along the ray it gets before it reaches one of the screen's four
+	// edges, taken from Sundial (libs/GbufferData.glsl:444-458).
+	//
+	// The parameter is where `origin + direction * t` projects to x = target on the
+	// x axis, and the same on y; SssTraceLength asks for all four combinations and
+	// keeps the smallest.
+	//
+	// Sundial compares the four answers as float bit patterns, because a division by
+	// zero produces an infinity or a NaN and a plain min would keep the NaN - every
+	// comparison with a NaN is false, so a NaN silently wins. That trick needs
+	// floatBitsToUint, which this pack's #version 150 does not have without an
+	// extension, so the same guarantee is spelled out instead: `t > 0.0` is false
+	// both for a NaN and for a non-positive answer, so each becomes the sentinel and
+	// can never win the min. The behaviour is the reference's; the spelling is not.
+	float SssAxisReach(
+		float origin, float direction, float originW, float directionW, float target
+	) {
+		float t = (target * originW - origin) / (direction - target * directionW);
+		return t > 0.0 ? t : 1.0e6;
+	}
+
+	// How far along the ray it may travel before it leaves the screen, or reaches
+	// the far plane's neighbourhood.
+	float SssTraceLength(vec4 origin, vec4 direction) {
+		float reach = SssAxisReach(origin.x, direction.x, origin.w, direction.w, 1.0);
+		reach = min(reach, SssAxisReach(origin.x, direction.x, origin.w, direction.w, -1.0));
+		reach = min(reach, SssAxisReach(origin.y, direction.y, origin.w, direction.w, 1.0));
+		reach = min(reach, SssAxisReach(origin.y, direction.y, origin.w, direction.w, -1.0));
+
+		// Sundial caps this at `far + 32.0`: a ray that reaches the far plane has
+		// nothing left behind it that could occlude it.
+		return min(reach, far + 32.0);
+	}
+
+	// The shadow at one fragment, as a fraction of the light that reaches it: 1.0
+	// where nothing is in the way, and 0.0 where the ray is blocked by something
+	// that is plausibly the occluder.
+	//
+	// viewPos is this fragment's position in view space; lightDirection points from
+	// it towards the sun, also in view space. NdotL and noise are what Sundial's
+	// function takes and what the fade and the first-sample offset need; NdotL is
+	// the *geometric* normal's, in whatever space lightDirection is in, and the
+	// caller is responsible for that - the note at the call says how.
 	float ScreenSpaceShadow(
 		sampler2D depthTexture,
 		mat4 projection,
 		mat4 projectionInverse,
 		vec3 viewPos,
-		vec3 lightDirection
+		vec3 lightDirection,
+		float NdotL,
+		float noise
 	) {
-		// The ray is walked in *screen* space, and that is the whole reason it is
-		// not walked in view space.
-		//
-		// Stepping a fixed distance in view space and projecting each step puts
-		// the samples an uneven distance apart on the screen. A ray that runs
-		// nearly parallel to the screen plane - which is exactly what a low sun
-		// gives - covers many pixels per step, so the gaps between samples open
-		// up, and what comes out is stripes that radiate from the sun rather than
-		// a shadow. Stepping evenly between the projected ends of the ray keeps
-		// the samples the same number of pixels apart at every sun angle. This is
-		// how Sundial's screen-space shadows are built, and why they do not show
-		// this.
-		vec4 originClip = projection * vec4(viewPos, 1.0);
+		// Sundial projects the ray's ends through the projection matrix by hand
+		// rather than with a matrix multiply, because it needs the clip-space
+		// direction as a separate vector to intersect with the screen edges. The
+		// arithmetic is theirs, term for term.
+		vec4 originProjPos = vec4(
+			vec3(projection[0].x, projection[1].y, projection[2].z) * viewPos,
+			-viewPos.z);
+		originProjPos.z += projection[3].z;
+		originProjPos.xy += projection[2].xy * viewPos.z;
 
-		if (originClip.w <= 0.0) {
-			return 1.0;
-		}
+		float projScale = 0.5 / originProjPos.w;
+		vec4 originCoord = vec4(originProjPos.xyz * projScale + 0.5, 0.0);
 
-		vec2 originScreen = originClip.xy / originClip.w * 0.5 + 0.5;
-		float originDepth = originClip.z / originClip.w * 0.5 + 0.5;
+		vec4 projDirection = vec4(
+			vec3(projection[0].x, projection[1].y, projection[2].z) * lightDirection,
+			-lightDirection.z);
+		projDirection.xy += projection[2].xy * lightDirection.z;
 
-		// The far end of what the ray is allowed to reach, before projecting it.
-		// Taken no further than the camera plane: a point at or behind that plane
-		// has no screen position to aim at, and the ray is stopped where it
-		// crosses instead.
-		//
-		// The length comes from the light's elevation, not from a constant: the ray
-		// has to climb SSS_LENGTH blocks of terrain, and the distance that takes is
-		// the height over the sine of the angle it climbs at. lightDirection is in
-		// view space, so the world's up axis is the view matrix' transpose applied
-		// to it - the same transpose the caller uses to answer the same question.
-		vec3 lightWorld = transpose(mat3(gbufferModelView)) * lightDirection;
-		float lightSine = max(abs(lightWorld.y), SSS_MIN_ELEVATION);
-		float sssRayLength = clamp(SSS_LENGTH / lightSine, 8.0, SSS_MAX_LENGTH);
+		float traceLength = SssTraceLength(originProjPos, projDirection);
 
-		vec3 farViewPos = viewPos + lightDirection * sssRayLength;
-		vec4 farClip = projection * vec4(farViewPos, 1.0);
+		vec4 targetProjPos = originProjPos + projDirection * traceLength;
+		float targetProjScale = 0.5 / targetProjPos.w;
+		vec4 targetCoord = vec4(targetProjPos.xyz * targetProjScale + 0.5, 0.0);
 
-		if (farClip.w <= 1.0e-4) {
-			float along = (originClip.w - 1.0e-4)
-				/ max(originClip.w - farClip.w, 1.0e-6);
+		// The direction of the ray in screen space, normalised in xy, and the origin
+		// pushed one and a half texels along it so that the first sample is not the
+		// surface the ray starts on.
+		vec4 stepSize = targetCoord - originCoord;
+		stepSize *= inversesqrt(dot(stepSize.xy, stepSize.xy));
+		originCoord += stepSize * max(texelSize.x, texelSize.y) * 1.5;
 
-			farViewPos = mix(viewPos, farViewPos, clamp(along, 0.0, 1.0));
-			farClip = projection * vec4(farViewPos, 1.0);
-		}
+		float shadow = 1.0;
 
-		vec2 farScreen = farClip.xy / farClip.w * 0.5 + 0.5;
-		float farDepth = farClip.z / farClip.w * 0.5 + 0.5;
+		// The step is a fixed fraction of the screen, so the total reach is fixed at
+		// SSS_SCREEN_STEP * 12 whatever SSS_SAMPLES is: the count changes how finely
+		// the same ray is sampled, never how long it is. This is the property that
+		// makes the shadow shorten under zoom instead of dissolving into stripes.
+		stepSize *= SSS_SCREEN_STEP * 12.0 / float(SSS_SAMPLES);
 
-		// Stop at the edge of the screen. Past it there is no depth to ask, and
-		// the edge itself is not an occluder - treating it as one drew a shadow
-		// down the sides of the screen.
-		vec2 delta = farScreen - originScreen;
-		float reach = 1.0;
+		targetCoord = originCoord + stepSize * float(SSS_SAMPLES);
 
-		if (abs(delta.x) > 1.0e-6) {
-			reach = min(reach, (delta.x > 0.0 ? 1.0 - originScreen.x : -originScreen.x)
-				/ delta.x);
-		}
+		// Sundial works in reciprocal distance, which is what view-space depth is
+		// proportional to: 1/length rather than length.
+		float viewLength = inversesqrt(dot(viewPos, viewPos));
 
-		if (abs(delta.y) > 1.0e-6) {
-			reach = min(reach, (delta.y > 0.0 ? 1.0 - originScreen.y : -originScreen.y)
-				/ delta.y);
-		}
+		// The effect fades out at the shadow distance, and fades out again where the
+		// surface faces the sun - the latter because a face the sun is lighting
+		// squarely is where the shadow map is at its most reliable, and where the
+		// screen-space guess would be at its least. Both terms are Sundial's.
+		float shadowWeight = clamp(1.0 - abs(NdotL) * 10.0, 0.0, 1.0)
+			* clamp(1.0 - 1.1 / viewLength / SSS_DISTANCE, 0.0, 1.0);
 
-		reach = clamp(reach, 0.0, 1.0);
-		delta *= reach;
+		vec4 sampleCoord = originCoord + noise * stepSize;
+		sampleCoord.z -= 2.0e-7;
 
-		// One step's worth of everything, so that the loop below is a single
-		// multiply-add per sample.
-		//
-		// Batch 647: the segment is cut to a fixed length ON THE SCREEN first, and
-		// that is what the zoom exposed. The ray's length is a world distance - a
-		// height over the sine of the sun's elevation, since batch 645 - and the
-		// samples are spread evenly across whatever on-screen segment that distance
-		// projects to. At a normal field of view that is a few dozen pixels; through
-		// the zoom it is several times longer, so the same number of samples sit
-		// several times further apart and the shadow dissolves into stripes. The
-		// shadow also grew longer in the world, where both reference packs make it
-		// shorter, because they bound the ray as a fraction of the screen: a
-		// narrower field of view then covers less of the world and the shadow
-		// shortens with it.
-		//
-		// The world bound above still decides how far the ray may reach through the
-		// terrain. This one decides how far it may spread across the screen, which is
-		// what both the sample spacing and the shadow's apparent length depend on.
-		float screenLength = length(delta);
+		// The thickness window, in the projected depth the comparison is made in. It
+		// shrinks with distance because the depth buffer's precision does: at a
+		// hundred blocks a fixed window would accept the sky.
+		float maximumThickness = 0.0005 * viewLength;
+		sampleCoord.z -= maximumThickness;
 
-		if (screenLength > SSS_SCREEN_REACH) {
-			float screenScale = SSS_SCREEN_REACH / screenLength;
-
-			// The walked fraction carries the scaling, not the far depth, and that
-			// matters: stepInDepth and stepInBlocks are both built from `reach`, so
-			// shortening the ray here and leaving `reach` alone would have kept a
-			// step's worth of depth measured on the ray that was never walked. The
-			// per-step world distance would then be too large by 1/screenScale and the
-			// crossing width built from it - max(SSS_THICKNESS, stepInBlocks * 1.5) -
-			// would accept ten blocks of penetration instead of one and a half, which
-			// trades stripes for dark smears. Found by the audit; fixed here.
-			delta *= screenScale;
-			reach *= screenScale;
-			screenLength = SSS_SCREEN_REACH;
-		}
-
-		vec2 stepDirection = screenLength > 1.0e-6 ? delta / screenLength : vec2(0.0);
-		float stepInScreen = screenLength / float(SSS_STEPS);
-		float stepInDepth = (farDepth - originDepth) * reach / float(SSS_STEPS);
-
-		// How far one step of the march travels in blocks, which is the unit the
-		// thickness window below is measured in.
-		//
-		// Every input is settled before this point: farViewPos at its own
-		// assignment above, viewPos is read-only, reach was clamped a few lines
-		// up, and SSS_STEPS is a compile-time count. So the whole expression is
-		// the same number on every step of the loop, and it was written inside
-		// the loop, which cost an sqrt and a division per sample to arrive at a
-		// value it already had.
-		float stepInBlocks = length(farViewPos - viewPos)
-			* reach / float(SSS_STEPS);
-
-		float dither = SssScreenNoise(gl_FragCoord.xy);
-
-		// The bound is SSS_STEPS itself (batch 641). It used to be a separate
-		// SSS_STEP_LIMIT of 24 while the result was divided by SSS_STEPS, so any setting
-		// above 24 marched 24 steps and divided by more than it had walked - the mean
-		// per sample fell as the count rose, which is one more reason raising the count
-		// changed nothing.
-		for (int i = 0; i < SSS_STEPS; i++) {
-
-			// The first sample is offset a random fraction of a step per pixel,
-			// so that neighbouring pixels do not step through the same sample
-			// positions and the shadow boundary does not quantise into bands.
-			//
-			// It moves every frame as well - see SssScreenNoise - which is what
-			// leaves the temporal filter in composite1 something to average: with
-			// the dither standing still, the noise reached the history unchanged
-			// and stayed in the image in full.
-			float travel = float(i + 1) + dither;
-			vec2 sampleCoord = originScreen + stepDirection * (stepInScreen * travel);
-			float rayDepth = originDepth + stepInDepth * travel;
-
-			if (any(lessThan(sampleCoord, vec2(0.0)))
-				|| any(greaterThan(sampleCoord, vec2(1.0)))) {
+		for (int i = 0; i < SSS_SAMPLES; i++) {
+			// Sundial compares these as bit patterns for the NaN reason noted on
+			// SssAxisReach; #version 150 has no floatBitsToUint here, and a plain
+			// comparison is enough at this point: sampleCoord is built from finite
+			// values and a NaN that did slip through would only cost one extra sample
+			// before the guard below stops the loop anyway.
+			if (any(greaterThan(sampleCoord.xy, vec2(1.0)))
+				|| shadow < 0.01) {
 				break;
 			}
 
-			// The sky is nothing to be blocked by.
-			float sceneDepth = texture(depthTexture, sampleCoord).r;
+			float sampleDepth = texture(depthTexture, sampleCoord.xy).r;
 
-			if (sceneDepth >= 1.0) {
-				continue;
-			}
+			bool hit = abs(sampleCoord.z - sampleDepth) < maximumThickness
+				&& sampleDepth < 1.0;
 
-			// Where the ray is at this sample, and where the surface at that same
-			// screen position is, both in view space - so that the two can be
-			// compared as a distance in blocks. The depth buffer's own units cannot
-			// be used for this; see the note on SSS_THICKNESS.
-			vec2 ndcCoord = sampleCoord * 2.0 - 1.0;
-			vec4 rayH = projectionInverse
-				* vec4(ndcCoord, rayDepth * 2.0 - 1.0, 1.0);
-			vec4 sceneH = projectionInverse
-				* vec4(ndcCoord, sceneDepth * 2.0 - 1.0, 1.0);
-			vec3 rayPos = rayH.xyz / rayH.w;
-			vec3 scenePos = sceneH.xyz / sceneH.w;
+			// Sundial's `shadow *= clamp(absorption - float(hit), 0.0, 1.0)` with
+			// absorption at its solid-surface value of 1.0, which makes this a hard
+			// decision: one hit and the ray is done.
+			shadow *= clamp(1.0 - float(hit), 0.0, 1.0);
 
-			// View space looks down the negative Z axis, so a positive gap is how
-			// much nearer to the camera the surface at this sample is than the ray
-			// is.
-			//
-			// The ray is blocked exactly when the surface is in front of it -
-			// when the surface is the nearer of the two - so this has to be the
-			// scene's z minus the ray's. Written the other way round it counted
-			// the samples where the surface sat *behind* the ray as the occluded
-			// ones, which is the opposite of what it means: for a day's worth of
-			// tuning, everything that was blocked read as lit and everything with
-			// nothing behind it read as shadowed - water flattening to a darker
-			// shade at a distance among them.
-			float gap = scenePos.z - rayPos.z;
-			float travelled = length(rayPos - viewPos);
-
-			// The occlusion only counts when what the ray found is *right there*,
-			// within a thickness of it, and not merely closer to the camera: a hill
-			// the ray runs into is a solid mass whose surface sits almost exactly
-			// where the ray reaches it, while an entity, a held block or a tree
-			// nearer the camera than the terrain being shaded sits hundreds of
-			// blocks short and must not throw a shadow across the landscape.
-			//
-			// Two numbers come out of that. The bias, below, is the lower bound: how far in
-			// front of the ray the buffer has to be before the sample counts at all. It is the
-			// depth buffer precision and therefore grows with distance - without it the surface
-			// shadows itself and the distance fills with noise. The crossing width is the upper
-			// bound, and it is narrow on purpose: it is the distance over which a surface is
-			// entered, not the distance the ray may spend inside one.
-			float depthTolerance = travelled * SSS_THICKNESS_RATE;
-			float tolerance = max(0.05, depthTolerance);
-
-			// Batch 651: the width no longer multiplies the step, and that 1.5 was
-			// the stripes.
-			//
-			// The width has to cover one step, or a thin occluder can be stepped
-			// over - that part is right. Multiplying it by a step and a half as well
-			// made it cover a step and a half of DISTANCE, and since batch 645 a step
-			// is a world distance that grows with the reach: at ninety blocks a step
-			// is three blocks, so the band became four and a half. On a slope the ray
-			// grazes, that is wide enough for every sample to find the surface it is
-			// walking along, so the terrain shadows itself in regular bands - which is
-			// what the author's screenshot shows, stripes running with the contours
-			// rather than shadows of anything.
-			//
-			// Covered once, not once and a half, and the step is smaller because
-			// SSS_STEPS went up. Thin occluders stay caught; slopes stop laddering.
-			float thickness = max(SSS_THICKNESS, stepInBlocks);
-
-			// The crossing test, and it is an ordinary comparison rather than a pair of
-			// smoothsteps now that the decision is binary (batch 646). A sample occludes when
-			// the buffer is in front of the ray by more than the bias, and by less than the
-			// crossing width - that second bound is what rejects a silhouette in the
-			// foreground, which is tens of blocks nearer and not in the way of the light.
-			bool crossesSurface = gap > tolerance && gap < thickness;
-
-			// One qualifying sample is a shadow, and the ray stops there - this is
-			// the whole of the fix in batch 641.
-			//
-			// What stood here accumulated a soft band-pass weight over the ray and
-			// divided by the step count, so the answer was "what fraction of the way to
-			// the sun is blocked" instead of "is the sun blocked". A leaf, a tree and a
-			// mountain all leave two or three samples inside a band that is two steps
-			// deep by construction, which is seven to nine percent of the ray - so
-			// everything cast the same faint grey tint and nothing had an edge. It also
-			// made the result arithmetically insensitive to the step count, which is why
-			// raising it from 12 to 32 changed nothing at all.
-			//
-			// Both packs this was compared against decide: Bliss sets its shadow to zero
-			// on the first qualifying hit and stops, and Sundial multiplies by a clamp
-			// that is exactly zero for a non-porous surface. A shadow is a yes or a no.
-			//
-			// The dither above is what keeps that from quantising into bands: neighbouring
-			// pixels start their ray at different points along it, and composite1's
-			// temporal resolve - which runs after this pass, at 0.85 - averages the
-			// results. Hard edges, filtered over time, instead of a soft average.
-			if (crossesSurface) {
-				return 0.0;
-			}
+			sampleCoord += stepSize;
 		}
 
-		return 1.0;
+		return clamp(mix(shadow, 1.0, shadowWeight), 0.0, 1.0);
 	}
 #endif
