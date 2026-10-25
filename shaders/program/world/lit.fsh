@@ -1980,6 +1980,34 @@ void main() {
 							texture(colortex4, entityHitPos).rgb * entityHitFade;
 					}
 
+					// ⚠️ The sky fills in where the trace found nothing (batch 639), and
+					// the reason is a metal that went black.
+					//
+					// A metal has almost no diffuse - that is what metalness means - so
+					// its appearance is its environment and nothing else. When the trace
+					// misses there is no environment here at all, the surface keeps only
+					// the fraction of a diffuse a metal has, and it reads as black: an
+					// iron sword on open ground, with the sky all round it and no ray
+					// landing on the few blocks of ground the screen still holds.
+					//
+					// The world's reflection never had this gap, because its environment
+					// half is the sky model. This is the same half: SkyColor of the
+					// reflected direction, the function the deferred pass calls, with the
+					// same absence of sun and moon in it (taken out of the sky reflection
+					// in batch 623, at the author`s request). Applied only where the trace
+					// missed, so a hit is never diluted.
+					//
+					// The note above says the opposite - no fallback, because a wash of sky
+					// over an item reads as the item going pale - and that is still true of
+					// a dielectric. It is not true of a metal, which has no diffuse to go
+					// pale in the first place.
+					if (dot(entityEnvironment, entityEnvironment) < 1.0e-8) {
+						vec3 entityWorldReflected =
+							mat3(gbufferModelViewInverse) * normalize(entityViewReflected);
+
+						entityEnvironment = SkyColor(entityWorldReflected);
+					}
+
 					fragmentColor.rgb += entityWeight * entityEnvironment;
 				}
 			#endif
