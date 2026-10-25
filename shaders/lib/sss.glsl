@@ -88,10 +88,24 @@
 	// keeps the shadow's edge from breaking up into the gaps between them.
 	#define SSS_STEPS 32 // [8 12 16 24 32 48]
 
-	// How far the ray reaches, in blocks. A valley floor sits below a ridge
-	// several dozen blocks away, so this has to be generous to catch the shadow
-	// that matters most; the cost is one depth sample per step.
-	#define SSS_LENGTH 48.0 // [16.0 24.0 32.0 48.0 64.0 96.0 128.0]
+	// How high above the receiver the ray has to be able to climb, in blocks, and
+	// the length that implies.
+	//
+	// This used to be the ray's length, and a fixed one. The two are different
+	// questions. A ridge shadows a valley when the ray clears the ridge's height,
+	// and how far away that is depends entirely on how high the sun is: at a high
+	// sun the same height is reached in a fraction of the distance it takes at a
+	// low one. A fixed length was therefore too long overhead and too short at the
+	// angles that matter - the low ones, where the shadows are long and where a
+	// fixed 48 blocks reached barely a dozen blocks of height (batch 645).
+	#define SSS_LENGTH 24.0 // [8.0 16.0 24.0 32.0 48.0]
+
+	// The cap on that division and the floor on the elevation it divides by. A sun
+	// just above the horizon would otherwise ask for a ray hundreds of blocks long,
+	// which is both wrong for a screen-space effect - the depth buffer holds a few
+	// dozen blocks at most out here - and the most expensive case there is.
+	const float SSS_MAX_LENGTH = 96.0;
+	const float SSS_MIN_ELEVATION = 0.05;
 
 	// How thick an occluder is allowed to be, as a fraction of how far along the
 	// ray it was met.
@@ -240,7 +254,17 @@ float SssScreenNoise(vec2 fragCoord) {
 		// Taken no further than the camera plane: a point at or behind that plane
 		// has no screen position to aim at, and the ray is stopped where it
 		// crosses instead.
-		vec3 farViewPos = viewPos + lightDirection * SSS_LENGTH;
+		//
+		// The length comes from the light's elevation, not from a constant: the ray
+		// has to climb SSS_LENGTH blocks of terrain, and the distance that takes is
+		// the height over the sine of the angle it climbs at. lightDirection is in
+		// view space, so the world's up axis is the view matrix' transpose applied
+		// to it - the same transpose the caller uses to answer the same question.
+		vec3 lightWorld = transpose(mat3(gbufferModelView)) * lightDirection;
+		float lightSine = max(abs(lightWorld.y), SSS_MIN_ELEVATION);
+		float sssRayLength = clamp(SSS_LENGTH / lightSine, 8.0, SSS_MAX_LENGTH);
+
+		vec3 farViewPos = viewPos + lightDirection * sssRayLength;
 		vec4 farClip = projection * vec4(farViewPos, 1.0);
 
 		if (farClip.w <= 1.0e-4) {

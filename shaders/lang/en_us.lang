@@ -482,7 +482,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 644]
+option.PBR_DEBUG=Material debug view [build 645]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1500,10 +1500,10 @@ option.SSS_STEPS.comment=How many steps the ray takes. More steps means finer \
 	ones over the same length, which keeps it from slipping between two pieces of \
 	terrain and leaving streaks of light; each costs a depth sample.
 
-option.SSS_LENGTH=Ray length
-option.SSS_LENGTH.comment=How far the ray reaches, in blocks. A valley floor \
-	often sits several dozen blocks below the ridge that shadows it, so keep this \
-	generous.
+option.SSS_LENGTH=Shadow height
+option.SSS_LENGTH.comment=How high above the ground the ray has to climb, in blocks. \
+	The distance that takes depends on how high the sun is, so this is a height \
+	and not a length: a low sun reaches much further through the same setting.
 
 option.CLOUD_MULTIPLE_SCATTER=Scattering inside the cloud
 option.CLOUD_MULTIPLE_SCATTER_OCTAVES=Scattering passes
