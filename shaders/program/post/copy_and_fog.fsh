@@ -571,9 +571,25 @@ void main() {
 			float sssNdotL = 1.0;
 
 			if (sssHasMaterial) {
+				// Batch 653: the two sides of this dot product were in different
+				// spaces, and that is why the effect darkened surfaces it should have
+				// left alone.
+				//
+				// colortex7 holds a WORLD-space normal (the surface programs write
+				// DecodePerFaceWorldNormal, and environment_reflection.glsl reads it as
+				// a world normal). shadowLightPosition is VIEW space - the pack's own
+				// notes on the uniform say so. Dotting one against the other is a
+				// number that changes when the camera turns, so a slope facing the sun
+				// could come out back-lit and a surface in shade could come out lit; the
+				// author's screenshots of a stepped hillside with every top face
+				// darkened are what that looks like.
+				//
+				// sssLightWorld above is already the sun's direction in world space -
+				// the transpose of the view rotation, the same quantity the sun-height
+				// fade uses - so this is the comparison that was meant, for free.
 				sssNdotL = clamp(dot(
 					normalize(sssMaterial.xyz),
-					normalize(shadowLightPosition)), 0.0, 1.0);
+					sssLightWorld), 0.0, 1.0);
 			}
 
 			float sssWeight = SSS_STRENGTH * sssSunFade * sssNdotL * smoothstep(
