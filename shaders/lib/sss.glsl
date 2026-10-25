@@ -142,6 +142,12 @@
 	// still does not depend on the step count.
 	#define SSS_GAIN 2.0 // [1.0 1.25 1.5 1.75 2.0 2.5 3.0 4.0]
 
+	// ⚠️ SSS_GAIN, SSS_FULL_OCCLUSION and SSS_STEP_LIMIT described the old 
+	// fractional logic, which is gone in batch 641. They are marked deprecated here 
+	// rather than deleted in the same batch: SSS_GAIN is still listed in the menu and 
+	// removing it means editing the profile, the slider list and both language files, 
+	// which is a separate, safe change. Nothing reads them any more.
+
 	// How much of the ray has to be blocked before the shadow is as dark as it
 	// gets. The shadow is the *fraction* of the ray the depth buffer says is
 	// blocked, so this is the whole of the tuning: a ray that runs into a hill is
@@ -156,11 +162,11 @@
 	// buffer is coarse enough that it will count some - gets more chances the
 	// more samples are taken. That was measured from the driver's seat, by
 	// lowering the step count until the darkening went away.
-	const float SSS_FULL_OCCLUSION = 1.0;
+	const float SSS_FULL_OCCLUSION_DEPRECATED = 1.0;
 
 	// The loop below needs a constant bound, so the option above selects how many
 	// of a fixed set of iterations actually run.
-	const int SSS_STEP_LIMIT = 24;
+	const int SSS_STEP_LIMIT_DEPRECATED = 32;
 #endif
 
 // The frame number, so that the dither below can move from frame to frame.
@@ -282,12 +288,13 @@ float SssScreenNoise(vec2 fragCoord) {
 			* reach / float(SSS_STEPS);
 
 		float dither = SssScreenNoise(gl_FragCoord.xy);
-		float occluded = 0.0;
 
-		for (int i = 0; i < SSS_STEP_LIMIT; i++) {
-			if (i >= SSS_STEPS) {
-				break;
-			}
+		// ⚠️ The bound is SSS_STEPS itself (batch 641). It used to be a separate
+		// SSS_STEP_LIMIT of 24 while the result was divided by SSS_STEPS, so any setting
+		// above 24 marched 24 steps and divided by more than it had walked - the mean
+		// per sample fell as the count rose, which is one more reason raising the count
+		// changed nothing.
+		for (int i = 0; i < SSS_STEPS; i++) {
 
 			// The first sample is offset a random fraction of a step per pixel,
 			// so that neighbouring pixels do not step through the same sample
@@ -383,16 +390,31 @@ float SssScreenNoise(vec2 fragCoord) {
 			float hit = smoothstep(tolerance, tolerance + softness, gap)
 				* (1.0 - smoothstep(thickness - softness, thickness, gap));
 
-			occluded += hit;
-
-			if (occluded >= float(SSS_STEPS)) {
-				break;
+			// ⚠️ One qualifying sample is a shadow, and the ray stops there - this is
+			// the whole of the fix in batch 641.
+			//
+			// What stood here accumulated a soft band-pass weight over the ray and
+			// divided by the step count, so the answer was "what fraction of the way to
+			// the sun is blocked" instead of "is the sun blocked". A leaf, a tree and a
+			// mountain all leave two or three samples inside a band that is two steps
+			// deep by construction, which is seven to nine percent of the ray - so
+			// everything cast the same faint grey tint and nothing had an edge. It also
+			// made the result arithmetically insensitive to the step count, which is why
+			// raising it from 12 to 32 changed nothing at all.
+			//
+			// Both packs this was compared against decide: Bliss sets its shadow to zero
+			// on the first qualifying hit and stops, and Sundial multiplies by a clamp
+			// that is exactly zero for a non-porous surface. A shadow is a yes or a no.
+			//
+			// The dither above is what keeps that from quantising into bands: neighbouring
+			// pixels start their ray at different points along it, and composite1's
+			// temporal resolve - which runs after this pass, at 0.85 - averages the
+			// results. Hard edges, filtered over time, instead of a soft average.
+			if (hit > 0.5) {
+				return 0.0;
 			}
 		}
 
-		// The fraction of the ray the depth buffer says is blocked, which is what
-		// the shadow is: how much of the way to the sun something stands in.
-		return 1.0 - min(occluded * SSS_GAIN, SSS_FULL_OCCLUSION * float(SSS_STEPS))
-			/ (SSS_FULL_OCCLUSION * float(SSS_STEPS));
+		return 1.0;
 	}
 #endif
