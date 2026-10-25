@@ -107,6 +107,17 @@
 	const float SSS_MAX_LENGTH = 96.0;
 	const float SSS_MIN_ELEVATION = 0.05;
 
+	// How much of the screen the ray may cross, in screen units - 0.07 is seven
+	// percent of the shorter side's worth of screen space, and it is the bound that
+	// makes the effect independent of the field of view (batch 647).
+	//
+	// The reference packs both work this way: their reach is a fixed fraction of the
+	// screen, which is why zooming in shortens their shadows instead of stretching
+	// them. Seven percent is a little wider than either uses, because this pack has
+	// no working shadow map out where the effect runs and needs a little more reach
+	// to find the ridge.
+	const float SSS_SCREEN_REACH = 0.07;
+
 	// How thick an occluder is allowed to be, as a fraction of how far along the
 	// ray it was met.
 	//
@@ -305,7 +316,32 @@ float SssScreenNoise(vec2 fragCoord) {
 
 		// One step's worth of everything, so that the loop below is a single
 		// multiply-add per sample.
+		//
+		// Batch 647: the segment is cut to a fixed length ON THE SCREEN first, and
+		// that is what the zoom exposed. The ray's length is a world distance - a
+		// height over the sine of the sun's elevation, since batch 645 - and the
+		// samples are spread evenly across whatever on-screen segment that distance
+		// projects to. At a normal field of view that is a few dozen pixels; through
+		// the zoom it is several times longer, so the same number of samples sit
+		// several times further apart and the shadow dissolves into stripes. The
+		// shadow also grew longer in the world, where both reference packs make it
+		// shorter, because they bound the ray as a fraction of the screen: a
+		// narrower field of view then covers less of the world and the shadow
+		// shortens with it.
+		//
+		// The world bound above still decides how far the ray may reach through the
+		// terrain. This one decides how far it may spread across the screen, which is
+		// what both the sample spacing and the shadow's apparent length depend on.
 		float screenLength = length(delta);
+
+		if (screenLength > SSS_SCREEN_REACH) {
+			float screenScale = SSS_SCREEN_REACH / screenLength;
+
+			delta *= screenScale;
+			farDepth = mix(originDepth, farDepth, screenScale);
+			screenLength = SSS_SCREEN_REACH;
+		}
+
 		vec2 stepDirection = screenLength > 1.0e-6 ? delta / screenLength : vec2(0.0);
 		float stepInScreen = screenLength / float(SSS_STEPS);
 		float stepInDepth = (farDepth - originDepth) * reach / float(SSS_STEPS);
