@@ -337,8 +337,16 @@ float SssScreenNoise(vec2 fragCoord) {
 		if (screenLength > SSS_SCREEN_REACH) {
 			float screenScale = SSS_SCREEN_REACH / screenLength;
 
+			// The walked fraction carries the scaling, not the far depth, and that
+			// matters: stepInDepth and stepInBlocks are both built from `reach`, so
+			// shortening the ray here and leaving `reach` alone would have kept a
+			// step's worth of depth measured on the ray that was never walked. The
+			// per-step world distance would then be too large by 1/screenScale and the
+			// crossing width built from it - max(SSS_THICKNESS, stepInBlocks * 1.5) -
+			// would accept ten blocks of penetration instead of one and a half, which
+			// trades stripes for dark smears. Found by the audit; fixed here.
 			delta *= screenScale;
-			farDepth = mix(originDepth, farDepth, screenScale);
+			reach *= screenScale;
 			screenLength = SSS_SCREEN_REACH;
 		}
 

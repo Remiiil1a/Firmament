@@ -449,6 +449,22 @@ void main() {
 			float sssOpaqueDepth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
 			bool sssTranslucent = sssSurfaceDepth + 1.0e-6 < sssOpaqueDepth;
 
+			// And the water mask, which answers a different question (batch 648,
+			// from the comparative audit).
+			//
+			// Neither pack this was compared against ever runs a screen-space shadow
+			// on a water surface, and not because they test for water: their effect is
+			// evaluated on the OPAQUE surface only, so a water pixel is not the surface
+			// being shaded. This pass is deliberately different - it stands on the
+			// depth that includes translucents, so a lake IS a receiver here, which is
+			// what shades ice and glass correctly - but for water it is wrong, and the
+			// author has seen how: at dusk the sun grazes the surface, the ray finds
+			// occluders all along it, and the water goes black in patches.
+			//
+			// colortex2.g is the pack's own water mask, written by the surface program
+			// and already trusted one pass over by the volumetric fog. One fetch.
+			float sssWater = texelFetch(colortex2, ivec2(gl_FragCoord), 0).g;
+
 			// Painted magenta wherever the test above says "translucent", so that
 			// it can be checked against what is on screen - in both the near world
 			// and on LOD terrain - rather than being trusted.
@@ -529,7 +545,7 @@ void main() {
 			float sssWeight = SSS_STRENGTH * sssSunFade * sssNdotL * smoothstep(
 				sssReach * 0.85, sssReach * 1.15, sssDistance);
 
-			if (sssWeight > 0.0 && !sssTranslucent) {
+			if (sssWeight > 0.0 && !sssTranslucent && sssWater < 0.5) {
 				float lit = ScreenSpaceShadow(
 					depthtex1,
 					gbufferProjection,
