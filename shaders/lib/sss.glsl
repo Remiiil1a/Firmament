@@ -51,7 +51,7 @@
 	// contribution could be. It is applied to the whole colour rather than to
 	// the sunlight alone, because by the time this pass runs the two are already
 	// added together - so a value near 1.0 also takes some sky light with it.
-	#define SSS_STRENGTH 0.75 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.75 0.8 0.9 1.0]
+	#define SSS_STRENGTH 0.5 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.75 0.8 0.9 1.0]
 
 	// The most this effect is allowed to darken a pixel by, as a fraction of its
 	// own colour. 0.9 is the behaviour this had before the option existed, and it
@@ -67,16 +67,21 @@
 	// colour, which on a dim surface is not a shadow but a hole. This separates
 	// the two - how much of the effect to use, and how dark it may ever get.
 	//
-	// The default was 0.5 for one batch, on the theory that a growing black blot
-	// came from this effect. Turning the whole effect off did not stop the blot,
-	// so that theory is dead and the default is back where the pack's look is. The
-	// option stays, because the argument above is about what this code multiplies
-	// and not about the blot. See BATCH_LOG.md 155.
+	// ⚠️ Batch 642 moved both defaults down - SSS_STRENGTH to 0.5 and this to
+	// 0.55 - because the effect stopped averaging in batch 641 and started
+	// deciding, and a decision reaches zero where an average never did. Until 641
+	// this cap could not bind at all (the weight peaked below it), so the buffer
+	// here is the first one written against a result that actually gets there:
+	// the author's report was that the shadows had structure and were too dark.
 	//
-	// The correct fix for the argument above is to attenuate the sunlight alone,
-	// which needs the surface programs to keep the direct and indirect parts
-	// apart. See BATCH_LOG.md 154.
-	#define SSS_DARK_LIMIT 0.9 // [0.0 0.25 0.4 0.5 0.6 0.7 0.8 0.9]
+	// The earlier note about a black blot is kept in BATCH_LOG.md 155 rather than
+	// here, because it no longer describes this option's default: turning the whole
+	// effect off never stopped that blot, so the value was never the cause.
+	//
+	// The correct fix for the argument above is still to attenuate the sunlight
+	// alone, which needs the surface programs to keep the direct and indirect parts
+	// apart - the next step in this sequence. See BATCH_LOG.md 154.
+	#define SSS_DARK_LIMIT 0.55 // [0.0 0.25 0.4 0.5 0.55 0.6 0.7 0.8 0.9]
 
 	// How many steps the ray takes, spread evenly across the ray's length on
 	// screen. More steps mean the samples sit closer together, which is what
