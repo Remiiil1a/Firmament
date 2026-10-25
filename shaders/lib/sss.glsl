@@ -118,11 +118,17 @@
 	// measured over is in blocks, in view space.
 	//
 	// The two constants below are not the window on their own: the test that
-	// uses them combines them with a floor of 0.05 and with one step's worth of
-	// depth, so the base thickness is `max(SSS_THICKNESS_BASE, stepInBlocks)`,
-	// the rate term is `travelled * SSS_THICKNESS_RATE`, and a step's depth is
-	// added separately. See the thickness assignment at the test.
-	//
+		// Batch 646 changed what the window bounds, and that is the fix rather than a
+		// change of numbers. It bounds the CROSSING: how far behind a surface the ray may
+		// be at the sample where it first goes behind it. It used to bound the BURIAL -
+		// how deep inside the surface the ray was - and because the loop kept walking after
+		// the ray went in, that window closed on the penetration depth two samples later.
+		// Two consequences, both visible: a mountain and a leaf counted the same, and a
+		// surface the ray entered steeply - a cliff face - left the window almost at once
+		// and cast almost nothing. A crossing test has neither.
+		//
+		// SSS_THICKNESS is the width of that crossing in blocks; SSS_THICKNESS_RATE is the
+		// bias below it, which grows with distance because the depth buffer precision does.
 	// Sundial measures it in the depth buffer's own units instead, as a fraction
 	// of the distance. That is not portable to this pack's depth buffer: those
 	// units are not linear in distance, so out at the range this feature works
@@ -145,7 +151,7 @@
 	// occluder at all, and geometry that cannot occlude leaves a smooth wash where
 	// its shadow should be. It is 0.75 now, with half the rate, which is what turns
 	// those into shadows without turning everything into one.
-	const float SSS_THICKNESS_BASE = 0.75;
+	const float SSS_THICKNESS = 1.5;
 	const float SSS_THICKNESS_RATE = 0.01;
 
 	// What the blocked fraction of the ray is multiplied by before the shadow is
@@ -352,7 +358,7 @@ float SssScreenNoise(vec2 fragCoord) {
 			// Where the ray is at this sample, and where the surface at that same
 			// screen position is, both in view space - so that the two can be
 			// compared as a distance in blocks. The depth buffer's own units cannot
-			// be used for this; see the note on SSS_THICKNESS_BASE.
+			// be used for this; see the note on SSS_THICKNESS.
 			vec2 ndcCoord = sampleCoord * 2.0 - 1.0;
 			vec4 rayH = projectionInverse
 				* vec4(ndcCoord, rayDepth * 2.0 - 1.0, 1.0);
@@ -383,41 +389,22 @@ float SssScreenNoise(vec2 fragCoord) {
 			// nearer the camera than the terrain being shaded sits hundreds of
 			// blocks short and must not throw a shadow across the landscape.
 			//
-			// The lower bound is the depth buffer's precision, which is coarse this
-			// far out, and so grows with how far the ray has travelled - without
-			// it the surface shadows itself and the distance fills with noise.
-			//
-			// The window also has to cover at least one step's worth of depth, and
-			// that is what the step below is for. Once the ray is *inside* a hill,
-			// how far under that hill's surface it is grows with every step - so a
-			// window narrower than a step stops counting after the first sample or
-			// two and leaves the ray reporting itself almost unblocked even when
-			// the whole of it is underground. Measured from the driver's seat: the
-			// shadows came out faint enough to be invisible.
-			// The rate term of the thickness window. It is one product of the
-			// same two values wherever it appears - the tolerance below, the
-			// window itself, and the softness at the end - so it is worked out
-			// once here rather than three times. The 0.02 that used to be
-			// written out at the softness is the same float as
-			// SSS_THICKNESS_RATE, so naming the constant there changes nothing
-			// but makes the sharing visible.
+			// Two numbers come out of that. The bias, below, is the lower bound: how far in
+			// front of the ray the buffer has to be before the sample counts at all. It is the
+			// depth buffer precision and therefore grows with distance - without it the surface
+			// shadows itself and the distance fills with noise. The crossing width is the upper
+			// bound, and it is narrow on purpose: it is the distance over which a surface is
+			// entered, not the distance the ray may spend inside one.
 			float depthTolerance = travelled * SSS_THICKNESS_RATE;
 			float tolerance = max(0.05, depthTolerance);
-			float thickness = max(SSS_THICKNESS_BASE, stepInBlocks)
-				+ stepInBlocks + depthTolerance;
+			float thickness = max(SSS_THICKNESS, stepInBlocks * 1.5);
 
-			// How much this sample counts as an occluder: fully in the middle of
-			// the band where the surface it found is plausibly the thing blocking
-			// the light, and less towards either edge of that band.
-			//
-			// A hard yes or no per sample is what quantises a shadow into steps,
-			// and no amount of dithering removes that - the dither only moves
-			// where the steps land. Dividing the band into a hard core and a soft
-			// edge is what the reference packs do, and it is also what lets the
-			// same code work whether the band is wide or narrow.
-			float softness = max(0.25, depthTolerance);
-			float hit = smoothstep(tolerance, tolerance + softness, gap)
-				* (1.0 - smoothstep(thickness - softness, thickness, gap));
+			// The crossing test, and it is an ordinary comparison rather than a pair of
+			// smoothsteps now that the decision is binary (batch 646). A sample occludes when
+			// the buffer is in front of the ray by more than the bias, and by less than the
+			// crossing width - that second bound is what rejects a silhouette in the
+			// foreground, which is tens of blocks nearer and not in the way of the light.
+			bool crossesSurface = gap > tolerance && gap < thickness;
 
 			// One qualifying sample is a shadow, and the ray stops there - this is
 			// the whole of the fix in batch 641.
@@ -439,7 +426,7 @@ float SssScreenNoise(vec2 fragCoord) {
 			// pixels start their ray at different points along it, and composite1's
 			// temporal resolve - which runs after this pass, at 0.85 - averages the
 			// results. Hard edges, filtered over time, instead of a soft average.
-			if (hit > 0.5) {
+			if (crossesSurface) {
 				return 0.0;
 			}
 		}
