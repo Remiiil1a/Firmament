@@ -505,7 +505,28 @@ void main() {
 
 			float sssSunFade = smoothstep(0.0, 0.01745, abs(sssLightWorld.y));
 
-			float sssWeight = SSS_STRENGTH * sssSunFade * smoothstep(
+			// Batch 644: how much of the sun this surface can be receiving. A
+			// surface turned away from it must not be darkened by the shadow of a
+			// light it was never getting. This is the cheap form of that rule; the
+			// real form takes only the direct sunlight back out and leaves the sky
+			// light and the ambient, which this pass cannot do because the forward
+			// rendering has already summed every term into one colour (see the note
+			// on SSS_DARK_LIMIT in lib/sss.glsl). NdotL asks the same question once,
+			// and for free.
+			//
+			// Where there is no normal there is nothing to ask: Voxy and the DH
+			// terrain write no material buffer - the gap the ambient occlusion above
+			// already documents - so those pixels keep the weight they had.
+			vec4 sssMaterial = texelFetch(colortex7, ivec2(gl_FragCoord), 0);
+			float sssNdotL = 1.0;
+
+			if (dot(sssMaterial.xyz, sssMaterial.xyz) > 0.5) {
+				sssNdotL = clamp(dot(
+					normalize(sssMaterial.xyz),
+					normalize(shadowLightPosition)), 0.0, 1.0);
+			}
+
+			float sssWeight = SSS_STRENGTH * sssSunFade * sssNdotL * smoothstep(
 				sssReach * 0.85, sssReach * 1.15, sssDistance);
 
 			if (sssWeight > 0.0 && !sssTranslucent) {
