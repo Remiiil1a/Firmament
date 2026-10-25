@@ -81,7 +81,7 @@
 	// How many steps the ray takes, spread evenly across the ray's length on
 	// screen. More steps mean the samples sit closer together, which is what
 	// keeps the shadow's edge from breaking up into the gaps between them.
-	#define SSS_STEPS 12 // [4 6 8 12 16 24]
+	#define SSS_STEPS 32 // [8 12 16 24 32 48]
 
 	// How far the ray reaches, in blocks. A valley floor sits below a ridge
 	// several dozen blocks away, so this has to be generous to catch the shadow
@@ -111,8 +111,23 @@
 	// a window expressed in them stops distinguishing anything from anything
 	// else. Trying it caught nearly every sample and turned the whole distance
 	// black, which is what this comment is here to stop anyone repeating.
-	const float SSS_THICKNESS_BASE = 2.0;
-	const float SSS_THICKNESS_RATE = 0.02;
+	//
+	// ⚠️ Batch 640 sharpened both of these, and the step count above, because the
+	// report was that the shadows are blurry and the cause was arithmetic rather
+	// than taste.
+	//
+	// The ray took 12 steps across 48 blocks - one sample every 4 blocks - so an
+	// edge could only land on one of thirteen places along it and the result read
+	// as a gradient. At 32 steps a sample falls every 1.5 blocks and the edge lands
+	// where it belongs.
+	//
+	// The base thickness was 2 blocks. A tree's branch, a fence post, the lip of a
+	// leaf canopy - anything thinner than two blocks - was too thin to count as an
+	// occluder at all, and geometry that cannot occlude leaves a smooth wash where
+	// its shadow should be. It is 0.75 now, with half the rate, which is what turns
+	// those into shadows without turning everything into one.
+	const float SSS_THICKNESS_BASE = 0.75;
+	const float SSS_THICKNESS_RATE = 0.01;
 
 	// What the blocked fraction of the ray is multiplied by before the shadow is
 	// worked out - the dial for how dark a shadow gets.
