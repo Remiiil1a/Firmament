@@ -1058,74 +1058,22 @@ void main() {
 			// clamp is the entity drawn AFTER the deferred pass, whose material the
 			// deferred reflection never sees: it is given its own trace in batch 629,
 			// and that trace needs a surface the gate accepts.
-			#if defined(PBR_ENTITIES) && defined(PBR_SSR) && defined(AFTER_DEFERRED)
-				// ⚠️ An entity whose material cannot reflect at all gets a plain
-				// glossy dielectric instead, which is what makes a dropped item
-				// reflect the world rather than only catching a highlight.
-				//
-				// The material above came out of the block atlas, because that is
-				// the only atlas the loaders build material maps for - see the note
-				// in gbuffers_entities.fsh - so what an item is shaded with is
-				// whatever block's material happens to sit at its coordinate. The
-				// header of that file already records the visible consequence for
-				// mobs; for a dropped item it showed as the opposite of a
-				// reflection: the highlight arrived, because a highlight needs only
-				// a reflectance, and the reflection was refused, because the gate
-				// also needs the surface to be smooth enough.
-				//
-				// The test is a threshold on the gate rather than "the gate came out at
-				// exactly zero", which is what it was for one batch. Zero was the
-				// wrong question: a material can clear zero and still come out at a
-				// handful of hundredths, where the reflection exists and cannot be
-				// seen - and a dropped item that reflects by a fraction of a percent
-				// reads exactly like one that does not reflect at all.
-				//
-				// It can fire for a mob as well as for an item, and that is fine now
-				// only because of what it does below: a mob whose atlas material lands
-				// under the threshold is made smoother, not made different. The batch
-				// that got this wrong also reported the mobs as unaffected, which the
-				// author then disproved with an iron golem - so the claim was removed
-				// rather than left to be believed twice.
-				//
-				// PbrReflectionPossible first, because a roughness of exactly 1.0 or
-				// a reflectance of zero refuses the reflection before the gate is
-				// even asked - and a blank atlas texel is a good way to get either.
-				//
-				// ⚠️ What it may change is the ROUGHNESS and nothing else, and that is
-				// the whole of the lesson from the batch before this one. That batch
-				// replaced the material outright - roughness, reflectance and metalness
-				// together - and an iron golem stopped reflecting: the atlas hands it
-				// iron, it is a metal, and forcing it to a non-metal dielectric took
-				// away exactly the mirrored response that made it reflect. A material
-				// the pack did supply describes what the surface is made of; a threshold
-				// is no reason to argue with it.
-				//
-				// So: clamp the roughness down until the surface is smooth enough to
-				// reflect, and touch the reflectance only where it is unusable in its own
-				// right - which is the blank texel case, and there the metalness has to
-				// go with it because a metal with no reflectance is not a metal.
-				//
-				// The reference this was checked against does the same thing from the
-				// other end: Bliss never overwrites a material in the deferred pass, it
-				// computes a visibility and blends the reflection out. Keeping the
-				// material is the invariant both have.
-				//
-				// The reflectance is replaced only where it is ZERO, which is the one
-				// case where there is no material to keep - a blank atlas texel - and
-				// there the metalness has to go with it, because a metal with no
-				// reflectance is not a metal.
-				if (!PbrReflectionPossible(pbrNormal, pbr.roughness, pbr.f0)
-					|| PbrReflectionSmoothness(pbr.roughness, pbr.metalness)
-						< PBR_ENTITY_REFLECTION_MIN) {
-					if (dot(pbr.f0, pbr.f0) <= 1.0e-8) {
-						pbr.f0 = vec3(PBR_DEFAULT_F0);
-						pbr.metalness = 0.0;
-						pbr.metalID = 0.0;
-					}
-
-					pbr.roughness = min(pbr.roughness, PBR_ENTITY_ROUGHNESS);
-				}
-			#endif
+			// ⚠️ The material is NOT touched here any more (batch 638).
+			//
+			// The block that stood here clamped an entity's roughness down to
+			// PBR_ENTITY_ROUGHNESS so that its reflection could clear the gate. Batch 630
+			// narrowed it to the entity drawn after the deferred pass, which took the white
+			// patch off every mob - and left it on the one thing that program draws: the
+			// third-person player and the armour on it. A surface made smoother than its
+			// pack says is a surface catching a highlight it should not have, and no
+			// threshold is a reason to argue with the material - the rule the iron golem
+			// made in batch 625.
+			//
+			// What needed the help was never the material but the WEIGHT. The trace below
+			// is the only reflection path such an entity has, and it was multiplying by the
+			// same smoothness gate the deferred pass uses. The floor lives there now
+			// (PBR_ENTITY_REFLECTION_MIN), where it can only decide how much is reflected and
+			// never what the surface is made of.
 		}
 
 	#endif
@@ -1997,7 +1945,8 @@ void main() {
 							PbrMetalF82(pbr.metalID),
 							entityNdotV,
 							pbr.roughness)
-						* PbrReflectionSmoothness(pbr.roughness, pbr.metalness),
+						* max(PbrReflectionSmoothness(pbr.roughness, pbr.metalness),
+							PBR_ENTITY_REFLECTION_MIN),
 						vec3(0.0),
 						vec3(1.0));
 
