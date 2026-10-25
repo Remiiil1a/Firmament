@@ -414,6 +414,28 @@ void main() {
 		// the two depth buffers this pass names as the surface.
 		float sssDepth = texelFetch(depthtex0, ivec2(gl_FragCoord), 0).r;
 
+		// Batch 652: the ray starts from the OPAQUE surface, which is the one the
+		// trace walks through.
+		//
+		// This pass used to start from the depth that includes translucents, and the
+		// reason was to shade the surfaces only that buffer contains. The water mask
+		// below now refuses those surfaces outright, and what is left is the damage a
+		// mismatch does: the start point sits in front of the geometry the samples are
+		// compared against, so a ray that should have found open sky finds the ground
+		// it started from, and the surface shadows itself everywhere. The author's
+		// screenshots show exactly that - a stepped hillside whose top faces are all
+		// darkened, in stripes - against the reference pack where the same hillside is
+		// lit and only the shadow map's own shadows appear.
+		//
+		// Both reference packs evaluate their screen-space shadow on the opaque depth
+		// for this reason, and neither needs a water mask because a water surface is
+		// never their receiver at all.
+		float sssOpaqueSurface = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
+
+		if (sssOpaqueSurface < 1.0) {
+			sssDepth = sssOpaqueSurface;
+		}
+
 		if (sssDepth < 1.0) {
 			vec3 sssNdcPos = vec3(
 				gl_FragCoord.xy * windowToNdc - 1.0, sssDepth * 2.0 - 1.0);
