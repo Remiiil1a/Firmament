@@ -22,55 +22,55 @@
 // build from a PBR resource pack, following the shaderLABS LabPBR 1.3 material
 // standard:
 //
-//   https://shaderlabs.org/wiki/LabPBR_Material_Standard
+// https://shaderlabs.org/wiki/LabPBR_Material_Standard
 //
 // Channel layout, as defined by the standard:
 //
-//   _n.rgb - tangent-space normal, stored in the DirectX convention (X points
-//            right, Y points *down* in the texture). Note that _n.b is NOT the
-//            Z component: LabPBR stores material ambient occlusion there and
-//            requires Z to be reconstructed from X and Y. That occlusion is
-//            read when PBR_MATERIAL_AO is on (PbrDecode, into materialAO); with
-//            that off, nothing in this file reads the blue channel except the
-//            occlusion debug view, which samples it independently of the option
-//            so that a pack can be judged before the option is turned on.
-//   _n.a   - height, used for parallax occlusion mapping.
+// _n.rgb - tangent-space normal, stored in the DirectX convention (X points
+// right, Y points *down* in the texture). Note that _n.b is NOT the
+// Z component: LabPBR stores material ambient occlusion there and
+// requires Z to be reconstructed from X and Y. That occlusion is
+// read when PBR_MATERIAL_AO is on (PbrDecode, into materialAO); with
+// that off, nothing in this file reads the blue channel except the
+// occlusion debug view, which samples it independently of the option
+// so that a pack can be judged before the option is turned on.
+// _n.a   - height, used for parallax occlusion mapping.
 //
-//   _s.r   - perceptual smoothness. roughness = (1.0 - smoothness)^2
-//   _s.g   - F0 / metal ID, read as a byte by multiplying by 255 and split at
-//            229.5 and 237.5 - half-way between the bytes that neighbour each
-//            range, so that a filtered sample cannot land on a boundary.
-//            Values are stored linearly as of 1.3 (older versions stored the
-//            square root of F0 and would need squaring).
-//              0-229   dielectric, F0 = the value itself (max ~0.898)
-//              230-237 hardcoded metals, see PbrMetalF0
-//              238-255 albedo-based metal, F0 = the albedo
-//   _s.b   - subsurface scattering above 64.5/255, porosity below it. The
-//            scattering is read when PBR_SUBSURFACE is on and is the channel
-//            itself, so 65/255 arrives as 0.255 and 254/255 as 0.996; the
-//            porosity is read when PBR_POROSITY_WETNESS is and is rescaled
-//            out of the lower range, b * 255 / 64, so byte 64 is a porosity
-//            of 1.0 and byte 32 is 0.5.
-//   _s.a   - emission. 254 means "fully emissive", 255 means "does not emit".
+// _s.r   - perceptual smoothness. roughness = (1.0 - smoothness)^2
+// _s.g   - F0 / metal ID, read as a byte by multiplying by 255 and split at
+// 229.5 and 237.5 - half-way between the bytes that neighbour each
+// range, so that a filtered sample cannot land on a boundary.
+// Values are stored linearly as of 1.3 (older versions stored the
+// square root of F0 and would need squaring).
+// 0-229   dielectric, F0 = the value itself (max ~0.898)
+// 230-237 hardcoded metals, see PbrMetalF0
+// 238-255 albedo-based metal, F0 = the albedo
+// _s.b   - subsurface scattering above 64.5/255, porosity below it. The
+// scattering is read when PBR_SUBSURFACE is on and is the channel
+// itself, so 65/255 arrives as 0.255 and 254/255 as 0.996; the
+// porosity is read when PBR_POROSITY_WETNESS is and is rescaled
+// out of the lower range, b * 255 / 64, so byte 64 is a porosity
+// of 1.0 and byte 32 is 0.5.
+// _s.a   - emission. 254 means "fully emissive", 255 means "does not emit".
 //
 // Every feature below has its own switch, so a player who does not want, say,
 // the cost of parallax mapping can turn just that off.
 //
 // Cost note - all of this is per-pixel:
 //
-//   Always executed (when PBR_SURFACE is defined and the material is not
-//   skipped): the tangent frame, the parallax ray march if that is enabled, the
-//   normal decode, and the specular / emission decode.
+// Always executed (when PBR_SURFACE is defined and the material is not
+// skipped): the tangent frame, the parallax ray march if that is enabled, the
+// normal decode, and the specular / emission decode.
 //
-//   Conditionally executed: the hardcoded metal lookup (only for materials with
-//   G > 229.5/255), emission (only when the material actually emits), the
-//   occlusion channel of the normal map (only when PBR_MATERIAL_AO is on), and
-//   the specular lobe itself (skipped entirely when F0 is zero, which is what a
-//   resource pack without specular maps produces).
+// Conditionally executed: the hardcoded metal lookup (only for materials with
+// G > 229.5/255), emission (only when the material actually emits), the
+// occlusion channel of the normal map (only when PBR_MATERIAL_AO is on), and
+// the specular lobe itself (skipped entirely when F0 is zero, which is what a
+// resource pack without specular maps produces).
 //
-//   Everything else here is either unconditional or gated on the material
-//   actually carrying the channel it reads, so a resource pack without a given
-//   map pays nothing for it.
+// Everything else here is either unconditional or gated on the material
+// actually carrying the channel it reads, so a resource pack without a given
+// map pays nothing for it.
 
 // A note for anyone adding options here: a boolean option is only registered
 // by Iris if the macro is referenced by an #ifdef or #ifndef somewhere in the
@@ -132,18 +132,18 @@
 // correct highlight is far less visible than most people expect from a
 // "reflective" material. Raise this if materials still look flat.
 //
-// ⚠️ 2.0 as of batch 621 section 33, chosen by eye by the author after comparing
+// 2.0 as of batch 621 section 33, chosen by eye by the author after comparing
 // 1.0 and 2.0 in game. The history matters more than the number:
 //
-//   * 2.0 was the shipped value for a long time, with energy conservation off - a
-//     highlight doubled to survive the tonemapper, on a body with no budget for it.
-//   * 1.0 arrived with energy conservation switched ON, as the pair that balances.
-//     It is the physically consistent setting, and what it costs is visible: iron,
-//     gold and copper went a step dark, because a metal has no diffuse response
-//     here and this number scales the only light it has besides its reflection.
-//   * 2.0 is back, with conservation still on. That combination is deliberately
-//     over budget - the surface reflects more than arrives - which is what makes
-//     the metals read the way the author wants. It is a look, not a physics claim.
+// * 2.0 was the shipped value for a long time, with energy conservation off - a
+// highlight doubled to survive the tonemapper, on a body with no budget for it.
+// * 1.0 arrived with energy conservation switched ON, as the pair that balances.
+// It is the physically consistent setting, and what it costs is visible: iron,
+// gold and copper went a step dark, because a metal has no diffuse response
+// here and this number scales the only light it has besides its reflection.
+// * 2.0 is back, with conservation still on. That combination is deliberately
+// over budget - the surface reflects more than arrives - which is what makes
+// the metals read the way the author wants. It is a look, not a physics claim.
 //
 // 1.0 plus conservation remains the balanced pair, and it is one constant away; if
 // the over-budget highlight ever starts reading as the crystal it did before, that
@@ -168,7 +168,7 @@
 // Only the highlight is affected. The sun and moon drawn in the sky are a disc
 // of their own and do not change size with this.
 //
-// ⚠️ 4.0 as of batch 621 section 33, chosen by eye by the author alongside the
+// 4.0 as of batch 621 section 33, chosen by eye by the author alongside the
 // specular strength above. It is the "exaggerated for the look of it" use the
 // paragraph above describes, not the real angular size: at 4.0 the disc a polished
 // block shows is about two degrees across instead of half, which is what makes a
@@ -188,7 +188,7 @@
 // two together without that split, which is why a shiny surface can be brighter
 // than the light falling on it.
 //
-// ⚠️ ON by default since batch 621, paired with a specular strength of 1.0
+// ON by default since batch 621, paired with a specular strength of 1.0
 // above. It was off while the highlight was doubled to make it visible at all,
 // and the two together are what the author described from a world of LabPBR
 // materials: iron that reads as a crystal rather than as metal. With the budget
@@ -453,7 +453,7 @@ const float PBR_ENTITY_REFLECTION_MIN = 0.35;
 // as a ridge along the border of a groove whose two sides store very different
 // heights.
 //
-// ⚠️ The interpolation is this file's own - four texel fetches and three mixes per
+// The interpolation is this file's own - four texel fetches and three mixes per
 // step - and it has to be, because the atlas it reads is not filtered. The loader
 // builds the material maps with nearest-neighbour sampling, so that a sprite can
 // never blend into the sprite beside it, which means a texture() or textureGrad()
@@ -709,7 +709,7 @@ const float PBR_WETNESS_DARKENING = 0.66;
 	// translucent.glsl.
 #endif
 
-// ⚠️ Batch 622 removed PBR_REFLECTIONS ("sky reflection") and
+// Batch 622 removed PBR_REFLECTIONS ("sky reflection") and
 // PBR_REFLECTIONS_ROUGHNESS. The author's reasoning: the screen-space
 // reflection below reflects the sky too - it falls back to the sky model along
 // the reflected ray wherever the trace finds nothing - so a second option that
@@ -765,7 +765,7 @@ const float PBR_WETNESS_DARKENING = 0.66;
 	// register this as a boolean option. The actual use is in copy_and_fog.fsh.
 #endif
 
-// ⚠️ Batch 631 removed PBR_REFLECTION_BLUR, and the eight-tap ring it fed, from the
+// Batch 631 removed PBR_REFLECTION_BLUR, and the eight-tap ring it fed, from the
 // traced half of the reflection. The author judged that the metal reflections do not
 // need it: what the trace finds is a picture, and spreading it blurred the picture than
 // the surface was showing. The sky half still averages over the cone its roughness
@@ -997,10 +997,10 @@ float PbrMaterialOcclusion(PbrSurface pbr) {
 // the atlas holds whatever it was built with, and both colours it can be are
 // meaningless as materials:
 //
-//   - Black means no reflectance, no scattering and no porosity.
-//   - White means total reflectance on every channel at once, which is a
-//     material that reflects everything, scatters everything and is porous
-//     everywhere - not something a pack authors.
+// - Black means no reflectance, no scattering and no porosity.
+// - White means total reflectance on every channel at once, which is a
+// material that reflects everything, scatters everything and is porous
+// everywhere - not something a pack authors.
 //
 // The alpha is meaningless too, whichever end of the range the atlas left it at.
 // Emission happens to survive that on its own: a missing sprite reads as
@@ -1049,7 +1049,7 @@ const vec3 PBR_LUMINANCE = vec3(0.2126, 0.7152, 0.0722);
 // Declared out here rather than next to the BRDF below, which is where it
 // belongs thematically, because a pass with no block atlas has no PBR_SURFACE
 // and the guard below would remove it - and composite3 includes this file
-// without ever drawing a block. ⚠️ Nothing outside this file calls it as things
+// without ever drawing a block. Nothing outside this file calls it as things
 // stand: reflections.glsl carries its own PbrReflectionFresnel, and that is what
 // the environment reflection actually evaluates. What keeps this out here is
 // that everything it depends on is a constant, so the guard costs nothing to
@@ -1267,8 +1267,8 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 	// the convention Iris documents for at_tangent - its own example is written
 	// out as
 	//
-	//   float handedness = clamp(at_tangent.w * inf, -1.0, 1.0);
-	//   vec3 bitangent = cross(tangent, normal) * handedness;
+	// float handedness = clamp(at_tangent.w * inf, -1.0, 1.0);
+	// vec3 bitangent = cross(tangent, normal) * handedness;
 	//
 	// and the two operands of a cross product cannot be swapped without
 	// negating the result. For Minecraft's texture convention the result is the
@@ -1276,7 +1276,7 @@ mat3 PbrCotangentFrame(vec3 worldNormal, PbrGradients gradients) {
 	// map's green channel describes, and PbrTangentNormalXY does land the green
 	// channel on it with no sign of its own.
 	//
-	// ⚠️ The operands used to be the other way round here, so every frame this
+	// The operands used to be the other way round here, so every frame this
 	// pack built had its second axis pointing at -v rather than +v. One axis
 	// mirrored and nothing else is what was reported from the game: a ridge with
 	// the sun to its south-east cast its shadow to the south-west rather than to
@@ -1449,20 +1449,20 @@ bool PbrSpriteBoundsUsable(vec4 spriteBounds) {
 // box the coordinate into the sprite's rectangle. The three are not equivalent,
 // and the difference is depth that holds together against depth that does not:
 //
-//   * Wrapping keeps the whole displacement. Every texel of a face displaces by
-//     what the height field says it should, wherever on the face it sits.
-//   * It is also what the pattern itself does. Minecraft's block textures tile
-//     with themselves across block boundaries - the mortar at the left edge of a
-//     stone brick sprite is the mortar at the right edge of the copy beside it -
-//     so a ray that runs past the edge of the sprite is looking at the same
-//     pattern one tile over, and wrapping is that tile exactly.
-//   * Shortening the displacement instead was measured to flatten the relief it
-//     is most needed on. On a 16 pixel stone brick sprite at a forty-five degree
-//     view, every one of the 42 texels on the sprite's border that carries height
-//     had its displacement cut to nothing, and the cut tapered back to full only
-//     four texels in. The relief of a tiled block is the seam at its border, so
-//     that is that seam drawn with depth in the middle of a face and flat at its
-//     edge, which reads as the surface deforming rather than as shape.
+// * Wrapping keeps the whole displacement. Every texel of a face displaces by
+// what the height field says it should, wherever on the face it sits.
+// * It is also what the pattern itself does. Minecraft's block textures tile
+// with themselves across block boundaries - the mortar at the left edge of a
+// stone brick sprite is the mortar at the right edge of the copy beside it -
+// so a ray that runs past the edge of the sprite is looking at the same
+// pattern one tile over, and wrapping is that tile exactly.
+// * Shortening the displacement instead was measured to flatten the relief it
+// is most needed on. On a 16 pixel stone brick sprite at a forty-five degree
+// view, every one of the 42 texels on the sprite's border that carries height
+// had its displacement cut to nothing, and the cut tapered back to full only
+// four texels in. The relief of a tiled block is the seam at its border, so
+// that is that seam drawn with depth in the middle of a face and flat at its
+// edge, which reads as the surface deforming rather than as shape.
 //
 // The wrap takes the sprite's whole rectangle as its period, so a coordinate that
 // is already inside the sprite comes back exactly where it was - which is what
@@ -1753,7 +1753,7 @@ vec2 PbrParallaxMapping(
 	// way round turns every groove inside out, which shows up as a surface lit
 	// from the wrong side rather than as a displacement.
 	//
-	// ⚠️ And it is not capped. A cap on how far the ray travels is a cap on the
+	// And it is not capped. A cap on how far the ray travels is a cap on the
 	// angle it meets the surface at, and a ray at a shallower angle than the view
 	// is a ray through a shallower field: the relief under it comes out flatter by
 	// the same factor. That is what a maximum offset written here used to do, and
@@ -1774,7 +1774,7 @@ vec2 PbrParallaxMapping(
 	// everything below is the coordinate's own space, so the last step is to scale
 	// by the size the sprite has in that space.
 	//
-	// ⚠️ This multiply is not optional and it is not small: a 16 pixel sprite in
+	// This multiply is not optional and it is not small: a 16 pixel sprite in
 	// a 32 x 32 sprite atlas is a thirty-second of the atlas, so without it the
 	// depth above would be read as a fraction of the *atlas* - six and a half
 	// sprites deep at the default rather than a fifth of one. What that looked
@@ -2103,25 +2103,25 @@ PbrSurface PbrResolveAlbedo(PbrSurface pbr, vec3 albedo) {
 	// Three things decide how much of it there is, and the first is what keeps
 	// the effect from touching anything that is not thin:
 	//
-	//   - The amount the resource pack stored, which is zero for every material
-	//     that does not scatter.
-	//   - How edge-on the surface is to the light. A leaf facing the sun is lit
-	//     like any other surface and shows no glow; the glow belongs to the
-	//     leaves seen edge-on and to the rim of the canopy.
-	//   - How closely the viewer, the light and the surface line up, which is the
-	//     phase term below.
-	//     ⚠️ What is handed to it is dot(viewDirection, lightDirection), and
-	//     lightDirection points *towards* the light - PbrSpecular uses it as
-	//     NdotL, and shaders.properties builds it from lightVector - so this is
-	//     the cosine between "towards the camera" and "towards the sun". That is
-	//     the negative of the argument a forward-scattering phase function wants,
-	//     which is the cosine between the light's direction of travel and the
-	//     direction towards the viewer; with g = 0.6 the term is therefore
-	//     largest when the camera and the sun are on the same side, rather than
-	//     when the light has come through the surface towards the eye. The 0.1
-	//     floor below is what keeps the backlit case from going dark outright.
-	//     Reported rather than changed: if the glow reads as front-lit instead of
-	//     as coming through the leaf, this sign is why.
+	// - The amount the resource pack stored, which is zero for every material
+	// that does not scatter.
+	// - How edge-on the surface is to the light. A leaf facing the sun is lit
+	// like any other surface and shows no glow; the glow belongs to the
+	// leaves seen edge-on and to the rim of the canopy.
+	// - How closely the viewer, the light and the surface line up, which is the
+	// phase term below.
+	// What is handed to it is dot(viewDirection, lightDirection), and
+	// lightDirection points *towards* the light - PbrSpecular uses it as
+	// NdotL, and shaders.properties builds it from lightVector - so this is
+	// the cosine between "towards the camera" and "towards the sun". That is
+	// the negative of the argument a forward-scattering phase function wants,
+	// which is the cosine between the light's direction of travel and the
+	// direction towards the viewer; with g = 0.6 the term is therefore
+	// largest when the camera and the sun are on the same side, rather than
+	// when the light has come through the surface towards the eye. The 0.1
+	// floor below is what keeps the backlit case from going dark outright.
+	// Reported rather than changed: if the glow reads as front-lit instead of
+	// as coming through the leaf, this sign is why.
 	//
 	// visibility is the shadow map result for this fragment, passed in so that
 	// the glow cannot pass through a wall the direct light itself is blocked by.
@@ -2145,7 +2145,7 @@ PbrSurface PbrResolveAlbedo(PbrSurface pbr, vec3 albedo) {
 		// of angles, so the same value drives both how bright the glow is and
 		// how quickly it fades away from the silhouette.
 		//
-		// ⚠️ The argument is dot(viewDirection, lightDirection), with
+		// The argument is dot(viewDirection, lightDirection), with
 		// lightDirection pointing towards the light - see the third item of the
 		// list above for what that does to the sign. PbrPhaseHG's own convention
 		// is stated on the function, and the function is the standard one.
@@ -2253,14 +2253,14 @@ vec3 PbrDebugColor(
 		// This is the view to open when a block glows that should not, and the
 		// two channels answer it between them:
 		//
-		//   - Red bright means the material's specular map is being read as
-		//     emissive, and the material data is what to look at next.
-		//   - Green bright means the lightmap is calling this face a light
-		//     source, which is the block self-emission rather than the material.
-		//   - Both black means neither is putting light here, and a glow that is
-		//     still visible comes from somewhere else again - the light bleed
-		//     spreading a nearby source's colour, or something outside the
-		//     material model entirely.
+		// - Red bright means the material's specular map is being read as
+		// emissive, and the material data is what to look at next.
+		// - Green bright means the lightmap is calling this face a light
+		// source, which is the block self-emission rather than the material.
+		// - Both black means neither is putting light here, and a glow that is
+		// still visible comes from somewhere else again - the light bleed
+		// spreading a nearby source's colour, or something outside the
+		// material model entirely.
 		return vec3(pbr.emission, lightSourceSignal, 0.0);
 	#else
 		return vec3(0.0);
@@ -2478,7 +2478,7 @@ vec3 PbrDebugColor(
 		// coherent reflection.
 		float smoothness = 1.0 - pbr.roughness;
 
-		// ⚠️ Not for the hand, and that exclusion is not a detail (batch 623).
+		// Not for the hand, and that exclusion is not a detail (batch 623).
 		//
 		// The step-back below is worth making only where the deferred reflection will
 		// actually replace this term, and the deferred pass does not cover the hand:

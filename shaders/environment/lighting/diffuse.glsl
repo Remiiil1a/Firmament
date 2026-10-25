@@ -213,14 +213,14 @@ vec3 BlockLightTemperatureRgb(float kelvin) {
 // Two normalizations, and both of them are the difference between this being a
 // color control and being a second brightness control:
 //
-//  - Against the neutral temperature, so that the default setting is exactly one
-//    and the option does nothing until it is moved. Without this every setting
-//    would also brighten or darken the world by whatever the curve happens to do
-//    at that temperature.
-//  - Against its own brightness afterwards, so that the factor changes the hue
-//    and not the luminance. A warm tint that also took a third of the light away
-//    would read as "warmer and darker", and the two are separate controls here:
-//    BLOCKLIGHT_STRENGTH above is the brightness one.
+// - Against the neutral temperature, so that the default setting is exactly one
+// and the option does nothing until it is moved. Without this every setting
+// would also brighten or darken the world by whatever the curve happens to do
+// at that temperature.
+// - Against its own brightness afterwards, so that the factor changes the hue
+// and not the luminance. A warm tint that also took a third of the light away
+// would read as "warmer and darker", and the two are separate controls here:
+// BLOCKLIGHT_STRENGTH above is the brightness one.
 //
 // Both arguments are compile-time constants, so a driver folds this to two
 // constants; the two calls are kept as calls rather than written out because the
@@ -305,7 +305,7 @@ vec3 AmbientSkyLighting(float skyLightStrength, float ambientStrength) {
 	// readable without flattening the falloff around a torch or washing the color
 	// out of a surface.
 	//
-	// ⚠️ What it does scale with depends on the branch this is compiled in: under
+	// What it does scale with depends on the branch this is compiled in: under
 	// DIRECTIONAL_SKYLIGHT_SHADING, which is the one the #define above selects,
 	// the constant sits inside the multiplication by ambientStrength and so
 	// varies with the face direction along with everything else. In the other
@@ -322,7 +322,7 @@ vec3 AmbientSkyLighting(float skyLightStrength, float ambientStrength) {
 	// of postprocessing lifts it again. A cave floor at 0.05 is a very dark grey;
 	// making one properly readable takes several times that.
 	//
-	// ⚠️ The default is 0.02 and not 0.1 (batch 602, the author's setting adopted as
+	// The default is 0.02 and not 0.1 (batch 602, the author's setting adopted as
 	// the shipped one), which is BELOW the range's own first step above zero and had
 	// to be added to the list to be selectable at all. It is a floor for places with
 	// no light rather than a brightness in its own right: at the tonemapper's
@@ -562,7 +562,7 @@ float DirectLighting(
 	//
 	// - Only faces directly facing the light source receive the full intensity
 	// - Faces gradually darken as the angle between them and the light
-	//   approaches 90 degrees
+	// approaches 90 degrees
 	// - Faces that are facing away from the light receive none of the light
 	float directLightStrength = dot(fragment.worldNormal, worldLightVector);
 
@@ -591,9 +591,9 @@ float DirectLighting(
 			// Stylized lighting model:
 			//
 			// - Faces facing the light source in nearly any way receive the
-			//   full light intensity
+			// full light intensity
 			// - Faces that approach 90 degrees or more away from the light
-			//   rapidly fade to dark
+			// rapidly fade to dark
 			// - Faces that are facing away from the light receive no light
 			directLightStrength = smoothstep(-0.05, 0.05, directLightStrength);
 		#else
@@ -629,10 +629,10 @@ float DirectLighting(
 	// without any shadows. The technique and tuned fading factors are from:
 	//
 	// - Photon Shaders by SixthSurge:
-	//   https://github.com/sixthsurge/photon
-	//   
-	//   File /shaders/include/lighting/shadows.glsl#L56-L59 as of commit
-	//   26c2906ee02cc484359b835fba6993d443d45966
+	// https://github.com/sixthsurge/photon
+	// 
+	// File /shaders/include/lighting/shadows.glsl#L56-L59 as of commit
+	// 26c2906ee02cc484359b835fba6993d443d45966
 	float shadowSample = smoothstep(
 		// Everything darker than this will be fully in shadow
 		13.5 / 15.0,
@@ -1005,14 +1005,14 @@ vec3 DiffuseLightingImpl(
 	// Emission is deliberately not added here: it is added by the caller, so
 	// that everything that glows goes through one place. See lit.fsh.
 	//
-	// ⚠️ Only the SUN's highlight is taken back out of the albedo multiply, and
+	// Only the SUN's highlight is taken back out of the albedo multiply, and
 	// put back tinted the way the material itself tints it - white for a
 	// dielectric, the surface colour for a metal. That is what Bliss does with
 	// its metalAlbedoTint (lib/specular.glsl:370), and it is right for a
 	// highlight: it is the light source seen in the surface, and a dielectric
 	// does not colour the light it reflects.
 	//
-	// ⚠️ The environment stand-in is deliberately NOT treated that way. It
+	// The environment stand-in is deliberately NOT treated that way. It
 	// stands in for the light around the fragment rather than for a source, and
 	// taking it out of the albedo multiply turns it into a white wash over every
 	// dark material - which is what it did: at night and in the Nether, where

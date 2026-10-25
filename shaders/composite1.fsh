@@ -22,7 +22,7 @@
 // the medium, declared in /environment/effects/volumetric_fog.glsl and written
 // again here.
 //
-// ⚠️ A pass that TESTS an option has to declare it (batch 581). An `#ifdef` on a
+// A pass that TESTS an option has to declare it (batch 581). An `#ifdef` on a
 // macro that is not defined anywhere in this translation unit is false, so without
 // this line the fog below would compile out of the frame entirely while every file
 // still looked right. The check that would have caught it is
@@ -103,21 +103,21 @@ uniform vec3 previousCameraPosition;
 // final pass still declares the medium's settings and its own debug views, so what
 // it kept of the upscale is written out below where it is used.
 //
-// ⚠️ The three constants and the two functions are the filter, and the division of
+// The three constants and the two functions are the filter, and the division of
 // labour between them is the whole of it:
 //
-//   * the GATE decides. A tap whose surface is more than FOG_UPSAMPLE_DEPTH_GATE
-//     blocks from this fragment's is dropped outright. A gate and not a weight,
-//     because a multiplier never rejects, it only reduces: measured across a one
-//     to three block gap - a kerb, a step, a fence rail, a leaf - a smooth weight
-//     passed 18%, 7.5% and 2.9% of the fog from the surface BEHIND onto the one in
-//     front, and that fog was marched to its own surface, so it is a different
-//     ray's answer. Bliss gates for the same reason.
-//   * the GAUSSIAN spatial weight makes that decision fade rather than step. Nine
-//     taps with exp(-d^2) over the three-by-three do not remove the ambiguity at a
-//     silhouette - nothing read at this resolution can - but they give it three
-//     candidates along each axis instead of two. A hard gate with bilinear weights
-//     alone is a mosaic on the four-pixel grid, which is what batch 572 was.
+// * the GATE decides. A tap whose surface is more than FOG_UPSAMPLE_DEPTH_GATE
+// blocks from this fragment's is dropped outright. A gate and not a weight,
+// because a multiplier never rejects, it only reduces: measured across a one
+// to three block gap - a kerb, a step, a fence rail, a leaf - a smooth weight
+// passed 18%, 7.5% and 2.9% of the fog from the surface BEHIND onto the one in
+// front, and that fog was marched to its own surface, so it is a different
+// ray's answer. Bliss gates for the same reason.
+// * the GAUSSIAN spatial weight makes that decision fade rather than step. Nine
+// taps with exp(-d^2) over the three-by-three do not remove the ambiguity at a
+// silhouette - nothing read at this resolution can - but they give it three
+// candidates along each axis instead of two. A hard gate with bilinear weights
+// alone is a mosaic on the four-pixel grid, which is what batch 572 was.
 
 // The largest distance a weight comparison is ever given, in blocks.
 //
@@ -139,13 +139,13 @@ const float FOG_UPSAMPLE_MAX_DISTANCE = 1.0e4;
 // How far apart in distance two points have to be before the fog stops sharing
 // between them, in blocks.
 //
-// ⚠️ Absolute rather than a fraction of the distance, and that is geometric: a
+// Absolute rather than a fraction of the distance, and that is geometric: a
 // fence rail one block in front of a wall is one block in front of it whether the
 // player is standing next to it or two hundred blocks away, and a threshold that
 // grew with distance would keep the two blended together in the far field, which
 // is where a soft edge is most visible.
 //
-// ⚠️ Its cost is the far field and it is a real one: a slope crossed by one fog
+// Its cost is the far field and it is a real one: a slope crossed by one fog
 // texel changes depth by more than a block, so on distant terrain the gate rejects
 // taps that are legitimately on the same surface. The taps on the pixel's own texel
 // survive - their gap is zero by construction - so the result degrades to the plain
@@ -155,25 +155,25 @@ const float FOG_UPSAMPLE_DEPTH_GATE = 1.0;
 // The smallest weight sum the normalisation may divide by. Below it the plain
 // bilinear read is the answer.
 //
-// ⚠️ The gate makes this MORE likely to be reached, not less: with a gate a tap is
+// The gate makes this MORE likely to be reached, not less: with a gate a tap is
 // either fully in or fully out, so at a silhouette against a distant background it
 // is entirely possible for none of them to pass. That is the right fallback rather
 // than a compromise - a pixel whose every neighbour is another surface should show
 // the fog of its own surface, and the bilinear read is the one weighted by area
 // alone, needing no neighbour to agree about anything.
 //
-// ⚠️ 1e-30 sits eight decades above the smallest normal float (1.18e-38), so a sum
+// 1e-30 sits eight decades above the smallest normal float (1.18e-38), so a sum
 // that passes it is never denormal and the division keeps its full precision.
 const float FOG_UPSAMPLE_WEIGHT_EPSILON = 1.0e-30;
 
 // How far the surface at one pixel is from the eye, in blocks, from the depth the
 // fog pass marched to and the matrix it marched with.
 //
-// ⚠️ The same linearisation the fog pass itself applies to the depth it stopped at,
+// The same linearisation the fog pass itself applies to the depth it stopped at,
 // because both numbers the weights compare have to be the same quantity; a distance
 // worked out any other way would be a different measurement of the same pixel.
 //
-// ⚠️ And one guarantee: what comes back is always a finite number, inside
+// And one guarantee: what comes back is always a finite number, inside
 // FOG_UPSAMPLE_MAX_DISTANCE, for any depth at all. Every weight is a difference of
 // two of these, and a difference needs both sides to be numbers: Inf - Inf is NaN,
 // and a NaN weight is a NaN sum and a black speckle on the frame. Two ways a
@@ -182,7 +182,7 @@ float FogViewDistance(ivec2 pixel, float depth) {
 	// The far plane - and the sky, which is drawn with depth writing off and so
 	// sits at exactly this depth - is not a place with a distance.
 	//
-	// ⚠️ Written inverted, `!(depth < 1.0)`, because a NaN fails every comparison:
+	// Written inverted, `!(depth < 1.0)`, because a NaN fails every comparison:
 	// an inverted test catches it and `depth >= 1.0` does not. A depth that is not
 	// a number is exactly the input that must not reach a subtraction.
 	if (!(depth < 1.0)) {
@@ -201,7 +201,7 @@ float FogViewDistance(ivec2 pixel, float depth) {
 
 	float viewDistance = length(viewPosH.xyz / viewPosH.w);
 
-	// ⚠️ A ceiling, because the division above is by a w that reaches zero at the
+	// A ceiling, because the division above is by a w that reaches zero at the
 	// far end of the depth range. Written as a comparison rather than as min(),
 	// because min() cannot order a NaN - a NaN fails this test and takes the
 	// ceiling. That is what makes the guarantee above hold for every input.
@@ -222,7 +222,7 @@ float FogViewDistance(ivec2 pixel, float depth) {
 vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 	ivec2 fogSize = textureSize(colortex1, 0);
 
-	// ⚠️ The buffer at the frame's own size is the other setting
+	// The buffer at the frame's own size is the other setting
 	// shaders.properties offers, and it needs no upscale at all: one fog texel is
 	// one pixel, so the read is the write. Asked of the buffer rather than decided
 	// by an #ifdef on the option, because the option is a property of the buffer and
@@ -235,7 +235,7 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 
 	vec2 fogTexel = screenCoord * vec2(fogSize) - 0.5;
 
-	// ⚠️ The base is deliberately NOT clamped into the buffer, although it is
+	// The base is deliberately NOT clamped into the buffer, although it is
 	// outside it at the frame's edge: on the first column of the frame floor() gives
 	// -1, and on the last it gives the last texel, whose upper tap is one past the
 	// end. Moving the base would move frac with it, and frac is what the spatial
@@ -251,7 +251,7 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 	// The full-resolution pixel that stands at the centre of the fog texel at
 	// `base`, which is the point its fog was built from.
 	//
-	// ⚠️ The 4 is the ratio between the two sizes at the quarter this pack ships the
+	// The 4 is the ratio between the two sizes at the quarter this pack ships the
 	// buffer at, which is the only scale this branch can be reached with. Where the
 	// allocation is the exact quarter of the frame that is the writer's own depth
 	// pixel for this texel; a frame whose width or height is not a multiple of four
@@ -267,7 +267,7 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 
 	for (int i = -1; i <= 1; i++) {
 		for (int j = -1; j <= 1; j++) {
-			// ⚠️ Skipped rather than clamped: with the base able to sit at the
+			// Skipped rather than clamped: with the base able to sit at the
 			// buffer's edge this ring reaches one texel past it, and reading the edge
 			// texel twice there would weight that texel three times over. The sum is
 			// normalised at the bottom, so dropping a tap costs nothing but the tap.
@@ -281,13 +281,13 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 			vec2 offset = vec2(i, j) - frac;
 			float spatial = exp(-dot(offset, offset));
 
-			// ⚠️ Each tap's distance is taken through the tap's OWN pixel, not
+			// Each tap's distance is taken through the tap's OWN pixel, not
 			// through this fragment's: the ray that was marched to build this texel's
 			// fog is the one through the centre pixel, and measuring the distance
 			// along the fragment's ray instead tilts it and makes the taps disagree
 			// with a surface they are standing on.
 			//
-			// ⚠️ Clamped into the depth texture, because texelFetch outside a texture
+			// Clamped into the depth texture, because texelFetch outside a texture
 			// is undefined rather than clamped - a driver may return anything,
 			// including a value that linearises to a NaN - and this ring reaches past
 			// the frame's edges near the border. The distance is worked out at this
@@ -298,7 +298,7 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 
 			float tapDistance = FogViewDistance(tapPixel, tapDepth);
 
-			// ⚠️ The gap needs no guard of its own, which is the point of the bound
+			// The gap needs no guard of its own, which is the point of the bound
 			// FogViewDistance holds: both distances are finite and inside
 			// FOG_UPSAMPLE_MAX_DISTANCE, so the gap is finite - never Inf - Inf,
 			// which is the NaN this guards against.
@@ -318,7 +318,7 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 	// and the taps at the buffer's edge are dropped outright, so the divisor is a
 	// different number in every pixel.
 	//
-	// ⚠️ The test is a bound rather than `> 0.0`, and it is written inverted. Both
+	// The test is a bound rather than `> 0.0`, and it is written inverted. Both
 	// parts are load-bearing: a sum just above zero is weights that all belong to
 	// something else being divided by each other for no reason, and every
 	// comparison against a NaN is false, so a sum that has somehow become a NaN
@@ -329,7 +329,7 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 
 	vec4 result = sum / weightSum;
 
-	// ⚠️ The last guard, held at the function's edge rather than three calls into
+	// The last guard, held at the function's edge rather than three calls into
 	// it: whatever the fog buffer holds, nothing that is not a number leaves this
 	// function. The division cannot make one on its own - the weights are never
 	// negative, so the quotient is bounded by the largest tap - but a tap that is
@@ -411,7 +411,7 @@ uniform float blindness;
 // would take are kept, which is what makes it affordable.
 // Whether a history texel may be allowed to contribute to the filtered sample.
 //
-// ⚠️ The test is "exactly zero, or not a number", and not "dark". colortex3 is
+// The test is "exactly zero, or not a number", and not "dark". colortex3 is
 // R11F_G11F_B10F, which has no encoding for a NaN, so a value that could not be
 // stored comes back as a literal black pixel - that is the signature this looks
 // for, and it is the same one main() uses when it treats an exactly-zero history
@@ -447,7 +447,7 @@ vec3 HistorySample(vec2 coord) {
 	vec2 low = clamp((center - 1.0) * invSize, 0.0, 1.0);
 	vec2 high = clamp((center + 2.0) * invSize, 0.0, 1.0);
 
-	// ⚠️ Each tap is checked before it is allowed to contribute, and that is the
+	// Each tap is checked before it is allowed to contribute, and that is the
 	// guard against the black blot growing. It belongs here rather than in the
 	// clamp in main(), because this is where the growing happens: the filter
 	// reaches two texels and carries negative lobes, so one black texel is not
@@ -480,14 +480,14 @@ vec3 HistorySample(vec2 coord) {
 	weight = w12.x * w3.y * tap4.a;
 	if (HistoryTapUsable(tap4.rgb)) { color += tap4.rgb * weight; total += weight; }
 
-	// ⚠️ Every tap unusable is the one case this cannot answer, and it is a real
+	// Every tap unusable is the one case this cannot answer, and it is a real
 	// one: a frame in which the whole neighbourhood was not a number leaves the
 	// history black at all five. Returning black there would keep it black, but the
 	// caller's own exactly-zero test replaces a black sample with the current
 	// frame - which is the value that has to win that case. So black is returned on
 	// purpose, as a signal rather than as a colour.
 	//
-	// ⚠️ And the same is done for a *negative* or vanishing total, which the
+	// And the same is done for a *negative* or vanishing total, which the
 	// arithmetic allows now that the sum is over the taps that survived rather than
 	// over all five. The weights carry negative lobes, so a set in which only those
 	// survive sums below zero - and dividing by it would produce a large, entirely
@@ -570,7 +570,7 @@ void main() {
 	// The jitter belongs to the current frame's sampling, not to the history's
 	// indexing: the frames that carry it are the ones being averaged, and the
 	// average is what removes it.
-	// ⚠️ The depth this is reprojected from is not necessarily this pixel's own.
+	// The depth this is reprojected from is not necessarily this pixel's own.
 	//
 	// At a silhouette this pixel's depth belongs to whatever is behind the edge,
 	// while the pixel is mostly showing the thing in front of it - and reprojecting
@@ -618,7 +618,7 @@ void main() {
 	vec3 anchorWorldPos =
 		(gbufferModelViewInverse * vec4(anchorViewPos, 1.0)).xyz + cameraPosition;
 
-	// ⚠️ The held item is not reprojected like the world, because it does not move
+	// The held item is not reprojected like the world, because it does not move
 	// like the world: it is attached to the camera, so it stays put relative to it
 	// while the world slides past. Reprojecting it with the camera's translation
 	// makes it drag its own history along with the walking, which is the smearing
@@ -631,13 +631,13 @@ void main() {
 	// Shader does the same thing by skipping the delta above a hand depth
 	// (global/post/taa.glsl), and Bliss zeroes the held item's vector outright.
 	//
-	// ⚠️ The threshold is on the game's own non-linear depth, so it is an
+	// The threshold is on the game's own non-linear depth, so it is an
 	// empirical number rather than a distance, and it is Mellow's. Getting it
 	// wrong is not catastrophic - world geometry nearer than it gets reprojected
 	// by rotation alone, which is a small error in a small part of the frame.
 	const float TAA_HAND_DEPTH = 0.56;
 
-	// ⚠️ The held item, keyed on the predicate the branch below already trusts
+	// The held item, keyed on the predicate the branch below already trusts
 	// (batch 634, from the TAA audit). The hand is attached to the camera, so it
 	// sits at the same place on screen from one frame to the next: its history is
 	// its own previous pixel, and it does not need the world`s reprojection - which
@@ -718,7 +718,7 @@ void main() {
 	// have read - so both sums, the count and the maximum are made of the same
 	// nine values, and of the same number of them, as before.
 	//
-	// ⚠️ What is not the same, and cannot be while the fetch is saved, is the
+	// What is not the same, and cannot be while the fetch is saved, is the
 	// order the sum is added up in: the centre was the fifth of nine addends and
 	// is now the ninth, and floating-point addition is not associative. Both sums,
 	// and what is derived from them - the mean, the variance, and the two bounds
@@ -954,7 +954,7 @@ void main() {
 			// that swings once per step, which the End's lens magnifies into the wobble
 			// b504 removed (BATCH_LOG.md b502 has the source citations).
 			//
-			// ⚠️ This is the AXIS, not the ray: the ray above keeps w = 0.0, which is what
+			// This is the AXIS, not the ray: the ray above keeps w = 0.0, which is what
 			// a direction wants. The two are not interchangeable.
 			vec3 giantAxisExact = normalize((gbufferModelViewInverse
 				* vec4(sunPosition, 1.0)).xyz);
@@ -986,7 +986,7 @@ void main() {
 		// See the note on TAA_DEBUG in lib/taa.glsl for how to read it.
 		shown = gl_FragCoord.x < viewWidth * 0.5 ? currentRaw : resolved;
 
-		// ⚠️ And the one fact the source cannot settle (batch 635, from the TAA
+		// And the one fact the source cannot settle (batch 635, from the TAA
 		// audit): whether the held item's own depth is in depthtex0 at all.
 		//
 		// The whole question of why the hand is not anti-aliased turns on it. If the
@@ -1009,7 +1009,7 @@ void main() {
 
 	// VOLUMETRIC FOG: THE COMPOSITE
 	//
-	// ⚠️ THIS PLACEMENT IS THE WHOLE OF BATCH 581. The fog used to be added in
+	// THIS PLACEMENT IS THE WHOLE OF BATCH 581. The fog used to be added in
 	// `final`, the last pass in the frame, so the pack's temporal resolve had never
 	// seen a single pixel of it: every frame's fog was a fresh noisy sample and the
 	// only thing averaging it was the fog pass's own denoise, which works on a
@@ -1020,21 +1020,21 @@ void main() {
 	// frame, over a full-resolution history, at no extra cost because the frame was
 	// going to be resolved anyway.
 	//
-	// ⚠️ It is added AFTER the resolve and BEFORE the history is written, and both
+	// It is added AFTER the resolve and BEFORE the history is written, and both
 	// halves of that are load-bearing:
 	//
-	//   * after the resolve, because the fog is not part of the picture the resolve
-	//     accumulates. Its own temporal stage lives in the fog pass and runs on a
-	//     buffer of its own; feeding fog into this pass's input as well would
-	//     average it twice, at two different resolutions with two different sets of
-	//     weights, and the second average would be of a signal the first had already
-	//     filtered - which is how a filter turns into a smear;
-	//   * before the write below, because the point of the move is that the fog is
-	//     then in the frame for everything downstream: the environment reflection
-	//     traces over this buffer, the bloom is built from it, and the final pass
-	//     reads it. Nothing downstream needs to know the fog is there.
+	// * after the resolve, because the fog is not part of the picture the resolve
+	// accumulates. Its own temporal stage lives in the fog pass and runs on a
+	// buffer of its own; feeding fog into this pass's input as well would
+	// average it twice, at two different resolutions with two different sets of
+	// weights, and the second average would be of a signal the first had already
+	// filtered - which is how a filter turns into a smear;
+	// * before the write below, because the point of the move is that the fog is
+	// then in the frame for everything downstream: the environment reflection
+	// traces over this buffer, the bloom is built from it, and the final pass
+	// reads it. Nothing downstream needs to know the fog is there.
 	//
-	// ⚠️ The history written below is the resolved frame WITHOUT the fog, on purpose.
+	// The history written below is the resolved frame WITHOUT the fog, on purpose.
 	// The history is what the next frame's resolve accumulates onto, so fog in it
 	// would be re-resolved every frame: a feedback loop whose gain is the TAA
 	// strength, and this pack has already paid once for a loop like that (the
@@ -1042,7 +1042,7 @@ void main() {
 	// costs nothing - the fog is added afresh every frame from a buffer that does its
 	// own accumulating.
 	#ifdef VOLUMETRIC_FOG
-		// ⚠️ The depth is read here rather than taken from the resolve above: the
+		// The depth is read here rather than taken from the resolve above: the
 		// resolve's own depth is its anchor's, chosen from a neighbourhood, and this
 		// filter wants THIS pixel's - see FogViewDistance, which both numbers it
 		// compares have to be measured with for the comparison to mean anything.

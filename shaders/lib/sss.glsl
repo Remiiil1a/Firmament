@@ -67,7 +67,7 @@
 	// colour, which on a dim surface is not a shadow but a hole. This separates
 	// the two - how much of the effect to use, and how dark it may ever get.
 	//
-	// ⚠️ Batch 642 moved both defaults down - SSS_STRENGTH to 0.5 and this to
+	// Batch 642 moved both defaults down - SSS_STRENGTH to 0.5 and this to
 	// 0.55 - because the effect stopped averaging in batch 641 and started
 	// deciding, and a decision reaches zero where an average never did. Until 641
 	// this cap could not bind at all (the weight peaked below it), so the buffer
@@ -117,7 +117,7 @@
 	// else. Trying it caught nearly every sample and turned the whole distance
 	// black, which is what this comment is here to stop anyone repeating.
 	//
-	// ⚠️ Batch 640 sharpened both of these, and the step count above, because the
+	// Batch 640 sharpened both of these, and the step count above, because the
 	// report was that the shadows are blurry and the cause was arithmetic rather
 	// than taste.
 	//
@@ -147,7 +147,7 @@
 	// still does not depend on the step count.
 	#define SSS_GAIN 2.0 // [1.0 1.25 1.5 1.75 2.0 2.5 3.0 4.0]
 
-	// ⚠️ SSS_GAIN, SSS_FULL_OCCLUSION and SSS_STEP_LIMIT described the old 
+	// SSS_GAIN, SSS_FULL_OCCLUSION and SSS_STEP_LIMIT described the old 
 	// fractional logic, which is gone in batch 641. They are marked deprecated here 
 	// rather than deleted in the same batch: SSS_GAIN is still listed in the menu and 
 	// removing it means editing the profile, the slider list and both language files, 
@@ -294,7 +294,7 @@ float SssScreenNoise(vec2 fragCoord) {
 
 		float dither = SssScreenNoise(gl_FragCoord.xy);
 
-		// ⚠️ The bound is SSS_STEPS itself (batch 641). It used to be a separate
+		// The bound is SSS_STEPS itself (batch 641). It used to be a separate
 		// SSS_STEP_LIMIT of 24 while the result was divided by SSS_STEPS, so any setting
 		// above 24 marched 24 steps and divided by more than it had walked - the mean
 		// per sample fell as the count rose, which is one more reason raising the count
@@ -395,7 +395,7 @@ float SssScreenNoise(vec2 fragCoord) {
 			float hit = smoothstep(tolerance, tolerance + softness, gap)
 				* (1.0 - smoothstep(thickness - softness, thickness, gap));
 
-			// ⚠️ One qualifying sample is a shadow, and the ray stops there - this is
+			// One qualifying sample is a shadow, and the ray stops there - this is
 			// the whole of the fix in batch 641.
 			//
 			// What stood here accumulated a soft band-pass weight over the ray and

@@ -24,7 +24,7 @@
 // the colour helper the world shader calls; the drawing itself is in
 // program/world/lit.fsh, where fragmentColor is finally written.
 //
-// ⚠️ "The block selection outline" is really "every line the game draws",
+// "The block selection outline" is really "every line the game draws",
 // because there is only one program for all of them - gbuffers_basic.fsh, which
 // defines DRAWING_LINES - and it is handed the outline, the entity hitboxes that
 // F3+B shows, the bounding boxes of a structure block, and anything else with a
@@ -47,7 +47,7 @@
 
 // What GLOW lights the outline with, one value per channel, 0 to 255.
 //
-// ⚠️ These are read as sRGB - the numbers a colour picker shows - and converted
+// These are read as sRGB - the numbers a colour picker shows - and converted
 // on the way in, so that 128 is stored as roughly a fifth of full brightness -
 // 0.502 to the 2.2 is 0.220, in the linear light everything else here is in -
 // and therefore displays as 0.50, the mid tone the picker showed. Taken
@@ -55,7 +55,7 @@
 // linear light throughout and this is the one place a player types a colour,
 // which is why the conversion lives here.
 //
-// ⚠️ They do nothing in the RGB mode, which chooses its own colours, and nothing
+// They do nothing in the RGB mode, which chooses its own colours, and nothing
 // in VANILLA or NONE. Changing them in those modes is not a bug.
 //
 // The lists run the whole way from 0 to 255 one step at a time, so that every
@@ -74,14 +74,14 @@
 
 // How much brighter than the scene the outline is written.
 //
-// ⚠️ This is the whole of what makes it glow, and it is worth being exact about
+// This is the whole of what makes it glow, and it is worth being exact about
 // why. The bloom pass reads colortex0 and takes everything above its threshold,
 // which is zero by default - so anything written brighter than the scene comes
 // back as a halo around itself. Writing the outline at its own colour would give
 // a coloured line with nothing around it; writing it several times over gives
 // the line and a halo of the same colour, which is what a glow is.
 //
-// ⚠️ What the line's own core does is not a clamp at one, and it depends on the
+// What the line's own core does is not a clamp at one, and it depends on the
 // colour. lib/tonemap_uncharted2.glsl has a white point of 11.2 with a scale of
 // 1/0.7251 on top of it, and it tonemaps the three channels independently, so a
 // channel written at 5.0 comes back at about 0.974 and a channel written at 0.0
@@ -105,19 +105,19 @@ const float SELECTION_GLOW_STRENGTH = 5.0;
 #endif
 
 // SrgbToLinear, for the three numbers above.
-// ⚠️ Deliberately not included: see the note in SelectionBoxColor below.
+// Deliberately not included: see the note in SelectionBoxColor below.
 
 // The colour the outline is drawn in, in linear light, already scaled by the
 // strength - so the caller writes it and nothing else.
 //
-// ⚠️ The RGB mode's cycle is a hue rotation written out rather than an HSV
+// The RGB mode's cycle is a hue rotation written out rather than an HSV
 // conversion, because all it needs is the fully saturated rim of the colour
 // wheel and that has a closed form: take the hue as a position round the circle,
 // read three offset triangles of it, and the result is the colour. It costs no
 // branches and has no singularities at the ends, which a hue-to-RGB written the
 // other way does.
 //
-// ⚠️ The three values of the GLOW mode are converted from sRGB by hand rather
+// The three values of the GLOW mode are converted from sRGB by hand rather
 // than through lib/srgb.glsl - not for its sake, but because that file has no
 // include guard of its own and this program already includes it somewhere else.
 // Including it a second time is a redeclaration and does not compile, which
@@ -139,12 +139,12 @@ vec3 SelectionBoxColor() {
 
 // Writing that colour out.
 //
-// ⚠️ The macro exists only when there is something to write, and that is what
+// The macro exists only when there is something to write, and that is what
 // makes the guard in the world shader work: it tests defined(SELECTION_BOX_OVERRIDE),
 // so the block is compiled in this program and dropped in the other fourteen,
 // and the name in the guard is the name in the block.
 //
-// ⚠️ Which matters for more than tidiness. The pack's own source check reads the
+// Which matters for more than tidiness. The pack's own source check reads the
 // text without evaluating #if, and it recognises a use under a guard only when
 // the guard names the symbol being used - so a call to SelectionBoxColor sitting
 // in the world shader under a guard on DRAWING_LINES would read to it as a call

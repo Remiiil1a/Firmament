@@ -29,7 +29,7 @@
 // as it stands and is not evidence either way for the count; what the code shows
 // is the three callers listed at the bottom of this note.)
 //
-// ⚠️ What this is NOT is object motion. The shader mod hands a pack the previous
+// What this is NOT is object motion. The shader mod hands a pack the previous
 // camera and the previous matrices and nothing else - no previous position per
 // vertex and none per entity - so a thing that moved relative to the world cannot
 // be reprojected from here. Motion relative to the world is dealt with by
@@ -37,30 +37,30 @@
 // That is a limit of the interface rather than of this file, and it was recorded
 // as one when this was planned.
 //
-// ⚠️ What it does NOT need, and must not be given:
+// What it does NOT need, and must not be given:
 //
-//  * The previous frame's depth. The history is reprojected by position, not by
-//    comparing two depth buffers, so nothing here reads one.
-//  * **The sub-pixel jitter, subtracted.** The arithmetic makes it look as though
-//    the current frame's jitter should be taken back out of the coordinate first.
-//    It must not be. Doing so makes the position the history is read from depend
-//    on this frame's jitter, and since the history accumulates at the pixel's own
-//    index, the picture held in it is displaced further every frame in that
-//    frame's jitter direction. It does not settle - under a still camera it
-//    becomes an oscillation of about the jitter times 1 / (1 - TAA_STRENGTH), and
-//    it reads as the whole picture shaking. It was tried and reverted; see
-//    BATCH_LOG.md 119, and the full note where the anti-aliasing mode calls
-//    this.
+// * The previous frame's depth. The history is reprojected by position, not by
+// comparing two depth buffers, so nothing here reads one.
+// * **The sub-pixel jitter, subtracted.** The arithmetic makes it look as though
+// the current frame's jitter should be taken back out of the coordinate first.
+// It must not be. Doing so makes the position the history is read from depend
+// on this frame's jitter, and since the history accumulates at the pixel's own
+// index, the picture held in it is displaced further every frame in that
+// frame's jitter direction. It does not settle - under a still camera it
+// becomes an oscillation of about the jitter times 1 / (1 - TAA_STRENGTH), and
+// it reads as the whole picture shaking. It was tried and reverted; see
+// BATCH_LOG.md 119, and the full note where the anti-aliasing mode calls
+// this.
 //
-// ⚠️ This file declares no uniforms of its own, on purpose: the programs that
+// This file declares no uniforms of its own, on purpose: the programs that
 // include it already declare these, and a second declaration of the same uniform
 // in one program does not compile. It must therefore be included *after* the
 // caller has declared:
 //
-//     mat4 gbufferPreviousProjection
-//     mat4 gbufferPreviousModelView
-//     vec3 previousCameraPosition
-//     float viewWidth, viewHeight
+// mat4 gbufferPreviousProjection
+// mat4 gbufferPreviousModelView
+// vec3 previousCameraPosition
+// float viewWidth, viewHeight
 //
 // This replaces two measurements that used to be added together - a translation
 // projected by hand and a rotation compared by direction - and with them the turn

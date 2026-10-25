@@ -50,7 +50,7 @@ uniform mat4 gbufferModelView;
 
 uniform vec2 windowToNdc;
 
-// ⚠️ Removed in batch 622: PBR_EDGE_SKY_MARGIN, PBR_MIN_REFLECTION_DISTANCE and
+// Removed in batch 622: PBR_EDGE_SKY_MARGIN, PBR_MIN_REFLECTION_DISTANCE and
 // ViewDistanceFromDepth. Both constants guarded a refusal that turned out to be
 // aimed at the wrong cause - see the two removal notes in the body.
 
@@ -66,22 +66,22 @@ uniform vec2 windowToNdc;
 // so the depth buffer it would have to trace against is not finished. Here, one
 // pass later, it is.
 // seenThrough: whether this pixel is being looked at through something
-//   translucent - water, ice, glass. The caller answers it because it is a
-//   question about the two depth buffers, and only the caller has both; see
-//   the note on it below for what it is for.
+// translucent - water, ice, glass. The caller answers it because it is a
+// question about the two depth buffers, and only the caller has both; see
+// the note on it below for what it is for.
 // reflectionWeightOut: how much of the environment this pixel ends up taking, as
-//   a colour. The caller uses it to take that fraction *out* of the picture
-//   under PBR_ENERGY_CONSERVATION, so that the reflection replaces the light it
-//   stands for instead of being added on top of it. See the note on it where it
-//   is filled in.
+// a colour. The caller uses it to take that fraction *out* of the picture
+// under PBR_ENERGY_CONSERVATION, so that the reflection replaces the light it
+// stands for instead of being added on top of it. See the note on it where it
+// is filled in.
 // reflectionHitOut: whether the trace found the world at all. Read by the
-//   reflection debug view, which paints the pixels that fell back to the sky:
-//   that is how a boundary in the reflection is told apart from a boundary in
-//   the material without guessing, which took several rounds to learn.
+// reflection debug view, which paints the pixels that fell back to the sky:
+// that is how a boundary in the reflection is told apart from a boundary in
+// the material without guessing, which took several rounds to learn.
 // reflectionHitDistanceOut: how far from the fragment the hit was, in blocks, and
-//   zero where there was no hit. Used by the same debug view to mark the hits
-//   that are near enough to be this block's own geometry, and by the body to
-//   refuse them.
+// zero where there was no hit. Used by the same debug view to mark the hits
+// that are near enough to be this block's own geometry, and by the body to
+// refuse them.
 vec3 EnvironmentReflection(
 	vec3 viewPos,
 	float skyLight,
@@ -310,7 +310,7 @@ vec3 EnvironmentReflection(
 					reflectionHitOut = true;
 					reflectionHitDistanceOut = length(hitViewPos - viewPos);
 
-					// ⚠️ Removed in batch 622: this refused every hit closer than
+					// Removed in batch 622: this refused every hit closer than
 					// half a block, on the theory that the bright line along block
 					// edges was the trace sampling a groove wall or a bevel lip. It
 					// was not that - it was a mapped normal turned past the eye,
@@ -377,7 +377,7 @@ vec3 EnvironmentReflection(
 					// that the metal reflections no longer need it, and without it the
 					// reflection is the sharp picture the trace actually found.
 					//
-					// ⚠️ The SKY half still averages over the cone - see above - and
+					// The SKY half still averages over the cone - see above - and
 					// that asymmetry is deliberate. The sky is not a picture of
 					// anything: a rough surface sees a whole range of sky directions
 					// at once, so one sample of that range is an arbitrary choice
@@ -443,7 +443,7 @@ vec3 EnvironmentReflection(
 		// between a metal and a metal with a white film over it. Bliss composites
 		// the same way - mix(DarkenedDiffuseLighting, reflection, F0) - and it is
 		// why its metals stay the colour of their metal.
-		// ⚠️ The clamp is applied once and the clamped value is what is returned, and
+		// The clamp is applied once and the clamped value is what is returned, and
 		// that is not tidiness - it is the difference between a metal and a blown-out
 		// white mirror (batch 626).
 		//

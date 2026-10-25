@@ -54,7 +54,7 @@
 	// ones, so it is told it is not in the End. That is Voxy's terrain, which
 	// draws into its own buffers and does not use this pack's sky.
 	//
-	// ⚠️⚠️ Batches 348 and 349 both tried to give this an answer, and both are
+	// Batches 348 and 349 both tried to give this an answer, and both are
 	// recorded here so that neither is tried again.
 	//
 	// Batch 348 answered it at compile time, with a per-dimension voxy.json that
@@ -66,13 +66,13 @@
 	// the shape that was tried had that mistake in it.
 	//
 	// Batch 349 answered it with a uniform instead, adding "dimension" to
-	// voxy.json's "uniforms" array. ⚠️ That array is not a list of names a pack
+	// voxy.json's "uniforms" array. That array is not a list of names a pack
 	// may ask for: it is the subset of a fixed set that Voxy knows how to fill,
 	// and dimension is not in it. Voxy said so outright -
 	//
-	//     [IrisVoxyRenderPipelineData]: The following uniforms could not be
-	//     found: [dimension]
-	//     0(3989) : error C1503: undefined variable "dimension"
+	// [IrisVoxyRenderPipelineData]: The following uniforms could not be
+	// found: [dimension]
+	// 0(3989) : error C1503: undefined variable "dimension"
 	//
 	// - and then failed to compile its patched pipeline in EVERY dimension and
 	// fell back to the unpatched one, which is why level-of-detail terrain
@@ -81,13 +81,13 @@
 	// reads zero; a name the array lists but Voxy cannot fill is not declared at
 	// all, and every use of it fails to compile.
 	//
-	// ⚠️⚠️ Batch 351 tried a third route - the per-dimension file done the way
+	// Batch 351 tried a third route - the per-dimension file done the way
 	// the packs that support Voxy do it, with the real Voxy programs moved into
 	// a subfolder and thin shims at the root and in world1/ carrying the flag as
 	// a macro - and it broke the End outright: every block vanished and the sky
 	// went to noise.
 	//
-	// ⚠️ The reason is worth more than the attempt. A shaders/world1/ folder is
+	// The reason is worth more than the attempt. A shaders/world1/ folder is
 	// not "some programs for this dimension". Once it exists, Iris takes it as
 	// the End's program set, and the programs it does not contain stop working
 	// there. That is why the packs that use this mechanism ship a shim for EVERY
@@ -95,22 +95,22 @@
 	// notice before adding one: a folder holding two files disables the other
 	// forty. Reverted in batch 352.
 	//
-	// ⚠️ So this is not "untested". Batches 348, 349, 351 and 507 all tried, and all four
+	// So this is not "untested". Batches 348, 349, 351 and 507 all tried, and all four
 	// are recorded above so that none of them is tried again. Batch 507 is the one that
 	// pins the last one down: the expression resolver's variable set is fixed and does
 	// NOT contain `dimension`, so asking for it in shaders.properties fails to resolve,
 	// the uniform is never created, and Voxy then cannot compile its patch at all.
 	//
-	// ✅ Batch 509 answers it with a name that IS in that set: `biome_category`, which
+	// Batch 509 answers it with a name that IS in that set: `biome_category`, which
 	// BiomeUniforms registers as an int - the End's category is 8 and the Nether's 16,
 	// the ordinals of Iris's own BiomeCategories. shaders.properties turns that into
 	// voxyDimension, which is a uniform of this pack's own, so the Voxy pipeline can
 	// carry it. See the three questions below.
 	//
-	// ✅ A per-dimension program folder would be the other answer, and it is honoured
+	// A per-dimension program folder would be the other answer, and it is honoured
 	// here too: shims defining DIMENSION_END / DIMENSION_NETHER are read first.
 	//
-	// ⚠️ And END_BIOME_CATEGORY is defined below this block, so the category cannot be
+	// And END_BIOME_CATEGORY is defined below this block, so the category cannot be
 	// compared here: 0 is what this branch has for it, and 0 is not the End's.
 	#if defined(DIMENSION_END)
 		const int dimension = 1;
@@ -122,7 +122,7 @@
 	const int biome_category = 0;
 	// That 0 is what Voxy's own programs would be stuck with, so the questions below read
 	// the pack's flag as well: -1.0 the Nether, 1.0 the End, 0.0 anywhere else.
-	// ⚠️ voxyDimension must NOT be declared here - the names in voxy.json are declared BY
+	// voxyDimension must NOT be declared here - the names in voxy.json are declared BY
 	// the patch, and declaring one again is the duplicate-declaration mistake batch 291's
 	// first version made with `lightmap`.
 	#define DIMENSION_IS_END (dimension == 1 || voxyDimension > 0.5)
@@ -171,7 +171,7 @@ bool EndDimension() {
 // itself is -1, and every biome in the Nether reports the Nether's category. The
 // two are mutually exclusive, which is why neither needs to check the other.
 //
-// ⚠️ Its one consumer is the Nether's plumes: /program/post/volumetric_fog.fsh
+// Its one consumer is the Nether's plumes: /program/post/volumetric_fog.fsh
 // asks it once per pixel, under #ifdef NETHER_PLUMES. That the route there is a
 // pass over the finished frame is the whole point of the history below.
 //
@@ -220,9 +220,9 @@ vec3 EndDebugColor() {
 // mod does not provide reads as 0, which is indistinguishable from "not the
 // End". This turns the answer into a color, in the sky where it is easy to see:
 //
-//     red    the dimension uniform says 1
-//     green  the biome category says the End
-//     blue   the pack thinks this is the End
+// red    the dimension uniform says 1
+// green  the biome category says the End
+// blue   the pack thinks this is the End
 //
 // So turning this on in the End gives white if both work, magenta or cyan if
 // only one does, and black if neither does. Outside the End, red and green
@@ -257,7 +257,7 @@ vec3 EndDebugColor() {
 // flash quad left at that depth is overwritten whether this ran or not, and one
 // that wrote a nearer depth is not. That nearer case is what the removal covers.
 //
-// ⚠️ The removal is written in lit.fsh and unlit.fsh, but only lit.fsh's copy is
+// The removal is written in lit.fsh and unlit.fsh, but only lit.fsh's copy is
 // compiled by anything in the pack: SUPPRESS_END_FLASH is defined in exactly one
 // place, gbuffers_weather.fsh, which includes lit.fsh. Nothing defines it and
 // includes unlit.fsh, so the copy there is dead as the pack stands. That is a

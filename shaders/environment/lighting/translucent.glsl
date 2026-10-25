@@ -81,8 +81,8 @@ const float GLASS_F0 = 0.04;
 
 	// Sky light buffer for aiding refractive-based water absorption
 	// TODO: This will prevent water absorption from working perfectly with
-	//       Voxy. This is not an immediate issue at the moment since it is
-	//       rarely visible, but it should be fixed...
+	// Voxy. This is not an immediate issue at the moment since it is
+	// rarely visible, but it should be fixed...
 	uniform sampler2D colortex5;
 
 #endif
@@ -294,7 +294,7 @@ vec3 parallaxWaterNormal(
 // pack smooths over ten ticks each way - so it carries its own transition rather than
 // needing one here.
 //
-// ⚠️ Guarded, and not because it is sometimes absent (batch 597): the Voxy patch reads
+// Guarded, and not because it is sometimes absent (batch 597): the Voxy patch reads
 // it in the branch below, and that build is handed its uniforms BY NAME from
 // voxy.json, which lists this one. A declaration here would then be a second
 // declaration of the same name in the same program, which the pack's own source check
@@ -302,7 +302,7 @@ vec3 parallaxWaterNormal(
 // the same arrangement as the two uniforms above, and the reason both are written the
 // way they are.
 //
-// ⚠️ See where the sun and the moon are drawn into the water's reflection, and
+// See where the sun and the moon are drawn into the water's reflection, and
 // /environment/effects/volumetric_fog.glsl for the other consumer.
 #if !defined(EXTERNALLY_DEFINED_UNIFORMS)
 	uniform float caveFade;
@@ -327,7 +327,7 @@ vec3 parallaxWaterNormal(
 // black pixel: not a dark colour but the absence of one, uniformly black with no
 // texture or noise left in it.
 //
-// ⚠️ Recorded, because this was written to fix that and did not: the flat black
+// Recorded, because this was written to fix that and did not: the flat black
 // clump reported on level-of-detail water was NOT this. It was the water
 // absorption path - see the note in
 // environment/water/absorption_refraction.glsl and batch 447. This guard stands
@@ -355,10 +355,10 @@ float SafeDeterminantReciprocal(float determinant) {
 //
 // This technique is strongly inspired by the following paper:
 //
-//   Christopher A. Burns and Warren A. Hunt, The Visibility Buffer:
-//   A Cache-Friendly Approach to Deferred Shading, Journal of Computer Graphics
-//   Techniques (JCGT), vol. 2, no. 2, 55-69, 2013
-//   Available online http://jcgt.org/published/0002/02/04/
+// Christopher A. Burns and Warren A. Hunt, The Visibility Buffer:
+// A Cache-Friendly Approach to Deferred Shading, Journal of Computer Graphics
+// Techniques (JCGT), vol. 2, no. 2, 55-69, 2013
+// Available online http://jcgt.org/published/0002/02/04/
 //
 // However, this implementation is a simpler variant that excludes the logic
 // required for vertex attribute interpolation and fetching vertex positions,
@@ -395,9 +395,9 @@ void dWorldPosdxdy(
 	// barycentric coordinates u and v are given by the following system of
 	// equations, with T defined as O - v0:
 	//
-	//                        [ t ]
+	// [ t ]
 	// [ -D, edge1, edge2 ] * [ u ] = T
-	//                        [ v ]
+	// [ v ]
 	//
 	// Per Cramer's Rule, the solution is given by:
 	//
@@ -407,7 +407,7 @@ void dWorldPosdxdy(
 	//
 	// We do not care about the value of t here, and can simplify to:
 	//
-	//                   1
+	// 1
 	// [ u ] =  --------------------- * [ det(-D,     T, edge2) ]
 	// [ v ]    det(-D, edge1, edge2)   [ det(-D, edge1,     T) ]
 	//
@@ -424,7 +424,7 @@ void dWorldPosdxdy(
 	//
 	// Expanding these determinants as cross products:
 	//
-	//                   1
+	// 1
 	// [ u ] =  --------------------------- * [ dot(cross(D, edge2), viewPos) ]
 	// [ v ]    dot(cross(D, edge2), edge1)   [ dot(cross(viewPos, edge1), D) ]
 	//
@@ -522,7 +522,7 @@ vec4 TranslucentLighting(
 	// camera-relative position, because the camera sits at the origin of that
 	// space and this fragment's position in it is the vector to it.
 	//
-	// ⚠️ That is world axes, not view space. cameraRelativePos has the camera's
+	// That is world axes, not view space. cameraRelativePos has the camera's
 	// translation taken out and the rotation left in, so normalizing it gives a
 	// world-space direction - and everything built on it here is world-space
 	// work: reflect() against the world-space normal below, the refracted
@@ -695,17 +695,17 @@ vec4 TranslucentLighting(
 		// The sun and the moon below are the exception and are water only; the
 		// note there says why.
 		//
-		// ⚠️ In the End, neither of those is added. Fixed in batch 338, and both
+		// In the End, neither of those is added. Fixed in batch 338, and both
 		// halves were wrong there:
 		//
-		//   * SkyStars is the Overworld's starfield, and the End's sky draws its
-		//     own - EndSkyColor calls EndStarfield - so adding this as well put
-		//     two starfields in the same water;
-		//   * SkyBodies draws the sun and the moon from this pack's copies of
-		//     the game's images, placed by sunPosition and worldSunVector, and
-		//     neither of those is empty in the End: it is the Overworld's sun,
-		//     so the End's water reflected a sun the End does not have. The user
-		//     reported exactly that.
+		// * SkyStars is the Overworld's starfield, and the End's sky draws its
+		// own - EndSkyColor calls EndStarfield - so adding this as well put
+		// two starfields in the same water;
+		// * SkyBodies draws the sun and the moon from this pack's copies of
+		// the game's images, placed by sunPosition and worldSunVector, and
+		// neither of those is empty in the End: it is the Overworld's sun,
+		// so the End's water reflected a sun the End does not have. The user
+		// reported exactly that.
 		//
 		// The test is EndSkyDimension rather than EndDimension because what
 		// matters is which sky SkyColor returns, and that is the same question.
@@ -732,18 +732,18 @@ vec4 TranslucentLighting(
 			// argument is the world-to-view rotation, so that the quad the body
 			// is drawn in is built in the same space as the two directions.
 			//
-			// ⚠️ Not in the End, as of batch 338. There is no sun and no moon
+			// Not in the End, as of batch 338. There is no sun and no moon
 			// drawn in the End's sky, so a disc of either on the End's water is
 			// a reflection of something that is not there - and it was there,
 			// which is what the user saw. See the note above.
-			// ⚠️ And NOT WHERE THE SKY CANNOT BE SEEN (batch 597): a water surface
+			// And NOT WHERE THE SKY CANNOT BE SEEN (batch 597): a water surface
 			// under a roof was reflecting a sun that is not above it, which is the
 			// same kind of mistake the End's water made in batch 338 when it
 			// reflected the Overworld's sun. `caveFade` is the pack's own cave curve -
 			// one out in the open, zero in a cave - so the disc fades out as the
 			// player walks under cover rather than vanishing at a threshold.
 			//
-			// ⚠️ It multiplies the disc and not the whole reflection, because that is
+			// It multiplies the disc and not the whole reflection, because that is
 			// what the author asked for and what is wrong: the sky colour behind the
 			// disc is a separate question, and the water under a roof still has to
 			// reflect something.
@@ -773,7 +773,7 @@ vec4 TranslucentLighting(
 				// No rotation wanted here: both directions are already in world
 				// space, so the identity is what takes world to world.
 				//
-				// ⚠️ And the same cave fade as the branch above (batch 597): the sun
+				// And the same cave fade as the branch above (batch 597): the sun
 				// and moon should not be drawn into water that has no sky over it.
 				skyReflection += SkyBodies(reflected, worldSunVector, mat3(1.0))
 					* caveFade;
@@ -784,7 +784,7 @@ vec4 TranslucentLighting(
 		// moon are added to theirs - and this is where WATER_BODY_BRIGHTNESS
 		// lives in the End.
 		//
-		// ⚠️ Batch 338 stopped SkyBodies from drawing the Overworld's sun and
+		// Batch 338 stopped SkyBodies from drawing the Overworld's sun and
 		// moon in the End, which was right: the End has neither, and the user
 		// could see the Overworld's sun reflected in its water. But the End's
 		// body was then only ever in that reflection at the brightness it has in
@@ -794,14 +794,14 @@ vec4 TranslucentLighting(
 		// too weak, and the brightness option did not work. See BATCH_LOG.md
 		// 197.
 		//
-		// ⚠️ The multiplier is WATER_BODY_BRIGHTNESS - 1.0 rather than
+		// The multiplier is WATER_BODY_BRIGHTNESS - 1.0 rather than
 		// WATER_BODY_BRIGHTNESS, because the sky reflection above already
 		// contains the body once. Adding 32 times it would make the water 33
 		// times the sky; adding 31 makes it 32, which is what the option means
 		// and what the Overworld's water shows. At the option's lowest step of
 		// 1.0 there is no glare at all, which is the honest reading of it.
 		//
-		// ⚠️ Only the body is scaled, never the sky around it: the lens, the
+		// Only the body is scaled, never the sky around it: the lens, the
 		// starfield and the nebula in the reflection stay where the option above
 		// left them, exactly as only the disc of the sun is added to Overworld
 		// water and not the sky it sits in.
@@ -814,7 +814,7 @@ vec4 TranslucentLighting(
 				// costs one 4x4 transform, on End water pixels only, in a branch that
 				// already evaluates the lens and the body below.
 				//
-				// ⚠️ The patch's own program has no sunPosition - see the note above - so it
+				// The patch's own program has no sunPosition - see the note above - so it
 				// keeps the worldSunVector form.
 				#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
 					vec3 endAxis = normalize((gbufferModelViewInverse
@@ -857,7 +857,7 @@ vec4 TranslucentLighting(
 			//
 			// X: initial thickness in meters
 			// Y: additional increase in meters per raytracing step not directly
-			//    related to distance
+			// related to distance
 			vec2 thicknessControl;
 
 			// The mirror-like reflection of a solid surface - ice, glass, a
@@ -914,7 +914,7 @@ vec4 TranslucentLighting(
 				// positive Z. See the warning below for what the line actually
 				// computes.
 				//
-				// ⚠️ What this line computes is not the view-space Z of the normal,
+				// What this line computes is not the view-space Z of the normal,
 				// and it is worth writing down because the intent above needs that
 				// quantity. gbufferModelView[2].xyz is the matrix's third COLUMN -
 				// which is the world Z axis carried into view space - and it is
@@ -1082,7 +1082,7 @@ vec4 TranslucentLighting(
 		// more noticeable than it otherwise would be.
 		//
 		// TODO: Permit sideways water to refract, or make it just opaque.
-		//       Just do something.
+		// Just do something.
 		//
 		// Water that stands up is taken here too. Its refraction direction comes
 		// out as little more than the incident vector - the difference between
@@ -1099,21 +1099,21 @@ vec4 TranslucentLighting(
 			// following constraints:
 			//
 			// - Realistic refraction is relatively unintuitive: when you
-			//   encounter it in real life, it is a "whoa, weird, neat"
-			//   situation, but when it is in a renderer, it feels like a bug.
-			//   It's also not gameplay-friendly: objects appear in
-			//   substantially different locations than they actually are.
-			//   That would make mining sand from above water for example an
-			//   odd experience.
+			// encounter it in real life, it is a "whoa, weird, neat"
+			// situation, but when it is in a renderer, it feels like a bug.
+			// It's also not gameplay-friendly: objects appear in
+			// substantially different locations than they actually are.
+			// That would make mining sand from above water for example an
+			// odd experience.
 			//
 			// - Even if we wanted realism, all we have is data on the screen. 
-			//   Realistic refraction will hide things that are on screen, and
-			//   show underwater objects not visible on screen. This will
-			//   reveal obvious artifacts when we can't access this information.
+			// Realistic refraction will hide things that are on screen, and
+			// show underwater objects not visible on screen. This will
+			// reveal obvious artifacts when we can't access this information.
 			//
 			// - Realistic refraction results in such extreme distortion that we
-			//   need to actually raytrace through the scene, but the artifacts
-			//   and cost of doing so are not acceptable in screen space.
+			// need to actually raytrace through the scene, but the artifacts
+			// and cost of doing so are not acceptable in screen space.
 			// 
 			// These combined factors mean that actually simulating physically
 			// based refraction is NOT the goal. Instead, the effect we are
@@ -1144,7 +1144,7 @@ vec4 TranslucentLighting(
 			vec3 refractedDirView = mat3(gbufferModelView) * refractedDir;
 
 			// TODO: Simplify this or perhaps make refraction not care about
-			//       the depth buffer at all.
+			// the depth buffer at all.
 			vec3 refractedScreenPos = RefractTrace(
 				opaqueDepth, projectionMatrix, inverseProjectionMatrix,
 			 	viewPos, refractedDirView, maxRefractDistance
@@ -1179,7 +1179,7 @@ vec4 TranslucentLighting(
 				refractedScreenPos.xy
 			).rgb;
 
-			// ⚠️ When the trace reports that it reached the sky, what it hands back
+			// When the trace reports that it reached the sky, what it hands back
 			// is the position the ray *left* the water at - and on Voxy terrain that
 			// position cannot be trusted. The depth marched there is Voxy's own
 			// texture (`opaqueDepth` is vxDepthTexOpaque there, see
@@ -1258,11 +1258,11 @@ vec4 TranslucentLighting(
 			//
 			// Our blend equation is:
 			//
-			//   BlendResult = (SrcColor * 1) + (DstColor * SrcAlpha)
+			// BlendResult = (SrcColor * 1) + (DstColor * SrcAlpha)
 			//
 			// In terms of our variable names, this is:
 			//
-			//   fragmentColor = (fragmentColor * 1) + (dstColor * srcAlpha)
+			// fragmentColor = (fragmentColor * 1) + (dstColor * srcAlpha)
 			//
 			// Which simplifies to the following:
 			fragmentColor.rgb += srcAlpha * dstColor;

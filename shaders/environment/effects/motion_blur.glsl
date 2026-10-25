@@ -147,7 +147,7 @@ uniform mat4 gbufferModelViewInverse;
 #endif
 
 // The one copy of that arithmetic, shared with the temporal resolve and the
-// reflection's history. ⚠️ After the declarations above, not before: the file
+// reflection's history. After the declarations above, not before: the file
 // declares nothing itself and uses what is already in scope.
 #include "/lib/reproject.glsl"
 
@@ -228,7 +228,7 @@ vec3 MotionBlur(vec2 screenCoord) {
 	// so that the few pixels at the edge blur a little less instead of coming out
 	// as a band of sharp pixels with a blurred one beside it.
 	//
-	// ⚠️ The offset is a fraction of the screen, in the same units as screenCoord,
+	// The offset is a fraction of the screen, in the same units as screenCoord,
 	// and NOT the pixel-space velocity the resolve uses - that one is only ever
 	// compared against a length there, and multiplying this by the view size here
 	// smears the whole frame along the direction of travel. Batch 363 did exactly

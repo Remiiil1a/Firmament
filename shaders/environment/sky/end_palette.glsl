@@ -8,7 +8,7 @@
 
 // The colour of the End's body, and of the air the End's light is scattered by.
 //
-// ⚠️ This exists as a file of its own because two things need it and they are in
+// This exists as a file of its own because two things need it and they are in
 // two different programs: the body, in the sky pass, which includes
 // environment/sky/end.glsl, and the medium the light shafts are drawn in, in the
 // volumetric fog pass, which includes environment/effects/volumetric_fog.glsl.
@@ -24,7 +24,7 @@
 
 // The body's colour, from a warm white at 0.0 to the End's own violet at 1.0.
 //
-// ⚠️ Both ends were made properly saturated in batch 338, and the shipped default
+// Both ends were made properly saturated in batch 338, and the shipped default
 // was moved to the violet end of the range in v0.7 - it is 1.0 now. Before batch
 // 338 the violet end was vec3(0.88, 0.82, 1.00) - so pale that mixing 35% of it
 // into a warm white gave vec3(0.958, 0.892, 0.870), which is a slightly warm
@@ -32,7 +32,7 @@
 // after, and no setting of it could have. See CHANGELOG.md for v0.7, where the
 // whole set of retuned defaults is listed.
 //
-// ⚠️ Declared here rather than in end.glsl as of batch 340, so that the
+// Declared here rather than in end.glsl as of batch 340, so that the
 // volumetric fog pass - which does not include end.glsl and has no reason to -
 // can read the same option and the same two colours.
 #define END_GIANT_TINT 1.0 // [0.0 0.25 0.5 0.65 0.75 1.0]
@@ -44,7 +44,7 @@ const vec3 END_GIANT_VIOLET = vec3(0.62, 0.42, 1.00);
 // The colour at the chosen tint: the body's own colour, and what the End's air
 // is tinted with where the volumetric fog is drawn there.
 //
-// ⚠️ The End's ambient light in /environment/lighting/end_lighting.glsl is a
+// The End's ambient light in /environment/lighting/end_lighting.glsl is a
 // violet too, retuned in the same batch 338, but it is not this colour. That one
 // is `vec3(0.78, 0.48, 1.34)` - a light colour, scaled so that its luminance
 // matches the near-neutral colour it replaced, so that fixing the hue did not
@@ -86,7 +86,7 @@ vec3 EndPaletteColor() {
 // changing how many there are. END_STAR_DENSITY above is the one that decides
 // how many cells hold a star at all.
 //
-// ⚠️ This note used to describe a ceiling: the field only ever looks at the one
+// This note used to describe a ceiling: the field only ever looks at the one
 // cell the view direction falls into, so a disc that reached past a cell wall
 // came out with a straight edge sliced off it, and the steps stopped short of
 // that. Batch 339 removed the cause instead of ducking it - the star is now
@@ -102,10 +102,10 @@ vec3 EndPaletteColor() {
 // colours being replaced by one, so the field keeps its variety at every
 // setting instead of flattening into a single colour as it turns.
 //
-// ⚠️ The shipped default is 1.0 as of v0.7 - the fully violet end - because the
+// The shipped default is 1.0 as of v0.7 - the fully violet end - because the
 // release's defaults are the user's own settings. See CHANGELOG.md under v0.7.
 //
-// ⚠️ This is the End's field only. The Overworld's stars are a different
+// This is the End's field only. The Overworld's stars are a different
 // implementation - environment/sky/stars.glsl - and are not affected by it.
 #define END_STAR_TINT 1.0 // [0.0 0.25 0.5 0.75 1.0]
 
@@ -158,7 +158,7 @@ vec3 EndStarfield(vec3 worldDir) {
 	// Scaled by END_STAR_SIZE; see the note on that option.
 	float radius = (0.06 + 0.05 * magnitude) * END_STAR_SIZE;
 
-	// ⚠️ The star is placed inset from its cell's walls by its own radius, and
+	// The star is placed inset from its cell's walls by its own radius, and
 	// that inset is the whole reason the star is not cut in half.
 	//
 	// This field only ever evaluates the one cell the view direction falls into.
@@ -180,7 +180,7 @@ vec3 EndStarfield(vec3 worldDir) {
 	// star can have, which is the one with magnitude 1.0, so the inequality
 	// holds for every star and not just the average one. See BATCH_LOG.md 196.
 	//
-	// ⚠️ The clamp is what keeps the inequality true if the size option is ever
+	// The clamp is what keeps the inequality true if the size option is ever
 	// pushed past 0.46 / 0.11, which is 4.18: past that the margin stops growing
 	// (it is pinned at 0.46) while the largest radius keeps growing with the
 	// option, and the slicing would come back. The steps offered stop at 2.5,

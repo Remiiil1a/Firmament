@@ -22,7 +22,7 @@
 //
 // * The face normal in world space
 // * The tangent of the face, and which way its bitangent points, so that the
-//   whole world space TBN matrix can be rebuilt in the fragment shader
+// whole world space TBN matrix can be rebuilt in the fragment shader
 // * The material ID
 //
 // The face normal is first encoded with octahedral unit vector encoding, giving
@@ -73,10 +73,10 @@
 //
 // Reference for the octahedral unit vector encoding in use:
 //
-//  Quirin Meyer, Jochen Süßmuth, Gerd Sußner, Marc Stamminger, and Günther
-//  Greiner. 2010. On floating-point normal vectors. In Proceedings of the 21st
-//  Eurographics conference on Rendering (EGSR'10). Eurographics Association,
-//  Goslar, DEU, 1405–1409. https://doi.org/10.1111/j.1467-8659.2010.01737.x
+// Quirin Meyer, Jochen Süßmuth, Gerd Sußner, Marc Stamminger, and Günther
+// Greiner. 2010. On floating-point normal vectors. In Proceedings of the 21st
+// Eurographics conference on Rendering (EGSR'10). Eurographics Association,
+// Goslar, DEU, 1405–1409. https://doi.org/10.1111/j.1467-8659.2010.01737.x
 //
 // PDF link: https://coburggraphicslab.github.io/files/Meyer10OFN.pdf
 
@@ -440,7 +440,7 @@ mat3 DecodePerFaceWorldTBN(uint perFace, vec3 worldNormal) {
 	// it. The two differ only in the sign convention of the basis, which is not
 	// something worth being clever about here.
 	//
-	// ⚠️ The operand order below is the one this pack has always used, and it is
+	// The operand order below is the one this pack has always used, and it is
 	// the negation of the loader's: Iris documents the handedness as
 	// "vec3 bitangent = cross(tangent, normal) * handedness", and
 	// PbrAttributeFrame has since been corrected to that, so the material

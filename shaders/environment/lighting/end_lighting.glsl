@@ -28,17 +28,17 @@
 // Batch 333 removed the two neighbours that used to live here. Neither had ever
 // done anything, and the reasons are worth keeping:
 //
-//   - END_VOID_GLOW added light to faces whose normal pointed down. An island
-//     is looked at from above and from the side, where the normal points up or
-//     sideways, so the term was multiplied by zero on effectively every pixel
-//     of a normal view. It could only ever be seen by looking up at the
-//     underside of an island - which is not a thing anyone does.
-//   - END_FOG recoloured the fog. The End has no sky light, and the pack turns
-//     its atmospheric fog off wherever the eye's sky light is low (see
-//     fogInCaveAdjustment in shaders.properties), which in the End is
-//     everywhere. There was no fog left to recolour: all that remained was the
-//     thin border band at the render distance, and the two colours it mixed
-//     between are both very nearly black.
+// - END_VOID_GLOW added light to faces whose normal pointed down. An island
+// is looked at from above and from the side, where the normal points up or
+// sideways, so the term was multiplied by zero on effectively every pixel
+// of a normal view. It could only ever be seen by looking up at the
+// underside of an island - which is not a thing anyone does.
+// - END_FOG recoloured the fog. The End has no sky light, and the pack turns
+// its atmospheric fog off wherever the eye's sky light is low (see
+// fogInCaveAdjustment in shaders.properties), which in the End is
+// everywhere. There was no fog left to recolour: all that remained was the
+// thin border band at the render distance, and the two colours it mixed
+// between are both very nearly black.
 //
 // The lesson, which is what the next attempt at the void has to be built on:
 // a void that reads as a void has to be a function of where the geometry is,
@@ -61,7 +61,7 @@
 // is that same 0.14 against a debug value of 1.0. There was never a defect in
 // this file.
 //
-// ⚠️ This is a brightening laid on top of a floor that is already visible. It
+// This is a brightening laid on top of a floor that is already visible. It
 // is not what takes the End out of the dark: the pack's own
 // MIN_AMBIENT_BRIGHTNESS (0.1) is, and upstream Steadfast does not have that
 // option at all. Batch 332's report claimed the dimension had no light and
@@ -74,7 +74,7 @@
 // goes in, and the LinearToSrgb at the end of postprocessing.fsh lifts it again.
 // Read off that curve, a white surface lit only by this comes out at roughly:
 //
-//     0.1  -> 0.074     0.35 -> 0.229     1.0 -> 0.493     1.5 -> 0.621
+// 0.1  -> 0.074     0.35 -> 0.229     1.0 -> 0.493     1.5 -> 0.621
 //
 // in linear light, before the sRGB encode. So 0.35 is a dim light and the
 // shipped 1.0 is about half of its own size by the time it is on screen - the
@@ -87,7 +87,7 @@
 // the maximum rather than the default. The sun is given as one to three, which
 // is not read off any one line here.
 //
-// ⚠️ The shipped default is 1.0 as of v0.7, not the 0.35 this note was written
+// The shipped default is 1.0 as of v0.7, not the 0.35 this note was written
 // around: the user's own settings were taken as the release's defaults, and
 // theirs sits at the top of the range. At 1.0 the End reads as a lit place rather
 // than a dim one, which is the look v0.7 was tuned to. The whole set of retuned
@@ -97,7 +97,7 @@
 
 // The End's light is a violet.
 //
-// ⚠️ Saturated in batch 338, because until then it was not actually violet.
+// Saturated in batch 338, because until then it was not actually violet.
 // It was vec3(0.62, 0.58, 0.82), which against the ambient floor the pack
 // already gives the End - a near-neutral vec3(0.107, 0.116, 0.120) - came out
 // as vec3(0.324, 0.319, 0.407), a ratio of 0.80 : 0.78 : 1.00. That is a
@@ -107,7 +107,7 @@
 // The user's report was that the option "does not give the End a violet
 // atmosphere". See BATCH_LOG.md 194.
 //
-// ⚠️ The numbers look odd because they are compensated: this is scaled so that
+// The numbers look odd because they are compensated: this is scaled so that
 // its luminance is the same as the old near-neutral colour's - 0.606 either way
 // on the same Rec709 weights the rest of the pack uses. Saturating a colour by
 // pulling its green down takes brightness with it,

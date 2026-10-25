@@ -206,7 +206,7 @@ flat out uint rawMaterialID;
 	// The portal pattern's coordinate: this vertex's own position in the world,
 	// relative to the camera.
 	//
-	// ⚠️ Interpolated from here rather than rebuilt in the fragment, and that
+	// Interpolated from here rather than rebuilt in the fragment, and that
 	// difference is the whole reason this varying exists. The fragment can rebuild a
 	// position - that is what cameraRelativePos in lit.fsh is - but it starts from
 	// gl_FragCoord, which carries this pack's TAA jitter; a field sampled from it
@@ -364,16 +364,16 @@ vec3 FetchWorldNormal() {
 		// Shadow bias method inspired by:
 		//
 		// - Complementary Reimagined by Emin:
-		//   https://github.com/ComplementaryDevelopment/ComplementaryReimagined
-		//   
-		//   File /shaders/lib/lighting/mainLighting.glsl#L150-L154 as of commit
-		//   b511bc03e3fd27023d8ea649e8621bb485518c43
+		// https://github.com/ComplementaryDevelopment/ComplementaryReimagined
+		// 
+		// File /shaders/lib/lighting/mainLighting.glsl#L150-L154 as of commit
+		// b511bc03e3fd27023d8ea649e8621bb485518c43
 		//
 		// - Photon by SixthSurge:
-		//   https://github.com/sixthsurge/photon
-		//   
-		//   File /shaders/include/light/distortion.glsl#L31-L47as of commit 
-		//   e253cefc5ff1382f5758834a2d293749a814c724
+		// https://github.com/sixthsurge/photon
+		// 
+		// File /shaders/include/light/distortion.glsl#L31-L47as of commit 
+		// e253cefc5ff1382f5758834a2d293749a814c724
 		//
 		// We do this a bit differently. I observed that varying the offset
 		// along the normal vector is not only necessary, but rather directly
@@ -614,16 +614,16 @@ void main() {
 		//
 		// 1. When in water, we apply water absorption to everything.
 		// 2. When not in water, we apply absorption to everything behind a
-		//    refractive water surface.
+		// refractive water surface.
 		//
 		// What happens when both are the case? That is, we are half-submerged,
 		// with the upper half of the screen viewing above water, and the lower
 		// half underwater?
 		//
 		// (1) will not apply any absorption because we are not actually fully
-		//     underwater yet.
+		// underwater yet.
 		// (2) will not apply absorption to the lower half, because that half of
-		//     the screen is not behind a refractive water surface.
+		// the screen is not behind a refractive water surface.
 		//
 		// This otherwise results in a quite visible flash of underwater terrain
 		// brightly lit as if outside in broad daylight, before we actually

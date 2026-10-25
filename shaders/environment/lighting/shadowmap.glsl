@@ -84,7 +84,7 @@ const float entityShadowDistanceMul = 0.25;
 // Samples the shadow map additional times to soften shadows, with an IRREGULAR
 // kernel and NO rotation (batch 586).
 //
-// ⚠️ THE KERNEL SHAPE IS THE POINT; THE ROTATION WAS NOT. This filter was changed
+// THE KERNEL SHAPE IS THE POINT; THE ROTATION WAS NOT. This filter was changed
 // twice in two batches and the second change was measured to be worse, so both the
 // measurement and what it replaced are recorded here.
 //
@@ -94,7 +94,7 @@ const float entityShadowDistanceMul = 0.25;
 // on a shadow edge - where a filter has a gradient to work on - that reads as a
 // texture that crawls rather than as softness.
 //
-// ⚠️ What was wrong SECOND was the fix for the first: the kernel below was rotated
+// What was wrong SECOND was the fix for the first: the kernel below was rotated
 // per pixel and per frame, on the theory that a changing orientation would break
 // the pattern up. Measured, it does the opposite. A sixteen-point kernel is already
 // irregular enough that neighbouring texels do not share a pattern for a rotation
@@ -104,12 +104,12 @@ const float entityShadowDistanceMul = 0.25;
 // time it makes every frame differ from the last, which is the definition of the
 // artifact being fixed. The numbers are in _team_bfog/fog_jitter_spatial.py.
 //
-// ⚠️ So the rotation is GONE from both filters and the irregular kernel stays. An
+// So the rotation is GONE from both filters and the irregular kernel stays. An
 // irregular kernel with no rotation is the same answer every frame for the same
 // camera position, which is what a filter wants: it removes the lattice artefact by
 // where its points are, not by moving them.
 //
-// ⚠️ Where the kernel comes from and what it actually is: the 16-point list below is
+// Where the kernel comes from and what it actually is: the 16-point list below is
 // the one in the Iris shader tutorial's PCF chapter (4.4, soft shadows), which calls
 // it a Poisson disk. It is NOT one, measured: its closest pair is 0.132 apart where
 // a real Poisson disk of sixteen points would hold about 0.5, so it is clumped, and

@@ -213,10 +213,10 @@ uniform mat4 gbufferModelViewInverse;
 		uniform sampler2D dhDepthTex1;
 
 		// TODO: It seems like this is still not correct and leads to
-		//       discontinuities in things like fog between nearby water
-		//       reflecting distant terrain and distant terrain reflecting
-		//       distant terrain, unfortunately I am not sure how to work around
-		//       this.
+		// discontinuities in things like fog between nearby water
+		// reflecting distant terrain and distant terrain reflecting
+		// distant terrain, unfortunately I am not sure how to work around
+		// this.
 		#define inverseProjectionMatrixDistant dhProjectionInverse
 		#define projectionMatrixDistant dhProjection
 		#define opaqueDepthDistant dhDepthTex1
@@ -276,7 +276,7 @@ uniform vec2 windowToNdc;
 // That is the same one-frame-old picture Mellow's reflection reads (gaux1,
 // with gaux1Clear set so that it survives), and it is the only one there is:
 
-// ⚠️ The bundle below also serves an entity drawn after the deferred pass
+// The bundle below also serves an entity drawn after the deferred pass
 // (batch 629): gbuffers_entities_translucent.fsh - the program the third-person
 // player, its armour, whatever it holds and the dropped items are drawn by -
 // defines AFTER_DEFERRED, so it runs after composite3. The material this file
@@ -365,9 +365,9 @@ uniform vec2 windowToNdc;
 		// It has two functions:
 		// 
 		// 1. Implement the about-to-explode flash on creepers and primed TnT
-		//    (white direction of overlay texture)
+		// (white direction of overlay texture)
 		// 2. Implement the red hurt flash on damaged entities
-		//    (red direction of overlay texture)
+		// (red direction of overlay texture)
 		// 
 		// However, that is abstracted away from us. All we have to care about
 		// is that we have an RGB color, and an interpolation factor from 0.0 to
@@ -491,7 +491,7 @@ flat in uint rawMaterialID;
 // The switches themselves are in /environment/materialIDs.glsl: the vertex stage
 // has to see them too, because it decides whether portalWorldPos exists.
 
-// ⚠️ Everything from here to the end of PortalSurface is inside the portal switches. It
+// Everything from here to the end of PortalSurface is inside the portal switches. It
 // used to be outside them while the include it depends on was inside, so turning
 // an option off removed the include and kept the code - C1503 in every lit program.
 #if defined(PORTAL_NETHER) || defined(PORTAL_END) || defined(PORTAL_GATEWAY)
@@ -704,13 +704,13 @@ void main() {
 
 	// The selection outline, removed outright when the option says so.
 	//
-	// ⚠️ discard rather than writing something invisible, because the point of
+	// discard rather than writing something invisible, because the point of
 	// NONE is that the box is not there - and discarding also skips the depth
 	// write, so nothing of the outline is left behind for anything downstream to
 	// find. It is here, at the top, so that a fragment which is not going to be
 	// drawn does not pay for the rest of the shader either.
 	//
-	// ⚠️ After the debug block above rather than before it: that block is how a
+	// After the debug block above rather than before it: that block is how a
 	// program is identified, and an option that could hide the evidence would
 	// make identifying one harder.
 	#if defined(DRAWING_LINES) && SELECTION_BOX == SELECTION_BOX_NONE
@@ -1050,7 +1050,7 @@ void main() {
 				pbr.selfShadow = pbrSelfShadow;
 			#endif
 
-			// ⚠️ AFTER_DEFERRED only, since batch 630, and that is the whole of why a
+			// AFTER_DEFERRED only, since batch 630, and that is the whole of why a
 			// mob must not come through here: the clamp below smooths whatever it is
 			// given, and a mob already reflects - it is drawn before the deferred pass,
 			// so its own material is read normally. Smoothing that material was what
@@ -1058,7 +1058,7 @@ void main() {
 			// clamp is the entity drawn AFTER the deferred pass, whose material the
 			// deferred reflection never sees: it is given its own trace in batch 629,
 			// and that trace needs a surface the gate accepts.
-			// ⚠️ The material is NOT touched here any more (batch 638).
+			// The material is NOT touched here any more (batch 638).
 			//
 			// The block that stood here clamped an entity's roughness down to
 			// PBR_ENTITY_ROUGHNESS so that its reflection could clear the gate. Batch 630
@@ -1229,23 +1229,23 @@ void main() {
 		// This is due to a few factors:
 		//
 		// - The player view angle is generally horizontal. As a result, when
-		//   looking at upwards-facing water surfaces, generally there are
-		//   plenty of things in the background to reflct, so upwards-facing
-		//   faces look good as a baseline.
+		// looking at upwards-facing water surfaces, generally there are
+		// plenty of things in the background to reflct, so upwards-facing
+		// faces look good as a baseline.
 		//
 		// - When looking at the sides of faces, the screenspace reflections
-		//   cannot often actually trace to what the block is reflecting, due to
-		//   either there being things in the way or the object-to-be-reflected
-		//   simply not being on screen.
+		// cannot often actually trace to what the block is reflecting, due to
+		// either there being things in the way or the object-to-be-reflected
+		// simply not being on screen.
 		//
 		// - Flowing water sides should be rough anyways and should not have
-		//   glassy, specular reflections. We do not support rough reflections,
-		//   so even if we permitted reflections on the sides of water, it looks
-		//   bad.
+		// glassy, specular reflections. We do not support rough reflections,
+		// so even if we permitted reflections on the sides of water, it looks
+		// bad.
 		//
 		// - Reflecting underwater terrain while underwater is OK, but is
-		//   not really impactful and not particularly worth our time, so we can
-		//   skip it.
+		// not really impactful and not particularly worth our time, so we can
+		// skip it.
 		//
 		// Water that is not lying flat - the side of a waterfall, or water
 		// running down a slope - used to be demoted to a generic material here,
@@ -1357,7 +1357,7 @@ void main() {
 				// purpose: in a program whose alpha test is off the reference is
 				// zero, so the branch cannot be taken there, and nothing changes
 				// for a surface that was never cut out.
-				// ⚠️ Fetched with the gradients of the undisplaced coordinate,
+				// Fetched with the gradients of the undisplaced coordinate,
 				// not with implicit ones. The material maps already protect
 				// themselves this way (PBR_MATERIAL_MAX_LOD in
 				// PbrMaterialGradients) and gtexture does not: a mip level taken
@@ -1562,8 +1562,8 @@ void main() {
 	// blended! It only works with opaques! This breaks Retro / vanilla water.
 	//
 	// TODO: These thresholds were iterated on before I discovered and fixed a
-	//       bug causing a discontinuity in cameraRelativePos between DH and non
-	//       DH terrain, so they should be redone.
+	// bug causing a discontinuity in cameraRelativePos between DH and non
+	// DH terrain, so they should be redone.
 	float fragDistance = length(cameraRelativePos);
 
 	#if (!defined(AFTER_DEFERRED) || defined(FANCY_TRANSLUCENTS)) \
@@ -1668,13 +1668,13 @@ void main() {
 			// deferred pass applies. Set after the albedo is resolved so that a
 			// metal reflects with the colour it actually has.
 			//
-			// ⚠️ The normal goes through PbrVisibleNormal on the way out, which
+			// The normal goes through PbrVisibleNormal on the way out, which
 			// pulls a mapped normal back towards the face it is painted on as it
 			// turns past the eye. A bevel texel that faces away from the viewer
 			// otherwise reflects at full Fresnel along a ray that points into the
 			// floor, and that is the line the colour of the sky along every block
 			// edge: see the note on the function, and BATCH_LOG b621 section 31.
-			// ⚠️ Only where the reflection exists. reflections.glsl is included
+			// Only where the reflection exists. reflections.glsl is included
 			// under this same pair of options - see its include at the top of this
 			// file - so with both off the function is not there to call, and the
 			// state with both off is reachable: the sky half is off by default and
@@ -1754,13 +1754,13 @@ void main() {
 			// with nothing behind it that the reflection pass can see. Both halves of
 			// that pass therefore produce something that is not a reflection:
 			//
-			//   - The traced ray marches the world's depth buffer, which at these
-			//     pixels holds the hand itself and at the pixels around them holds
-			//     the world. It finds the world standing behind the item and paints
-			//     that onto the item.
-			//   - The sky reflection needs no depth at all. The item faces the
-			//     camera, so its mirror direction points back past the eye, and the
-			//     sky that lands on it is the sky behind the player.
+			// - The traced ray marches the world's depth buffer, which at these
+			// pixels holds the hand itself and at the pixels around them holds
+			// the world. It finds the world standing behind the item and paints
+			// that onto the item.
+			// - The sky reflection needs no depth at all. The item faces the
+			// camera, so its mirror direction points back past the eye, and the
+			// sky that lands on it is the sky behind the player.
 			//
 			// Either one leaves a held item showing the scene through itself - which
 			// is what a material on a held item looked like it was doing - and turning
@@ -1918,7 +1918,7 @@ void main() {
 				fragmentColor.rgb += handWeight * handEnvironment;
 			#endif
 
-			// ⚠️ An entity drawn after the deferred pass reflects here, the way the
+			// An entity drawn after the deferred pass reflects here, the way the
 			// hand does, because the deferred pass has already run when this program
 			// draws (batch 629). See the declaration at the top of this file for why
 			// a dropped item needs it and a mob does not.
@@ -1980,7 +1980,7 @@ void main() {
 							texture(colortex4, entityHitPos).rgb * entityHitFade;
 					}
 
-					// ⚠️ The sky fills in where the trace found nothing (batch 639), and
+					// The sky fills in where the trace found nothing (batch 639), and
 					// the reason is a metal that went black.
 					//
 					// A metal has almost no diffuse - that is what metalness means - so
@@ -2210,7 +2210,7 @@ void main() {
 	// whichever buffers the directive happened to name.
 	// The selection outline's own colour, when it has one.
 	//
-	// ⚠️ Overridden here, immediately before the writes, rather than returned
+	// Overridden here, immediately before the writes, rather than returned
 	// early somewhere above - and the reason is the fixed list of attachments
 	// this file keeps. A fragment that returned after writing gl_FragData[0]
 	// alone would leave the other five buffers holding whatever was in them from
@@ -2219,10 +2219,10 @@ void main() {
 	// shader run to the end and changing only the colour is what keeps every
 	// write paired with a value.
 	//
-	// ⚠️ And the colour is written several times over its own brightness, which
+	// And the colour is written several times over its own brightness, which
 	// is what the bloom turns into the glow - see SELECTION_GLOW_STRENGTH where
 	// it is defined, including what it costs.
-	// ⚠️ The guard is on the macro's own name, and the macro is defined by the
+	// The guard is on the macro's own name, and the macro is defined by the
 	// selection box options only when there is something to write - so this block
 	// is compiled in the one program that draws lines and dropped in the other
 	// fourteen. See where it is defined for why the guard is written this way
@@ -2233,7 +2233,7 @@ void main() {
 
 	gl_FragData[0] = fragmentColor;
 
-	// ⚠️ The GREEN channel of this buffer is a WATER MASK (batch 593, corrected in
+	// The GREEN channel of this buffer is a WATER MASK (batch 593, corrected in
 	// batch 595). Red is the sky light and stays what it always was; readers take
 	// `.r`, and the mask went into `.g` after an attempt to put it in the ALPHA failed
 	// for a reason worth recording: colortex2 used to be R8, a single-channel format
@@ -2242,17 +2242,17 @@ void main() {
 	// batch-590 fix for glass. The buffer is RG8 now; see the note on its format in
 	// /program/post/copy_and_fog.fsh.
 	//
-	// ⚠️ Why a mask is needed at all: a post stage can tell that a surface is
+	// Why a mask is needed at all: a post stage can tell that a surface is
 	// translucent from the depth buffers but not WHAT it is translucent of, because
 	// the material is decoded here from the block's own attributes and never reaches
 	// a buffer. The volumetric fog has to know, because a ray that crosses glass
 	// should carry on and a ray that crosses the water's surface should stop - water
 	// is a medium of its own, and the air's fog has no business being inside it.
 	//
-	// ⚠️ This is how Bliss Shader marks its water too, and its fog reads the mark the
+	// This is how Bliss Shader marks its water too, and its fog reads the mark the
 	// same way - see the note at the read in /program/post/volumetric_fog.fsh.
 	//
-	// ⚠️ Only WATER is marked. Ice, glass, stained glass and Nether portals are
+	// Only WATER is marked. Ice, glass, stained glass and Nether portals are
 	// translucent too and are deliberately left at zero, because light does pass
 	// through them and the fog behind them should be visible.
 	gl_FragData[1] = vec4(skyLight, materialID == WATER ? 1.0 : 0.0, 0.0, 0.0);

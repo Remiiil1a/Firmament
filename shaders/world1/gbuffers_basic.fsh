@@ -33,7 +33,7 @@
 // This program is the one the game hands its lines and boxes to, which makes it
 // the one that draws the block selection outline.
 //
-// ⚠️ Named for what it is rather than for the outline, because it is not only
+// Named for what it is rather than for the outline, because it is not only
 // the outline: entity hitboxes, structure block bounds and anything else on a
 // line render type arrive here too, and there is no material to tell them apart.
 // The selection box options therefore apply to all of them, which is written

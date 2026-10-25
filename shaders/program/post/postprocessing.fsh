@@ -43,10 +43,10 @@ const int colortex0Format = R11F_G11F_B10F;
 
 // The medium's settings, for the DEBUG_PLUME_DENSITY view below.
 //
-// ⚠️ Included HERE, unconditionally, rather than only inside the branch that
+// Included HERE, unconditionally, rather than only inside the branch that
 // reaches for it - and the difference cost a build (batch 577):
 //
-//     final.fsh: 0(174) : error C1503: undefined variable "BLOOMY_FOG"
+// final.fsh: 0(174) : error C1503: undefined variable "BLOOMY_FOG"
 //
 // That batch put a multiplier in the bloom block whose #define lived in this
 // file, while this program included it only under the debug view, so every
@@ -54,7 +54,7 @@ const int colortex0Format = R11F_G11F_B10F;
 // now, but the arrangement is kept: a program may not depend on a name arriving
 // from a branch it compiles away, and the debug view below is such a branch.
 //
-// ⚠️ And the file is NOT included again where the view is. Two includes of a
+// And the file is NOT included again where the view is. Two includes of a
 // file with no guard of its own would be two copies of every declaration in it.
 #include "/environment/effects/volumetric_fog.glsl"
 
@@ -107,7 +107,7 @@ uniform sampler2D colortex1;
 // buffer still runs and writes zeros into it. One half-resolution full-screen
 // pass is the price of being able to take the shafts down to nothing without
 // turning the medium off with them.
-// ⚠️ Declared here as well as in the medium's own settings file, and the two must
+// Declared here as well as in the medium's own settings file, and the two must
 // carry the same value and the same range or the option means two things at once.
 // The long note on it - including why its default is 5.0 - is at the declaration in
 // /environment/effects/volumetric_fog.glsl.
@@ -129,7 +129,7 @@ uniform sampler2D colortex1;
 	uniform float viewHeight;
 #endif
 
-// ⚠️ The depth texture, the projection inverse and the two functions that used to
+// The depth texture, the projection inverse and the two functions that used to
 // sit here are gone with the upscale (batch 581). This block used to be where the
 // filter was declared and defined, and it is worth recording what replacing it
 // with one buffer declaration means: the only thing left in this pass that touches
@@ -137,13 +137,13 @@ uniform sampler2D colortex1;
 // plain texture() of the buffer. Nothing here needs to know what is behind a
 // silhouette any more, because nothing here draws the fog.
 
-// ⚠️ The fog upscale used to be defined between this line and the #endif below -
+// The fog upscale used to be defined between this line and the #endif below -
 // three constants and two functions, some four hundred lines of it. It is in
 // composite1.fsh now, and the reason is the whole of batch 581: the fog is
 // composited in front of the temporal resolve, so that is the pass where the filter
 // is needed for the picture.
 //
-// ⚠️ It is NOT kept here as a second copy, and it is NOT in a file of its own. The
+// It is NOT kept here as a second copy, and it is NOT in a file of its own. The
 // second copy is refused because two copies of a filter are two places for the next
 // fix to land in one of, which this work has already paid for twice; the file is
 // refused because the pack holds one invariant above tidiness - no new file goes
@@ -173,7 +173,7 @@ uniform sampler2D colortex1;
 #define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_GODRAYS_UPSAMPLED DEBUG_SKYLIGHT DEBUG_DEPTH DEBUG_PLUME_DENSITY]
 
 #if DEBUG == DEBUG_GODRAYS_NOISY || DEBUG == DEBUG_GODRAYS_SMOOTH || DEBUG == DEBUG_GODRAYS_UPSAMPLED
-	// ⚠️ The three views that read the fog buffer. Until batch 581 this was two
+	// The three views that read the fog buffer. Until batch 581 this was two
 	// branches, because the third of them showed the depth-gated upscale's output
 	// and that was the only thing in this pass that needed the depth texture, the
 	// projection inverse and the frame's size. The upscale is in composite1.fsh now,
@@ -182,7 +182,7 @@ uniform sampler2D colortex1;
 	//
 	// colortex1 needs no declaration here: it is declared above, unconditionally.
 	//
-	// ⚠️ The frame's own size does need one, since batch 534 made the first of these
+	// The frame's own size does need one, since batch 534 made the first of these
 	// views ask the buffer for its own grid rather than trusting an #ifdef to say
 	// what that grid is. With volumetric light on it is already there, and with it
 	// off this view still has to compile - a view that fails to compile because the
@@ -201,12 +201,12 @@ uniform sampler2D colortex1;
 	// included unconditionally at the top of this program, for the BLOOMY_FOG
 	// multiplier the bloom needs. It is therefore already in scope here.
 	//
-	// ⚠️ It used to be included at this point instead, and that is what broke a
+	// It used to be included at this point instead, and that is what broke a
 	// build: everything defined in it was visible to this view and to nothing else,
 	// so every ordinary setting compiled with BLOOMY_FOG as an undefined name. See
 	// the note on the include at the top.
 	//
-	// ⚠️ And it is NOT included again here. Two includes of one file would be two
+	// And it is NOT included again here. Two includes of one file would be two
 	// copies of every declaration in it, which is a redefinition rather than a
 	// waste - the file has no include guard of its own, and giving it one would be
 	// a change to a file four other programs take.
@@ -234,7 +234,7 @@ uniform sampler2D depthtex1;
 #include "/environment/effects/motion_blur.glsl"
 
 
-	// ⚠️ cameraPosition and gbufferModelViewInverse are declared by motion_blur.glsl,
+	// cameraPosition and gbufferModelViewInverse are declared by motion_blur.glsl,
 	// which this pass includes above, but only under that file's own MOTION_BLUR
 	// option - and two declarations of one uniform in one program is an error on
 	// the driver, which is what the note in lib/taa.glsl and BATCH_LOG.md 176 are
@@ -303,7 +303,7 @@ void main() {
 		// The scattered light as the pass wrote it, at the buffer's own
 		// resolution: what the march left between its steps shows up here as
 		// banding, which is what the dither and the step count are for.
-		// ⚠️ The buffer's place on the frame is asked of the buffer, exactly as the
+		// The buffer's place on the frame is asked of the buffer, exactly as the
 		// helper above asks it (batch 534), and no longer decided by an #ifdef on
 		// VOLUMETRIC_FOG_FULL_RES with a hand-written 0.25 in the other branch: those
 		// were two statements of one fact, and in the configuration where they
@@ -312,7 +312,7 @@ void main() {
 		// quarter-resolution fog over a full-resolution frame. Whatever size the
 		// buffer is, this is its own texel grid and it cannot disagree with it.
 		//
-		// ⚠️ The mapping is written as integer division rather than as a scale factor,
+		// The mapping is written as integer division rather than as a scale factor,
 		// and that is its one difference from the helper: every pixel of one texel's
 		// footprint has to land on the SAME texel, and (pixel * fogTexels) / view is
 		// exact in integers where a float quotient can come out a hair under the
@@ -329,13 +329,13 @@ void main() {
 		// what the frame actually receives.
 		finalColor = texture(colortex1, screenCoord).rgb;
 	#elif DEBUG == DEBUG_GODRAYS_UPSAMPLED
-		// ⚠️ This view used to show the depth-gated upscale’s own output. That
+		// This view used to show the depth-gated upscale’s own output. That
 		// filter moved to composite1.fsh with the fog it exists for (batch 581), and
 		// it is deliberately NOT kept here as a second copy — a second copy of a
 		// filter is two places for the next fix to land in one of. So this view now
 		// does the read its neighbour above does, and the two are identical.
 		//
-		// ⚠️ Kept rather than deleted because the debug view numbers are baked
+		// Kept rather than deleted because the debug view numbers are baked
 		// into save files: removing one renumbers every view after it, and a player
 		// who had 7 selected would silently be shown something else. The cost is one
 		// duplicated view; the cost of deleting it would be a renumbering.
@@ -351,7 +351,7 @@ void main() {
 		// the picture cannot answer - whether the columns are not there at all, or
 		// are there and not visible - and it is what batch 527 was diagnosed with.
 		//
-		// ⚠️ Read at the world position this pixel shows, so the field is seen where
+		// Read at the world position this pixel shows, so the field is seen where
 		// the picture sees it and nowhere else, and through the same bubble around
 		// the eye that the march holds the smoke off with - which is why the first
 		// blocks in front of the camera come out black in the Nether. A pixel with
@@ -359,7 +359,7 @@ void main() {
 		// reads the same as no smoke; in the Nether the roof is bedrock and there
 		// is no such pixel, but a camera looking into the void would have one.
 		//
-		// ⚠️ Black is no smoke and the plume's own colour is a density of one, the
+		// Black is no smoke and the plume's own colour is a density of one, the
 		// top of the range NetherPlumeDensity is held at - see
 		// NETHER_PLUME_CONTRAST for what holds it there. The ramp is linear, and it
 		// is written without the tonemap like every other view in this pass, so it
@@ -367,7 +367,7 @@ void main() {
 		// column that is visible here and not in the frame is a shading problem,
 		// and a column that is not here at all is a density problem.
 		//
-		// ⚠️ The colour it draws that measurement in is the plume's own base colour,
+		// The colour it draws that measurement in is the plume's own base colour,
 		// and the core gradient does not move it: that option scales the emission
 		// away from this colour towards a paler edge and a deeper core, which is a
 		// thing done to the light after the field is read. A column that is bright
@@ -375,7 +375,7 @@ void main() {
 		// brightness - set the gradient to 0.0 to take the ramp out of the question
 		// before blaming anything else.
 		//
-		// ⚠️ The whole of what this reads is conditional on the plumes being on, and
+		// The whole of what this reads is conditional on the plumes being on, and
 		// the option that switches them off is the one that removes the function
 		// below from the same file this view includes - so the branch is not
 		// decoration. With the plumes off there is no field to look at, and black is
@@ -394,7 +394,7 @@ void main() {
 			float plumeClear = clamp(
 				length(plumeViewPos) / NETHER_PLUME_CLEAR, 0.0, 1.0);
 
-			// ⚠️ The 3x3 needs the inverse's fourth column beside it (batch 598):
+			// The 3x3 needs the inverse's fourth column beside it (batch 598):
 			// `plumeViewPos` is measured from the eye the world was DRAWN from, and
 			// view bobbing puts that eye away from `cameraPosition`, so without this
 			// term this view reads the field at a point displaced by the bob - it
@@ -421,7 +421,7 @@ void main() {
 		#endif
 
 		#ifdef VOLUMETRIC_FOG
-			// ⚠️ THE FOG IS NOT ADDED HERE ANY MORE (batch 581). It is composited in
+			// THE FOG IS NOT ADDED HERE ANY MORE (batch 581). It is composited in
 			// composite1, in front of the temporal resolve, which is the pass whose
 			// history and motion vectors can average it - this pass has neither, so
 			// adding it here meant the fog had never been resolved by anything but
@@ -434,7 +434,7 @@ void main() {
 			// note in composite1.fsh for the placement, and its UpsampleVolumetrics
 			// for the filter, which this pass no longer has a copy of.
 			//
-			// ⚠️ What this pass still does with the fog is SHOW it: the
+			// What this pass still does with the fog is SHOW it: the
 			// DEBUG_GODRAYS_* views above read the buffer directly, and that is why
 			// the medium's settings file is still included.
 		#endif

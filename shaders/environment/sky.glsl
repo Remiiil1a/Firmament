@@ -111,14 +111,14 @@ vec3 SkyDither(vec2 fragCoord, vec3 skyColor) {
 		// tonemap exaggerates the contrast of the black colors, and the adaptive
 		// term added below does not dither them enough on its own.
 		//
-		// ⚠️ The guard tests the night atmosphere and the model, not the tonemap,
+		// The guard tests the night atmosphere and the model, not the tonemap,
 		// so once NIGHT_ATMOSPHERE is RETRO this fires under whichever TONEMAP is
 		// selected. Today that means the Retro profiles, which are what set the
 		// value (shaders.properties, profile.RETRO_MEDIUM and the two that derive
 		// from it), and they select a filmic tonemap alongside it - but the guard
 		// does not say so.
 		//
-		// ⚠️ Both names in the guard come from the model included above. Under
+		// Both names in the guard come from the model included above. Under
 		// MINISHITA neither NIGHT_ATMOSPHERE nor RETRO is defined, so the first
 		// test reads 0 == 0 and is true, and it is the ATMOSPHERE_MODEL test that
 		// makes the whole condition false. Dropping that second test would turn

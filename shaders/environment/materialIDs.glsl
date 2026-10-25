@@ -124,24 +124,24 @@ const uint STAINED_GLASS = 15u;
 //
 // 38 is 32 + 6, and both halves are chosen:
 //
-//  * the low four bits, 6, are GLASS, which is the material the portal already
-//    had and the only value the fragment stage will ever see it as. Two lines
-//    say so, and both are needed: in a program that defines TRANSLUCENT or
-//    TRANSLUCENT_LIGHTING, lit.vsh's FetchMaterialID returns GLASS outright for
-//    this ID; and in any program at all, lit.vsh hands the material to the
-//    fragment stage only through EncodePerFace, whose material field is the low
-//    nibble, bits 0-3, in /lib/encoding/face.glsl - so a program that never
-//    recognises the name still decodes 38 & 15 as 6. Numbering it this way means
-//    the portal decodes to the right material by construction. It does not mean
-//    FetchMaterialID always returns GLASS: outside the translucent programs it
-//    falls through the geometry selector and returns 38 unchanged, and the
-//    nibble is what makes that harmless.
-//  * the bits above them are the geometry selector's field, where this pack
-//    defines exactly one value, 1 (the +16 the diagonal selector adds). 2 is
-//    nothing at all: it is not a selector this pack defines, so a 38 is not a
-//    variant of GLASS but a slot of its own. block.10038 is the only entry in
-//    block.properties whose field there is 2 - being alone is what makes it safe
-//    - and block.10019 and block.10022 are the only two that use selector 1.
+// * the low four bits, 6, are GLASS, which is the material the portal already
+// had and the only value the fragment stage will ever see it as. Two lines
+// say so, and both are needed: in a program that defines TRANSLUCENT or
+// TRANSLUCENT_LIGHTING, lit.vsh's FetchMaterialID returns GLASS outright for
+// this ID; and in any program at all, lit.vsh hands the material to the
+// fragment stage only through EncodePerFace, whose material field is the low
+// nibble, bits 0-3, in /lib/encoding/face.glsl - so a program that never
+// recognises the name still decodes 38 & 15 as 6. Numbering it this way means
+// the portal decodes to the right material by construction. It does not mean
+// FetchMaterialID always returns GLASS: outside the translucent programs it
+// falls through the geometry selector and returns 38 unchanged, and the
+// nibble is what makes that harmless.
+// * the bits above them are the geometry selector's field, where this pack
+// defines exactly one value, 1 (the +16 the diagonal selector adds). 2 is
+// nothing at all: it is not a selector this pack defines, so a 38 is not a
+// variant of GLASS but a slot of its own. block.10038 is the only entry in
+// block.properties whose field there is 2 - being alone is what makes it safe
+// - and block.10019 and block.10022 are the only two that use selector 1.
 //
 // Nothing else is allowed to point at it: it is not a filter, it is not a
 // material the lit path branches on, and everything that is not the shadow
@@ -176,7 +176,7 @@ const vec3 NETHER_PORTAL_TINT = vec3(0.60, 0.20, 1.0);
 // casts. The author sampled the vanilla portal particles and asked for the surface to
 // sit near that hue: sRGB (214, 63, 206), which in linear is what is written below.
 //
-// ⚠️ Deliberately NOT the same constant as NETHER_PORTAL_TINT. That one is a LIGHT
+// Deliberately NOT the same constant as NETHER_PORTAL_TINT. That one is a LIGHT
 // colour: it is mixed into the sunlight under a portal, and it was chosen with a
 // channel budget (peak at 1.0, Rec709 luminance 0.343) so that a saturated colour
 // does not also dim the ground. This one is a pigment: it is the colour of the

@@ -117,7 +117,7 @@
 // The value is the one that came out of matching the sky by eye, after the
 // spurious flip described in SkyBodyAxes was taken out.
 //
-// ⚠️ It was also argued for by a constant that is not in this pack. The claim was
+// It was also argued for by a constant that is not in this pack. The claim was
 // that "everywhere this pack asks how high the sun is it normalises
 // worldSunVector.y by 0.75 rather than 1.0, with a comment reading
 // 'worldSunVector.y never actually gets to 1.0', and a sun that tops out at 0.75

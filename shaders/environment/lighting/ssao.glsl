@@ -60,7 +60,7 @@
 	// AO_STRENGTH: at 1.5 any pixel whose samples block more than two thirds of
 	// the disk reads as a factor below zero. The list used to run to 1.5.
 	//
-	// ⚠️ What stops that reaching the frame is not this cap but the clamp at the
+	// What stops that reaching the frame is not this cap but the clamp at the
 	// call site, which bounds the factor to 0 to 1 before multiplying - so the
 	// failure a strength above 1.0 would actually produce is a widening band of
 	// fully black pixels rather than a colour below zero. The call site says so

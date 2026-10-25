@@ -192,7 +192,7 @@ void main() {
 		// describes - see the note on depthtex2 above. A pixel the item covers is
 		// the item's to shade, and no reflection of the world behind it may be
 		// computed for it, let alone replace any of its colour.
-		// ⚠️ Which buffer holds the hand, corrected in batch 634 from the TAA audit:
+		// Which buffer holds the hand, corrected in batch 634 from the TAA audit:
 		// Iris and OptiFine both document depthtex2 as the depth WITHOUT the hand and
 		// without translucents, so the hand is in depthtex0 and absent from depthtex2 -
 		// the opposite of what this test assumed until now, which made it false at every
@@ -332,7 +332,7 @@ void main() {
 				float reflectionStillness =
 					exp(-dot(reflectionVelocity, reflectionVelocity));
 
-				// ⚠️ The floor is 0.35 rather than 0.7 since batch 634, and the reason is the
+				// The floor is 0.35 rather than 0.7 since batch 634, and the reason is the
 				// armour: a reflection is a function of the REFLECTED world, and the only
 				// reprojection this pass has is the camera's, so a surface that moves on its
 				// own - a worn piece, a held one, anything animated - keeps a reflection
@@ -351,7 +351,7 @@ void main() {
 					reflectionHistoryWeight = 0.0;
 				}
 
-				// ⚠️ The history is CLAMPED against this frame before it is mixed, and
+				// The history is CLAMPED against this frame before it is mixed, and
 				// the clamp also decides how much of it survives (batch 635, from the
 				// comparative audit).
 				//
@@ -430,7 +430,7 @@ void main() {
 			// amount of looking at the picture tells them apart. See
 			// PBR_DEBUG_REFLECTION in pbr.glsl, and its entry in the lang files.
 			#if PBR_DEBUG == PBR_DEBUG_REFLECTION
-				// ⚠️ A READOUT, not a picture of the reflection, and that is the whole
+				// A READOUT, not a picture of the reflection, and that is the whole
 				// point of the change (batch 627).
 				//
 				// Every round of this investigation guessed which gate had refused a
@@ -438,30 +438,30 @@ void main() {
 				// settle it at a glance, and none of them is visible in any other debug
 				// view:
 				//
-				//   red   - the reflectance the material buffer holds, times four so
-				//           that a dielectric's few percent is visible at all
-				//   green - the smoothness gate that reflectance and the roughness
-				//           produce, 0..1, after the metal threshold is applied
-				//   blue  - 1 where the material buffers were actually written for this
-				//           pixel (the stored normal is a unit vector) and 0 where they
-				//           were not
+				// red   - the reflectance the material buffer holds, times four so
+				// that a dielectric's few percent is visible at all
+				// green - the smoothness gate that reflectance and the roughness
+				// produce, 0..1, after the metal threshold is applied
+				// blue  - 1 where the material buffers were actually written for this
+				// pixel (the stored normal is a unit vector) and 0 where they
+				// were not
 				//
 				// A surface with no reflection is now diagnosable from one frame:
-				//   blue 0            - the program that drew this pixel never wrote the
-				//                       material buffers at all
-				//   blue 1, green 0   - the material is there and too rough to reflect
-				//   blue 1, green > 0 - it should reflect, so whatever is missing is
-				//                       further down
+				// blue 0            - the program that drew this pixel never wrote the
+				// material buffers at all
+				// blue 1, green 0   - the material is there and too rough to reflect
+				// blue 1, green > 0 - it should reflect, so whatever is missing is
+				// further down
 				// For a dropped item against a block side by side that is the whole
 				// question, and it is three colours rather than three builds.
 				//
-				// ⚠️ It also has to COMPILE, which the previous version did not: it
+				// It also has to COMPILE, which the previous version did not: it
 				// still referenced PBR_MIN_REFLECTION_DISTANCE after that constant was
 				// deleted in batch 622, and nothing in the check chain ever compiles a
 				// debug view, so the break was invisible until someone asked for the
 				// view. The chain now has a stage that checks every PBR_ identifier used
 				// in the tree is defined somewhere.
-				// ⚠️ Red is scaled by four so that a dielectric`s few percent is not
+				// Red is scaled by four so that a dielectric`s few percent is not
 				// indistinguishable from zero on screen: 0.04 arrives as 0.16.
 				//
 				vec4 readMaterial = texelFetch(colortex7, pixel, 0);
@@ -472,10 +472,10 @@ void main() {
 				// written", "they were written and the trace missed" and "the trace hit"
 				// are three different faults, and a screenshot can hold all of them:
 				//
-				//   0.0        nothing was written - the program never filled colortex7
-				//   0.35       written, and the pixel fell back to the sky
-				//   0.5 .. 1.0 written, and the trace hit; brighter means farther, so a
-				//              very dim hit is something a few centimetres away
+				// 0.0        nothing was written - the program never filled colortex7
+				// 0.35       written, and the pixel fell back to the sky
+				// 0.5 .. 1.0 written, and the trace hit; brighter means farther, so a
+				// very dim hit is something a few centimetres away
 				float readWritten = dot(readMaterial.xyz, readMaterial.xyz) > 0.5
 					? 1.0
 					: 0.0;

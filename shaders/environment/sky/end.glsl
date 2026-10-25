@@ -27,13 +27,13 @@
 //
 // What this draws instead is, in order of how far away it is:
 //
-//   * a starfield hashed out of the view direction, with no texture and no
-//     state, which is what the empty sky needed and the Overworld model could
-//     not give it;
-//   * a nebula band, which is one noise fetch inside a band and nothing at all
-//     outside it;
-//   * the End's body, which is the pack's answer to "what is the dimension lit
-//     by", and which bends the two above as if it had gravity.
+// * a starfield hashed out of the view direction, with no texture and no
+// state, which is what the empty sky needed and the Overworld model could
+// not give it;
+// * a nebula band, which is one noise fetch inside a band and nothing at all
+// outside it;
+// * the End's body, which is the pack's answer to "what is the dimension lit
+// by", and which bends the two above as if it had gravity.
 //
 // Batch 338 removed the two older bodies - a single star and a black hole,
 // chosen between by an END_BODY option - and the body is now always this one.
@@ -102,7 +102,7 @@ float EndBodyAngle(vec3 worldDir, vec3 axis) {
 // that light comes from - which is what keeps it agreeing with the light it
 // casts.
 //
-// ⚠️ Whether that direction is genuinely fixed in the End is *believed, not
+// Whether that direction is genuinely fixed in the End is *believed, not
 // verified*: worldSunVector is built from the mod's sunPosition, which advances
 // with the world clock, so the body may well drift across the sky over a day.
 // Nobody has watched a full day in the End. See BATCH_LOG.md 190.1.
@@ -110,11 +110,11 @@ float EndBodyAngle(vec3 worldDir, vec3 axis) {
 // The body is built in several layers, and each has its own option so that the
 // look can be worked on a layer at a time:
 //
-//   the core         a small, very bright centre
-//   the halo         a wide, very faint glow around it
-//   the lens         the sky behind, bent, with an Einstein ring where the
-//                    bending piles up
-//   the nebula band  what the lens has to bend
+// the core         a small, very bright centre
+// the halo         a wide, very faint glow around it
+// the lens         the sky behind, bent, with an Einstein ring where the
+// bending piles up
+// the nebula band  what the lens has to bend
 //
 // Batch 334 added the first four as a star with a visible disc, batch 336
 // replaced most of it with the lens and the band, and batch 338 removed the
@@ -128,7 +128,7 @@ float EndBodyAngle(vec3 worldDir, vec3 axis) {
 // with nothing in front of them - which is a legitimate place to be rather than
 // a broken state.
 //
-// ⚠️⚠️ The #define line below has to be here, on or off, and this is not
+// The #define line below has to be here, on or off, and this is not
 // decoration. Iris' manual is explicit about the two halves of a boolean
 // option: it is *declared* by a #define line, and it is *recognised* by being
 // checked at least once with #ifdef or #ifndef. Commenting the line out is what
@@ -151,7 +151,7 @@ float EndBodyAngle(vec3 worldDir, vec3 axis) {
 // else: the width of the core, the radius of the halo, and the Einstein radius
 // that the ring sits at.
 //
-// ⚠️ Raising this raises the cost too: the rejection radius below is a multiple
+// Raising this raises the cost too: the rejection radius below is a multiple
 // of it. See END_GIANT_REACH.
 #define END_GIANT_SIZE 0.13 // [0.05 0.075 0.10 0.13 0.17 0.23]
 
@@ -166,7 +166,7 @@ float EndBodyAngle(vec3 worldDir, vec3 axis) {
 // to blow out the whole disc and take its shading with it; see BATCH_LOG.md
 // 192.
 //
-// ⚠️ The shipped default is 0.0 as of v0.7, which is the setting that turns this
+// The shipped default is 0.0 as of v0.7, which is the setting that turns this
 // core off entirely: what is left is the Einstein ring and the glow, with the
 // body's centre dark. That is a deliberate look rather than a broken default -
 // it is what the user settled on, and it is the one setting here where a zero
@@ -180,7 +180,7 @@ float EndBodyAngle(vec3 worldDir, vec3 axis) {
 
 // The body's colour, from a warm white at 0.0 to the End's own violet at 1.0.
 //
-// ⚠️ Moved to environment/sky/end_palette.glsl in batch 340, because the End's
+// Moved to environment/sky/end_palette.glsl in batch 340, because the End's
 // volumetric fog has to agree with it and that is drawn in a different program.
 // The option and the two ends of its range live there now, and there is one copy
 // of each on purpose. See BATCH_LOG.md 197.
@@ -208,7 +208,7 @@ float EndBodyAngle(vec3 worldDir, vec3 axis) {
 
 // How strong the nebula band across the End's sky is.
 //
-// ⚠️ This is not decoration. It is what makes the lensing visible at all. The
+// This is not decoration. It is what makes the lensing visible at all. The
 // sky this was first tried on was very nearly black with a few points in it,
 // and bending a black sky with a few points in it gives back a black sky with a
 // few moved points - the effect is spent and nothing is seen. The black hole
@@ -247,18 +247,18 @@ float EndBodyAngle(vec3 worldDir, vec3 axis) {
 // 337 ran at a quarter of this and the user reported it as too weak even at its
 // highest step, which is why both the rate and the top of the range moved.
 //
-// ⚠️ The shipped default is 0.25 as of v0.7 - the step that batch 337 was
+// The shipped default is 0.25 as of v0.7 - the step that batch 337 was
 // criticized for, now that the rate each step means has been raised. The retuned
 // defaults are listed in CHANGELOG.md under v0.7.
 #define END_GIANT_MOTION_SPEED 0.25 // [0.0 0.25 0.5 1.0 1.5 2.0 3.0 5.0]
 
 // How far out anything is still drawn, in multiples of the disc's radius.
 //
-// ⚠️ This is also the rejection radius, so it is the cost of the whole feature:
+// This is also the rejection radius, so it is the cost of the whole feature:
 // every pixel further out than this returns immediately without sampling
 // anything.
 //
-// ⚠️ It has a hard upper bound that it and END_GIANT_SIZE must respect
+// It has a hard upper bound that it and END_GIANT_SIZE must respect
 // together. The tangent-plane coordinate the body is built on is the sine of
 // the angle from the axis, and that starts shrinking again past 90 degrees; if
 // SIZE times this ever reached a right angle the sky would be sampled a second
@@ -270,7 +270,7 @@ float EndBodyAngle(vec3 worldDir, vec3 axis) {
 // through the body would sit behind it and be hidden, and one at right angles
 // would put the interesting sky where the body is not.
 //
-// ⚠️ It has to be a unit vector, and that is not cosmetic: the sky's drift is a
+// It has to be a unit vector, and that is not cosmetic: the sky's drift is a
 // Rodrigues rotation about this axis, and that formula is only a rotation when
 // the axis is unit length. The value this started as was 0.99699 long, which is
 // close enough to look right and wrong enough to shear the band as it turned.
@@ -350,7 +350,7 @@ vec3 EndNebula(vec3 worldDir) {
 	// The lens equation for a point mass, read backwards. A source at true
 	// angle beta appears at angle theta, with theta = beta + theta_E^2 / beta;
 	// so the sky that appears at theta is the sky that is really at
-	//     beta = theta - theta_E^2 / theta.
+	// beta = theta - theta_E^2 / theta.
 	// Sampling the background at beta instead of theta is the whole of the
 	// effect. It is one rotation, and it needs no stepping at all - which is
 	// what makes it affordable in a pass that is asked for the sky up to five
@@ -447,7 +447,7 @@ vec3 EndNebula(vec3 worldDir) {
 			// is to make the sky around the body slightly less black.
 			float halo = exp(-reach / 2.5);
 
-			// ⚠️ Everything outside the disc is multiplied by this, and it is
+			// Everything outside the disc is multiplied by this, and it is
 			// not decoration: the rejection test above is a hard cutoff, and a
 			// smooth glow that is still bright when it gets there draws a
 			// visible circle around the body.

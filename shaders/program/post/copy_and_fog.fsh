@@ -59,12 +59,12 @@ const int colortex4Format = R11F_G11F_B10F;
 // below writes all of it, every frame, so what they see is the current frame's
 // copy whether or not the loader wiped it first.
 const bool colortex4Clear = false;
-// ⚠️ RG8 and not R8 (batch 595). The RED channel is the sky light, which is what
+// RG8 and not R8 (batch 595). The RED channel is the sky light, which is what
 // every reader of this buffer takes; the GREEN channel is the water mask the
 // volumetric fog needs, written by the world programs - see the note at the write in
 // /program/world/lit.fsh.
 //
-// ⚠️ It was R8, and the first attempt at the mask wrote its flag into the ALPHA of
+// It was R8, and the first attempt at the mask wrote its flag into the ALPHA of
 // that format. A single-channel texture HAS no alpha: the write is dropped, and
 // reading the missing component gives 1.0 - so every pixel in the frame read as
 // water, the fog stopped its march at the first translucent surface everywhere, and
@@ -160,7 +160,7 @@ uniform float sssShadowDistance;
 // contain terrain that was actually rendered into it, and that is the vanilla
 // chunks the game loaded, so the map reaches
 //
-//     min(Shadow Distance, view distance in blocks)
+// min(Shadow Distance, view distance in blocks)
 //
 // rather than the Shadow Distance setting on its own. With the setting at 160
 // and the view distance at 8 chunks, the map ends at 128, and the terrain from

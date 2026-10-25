@@ -166,7 +166,7 @@ vec3 RefractionBasedWaterAbsorption(
 		// surface itself and the fade is not tied to a block depth. The
 		// denominator is 24.
 		//
-		// ⚠️ What `background` was scaled by here until batch 447 was
+		// What `background` was scaled by here until batch 447 was
 		// `1.0 - fadeFactor`, and that line is one half of what drew a flat black
 		// band under the horizon on level-of-detail water. Past 24 blocks the
 		// factor is exactly zero, so the light that came through the surface was

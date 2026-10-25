@@ -313,9 +313,9 @@ uniform vec3 cloudLightDirect;
 // particular time of day can be attributed to one of them rather than guessed
 // at. 0 is off and costs nothing - the branch below is compile-time.
 //
-//   1 - the direct light the layer is given, after everything that shapes it
-//   2 - the fraction of that light which gets through the layer itself
-//   3 - the phase function, ie, how much of it this viewing angle sees
+// 1 - the direct light the layer is given, after everything that shapes it
+// 2 - the fraction of that light which gets through the layer itself
+// 3 - the phase function, ie, how much of it this viewing angle sees
 //
 // Each is written as `vec4(value, 1.0)`, so the value lands in R, G and B alike
 // and alpha is one: there is no per-channel split to read. The three named
@@ -630,7 +630,7 @@ vec4 BlockyClouds(vec3 worldDir, vec3 cameraWorldPos, vec3 lightView) {
 	// is a long way - the same reason a real cloud deck thickens towards the
 	// horizon.
 	//
-	// ⚠️ This reads the layer's full thickness divided by |worldDir.y|, and it
+	// This reads the layer's full thickness divided by |worldDir.y|, and it
 	// does not know where the ray actually entered the layer. That is right for a
 	// ray that crosses the whole slab (and it is why the deck thickens towards
 	// the horizon), but it is wrong for any ray that does not: a ray that enters

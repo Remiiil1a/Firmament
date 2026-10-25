@@ -28,7 +28,7 @@
 // instead would mean moving a term that four other things read. See the same
 // note in the settings file.
 //
-// ⚠️ The one exception is the Nether's plumes, which do fade what is behind
+// The one exception is the Nether's plumes, which do fade what is behind
 // them. That fading travels in the fourth channel of this pass's own buffer,
 // which is why the output below is a vec4 and no longer the bare colour it
 // used to be. Every other path leaves the fourth channel at 1.0, so for them
@@ -49,7 +49,7 @@
 
 // The depth the march stops at, WITHOUT the translucent pass in it.
 //
-// ⚠️ depthtex1 and not depthtex0, and that is the fix for the fog vanishing behind
+// depthtex1 and not depthtex0, and that is the fix for the fog vanishing behind
 // glass (batch 590). depthtex0 holds the surface the pixel actually shows, which
 // includes the translucent pass - so at a pane of glass it holds the glass. The
 // march used to break there, which meant that looking through glass accumulated
@@ -57,14 +57,14 @@
 // the world past the glass was drawn, but the medium it sits in had never been
 // sampled. Through glass, ice or a Nether portal the fog was simply missing.
 //
-// ⚠️ depthtex1 is the OPAQUE pass alone, so the medium is accumulated all the way
+// depthtex1 is the OPAQUE pass alone, so the medium is accumulated all the way
 // to the first thing that actually blocks light. A translucent surface is treated
 // as if it were air, which is right for glass, ice and a portal because they are
 // one block thick and light passes through them; the one-block error in the medium
 // they occupy is far smaller than the whole ray of medium that stopping there threw
 // away.
 //
-// ⚠️ What this does NOT affect: the upscale in composite1 gates its taps by
+// What this does NOT affect: the upscale in composite1 gates its taps by
 // comparing depthtex0 with depthtex0 - fragment against fragment - so which depth
 // the MARCH stopped at is a separate question from which fog texel belongs to which
 // surface. The two are genuinely separable and only the march changes here.
@@ -72,7 +72,7 @@ uniform sampler2D depthtex1;
 
 // The depth WITH the translucent pass in it: the surface the pixel actually shows.
 //
-// ⚠️ Read for one purpose only (batch 593), and never to stop at blindly: where the
+// Read for one purpose only (batch 593), and never to stop at blindly: where the
 // water program has marked this pixel as water and the camera is not under water,
 // this is the water's surface and the march ends there. See where the two depths are
 // used, and colortex2's alpha for how the mark is made.
@@ -81,7 +81,7 @@ uniform sampler2D depthtex0;
 // The buffer the world programs write their sky light into - and, in its GREEN
 // channel, the water mask this pass needs.
 //
-// ⚠️ GREEN and not ALPHA: this buffer was R8 when the mask was first added, a
+// GREEN and not ALPHA: this buffer was R8 when the mask was first added, a
 // single-channel format with no alpha at all, so the write was dropped and every read
 // of `.a` came back 1.0 - every pixel read as water, the march stopped at the first
 // translucent surface everywhere, and the glass fix of batch 590 was undone. It is
@@ -89,7 +89,7 @@ uniform sampler2D depthtex0;
 // on the format in /program/post/copy_and_fog.fsh and the one at the write in
 // /program/world/lit.fsh.
 //
-// ⚠️ This is how Bliss Shader does it too, at dimensions/composite2.fsh:592-595: the
+// This is how Bliss Shader does it too, at dimensions/composite2.fsh:592-595: the
 // water program marks the pixel, and the pass that needs to know reads the mark. The
 // alternative - guessing from depth and height - was tried first and does not work;
 // see the note where this is tested.
@@ -107,18 +107,18 @@ uniform mat4 gbufferProjectionInverse;
 // The view matrix, inverted, for the ONE thing the fog needs from it: its fourth
 // column.
 //
-// ⚠️ Batch 596 deleted this declaration and batch 598 put it back, and the reason is
+// Batch 596 deleted this declaration and batch 598 put it back, and the reason is
 // worth reading before it is deleted a third time. The fog needs the view matrix
 // twice and the two needs are different kinds of quantity:
 //
-//   * a DIRECTION - the ray. Here the translation column does not enter at all, so
-//     the 3x3 block is the whole story, and `mat3(gbufferModelViewInverse)` and
-//     `transpose(mat3(gbufferModelView))` are the same rotation written twice (the
-//     pack checked that against Iris's own source at b502 and it is exactly true).
-//   * a POSITION - where the ray STARTS. Here the fourth column is the whole story,
-//     and no rearrangement of the 3x3 can supply it. See `eyeOffset` below.
+// * a DIRECTION - the ray. Here the translation column does not enter at all, so
+// the 3x3 block is the whole story, and `mat3(gbufferModelViewInverse)` and
+// `transpose(mat3(gbufferModelView))` are the same rotation written twice (the
+// pack checked that against Iris's own source at b502 and it is exactly true).
+// * a POSITION - where the ray STARTS. Here the fourth column is the whole story,
+// and no rearrangement of the 3x3 can supply it. See `eyeOffset` below.
 //
-// ⚠️ Batch 596 changed the ray from one spelling of the rotation to the other and
+// Batch 596 changed the ray from one spelling of the rotation to the other and
 // expected the sway to stop. It could not have: the two are identical, so for a
 // direction the edit was a no-op, which is exactly what the author reported. The
 // error was never in the ray's direction.
@@ -161,7 +161,7 @@ uniform int frameCounter;
 uniform float viewWidth;
 uniform float viewHeight;
 
-// ⚠️ colortex1, which is the buffer this pass WRITES - declared here only to ask
+// colortex1, which is the buffer this pass WRITES - declared here only to ask
 // its SIZE (batch 533), which is what the screen coordinate below is built from.
 //
 // It used to be built from viewWidth and the scale written in
@@ -172,7 +172,7 @@ uniform float viewHeight;
 // the same buffer before it decides how to read it - see
 // /program/post/postprocessing.fsh - so no macro can leave the two apart.
 //
-// ⚠️ textureSize is a query and not a sample: it returns the texture's own
+// textureSize is a query and not a sample: it returns the texture's own
 // dimensions and reads no texel, which is what makes it legal in the pass that
 // renders into this buffer - and it is asked and not sampled at the top of
 // main() for exactly that reason. The buffer IS sampled further down, by the
@@ -186,7 +186,7 @@ uniform sampler2D colortex1;
 // Where a world point was on the previous frame's screen, for the temporal
 // denoise at the bottom of main().
 //
-// ⚠️ The four uniforms are declared here rather than in /lib/reproject.glsl,
+// The four uniforms are declared here rather than in /lib/reproject.glsl,
 // which declares none of its own on purpose: a second declaration of one uniform
 // in one program does not compile, and that file is included by a vsh and by
 // three programs that each declare their own set.
@@ -205,7 +205,7 @@ uniform vec3 previousCameraPosition;
 // WaterAbsorption(), for the one thing this pass needs from the water: how much of
 // the light the medium scatters reaches the eye at all (batch 599).
 //
-// ⚠️ The pack's own function rather than a second set of coefficients, and that is the
+// The pack's own function rather than a second set of coefficients, and that is the
 // whole point: this is the same function that darkens the water's surface and the
 // terrain seen through it, so the fog inside water attenuates exactly as the water
 // around it does. Its curve is a user option - WATER_CHARACTER picks cold, balanced or
@@ -213,7 +213,7 @@ uniform vec3 previousCameraPosition;
 // first time either is tuned, and the sliders the player already has for the water
 // govern the fog as well.
 //
-// ⚠️ Its argument is a normalised depth: 1.0 is "as deep as water gets", which this
+// Its argument is a normalised depth: 1.0 is "as deep as water gets", which this
 // file's callers reach at 15 to 16 blocks. See the note at the use for why the march
 // hands it metres divided by that same 16.
 #include "/environment/water/absorption.glsl"
@@ -229,7 +229,7 @@ uniform vec3 previousCameraPosition;
 // copy of a reprojection is a second place to fix the next time one is found
 // wrong. See the note on it in /lib/reproject.glsl.
 //
-// ⚠️ Included here, after the uniforms above, and not at the top of the file:
+// Included here, after the uniforms above, and not at the top of the file:
 // that file declares no uniforms of its own and needs four in hand before it can
 // be expanded - gbufferPreviousProjection, gbufferPreviousModelView,
 // previousCameraPosition and viewWidth/viewHeight, the last two of which are
@@ -245,7 +245,7 @@ uniform vec3 previousCameraPosition;
 // declarations of one uniform, which the driver rejects with "declaration ...
 // conflicts with previous declaration". BATCH_LOG.md 176 records it.
 //
-// ⚠️ volumetricFogTimeFactor used to be named here as well. It is gone as of batch
+// volumetricFogTimeFactor used to be named here as well. It is gone as of batch
 // 590: the fog's share of the day is now four settings blended by the medium's own
 // file rather than one number built in shaders.properties, so there is no such
 // uniform left either to declare or to avoid declaring.
@@ -254,13 +254,13 @@ uniform vec3 underwaterFogColor;
 // The scattered light in rgb, and in a the fraction of what is behind it that
 // reaches the eye - 1.0 everywhere except the Nether, where the plumes fade.
 //
-// ⚠️ RGBA16F rather than the R11F_G11F_B10F this buffer used to be, and that is
+// RGBA16F rather than the R11F_G11F_B10F this buffer used to be, and that is
 // what makes the fourth channel exist at all: R11F_G11F_B10F is three
 // components, so writing an alpha into it would have been silently dropped and
 // the whole transmittance would have read back as 1.0 - no regression, but no
 // effect either. The pack already keeps four other buffers in this format
 // (colortex7, 9, 12, 13), so it is the familiar one here.
-// ⚠️ It is a half float, so it is signed and tops out at 65504: the scattered
+// It is a half float, so it is signed and tops out at 65504: the scattered
 // light is nowhere near that, and the quantity in the fourth channel is a
 // fraction between zero and one by construction - but see the note in
 // lib/bloom.glsl about what a distance stored in a half float did once.
@@ -272,7 +272,7 @@ const int colortex1Format = RGBA16F;
 // previous frame's result back out of this very buffer as its history, and a
 // buffer cleared every frame would have nothing in it to read.
 //
-// ⚠️ This line is the whole effect, and deleting it kills the denoise silently -
+// This line is the whole effect, and deleting it kills the denoise silently -
 // the buffer goes back to being cleared to vec4(1.0) every frame, every frame is
 // then averaged against that instead of against the fog, and a still frame looks
 // plausible while the accumulation converges on "no fog at all". The copy in
@@ -310,7 +310,7 @@ layout(location = 0) out vec4 fogScatter;
 // this stage's is ONE fetch of a quarter-resolution buffer plus the one depth
 // read the march had already made, on a target a sixteenth of the frame's size.
 //
-// ⚠️ One fetch, and not the nine this started with. The first version bounded
+// One fetch, and not the nine this started with. The first version bounded
 // the history by the mean and the deviation of the texel's 3x3 neighbourhood,
 // and that could not work for a reason worth keeping in front of a reader: every
 // read of this buffer inside this pass returns the PREVIOUS frame's accumulated
@@ -321,7 +321,7 @@ layout(location = 0) out vec4 fogScatter;
 // the frame being drawn, which is a measurement the one-pass shape can actually
 // make. See the note on FOG_DENOISE_CHANGE_TOLERANCE.
 //
-// ⚠️ The options are in /environment/effects/volumetric_fog.glsl with the rest
+// The options are in /environment/effects/volumetric_fog.glsl with the rest
 // of the medium's, NOT here: the menu registers an option by finding its
 // `#define` in the sources, and where that define lives is where a reader looks
 // for what the option does. What is here is only what the option switches on,
@@ -337,7 +337,7 @@ layout(location = 0) out vec4 fogScatter;
 // neighbourhood: composite1 reads colortex0, which this frame's geometry has
 // just written.
 //
-// ⚠️ This pass does not have it, and that is the whole story of this stage's
+// This pass does not have it, and that is the whole story of this stage's
 // first attempt. The only buffer it can read is the one it is writing, and a
 // composite pass reads the side of a colortex that holds the PREVIOUS frame (see
 // the note on colortex1 below). So a 3x3 of it is a 3x3 of already-averaged
@@ -354,12 +354,12 @@ layout(location = 0) out vec4 fogScatter;
 // How far a history's brightness may be from this frame's before the history
 // starts to be distrusted, as a fraction of the brighter of the two.
 //
-// ⚠️ 1.0 - so the falloff only begins when the two differ by the whole of the
+// 1.0 - so the falloff only begins when the two differ by the whole of the
 // brighter one, which is a doubling or a halving. That is a scene change: a door
 // opening on a lit room, the water closing over the eye, a portal. Everything
 // below it is the marching noise and must be averaged, not distrusted.
 //
-// ⚠️ This started at 0.25, and the user's report is what found it: "the denoise
+// This started at 0.25, and the user's report is what found it: "the denoise
 // on and off look about the same". They were right, and the arithmetic says why.
 // `raw` is one sample of the estimator while `history` is an average of ten, so
 // the difference between them is dominated by raw's own per-frame error - at the
@@ -373,7 +373,7 @@ const float VOLUMETRIC_FOG_DENOISE_TOLERANCE = 1.0;
 
 // How far along the ray the temporal denoise's anchor sits, in blocks.
 //
-// ⚠️ A distance with NO DEPTH IN IT, and that is the whole point. At a silhouette
+// A distance with NO DEPTH IN IT, and that is the whole point. At a silhouette
 // the depth the march stopped at flips between the thing in front and the thing
 // behind - a point-sampled depth does, which is what fixed the mosaic - so
 // anything built from that depth flips with it, and an anchor that flips hands the
@@ -381,7 +381,7 @@ const float VOLUMETRIC_FOG_DENOISE_TOLERANCE = 1.0;
 // author reported after batch 573. A point at a fixed distance along the ray has
 // no depth in it and nothing to flip.
 //
-// ⚠️ A median filter over the neighbouring depths was tried first and abandoned
+// A median filter over the neighbouring depths was tried first and abandoned
 // on measurement, not on taste: at a silhouette a neighbourhood is about half near
 // samples and half far ones, so the middle of nine sits exactly on the boundary
 // between the two groups and moving ONE sample across it moves the answer the
@@ -390,13 +390,13 @@ const float VOLUMETRIC_FOG_DENOISE_TOLERANCE = 1.0;
 // stable, and a mean is what caused the mosaic - it returns a distance no surface
 // has.
 //
-// ⚠️ The cost of anchoring on the ray instead of the surface: a texel whose fog
+// The cost of anchoring on the ray instead of the surface: a texel whose fog
 // belongs to a wall right in front of it is reprojected as though it belonged to a
 // point further along the same ray. That is a small error - and it is the SAME
 // error every frame, which is the difference between a history that can be
 // averaged and one that cannot.
 //
-// ⚠️ Not a knob, and not in the menu: it wants to be a typical distance into the
+// Not a knob, and not in the menu: it wants to be a typical distance into the
 // medium, the same for every texel and every frame. A quantity that varies per
 // texel is a quantity that can vary per frame, which is the failure being fixed.
 const float FOG_DENOISE_ANCHOR_DISTANCE = 64.0;
@@ -404,17 +404,17 @@ const float FOG_DENOISE_ANCHOR_DISTANCE = 64.0;
 // How strongly the medium scatters light forwards, as the Henyey-Greenstein
 // anisotropy parameter.
 //
-// ⚠️ 0.4, and the number was CHOSEN BY MEASUREMENT rather than by reaching for a
+// 0.4, and the number was CHOSEN BY MEASUREMENT rather than by reaching for a
 // realistic one. The physical range is 0 (scatters equally in every direction) to 1
 // (scatters only forwards); real mist is high on it, and 0.75 is a defensible value
 // for it - but a phase function is normalised so that its average over all
 // directions is one, which means a TIGHTER lobe is paid for by a DIMMER sky
 // everywhere else (phase_check.py, integrating over the sphere):
 //
-//     g      looking at the sun     sun at 90 deg     back to the sun
-//     0.40          x 3.9              x 0.67            x 0.31
-//     0.50          x 6.0              x 0.54            x 0.22
-//     0.75          x28.0              x 0.22            x 0.08
+// g      looking at the sun     sun at 90 deg     back to the sun
+// 0.40          x 3.9              x 0.67            x 0.31
+// 0.50          x 6.0              x 0.54            x 0.22
+// 0.75          x28.0              x 0.22            x 0.08
 //
 // At 0.75 the fog would be twenty-eight times brighter into the sun and less than a
 // quarter as bright across the rest of the frame - which is what real mist does, and
@@ -424,11 +424,11 @@ const float FOG_DENOISE_ANCHOR_DISTANCE = 64.0;
 // gain a factor of about four towards the sun and the rest of the frame moves by
 // less than half either way.
 //
-// ⚠️ 3.9 at the sun is also the number the audit read out of Bliss Shader's own
+// 3.9 at the sun is also the number the audit read out of Bliss Shader's own
 // curve (fogPhase at full forward, times the 5.0 its caller applies), so this is
 // the same visible strength as the reference rather than merely a safe one.
 //
-// ⚠️ Not a knob in the menu, deliberately, even though it is the one number here
+// Not a knob in the menu, deliberately, even though it is the one number here
 // that a player might want to move. It is a property of the medium, like the
 // density profile's shape; the dial for how bright the shafts are is
 // GODRAYS_STRENGTH, and a second dial for how they respond to direction would be
@@ -437,7 +437,7 @@ const float FOG_PHASE_G = 0.4;
 
 // And how strongly it scatters backwards, for the smaller second lobe.
 //
-// ⚠️ -0.2, which is a back-peaked lobe rather than a forward one - the sign of the
+// -0.2, which is a back-peaked lobe rather than a forward one - the sign of the
 // parameter is what turns it round, and that is why it needs a constant of its own
 // rather than reusing the one above. Small, because mist really is brighter looking
 // INTO the light; its only job is to stop the medium being darkest exactly opposite
@@ -445,7 +445,7 @@ const float FOG_PHASE_G = 0.4;
 const float FOG_PHASE_G_BACK = -0.2;
 
 void main() {
-	// Where this fragment is on the screen. ⚠️ Asked of the target this pass is
+	// Where this fragment is on the screen. Asked of the target this pass is
 	// rendering into, and not worked out from viewWidth and the scale in
 	// shaders.properties: those are one fact written down twice, and the defect
 	// batch 533 is named for is the two disagreeing - the properties side put
@@ -454,7 +454,7 @@ void main() {
 	// question of the same buffer before it reads it, so the two cannot be left
 	// apart by a compile-time option whatever the loader does with the macro.
 	//
-	// ⚠️ textureSize reads no texel, which is what makes it legal here - see the
+	// textureSize reads no texel, which is what makes it legal here - see the
 	// note on the declaration above.
 	//
 	// A quarter of the frame rather than a half by default. The result is a wide
@@ -462,13 +462,13 @@ void main() {
 	// best - and the four times smaller target both pays for the higher step
 	// count below and smooths what the dither leaves behind.
 	//
-	// ⚠️ "and this pack has no temporal filter to do it" stood at the end of that
+	// "and this pack has no temporal filter to do it" stood at the end of that
 	// sentence until batch 569, which is the batch that gave this pass one. The
 	// quarter is still worth having on its own - it is what pays for 24 steps -
 	// but it is no longer the only thing standing between the dither and the eye.
 	vec2 screenCoord = gl_FragCoord.xy / vec2(textureSize(colortex1, 0));
 
-	// ⚠️ The depth is POINT-SAMPLED at one full-resolution pixel, and that is the
+	// The depth is POINT-SAMPLED at one full-resolution pixel, and that is the
 	// fix for the "blurry mosaic at the edges" the author reported (batch 573).
 	// What stood here was a plain texture() read of the depth buffer, and a
 	// texture() is a BILINEAR read: at a quarter-resolution grid it averages the
@@ -487,13 +487,13 @@ void main() {
 	// depth with texelFetch), so its marched distance is one real surface's and
 	// never a blend of two.
 	//
-	// ⚠️ The pixel is the one the fog texel's centre lands on, which is exactly
+	// The pixel is the one the fog texel's centre lands on, which is exactly
 	// the pixel the reader reconstructs for this same texel and compares its
 	// depth against - see fullTexel in /program/post/postprocessing.fsh. The two
 	// have to be the same pixel or the depth the fog was built from and the depth
 	// it is compared against are two different measurements of one texel.
 	//
-	// ⚠️ Clamped, because texelFetch outside a texture is undefined rather than
+	// Clamped, because texelFetch outside a texture is undefined rather than
 	// clamped, and a frame whose width is not a multiple of four can put this one
 	// pixel past the end.
 	ivec2 fullSize = ivec2(viewWidth, viewHeight);
@@ -502,21 +502,21 @@ void main() {
 
 	float depth = texelFetch(depthtex1, depthPixel, 0).r;
 
-	// ⚠️ depthtex1 leaves the SKY at the far plane exactly as depthtex0 does, so a
+	// depthtex1 leaves the SKY at the far plane exactly as depthtex0 does, so a
 	// pixel whose only surface is translucent now reads as "nothing opaque here" and
 	// its ray runs the whole march distance. That is the correct answer - there is
 	// air behind the glass - and it costs the full step count on those pixels rather
 	// than stopping early, which is the price of the fix and is what the step count
 	// setting is for.
 	//
-	// ⚠️ ...BUT NOT THROUGH WATER (batch 593). The translucent pass is drawn before
+	// ...BUT NOT THROUGH WATER (batch 593). The translucent pass is drawn before
 	// this one, so a ray that runs to the opaque surface runs THROUGH the water and
 	// picks up medium for the whole depth under it. Because the camera is not under
 	// water, that medium is the AIR's - air density, air colour - so the water is
 	// being reported as air, which the author saw from above the surface and
 	// described as looking wrong.
 	//
-	// ⚠️ HOW THE WATER IS IDENTIFIED, and this is taken from Bliss Shader rather than
+	// HOW THE WATER IS IDENTIFIED, and this is taken from Bliss Shader rather than
 	// invented: the water program marks its own pixels and the fog reads the mark.
 	// Bliss does it at dimensions/composite2.fsh:592-595 - it fetches the ALPHA of one
 	// of its world buffers, calls the pixel water when that alpha is above 0.99, and
@@ -529,13 +529,13 @@ void main() {
 	// own gate for undeclared samplers reads these comments, and a bare buffer name in
 	// prose reads to it as a use.)
 	//
-	// ⚠️ The FIRST attempt at this did not use a flag at all - it guessed water from
+	// The FIRST attempt at this did not use a flag at all - it guessed water from
 	// the depth buffers and the surface's height against sea level - and it did
 	// nothing, twice over: a height test cannot separate water from glass, and ice and
 	// glass sit at every height including sea level. A mark written by the program
 	// that actually knows the material is the only thing that can.
 	//
-	// ⚠️ `isEyeInWaterFog == 0` is kept from that attempt and is not decoration: when
+	// `isEyeInWaterFog == 0` is kept from that attempt and is not decoration: when
 	// the camera IS under water the medium being marched is the water itself, which
 	// is exactly what should happen, and stopping at the surface would delete it.
 	float waterMask = texelFetch(colortex2, depthPixel, 0).g;
@@ -559,7 +559,7 @@ void main() {
 
 	// The ray's direction in the world's axes.
 	//
-	// ⚠️ WRITTEN AS THE TRANSPOSE OF THE FORWARD MATRIX, which is exact for a
+	// WRITTEN AS THE TRANSPOSE OF THE FORWARD MATRIX, which is exact for a
 	// direction - and batch 596 changed it to this from `mat3(gbufferModelViewInverse)`
 	// expecting the fog's sway to stop, which it could not do, because the two are the
 	// same rotation. The pack verified that against Iris's own source and bytecode at
@@ -567,17 +567,17 @@ void main() {
 	// attempts to swap between the two had failed for the same reason. The form is kept
 	// because it is the one that needs no inversion, not because it was the fix.
 	//
-	// ⚠️ The sway was never here. A direction does not involve the matrix's
+	// The sway was never here. A direction does not involve the matrix's
 	// translation column, and the translation column is the part that moves when the
 	// player walks. The ray's ORIGIN was the defect - see `eyeOffset` just below.
 	//
-	// ⚠️ Where this idiom is genuinely load-bearing: copy_and_fog.fsh:503 and
+	// Where this idiom is genuinely load-bearing: copy_and_fog.fsh:503 and
 	// environment/clouds/volumetric.glsl:443-448, which also convert DIRECTIONS.
 	vec3 rayDirection = normalize(transpose(mat3(gbufferModelView)) * viewPos);
 
 	// Where the ray starts, in camera-relative world space - and it is NOT the origin.
 	//
-	// ⚠️ THE DEFECT EVERY EARLIER ATTEMPT MISSED (batch 598, found by audit).
+	// THE DEFECT EVERY EARLIER ATTEMPT MISSED (batch 598, found by audit).
 	// `viewPos` is a position measured from the eye the world was DRAWN from, and
 	// `gbufferModelView` carries Minecraft's view bobbing, so that eye is not
 	// `cameraPosition` while the player walks. The difference between the two is exactly
@@ -587,20 +587,20 @@ void main() {
 	// displaced by R^T t, at the bob's own frequency, and its horizontal part swings with
 	// the player's heading. That is the structure sliding relative to the world.
 	//
-	// ⚠️ Its size is the pack's own measurement and not a guess: BATCH_LOG.md records
+	// Its size is the pack's own measurement and not a guess: BATCH_LOG.md records
 	// that `normalize(worldSunVector)` differs from the exact 4x4 form by 0.03-0.3
 	// degrees, and identifies that difference as this column divided by 100 - so 0.05 to
 	// 0.5 blocks, which is up to four shadow map texels and several pixels of coherent
 	// slide at the distances the shafts are read at.
 	//
-	// ⚠️ The same term is already added in lit.vsh:405 (the terrain - which is exactly
+	// The same term is already added in lit.vsh:405 (the terrain - which is exactly
 	// why the terrain's own shadows never moved), composite1.fsh:614 (the TAA anchor) and
 	// lit.vsh:224 (the wind field). This pass was the only world-position rebuild in the
 	// pack that used the 3x3 alone. Bliss adds it too - lib/overworld_fog.glsl:290 is
 	// `gbufferModelViewInverse[3].xyz + cameraPosition + d * rayStartPos` - and so do
 	// Mellow, Sundial and this pack's own ancestor.
 	//
-	// ⚠️ Do NOT "fix" this by pushing the world direction through the 4x4: that
+	// Do NOT "fix" this by pushing the world direction through the 4x4: that
 	// applies the rotation twice. The origin is the term that was missing.
 	vec3 eyeOffset = gbufferModelViewInverse[3].xyz;
 
@@ -618,7 +618,7 @@ void main() {
 	// been faded towards its own luma before it is handed out - so using it here
 	// paints a white haze over a blue world, which is what it looked like.
 	//
-	// ⚠️ The End's tint is multiplied into the sunlight side of this and NOT
+	// The End's tint is multiplied into the sunlight side of this and NOT
 	// into the underwater side, and the ternary is what guarantees it rather
 	// than a second test somewhere: a camera under water in the End takes the
 	// left branch, which the tint is not on. The water column has an absorption
@@ -631,7 +631,7 @@ void main() {
 
 	// HOW THE MEDIUM SCATTERS, BY THE ANGLE BETWEEN THE RAY AND THE SUN (batch 582).
 	//
-	// ⚠️ Until this existed the fog's brightness did not depend on WHERE THE CAMERA
+	// Until this existed the fog's brightness did not depend on WHERE THE CAMERA
 	// WAS LOOKING AT ALL: one colour, times a shadow test, and the shafts were
 	// exactly as bright viewed from the sun's side as from the far side. That is not
 	// what air does, and it is the difference an audit found between this fog and
@@ -640,17 +640,17 @@ void main() {
 	// volume the light is travelling through rather than as a glow laid on the
 	// screen.
 	//
-	// ⚠️ Henyey-Greenstein rather than Bliss's own curve, and the reason is that
+	// Henyey-Greenstein rather than Bliss's own curve, and the reason is that
 	// Bliss's is two exponentials of a power tuned to its own light levels - a shape
 	// ported without its numbers is a shape with nothing behind it, which is the
 	// mistake this whole line of work has already made three times. HG is the
 	// standard single-lobe phase function, it is one line, and its parameter means
 	// something physical:
 	//
-	//     g = 0.4    forward-peaked, which is what makes looking towards the sun
-	//                through mist flare and looking away from it not
+	// g = 0.4    forward-peaked, which is what makes looking towards the sun
+	// through mist flare and looking away from it not
 	//
-	// ⚠️ Normalised so that the AVERAGE OVER ALL DIRECTIONS IS ONE, which is what
+	// Normalised so that the AVERAGE OVER ALL DIRECTIONS IS ONE, which is what
 	// makes it a redistribution of the light rather than a source of more of it.
 	// Integrating HG over the sphere gives `1 - g^2` of the isotropic case, so the
 	// division by `1 - g^2` puts the mean back to one: the fog is not made brighter
@@ -664,7 +664,7 @@ void main() {
 		/ pow(1.0 + FOG_PHASE_G * FOG_PHASE_G
 			- 2.0 * FOG_PHASE_G * cosSun, 1.5);
 
-	// ⚠️ A little of the light comes back towards the eye from the other side, and
+	// A little of the light comes back towards the eye from the other side, and
 	// without it the medium is darkest exactly opposite the sun - which reads as the
 	// fog being switched off behind the player rather than as air. Bliss has the same
 	// second lobe (`backScatterPhase`, an HG at -SdotV). 0.06 is small, and it is
@@ -686,13 +686,13 @@ void main() {
 	vec3 scatter = vec3(0.0);
 
 	// What the medium lets through to the eye: one everywhere but the Nether,
-	// where every step through a plume takes a bite out of it. ⚠️ It is left
+	// where every step through a plume takes a bite out of it. It is left
 	// exactly at one on every other path on purpose - what is behind the shafts
 	// is already faded per fragment by the pack's own fog, and fading it a
 	// second time here would count it twice. See the note at the top.
 	float absorbance = 1.0;
 
-	// ⚠️ What the medium's OWN scattered light loses on the way back to the eye, and
+	// What the medium's OWN scattered light loses on the way back to the eye, and
 	// it is deliberately NOT the variable above (batch 599). The two look alike and
 	// are not the same question: `absorbance` multiplies what is BEHIND the shafts and
 	// is left at one on purpose, because the pack's per-fragment fog has already faded
@@ -700,10 +700,10 @@ void main() {
 	// has touched. Keeping them apart is what fixes the far end of an underwater march
 	// without darkening the scene behind it a second time.
 	//
-	// ⚠️ One in air, and exactly one: the step below multiplies by
+	// One in air, and exactly one: the step below multiplies by
 	// WaterAbsorption(0.0), which is exp(0). So above the surface the sum is the same
 	// number it has always been.
-	// ⚠️ A VEC3 AND NOT A FLOAT, and the type is the whole point rather than a
+	// A VEC3 AND NOT A FLOAT, and the type is the whole point rather than a
 	// formality (batch 600). WaterAbsorption is per channel - red is absorbed many
 	// times faster than blue, which is what makes deep water blue instead of grey -
 	// so the weight this multiplies the scatter by has to carry that per-channel
@@ -713,7 +713,7 @@ void main() {
 	vec3 mediumTransmittance = vec3(1.0);
 
 	#ifdef NETHER_PLUMES
-		// ⚠️ Asked once for the pixel rather than once per step. It is a uniform
+		// Asked once for the pixel rather than once per step. It is a uniform
 		// comparison, so it costs nothing either way, but a branch inside the loop
 		// whose answer cannot change within the pixel is the kind of thing a
 		// compiler is not always free to lift out on its own.
@@ -747,7 +747,7 @@ void main() {
 		// Stopping here keeps the saving the surface distance was there for,
 		// without letting it move the ladder.
 		//
-		// ⚠️ "Opaque" is now literal (batch 590). This used to break at depthtex0,
+		// "Opaque" is now literal (batch 590). This used to break at depthtex0,
 		// which is the surface the pixel shows INCLUDING the translucent pass - so
 		// a pane of glass stopped the march and the whole medium behind it was
 		// never sampled, which is why the fog was missing behind glass, ice and
@@ -758,7 +758,7 @@ void main() {
 			break;
 		}
 
-		// ⚠️ `eyeOffset` is not decoration (batch 598): everything the march samples is
+		// `eyeOffset` is not decoration (batch 598): everything the march samples is
 		// placed relative to this, so leaving it out displaced every sample by the bob's
 		// own translation. See where it is worked out.
 		vec3 samplePos = eyeOffset + rayDirection * ((start + end) * 0.5);
@@ -767,7 +767,7 @@ void main() {
 			// The Nether's smoke, which is a different medium lit by a different
 			// thing, so it takes the whole step rather than sharing any of it.
 			//
-			// ⚠️ No shadow map is read on this path, and that is not an
+			// No shadow map is read on this path, and that is not an
 			// optimisation. There is no sun in the Nether to trace: the answer the
 			// map holds is about a light that is not in this dimension, so asking
 			// it would light the smoke with the Overworld's sun. The glow added
@@ -781,7 +781,7 @@ void main() {
 				// length is the distance along the ray - this needs the camera's
 				// own position for nothing.
 				//
-				// ⚠️ And this is the one suspect batch 527 left: it is not a fading
+				// And this is the one suspect batch 527 left: it is not a fading
 				// of something at the screen's edge, it multiplies the WHOLE plume
 				// term - the emission along with the extinction - by the distance
 				// out to NETHER_PLUME_CLEAR, so at the 24 that shipped, a player
@@ -797,7 +797,7 @@ void main() {
 
 				float plume = NetherPlumeDensity(worldPos, clearArea);
 
-				// ⚠️ Inverted in batch 520. This used to be exp(-density), which is
+				// Inverted in batch 520. This used to be exp(-density), which is
 				// brightest where the smoke is THINNEST and leaves a dense column with a
 				// dark core - the shape the reference pack has, and the reason its plumes
 				// read as outlined ropes. Here the core is the bright part and the edges
@@ -806,8 +806,8 @@ void main() {
 				// column can get at about what that curve gave it, so the change is about
 				// where the light sits and not about how much of it there is.
 				//
-				// ⚠️ And batch 529 measured what "what that curve gave it" actually was,
-				// which is where that batch's report came from. ⚠️ Its figures are that
+				// And batch 529 measured what "what that curve gave it" actually was,
+				// which is where that batch's report came from. Its figures are that
 				// batch's and are quoted here at ITS pair, optical 0.016 and density
 				// 1.5: at a column's own half density of 0.5 the emission expression
 				// below comes out at 0.0019 of a white frame per block of plume crossed,
@@ -817,7 +817,7 @@ void main() {
 				// A column that is half a percent of the frame is a column nobody can
 				// see, which is the near-black picture that opened that batch.
 				//
-				// ⚠️ That quarter was a round number for a weighting worth working out
+				// That quarter was a round number for a weighting worth working out
 				// rather than rounding: a sample's light arrives as the emission times
 				// absorbance raised to NETHER_PLUME_SHADING + 1.0 - this option's
 				// exponent and batch 524's own multiply, which is one more - and the
@@ -833,7 +833,7 @@ void main() {
 				// be seen and undone. See that option for the arithmetic on both sides
 				// of it.
 				//
-				// ⚠️ Batch 528: and the glow is weighted by what is already between it
+				// Batch 528: and the glow is weighted by what is already between it
 				// and the eye. Every term above is a function of the local density and of
 				// nothing else, so on its own it cannot draw a form - a sample in the
 				// middle of a column and a sample at its near face come out identical, and
@@ -845,7 +845,7 @@ void main() {
 				// the far face dark, and the column reads as a form against the lava
 				// instead of as haze.
 				//
-				// ⚠️ This is an ADDITIONAL weighting and not the only one. The scatter
+				// This is an ADDITIONAL weighting and not the only one. The scatter
 				// below is multiplied by the absorbance once more, in the front-to-back
 				// order the integral is written in, and that multiply is batch 524's - so
 				// the exponent the plume's light actually arrives with is
@@ -853,7 +853,7 @@ void main() {
 				// that has already taken half of what is behind it dims the glow behind
 				// it to an eighth, where one absorbance would leave it at a half.
 				//
-				// ⚠️ absorbance is a product of exp()s over a march that never reaches
+				// absorbance is a product of exp()s over a march that never reaches
 				// past VOLUMETRIC_FOG_DISTANCE, and its worst case over those 96 blocks -
 				// a full-density column end to end, at the top of the extinction range -
 				// is about 1e-20 rather than zero at the density batch 534 ships, so
@@ -863,7 +863,7 @@ void main() {
 				// 529's 3.0 puts it below 1e-30 - still a number in a 32-bit float,
 				// whose smallest subnormal is about 1.4e-45.)
 				//
-				// ⚠️ The core-to-edge gradient (batch 534): the light a column sends
+				// The core-to-edge gradient (batch 534): the light a column sends
 				// is not spread evenly across its width. The density above is the one
 				// thing this pass holds that says how far into a column a sample sits -
 				// the pillar field in NetherPlumeDensity is read in the horizontal
@@ -871,21 +871,21 @@ void main() {
 				// the gaps between columns - and it is already in hand, so the shape
 				// costs one smoothstep and four mixes and no fetch and no step.
 				//
-				// ⚠️ coreness is 0 at the thin edge of a column and 1 from
+				// coreness is 0 at the thin edge of a column and 1 from
 				// NETHER_PLUME_CORE_DENSITY upwards, and that constant is the half
 				// density the arithmetic in the options calls a column's core: the
 				// field's own mean plume is 0.353 and a typical surviving pillar is
 				// 0.51, so a typical pillar's middle comes out at one and everything
 				// thinner than 0.5 lands somewhere on the ramp between.
 				//
-				// ⚠️ The four mixes are written around the constants the pass already
+				// The four mixes are written around the constants the pass already
 				// had, so that NETHER_PLUME_CORE_GRADIENT at 0.0 gives back exactly
 				// the colour and the weight the emission had before the option
 				// existed - mix(x, y, 0.0) is x, to the bit - and that is the null
 				// case this pack asks of every shaping option. The slider is a
 				// compile-time constant, so at 0.0 the whole gradient folds away.
 				//
-				// ⚠️ The absorbance the march is holding is deliberately NOT part of
+				// The absorbance the march is holding is deliberately NOT part of
 				// this. It is the other half of a column's shape and it already has an
 				// option of its own - NETHER_PLUME_SHADING weights the glow by it,
 				// which is what puts the light on a column's near face - and folding
@@ -911,7 +911,7 @@ void main() {
 				// The ceiling smoke goes in plainly instead. It has no inside and
 				// outside to be brighter than - it is a flat layer under a roof.
 				//
-				// ⚠️ And it fades at half weight, by what the plumes have taken
+				// And it fades at half weight, by what the plumes have taken
 				// rather than by a coefficient of its own: it is a sheet the ray
 				// crosses briefly, not the column it spends its length in, so it
 				// should not blot out as much. It adds no extinction of its own.
@@ -923,18 +923,18 @@ void main() {
 				// And the third of the Nether's three: the thin haze that is
 				// simply in the air rather than gathered into anything.
 				//
-				// ⚠️ Emission only. It adds nothing to absorbance, and that is
+				// Emission only. It adds nothing to absorbance, and that is
 				// not an oversight: this haze is far too thin to take anything
 				// out of what is behind it, and the reference pack says the same
 				// of its own.
 				//
-				// ⚠️ Its colour is gl_Fog.color, the fixed-function built-in,
+				// Its colour is gl_Fog.color, the fixed-function built-in,
 				// because the game fills that in per biome in the Nether - so the
 				// crimson forest, the warped forest, the soul sand valley and the
 				// basalt deltas each tint it themselves, and it costs no uniform
 				// of this pack's. That is the whole reason it is read here.
 				//
-				// ⚠️ But this pack has never read gl_Fog anywhere before, and the
+				// But this pack has never read gl_Fog anywhere before, and the
 				// composite stage is not where that built-in is normally
 				// populated: a black one would come out of the normalize below as
 				// a flat grey haze, which is not what this dimension looks like.
@@ -951,7 +951,7 @@ void main() {
 				emission += normalize(hazeColor + 1e-6) * 0.25
 					* (NetherHazeDensity(worldPos) * NETHER_HAZE_OPTICAL);
 
-				// ⚠️ Where the order matters. What a step sends towards the eye
+				// Where the order matters. What a step sends towards the eye
 				// is what reaches it through everything the ray has already
 				// crossed, so it goes in weighted by the absorbance the march is
 				// holding as the step begins, and the extinction this step
@@ -973,11 +973,11 @@ void main() {
 				// of plume the ray crosses, which is how a medium's optical
 				// depth is charged.
 				//
-				// ⚠️ The density option is in here as well as in the emission, so
+				// The density option is in here as well as in the emission, so
 				// that turning the smoke up thickens it rather than only
 				// brightening it.
 				//
-				// ⚠️ NETHER_PLUME_EXTINCTION is the number to tune. ⚠️ Every figure
+				// NETHER_PLUME_EXTINCTION is the number to tune. Every figure
 				// in this note is at the pair batch 534 ships - density 2.0, extinction
 				// 0.03 - and every one of them is a transmittance, which is the fraction
 				// of what is behind the medium that reaches the eye. A sight line
@@ -988,7 +988,7 @@ void main() {
 				// silhouette against the lava without the layer becoming a black wall,
 				// which is what this dial is for.
 				//
-				// ⚠️ What a transmittance does when the density or this is changed is
+				// What a transmittance does when the density or this is changed is
 				// not proportional, and that is the trap: what doubles is the OPTICAL
 				// DEPTH, which is the exponent, so doubling it squares the transmittance
 				// and halving it takes the square root. Batch 534 lowered the density
@@ -998,7 +998,7 @@ void main() {
 				// twenty blocks go from 2.7% to 30.1%, and its whole-march mean from
 				// five parts in a million to 1.71%.
 				//
-				// ⚠️ The figures the earlier versions of this note carried are kept
+				// The figures the earlier versions of this note carried are kept
 				// here as the pairs that produced them, because each was true of one:
 				// 17% and about 1% are batch 528's twenty- and fifty-block core rows at
 				// density 1.5 with the extinction at 0.06; 41% and 10% are the same two
@@ -1009,7 +1009,7 @@ void main() {
 				// the 96-block march at the field's own mean plume of 0.353; and the
 				// 1.9% and 23% that stood here for that same march are batch 528's, the
 				// first at the density the contrast raise had just produced and the
-				// second at the mean plume of 0.168 it measured then. ⚠️ 54% and 1.3%
+				// second at the mean plume of 0.168 it measured then. 54% and 1.3%
 				// were not the pair any of those batches shipped: 54% is the twenty-block
 				// row with the extinction still at 0.03 and 1.3% is the core's own
 				// 96-block row at that same 0.03.
@@ -1031,7 +1031,7 @@ void main() {
 		// The density is asked for a world position, not a camera-relative one:
 		// the patches are fixed to the world, so that walking past them shows
 		// them sliding by rather than standing still.
-		// ⚠️ This test CANNOT FIRE, and saying so is the fix (batch 580). The
+		// This test CANNOT FIRE, and saying so is the fix (batch 580). The
 		// comment here used to claim it skips the shadow fetch for every step above
 		// the layer and keeps a high camera as cheap as a low one. It does not:
 		// VolumetricFogDensity returns `exp(-max(y - base, 0) / height)` times the
@@ -1040,7 +1040,7 @@ void main() {
 		// never been banked. An audit found it by asking what the function actually
 		// returns rather than what the comment said.
 		//
-		// ⚠️ It is left in place, unreachable, rather than replaced with a threshold:
+		// It is left in place, unreachable, rather than replaced with a threshold:
 		// a threshold would change the fog, since the medium above the layer is thin
 		// but not empty and the whole point of an exponential layer is that it has no
 		// edge. Making the saving real would mean deciding how thin is nothing, and
@@ -1110,10 +1110,10 @@ void main() {
 		float sunVisibility = 1.0;
 
 		if (withinShadowMap > 0.0001) {
-			// ⚠️ FILTERED OVER THE STEP'S OWN FOOTPRINT, and that is the fix for
+			// FILTERED OVER THE STEP'S OWN FOOTPRINT, and that is the fix for
 			// the flicker through leaves (batch 584).
 			//
-			// ⚠️ The single fetch that used to stand here is a POINT SAMPLE of a
+			// The single fetch that used to stand here is a POINT SAMPLE of a
 			// high-frequency function. The shaft through a canopy is not a smooth
 			// field - it is a hard pattern of lit gaps and dark leaves, and a gap a
 			// block or two across subtends less than one shadow texel from far
@@ -1123,7 +1123,7 @@ void main() {
 			// walks, so the ray's answer swings the full way between lit and dark from
 			// one frame to the next.
 			//
-			// ⚠️ The resolution is what makes it visible, and the author reported
+			// The resolution is what makes it visible, and the author reported
 			// exactly that: bad at a quarter of the frame, absent at full resolution.
 			// This pass marches ONE ray per fog texel, so at a quarter of the frame
 			// one ray stands for sixteen pixels and its single shadow answer is asked
@@ -1133,7 +1133,7 @@ void main() {
 			// resolved across pixels rather than aliased into one, and any flicker
 			// left is sub-pixel and the frame's own temporal resolve handles it.
 			//
-			// ⚠️ Why the temporal denoise could not save it, which is worth knowing
+			// Why the temporal denoise could not save it, which is worth knowing
 			// before trusting a filter to: the denoise drops the history in proportion
 			// to how much the colour DISAGREES, and a swing between fully lit and
 			// fully shadowed is not noise to it - it looks exactly like the fog
@@ -1141,7 +1141,7 @@ void main() {
 			// dropped for. Filtering is the only answer; averaging cannot fix a signal
 			// that is wrong in the same way every frame it is wrong.
 			//
-			// ⚠️ The width is the STEP'S FOOTPRINT and not a fixed softness, because
+			// The width is the STEP'S FOOTPRINT and not a fixed softness, because
 			// that is the quantity the aliasing is against. A step of the march covers
 			// a volume, not a point - that is what stepping through a medium means -
 			// and its cross-section is (stepLength / distance) radians across. Asking
@@ -1149,7 +1149,7 @@ void main() {
 			// blur laid over the answer; it IS the answer the sample was always meant
 			// to stand for, and the unfiltered version was the approximation.
 			//
-			// ⚠️ And that is also why this does NOT change the full-resolution path,
+			// And that is also why this does NOT change the full-resolution path,
 			// which the author could see was already right: the footprint is a
 			// property of the march, and the march is identical at both resolutions.
 			// The filter widens for the quarter-resolution case because it makes the
@@ -1157,29 +1157,29 @@ void main() {
 			// smaller. Nothing here reads the buffer size or the option, so the
 			// resolution bug cannot come back through this door.
 			//
-			// ⚠️ The width is the loop's own `stepLength`, declared above with the
+			// The width is the loop's own `stepLength`, declared above with the
 			// two ends of the step rather than recomputed here: one name for one
 			// quantity, and the two ends are what the sample's position was made
 			// from as well.
 
-			// ⚠️ ONE WHOLE STEP, where the two earlier attempts used half of one. The
+			// ONE WHOLE STEP, where the two earlier attempts used half of one. The
 			// sweep is what decided it: sixteen taps at 0.50 x step jitter 3.89% over
 			// frames and at 1.00 x step they jitter 1.85%, and the radius is the only
 			// thing that changed. Half a step does not span the volume the sample
 			// stands for, so the canopy's gaps fall between the taps instead of being
 			// averaged across them.
 			//
-			// ⚠️ `spread` here is a RADIUS and `pcfScale` applies it to a kernel whose
+			// `spread` here is a RADIUS and `pcfScale` applies it to a kernel whose
 			// own RMS radius is 0.783, so the taps end up spanning about one step.
 			//
-			// ⚠️ The distance is `samplePos`'s own length and not a fresh one: that
+			// The distance is `samplePos`'s own length and not a fresh one: that
 			// vector is this step's centre in camera-relative space, and it is made
 			// from the same `start` and `end` the step's length is, so the two
 			// quantities in the ratio describe the same volume. Taking the distance
 			// from anywhere else - the fragment's own depth, say - would measure the
 			// footprint of a different step.
 			//
-			// ⚠️ Why there is a division at all, given that a shadow map for a
+			// Why there is a division at all, given that a shadow map for a
 			// directional light is ORTHOGRAPHIC and a length in blocks is therefore a
 			// constant number of map texels wherever it is: because the map is
 			// DISTORTED, and the distortion divides the map's coordinates by
@@ -1189,11 +1189,11 @@ void main() {
 			// coordinates is the world-space width divided by the distance it is being
 			// gathered from.
 			//
-			// ⚠️ `shadowProjection[0][0]` is the map's own blocks-to-clip scale, which
+			// `shadowProjection[0][0]` is the map's own blocks-to-clip scale, which
 			// for an orthographic projection is 1 over the half-width of the box the
 			// map covers - 1/128 here, the shadow distance the pack ships.
 			//
-			// ⚠️ The ceiling: a ray that grazes along the layer has a long step and a
+			// The ceiling: a ray that grazes along the layer has a long step and a
 			// short distance to it, and without a bound the taps would walk the whole
 			// map and read the shadow of somewhere else entirely. 0.02 of the map is
 			// about five blocks at these settings, which is already wider than any gap
@@ -1201,7 +1201,7 @@ void main() {
 			float spread = min(stepLength / max(length(samplePos), 1.0)
 				* shadowProjection[0][0], 0.02);
 
-			// ⚠️ AN IRREGULAR KERNEL, SPANNING ONE WHOLE STEP, AND DELIBERATELY NOT
+			// AN IRREGULAR KERNEL, SPANNING ONE WHOLE STEP, AND DELIBERATELY NOT
 			// ROTATED (batch 586). This replaces two earlier attempts, and the
 			// measurement that replaced them is the whole of the reasoning - see
 			// _team_bfog/fog_jitter_sweep.py and fog_jitter_spatial.py.
@@ -1212,11 +1212,11 @@ void main() {
 			// that is what was measured: one fog texel's brightness over 240 frames of
 			// walking, as a percentage of its own mean.
 			//
-			//     a single point sample (before b584)          6.93%
-			//     4 taps on a square, radius 0.50 x step        27.13%   <- b584 shipped this
-			//     16 taps, radius 1.00 x step, not rotated       1.85%
+			// a single point sample (before b584)          6.93%
+			// 4 taps on a square, radius 0.50 x step        27.13%   <- b584 shipped this
+			// 16 taps, radius 1.00 x step, not rotated       1.85%
 			//
-			// ⚠️ SO b584 MADE THE CRAWL WORSE, by nearly four times, and that is why
+			// SO b584 MADE THE CRAWL WORSE, by nearly four times, and that is why
 			// the author reported the artifact right after it. Four taps at half a step
 			// apart put their spacing at about the canopy's own period, which is
 			// resonance rather than filtering - the taps land in the same gaps together
@@ -1225,7 +1225,7 @@ void main() {
 			// regular pattern looks like, and it is exactly the reason a single radius
 			// was not enough to see it with.
 			//
-			// ⚠️ AND THE PER-FRAME ROTATION WAS PURE COST. It was added to break a
+			// AND THE PER-FRAME ROTATION WAS PURE COST. It was added to break a
 			// static pattern, and measured, it does not: a 16-point kernel is already
 			// irregular enough that neighbouring texels do not share a pattern to
 			// break, so rotating each of them by its own hash makes neighbour-to-
@@ -1234,12 +1234,12 @@ void main() {
 			// makes every frame differ from the last, which is the definition of the
 			// artifact being fixed. It is gone.
 			//
-			// ⚠️ What did work is the radius and the tap count TOGETHER, and neither
+			// What did work is the radius and the tap count TOGETHER, and neither
 			// alone: at one whole step the kernel spans the volume the sample stands
 			// for - a step through a medium is a volume, not a point - and sixteen
 			// points fill it evenly enough that the canopy cannot resonate with them.
 			//
-			// ⚠️ The kernel is the same 16-point list the world's shadow filter uses.
+			// The kernel is the same 16-point list the world's shadow filter uses.
 			// See /environment/lighting/shadowmap.glsl, which is where it is written
 			// down and where its provenance and its measured properties are. It is
 			// repeated here rather than reached by an include because that file
@@ -1275,7 +1275,7 @@ void main() {
 		// there is. There is no transmittance term in the loop because this pass
 		// adds light rather than replacing any - see the note at the top.
 		//
-		// ⚠️ TWO TERMS because a volume of air has two sources of light, and until
+		// TWO TERMS because a volume of air has two sources of light, and until
 		// batch 580 there was only the first (batch 580; the audit that found it is
 		// the one that read both implementations side by side). With only the sun
 		// term a step in shadow contributed EXACTLY zero - `sunVisibility` is the
@@ -1284,20 +1284,20 @@ void main() {
 		// Air takes light from the whole sky, so what a shadow does is change the
 		// colour the medium scatters and barely change how much of it there is.
 		//
-		// ⚠️ The ambient term is NOT weighted by `sunVisibility`, and that is the
+		// The ambient term is NOT weighted by `sunVisibility`, and that is the
 		// entire point: what blocks the sun does not block the sky. Bliss makes the
 		// same split - `LightColor*shadows*... + AmbientColor*...`, its
 		// lib/overworld_fog.glsl:338 - and it is the same arrangement the pack's own
 		// clouds already use, where `cloudLightAmbient` and `cloudLightDirect` are
 		// separate uniforms.
 		//
-		// ⚠️ 0.5 on the ambient, and it is the one number here rather than a
+		// 0.5 on the ambient, and it is the one number here rather than a
 		// derivation: a medium lit from a hemisphere receives about half of what the
 		// same medium lit by a disc of the same radiance would, and the pack's sky
 		// ambient is already the average over the sky. Too high and the fog stops
 		// responding to the sun at all, which is the old artifact with the sign
 		// reversed; too low and the shadow outline comes back.
-		// ⚠️ The phase applies to the SUN term and NOT to the ambient one, and that
+		// The phase applies to the SUN term and NOT to the ambient one, and that
 		// split is the whole reason the phase is worth having (batch 582). An
 		// ambient term is light that arrived at the medium from every direction
 		// before it was scattered towards the eye, so it has no angle to the sun to
@@ -1308,7 +1308,7 @@ void main() {
 		vec3 stepLight = fogAmbientColor * 0.5
 			+ mediumColor * (sunVisibility * sunPhase);
 
-		// ⚠️ HOW MUCH OF THIS STEP'S LIGHT ACTUALLY REACHES THE EYE (batch 599).
+		// HOW MUCH OF THIS STEP'S LIGHT ACTUALLY REACHES THE EYE (batch 599).
 		//
 		// Until this existed the fog was added with NOTHING attenuating it: every step
 		// contributed in full no matter how far away it was, so under water the far end
@@ -1318,13 +1318,13 @@ void main() {
 		// because there the medium is six times denser AND the water itself absorbs, so
 		// the far field came out bright where it should have been a deep dark blue.
 		//
-		// ⚠️ The argument is the step's LENGTH, not its distance from the eye, because
+		// The argument is the step's LENGTH, not its distance from the eye, because
 		// this is the light lost on the way BACK along that piece of the ray: each step
 		// attenuates by its own thickness, and the running product is the transmittance
 		// from that step to the camera. That is the same quantity the medium's density
 		// is measured in, and it is why the weight is the product and not a distance.
 		//
-		// ⚠️ Divided by 16 because WaterAbsorption's argument is normalised to 1.0 at
+		// Divided by 16 because WaterAbsorption's argument is normalised to 1.0 at
 		// full water depth, which both of its other callers reach at 15 to 16 blocks -
 		// 16 here rather than 15 to match the 1/16 slope those callers use, so that a
 		// block of ray and a block of depth cost the same. At that scale
@@ -1332,30 +1332,30 @@ void main() {
 		// 5%, the blue at 37%. That is the deep blue-green the pack's own comments call
 		// the correct look for water, reached here by the same arithmetic.
 		//
-		// ⚠️ In air the argument is exactly zero and WaterAbsorption(0.0) is exactly
+		// In air the argument is exactly zero and WaterAbsorption(0.0) is exactly
 		// one, so this is a no-op above the surface and the shipped air look does not
 		// move. That is deliberate rather than a happy accident: the air's own
 		// attenuation is a separate question and this batch does not answer it.
 		//
-		// ⚠️ AND THE MARCH'S OWN FAR END FADES OUT (batch 601). Without this the
+		// AND THE MARCH'S OWN FAR END FADES OUT (batch 601). Without this the
 		// medium was a straight ramp - light added in proportion to distance, since
 		// nothing attenuates it in air - and that ramp was then CUT at
 		// VOLUMETRIC_FOG_DISTANCE. A gradient that stops moving while it is still
 		// steep reads as an edge, and the author saw it as a bright band with a fixed
 		// horizontal border near the horizon.
 		//
-		// ⚠️ Evaluated at the step's MIDPOINT, because the window is a property of
+		// Evaluated at the step's MIDPOINT, because the window is a property of
 		// where the step is rather than of either end of it, and a step at the very
 		// end of the march must be able to come out at zero. The last step overshoots
 		// VOLUMETRIC_FOG_DISTANCE slightly - the dither can push `t1` past one - and
 		// this is what keeps that overshoot from contributing anything.
 		//
-		// ⚠️ smoothstep, so the window's slope is zero at both of its ends. The
+		// smoothstep, so the window's slope is zero at both of its ends. The
 		// accumulated light therefore arrives at its final value flat, and it leaves
 		// the untouched part of the ramp flat too - a linear taper would put a corner
 		// at its own start, which is the same defect moved rather than removed.
 		//
-		// ⚠️ Only the medium takes it. The Nether's plumes do not need it and are
+		// Only the medium takes it. The Nether's plumes do not need it and are
 		// deliberately left alone: they already attenuate their own light
 		// (`absorbance`, NETHER_PLUME_EXTINCTION), so their far end is already flat.
 		// This is for the path that had nothing shaping its far end at all.
@@ -1384,7 +1384,7 @@ void main() {
 	vec4 resolved = raw;
 
 	#ifdef VOLUMETRIC_FOG_DENOISE
-		// ⚠️ There is no history in the first frames of a buffer's life, and the
+		// There is no history in the first frames of a buffer's life, and the
 		// test is on the frame rather than on the buffer's contents because a
 		// buffer that has never been written holds whatever the driver left in
 		// it: this one is not cleared - see colortex1Clear in /composite.fsh,
@@ -1396,7 +1396,7 @@ void main() {
 		if (frameCounter >= 3) {
 			// Where this texel was on the previous frame's screen.
 			//
-			// ⚠️ `rayDirection` is ALREADY A WORLD DIRECTION, and that is the one
+			// `rayDirection` is ALREADY A WORLD DIRECTION, and that is the one
 			// thing this block has to get right: it was taken through the transpose
 			// of the view matrix near the top of main() - see the note there, which
 			// is also where batch 596 explains why the transpose and not the mod's
@@ -1408,27 +1408,27 @@ void main() {
 			// noise the stage removes comes and goes as the player turns - a defect
 			// no still frame can show.
 			//
-			// ⚠️ The point that is reprojected is a choice, and it is the whole
+			// The point that is reprojected is a choice, and it is the whole
 			// difference between a denoise that follows the world and one that
 			// slides across it. A ray through a pixel covers everything from the eye
 			// to wherever it stops, and the history has to be looked up at ONE
 			// point; which point is right depends on what stopped the ray:
 			//
-			//   * it stopped on something solid - a hill, a wall, the ground - and
-			//     the fog on screen is what is in front of THAT SURFACE. The point
-			//     is the surface, at the distance the march stopped at, so the fog
-			//     and the history are anchored to the same place in the world and
-			//     both walk with the camera;
-			//   * it stopped at the far end of the medium, over a sky pixel - there
-			//     is no surface, and the fog on screen is the whole column. What
-			//     anchors it is the DIRECTION, and nothing about where the camera
-			//     is or has walked: the point is one block along the direction from
-			//     the PREVIOUS eye, which cancels the walk out of the difference
-			//     the reprojection takes. Using the current eye there instead would
-			//     carry the whole frame's movement into the history and slide the
-			//     fog sideways across a sky that is not moving.
+			// * it stopped on something solid - a hill, a wall, the ground - and
+			// the fog on screen is what is in front of THAT SURFACE. The point
+			// is the surface, at the distance the march stopped at, so the fog
+			// and the history are anchored to the same place in the world and
+			// both walk with the camera;
+			// * it stopped at the far end of the medium, over a sky pixel - there
+			// is no surface, and the fog on screen is the whole column. What
+			// anchors it is the DIRECTION, and nothing about where the camera
+			// is or has walked: the point is one block along the direction from
+			// the PREVIOUS eye, which cancels the walk out of the difference
+			// the reprojection takes. Using the current eye there instead would
+			// carry the whole frame's movement into the history and slide the
+			// fog sideways across a sky that is not moving.
 			//
-			// ⚠️ The split is on the OPAQUE surface being at the far plane, which is
+			// The split is on the OPAQUE surface being at the far plane, which is
 			// the same test composite1.fsh makes to mean "nothing was drawn here" and
 			// the same depthtex1 the march read - not on surfaceDistance reaching
 			// VOLUMETRIC_FOG_DISTANCE, which is where the MARCH stops and not where
@@ -1436,12 +1436,12 @@ void main() {
 			// blocks away caps the march at 96 and is still a surface the fog
 			// belongs to.
 			//
-			// ⚠️ Opaque, because that is the depth the march now stops at (batch 590).
+			// Opaque, because that is the depth the march now stops at (batch 590).
 			// A pixel showing only glass reads as "far plane" here and takes the sky's
 			// branch of the reprojection, which is right: behind the glass there is
 			// open air, and air is what the sky's anchor is for.
 			//
-			// ⚠️ The held item is not reprojected like the world, for the reason
+			// The held item is not reprojected like the world, for the reason
 			// composite1.fsh gives in full: it is attached to the camera, so it
 			// stays put relative to the eye while the world slides past, and
 			// reprojecting it with the camera's translation makes it drag its own
@@ -1455,7 +1455,7 @@ void main() {
 
 			// Whether the camera moved at all since the previous frame.
 			//
-			// ⚠️ This is not an optimisation and it is the fix for the defect that
+			// This is not an optimisation and it is the fix for the defect that
 			// made this whole stage a no-op in its first shipped build (b569, and
 			// the user's report is what found it: "the denoise on and off look about
 			// the same"). When the camera has not moved, the reprojection is an
@@ -1469,12 +1469,12 @@ void main() {
 			// and every frame, so the weight itself becomes a per-frame noise field.
 			// A stage whose blend factor flickers is a stage that does not average.
 			//
-			// ⚠️ With the camera still there is nothing to reproject and the history
+			// With the camera still there is nothing to reproject and the history
 			// is simply this texel: the buffer holds the previous frame at the same
 			// index, so the read needs no coordinate at all. That is the case a
 			// player is in whenever they stop to look at the fog, which is when the
 			// marching noise and its flicker are visible in the first place.
-			// ⚠️ "Still" means the camera has not MOVED and not TURNED, and until
+			// "Still" means the camera has not MOVED and not TURNED, and until
 			// batch 592 only the first half was tested (batch 592). Comparing
 			// positions alone calls a camera that is spinning on the spot still, so a
 			// player looking around took this path: the history was read from the
@@ -1484,11 +1484,11 @@ void main() {
 			// swim along with the view instead of sitting in the world - the author's
 			// report, and the reason this is compared against the view matrix.
 			//
-			// ⚠️ The MODELVIEW and not the projection: the projection carries the
+			// The MODELVIEW and not the projection: the projection carries the
 			// sub-pixel TAA jitter, which changes every frame even when nobody has
 			// touched the mouse, so including it would mean this branch never ran.
 			//
-			// ⚠️ Matrix equality is four column comparisons because GLSL has no
+			// Matrix equality is four column comparisons because GLSL has no
 			// equal() for matrices - equal() is the vector one, and a matrix is not a
 			// vector to the language however much it looks like one.
 			bool cameraStill =
@@ -1499,14 +1499,14 @@ void main() {
 
 			vec4 history = raw;
 
-			// ⚠️ Whether the reprojection found anything, kept outside the branch
+			// Whether the reprojection found anything, kept outside the branch
 			// that computes it: the debug view at the end of this stage needs it, and
 			// a diagnostic that reads a variable its own branch declared would not
 			// compile. The camera-still path has no reprojection to have failed, so
 			// it starts true.
 			bool historyFromScreen = true;
 
-			// ⚠️ And the same for the coordinate itself, and this one is a compile
+			// And the same for the coordinate itself, and this one is a compile
 			// error rather than a convention: the velocity below is worked out from
 			// it and sits OUTSIDE this branch, so a `Reprojection` declared inside
 			// would not be in scope where it is read. That is exactly what the first
@@ -1519,7 +1519,7 @@ void main() {
 			if (cameraStill) {
 				history = texelFetch(colortex1, ivec2(gl_FragCoord.xy), 0);
 			} else {
-			// ⚠️ The anchor is placed on the RAY and not on the surface, and that
+			// The anchor is placed on the RAY and not on the surface, and that
 			// is the fix for the drag reported after batch 573. It took two
 			// attempts; the first is worth keeping because the arithmetic killed
 			// it.
@@ -1532,7 +1532,7 @@ void main() {
 			// every time the view turned a little, the history was read from the
 			// wrong place on those frames, and the fog dragged.
 			//
-			// ⚠️ THE FIRST ATTEMPT WAS A MEDIAN FILTER over the 3x3 of depths, and
+			// THE FIRST ATTEMPT WAS A MEDIAN FILTER over the 3x3 of depths, and
 			// it does not work - not because it was written badly, but because the
 			// geometry forbids it. At a silhouette the neighbourhood is roughly
 			// half near samples and half far ones, so the middle of nine sits
@@ -1544,18 +1544,18 @@ void main() {
 			// and a mean is precisely what caused the mosaic - it returns a
 			// distance that no surface has.
 			//
-			// ⚠️ So the stable quantity is not a filtered depth; it is the
+			// So the stable quantity is not a filtered depth; it is the
 			// DIRECTION, which has no discontinuity anywhere. A point at a fixed
 			// distance along the ray:
 			//
-			//   * reprojects correctly under rotation, because the ray rotates with
-			//     the camera exactly as the world does;
-			//   * reprojects correctly under translation, because the point is
-			//     placed in the world, so the camera moving moves the point against
-			//     it exactly as it moves terrain;
-			//   * has NO dependence on any depth, so there is nothing in it to flip.
+			// * reprojects correctly under rotation, because the ray rotates with
+			// the camera exactly as the world does;
+			// * reprojects correctly under translation, because the point is
+			// placed in the world, so the camera moving moves the point against
+			// it exactly as it moves terrain;
+			// * has NO dependence on any depth, so there is nothing in it to flip.
 			//
-			// ⚠️ What it gives up is anchoring at the surface, which is what a
+			// What it gives up is anchoring at the surface, which is what a
 			// reprojection prefers when it can be had: a texel whose fog belongs to
 			// a wall right in front of it is now reprojected as though it belonged
 			// to a point further along the same ray. What that costs is a small
@@ -1564,13 +1564,13 @@ void main() {
 			// alternating between two surfaces, which is the difference between a
 			// history that can be averaged and one that cannot.
 			//
-			// ⚠️ The sky and the surface now take the same branch, which is the
+			// The sky and the surface now take the same branch, which is the
 			// other half of the simplification: there is no longer a test on the
 			// depth here at all, so there is nothing for a flipping depth to
 			// disturb. The held item keeps its branch, because it is the one case
 			// where the answer is genuinely different - it is attached to the
 			// camera and does not move like the world.
-			// ⚠️ The anchor carries `eyeOffset` as well (batch 598), for the same
+			// The anchor carries `eyeOffset` as well (batch 598), for the same
 			// reason the march does: it is a WORLD point, and a point built from the
 			// ray's direction alone starts at the view origin rather than at
 			// `cameraPosition`. Leaving it out misplaces the probe by the bob's own
@@ -1591,7 +1591,7 @@ void main() {
 			// A pixel that was off the screen or behind the camera last frame
 			// has no history at all.
 			//
-			// ⚠️ The fetch is behind the test rather than left to a clamped
+			// The fetch is behind the test rather than left to a clamped
 			// coordinate. A clamp would make the read legal, but what it would
 			// read is the fog at the edge of the screen - a texel with nothing to
 			// do with this one - and the clamp would also put a NaN coordinate
@@ -1619,7 +1619,7 @@ void main() {
 			// How far this texel moved since the previous frame, in pixels of the
 			// FRAME.
 			//
-			// ⚠️ The frame's pixels and not this buffer's, which is the one thing
+			// The frame's pixels and not this buffer's, which is the one thing
 			// about this number that was got wrong here first. The weight below is
 			// the temporal resolve's, and the resolve's velocity is measured on the
 			// frame's grid (composite1.fsh); measuring this one on the fog's grid
@@ -1629,7 +1629,7 @@ void main() {
 			// weight exists to react to. A pixel is a pixel: the same number the
 			// resolve uses, so the same number means the same thing in both.
 			//
-			// ⚠️ Zero when the camera is still, and it is zero because the history
+			// Zero when the camera is still, and it is zero because the history
 			// is this texel - there is no reprojected coordinate to measure against,
 			// which is the whole point of the branch above. Not a shortcut: the
 			// measured coordinate at a standstill is a fraction of a pixel off (see
@@ -1648,7 +1648,7 @@ void main() {
 			// thing that can average a per-frame sample out, and it is also what
 			// smears anything that moves, so the two are split by motion.
 			//
-			// ⚠️ A whole pixel of motion already scores 0.37, so the floor is what
+			// A whole pixel of motion already scores 0.37, so the floor is what
 			// most of a moving frame actually gets. It is 0.7 of the option rather
 			// than zero because zero would throw the history away outright on every
 			// frame the camera moves at all, which is every frame a player is
@@ -1661,12 +1661,12 @@ void main() {
 			// How much of the history this texel keeps, given how far the history
 			// is from what is being drawn now.
 			//
-			// ⚠️ This scales the weight, and it does NOT throw the history away.
+			// This scales the weight, and it does NOT throw the history away.
 			// Its first version rejected outright - `historyWeight = 0.0` whenever
 			// the two agreed to less than a quarter - and that is what made the
 			// whole stage a no-op in the build the user first saw:
 			//
-			//   `mix(raw, raw, w)` is `raw`.
+			// `mix(raw, raw, w)` is `raw`.
 			//
 			// The arithmetic behind that is worth keeping, because the mistake is
 			// easy to make again. `raw` is ONE sample of the estimator and
@@ -1683,15 +1683,15 @@ void main() {
 			// What replaces it is the same measurement used as a weight, which has
 			// no cliff in it:
 			//
-			//   * a texel where nothing changed keeps the full weight, and the
-			//     history averages the dither away - which is the entire purpose;
-			//   * a texel where the fog really has changed keeps almost none of it,
-			//     and starts again from this frame;
-			//   * and a texel where the history is merely noisy is pulled *towards*
-			//     the current frame rather than being discarded, which is the case
-			//     the old test could not express at all.
+			// * a texel where nothing changed keeps the full weight, and the
+			// history averages the dither away - which is the entire purpose;
+			// * a texel where the fog really has changed keeps almost none of it,
+			// and starts again from this frame;
+			// * and a texel where the history is merely noisy is pulled *towards*
+			// the current frame rather than being discarded, which is the case
+			// the old test could not express at all.
 			//
-			// ⚠️ The relative form is kept for the reason it was introduced: the
+			// The relative form is kept for the reason it was introduced: the
 			// scattered light's scale is set by the exposure in shaders.properties
 			// and by the time of day, so an absolute difference would be a different
 			// test at noon and at dusk. What the reference is matters, though, and
@@ -1701,7 +1701,7 @@ void main() {
 			// produces - would read as a large change and be rejected, which is the
 			// same defect in a smaller costume.
 			//
-			// ⚠️ It cannot fire on noise, and that is arithmetic rather than hope:
+			// It cannot fire on noise, and that is arithmetic rather than hope:
 			// the ratio is a difference over the larger of two positive numbers, so
 			// it is bounded by one; and below the scale floor the difference is
 			// tested against the floor rather than against nothing, which is what
@@ -1717,7 +1717,7 @@ void main() {
 					/ VOLUMETRIC_FOG_DENOISE_TOLERANCE,
 				0.0, 1.0);
 
-			// ⚠️ The floor on the falloff, and it is what makes a real change
+			// The floor on the falloff, and it is what makes a real change
 			// recover. At 0.0 the history would keep nothing and a texel whose fog
 			// had genuinely gone - a door closed over a lit room - would snap to the
 			// current frame, which is the cliff this whole change is undoing; at
@@ -1742,11 +1742,11 @@ void main() {
 			// The mix cannot produce one - both of its arms are in range - but the
 			// value goes into a buffer the next frame reads back as its history, and
 			// the picture multiplies the scene by it, so it is clamped where it is
-			// made. ⚠️ It also cannot drift: a value that came back out of range
+			// made. It also cannot drift: a value that came back out of range
 			// would be mixed in again every frame, so this is what keeps a
 			// transmittance a transmittance for as long as the buffer lives.
 			//
-			// ⚠️ Inside the #ifdef, with the stage it belongs to. Outside it, this
+			// Inside the #ifdef, with the stage it belongs to. Outside it, this
 			// line would run on the path where the option is off as well - which is
 			// a no-op for the march's own output, whose fourth channel is 1.0 or a
 			// product of exp()s, but it is a no-op this batch should not be adding
@@ -1757,7 +1757,7 @@ void main() {
 			#ifdef VOLUMETRIC_FOG_DENOISE_DEBUG
 				// What the stage actually did with this texel, in colour.
 				//
-				// ⚠️ This exists because the first shipped version of the stage
+				// This exists because the first shipped version of the stage
 				// (b569) was a no-op and NOTHING on this machine could see that: the
 				// user's report - "the denoise on and off look about the same" - was
 				// the only evidence, and it arrived after the build was delivered. A
@@ -1768,23 +1768,23 @@ void main() {
 				// The four colours are the four states the stage can be in, and they
 				// are the whole diagnosis:
 				//
-				//   * GREY  - `frameCounter < 3`: the buffer has no written history
-				//             yet, so nothing is being averaged. Should only ever be
-				//             seen for the first frames after a load or a resize.
-				//   * BLACK - the camera is still and the history IS this texel:
-				//             the ideal case, and the one a player is in whenever
-				//             they stop to look at the fog. **A frame that is not
-				//             black here while the player stands still is a bug in
-				//             the reprojection, not in the averaging.**
-				//   * GREEN - the camera is moving and the reprojection found a
-				//             texel on screen, so the history was read. Brightness
-				//             is how much of it was kept after the disagreement
-				//             falloff: a texel with no history use left is red.
-				//   * RED   - the reprojection went off screen or behind the camera,
-				//             so there is no history at all. Saturated red over the
-				//             whole frame is the signature of a reprojection that is
-				//             wrong, which is what the double rotation of b569 looked
-				//             like.
+				// * GREY  - `frameCounter < 3`: the buffer has no written history
+				// yet, so nothing is being averaged. Should only ever be
+				// seen for the first frames after a load or a resize.
+				// * BLACK - the camera is still and the history IS this texel:
+				// the ideal case, and the one a player is in whenever
+				// they stop to look at the fog. **A frame that is not
+				// black here while the player stands still is a bug in
+				// the reprojection, not in the averaging.**
+				// * GREEN - the camera is moving and the reprojection found a
+				// texel on screen, so the history was read. Brightness
+				// is how much of it was kept after the disagreement
+				// falloff: a texel with no history use left is red.
+				// * RED   - the reprojection went off screen or behind the camera,
+				// so there is no history at all. Saturated red over the
+				// whole frame is the signature of a reprojection that is
+				// wrong, which is what the double rotation of b569 looked
+				// like.
 				if (frameCounter < 3) {
 					resolved.rgb = vec3(0.5);
 				} else if (cameraStill) {
@@ -1806,7 +1806,7 @@ void main() {
 	// fallback is no fog rather than a black speck: no scattered light and full
 	// transmittance, which is the state the march above starts from.
 	//
-	// ⚠️ This one is deliberately OUTSIDE the #ifdef, and it is the only line
+	// This one is deliberately OUTSIDE the #ifdef, and it is the only line
 	// after the march that is. Both paths end here - the march's own output feeds
 	// it when the option is off - so putting it inside would leave the off path
 	// unguarded, and putting it inside would also make it dead code on the path
@@ -1814,7 +1814,7 @@ void main() {
 	// can produce: the buffer is RGBA16F, whose largest finite value is 65504, so
 	// dot(x,x) tops out near 1.3e10 against a bound of 1e18.
 	//
-	// ⚠️ It follows the clamp rather than preceding it, because `clamp(NaN, 0.0,
+	// It follows the clamp rather than preceding it, because `clamp(NaN, 0.0,
 	// 1.0)` is a NaN - on the denoised path the two are one guard split in two,
 	// not two guards.
 	if (!(dot(resolved, resolved) < 1.0e18)) {

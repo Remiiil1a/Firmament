@@ -26,13 +26,13 @@
 // surface looks exactly as reflective as a mirror. What is here supplies both of
 // those:
 //
-//   - A direction, by asking the sky model for the colour along the reflected
-//     view ray, and - with PBR_SSR - by tracing that ray through the depth
-//     buffer to find what is actually there.
-//   - Roughness, by bending the ray towards the surface normal as roughness
-//     grows, so that a rough surface reflects the sky above it rather than a
-//     mirror image of whatever happens to be opposite, and by fading out the
-//     grazing boost that makes a smooth surface a mirror.
+// - A direction, by asking the sky model for the colour along the reflected
+// view ray, and - with PBR_SSR - by tracing that ray through the depth
+// buffer to find what is actually there.
+// - Roughness, by bending the ray towards the surface normal as roughness
+// grows, so that a rough surface reflects the sky above it rather than a
+// mirror image of whatever happens to be opposite, and by fading out the
+// grazing boost that makes a smooth surface a mirror.
 //
 // It runs in the deferred pass rather than where each surface is drawn, because
 // that is the first point at which the depth buffer describes a finished frame.
@@ -57,14 +57,14 @@
 // block edge - recorded in BATCH_LOG b621 section 31, measured in
 // _team_bfog/bevel_facing_model.py:
 //
-//   * Fresnel is asked for the reflectance at a grazing angle and answers with its
-//     maximum, 1.0 - a full mirror - where the texel next door answers with the few
-//     percent a floor actually reflects. 1.7x brighter at six degrees of camera
-//     elevation, 2.4x at ten, 6.3x at twenty.
-//   * reflect() sends the ray INTO the surface, and the sky model clamps every
-//     direction below the horizon onto the horizon, which is the brightest ring of
-//     the sky. That is why the line is the colour of the sky and follows it through
-//     the day: it was the sunset at dusk.
+// * Fresnel is asked for the reflectance at a grazing angle and answers with its
+// maximum, 1.0 - a full mirror - where the texel next door answers with the few
+// percent a floor actually reflects. 1.7x brighter at six degrees of camera
+// elevation, 2.4x at ten, 6.3x at twenty.
+// * reflect() sends the ray INTO the surface, and the sky model clamps every
+// direction below the horizon onto the horizon, which is the brightest ring of
+// the sky. That is why the line is the colour of the sky and follows it through
+// the day: it was the sunset at dusk.
 //
 // So the mapped normal is pulled back towards the face it is painted on as it turns
 // edge-on, and left alone everywhere else. The blend is keyed on the GEOMETRIC
@@ -236,7 +236,7 @@ vec3 PbrVisibleNormal(
 	// option's default of 0.5 the two are the same expression: (smoothness - 0.5)
 	// / 0.5 is 2 * smoothness - 1, which is smoothness - (1 - smoothness).
 	//
-	// ⚠️ The two ends do not do what a threshold usually does. 0.0 is the plain
+	// The two ends do not do what a threshold usually does. 0.0 is the plain
 	// square root of the smoothness with the numerator unbounded above - the
 	// threshold off, which is what the option's own note says - so no surface is
 	// excluded, only scaled by the square root of how smooth it is. 1.0 is the

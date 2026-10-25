@@ -148,12 +148,12 @@ vec4 FogV2(
 
 	float fogFactor = min(borderFog + atmosphereFog, 1.0);
 
-	// ⚠️ There used to be a cull here that zeroed the fog outright below 0.01 and
+	// There used to be a cull here that zeroed the fog outright below 0.01 and
 	// only reached full by 0.015:
 	//
-	//     if (skyFogStrength > 0.0) {
-	//         fogFactor *= smoothstep(0.01, 0.015, fogFactor);
-	//     }
+	// if (skyFogStrength > 0.0) {
+	// fogFactor *= smoothstep(0.01, 0.015, fogFactor);
+	// }
 	//
 	// It was written as an optimization for close terrain, and the guard was meant
 	// to disable it for the three cases that are close fog (blindness, underwater

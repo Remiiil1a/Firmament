@@ -30,24 +30,24 @@
 // It is built from colortex0 and added in final.fsh, before the tonemap, and
 // both halves of that matter:
 //
-//   * The input is the linear HDR frame, not the tonemapped one. "Brighter than
-//     white" only means anything before the curve: after the tonemap has run,
-//     everything above white has already been squashed flat and there is nothing
-//     left to find. It also means the blur averages light, which is what a
-//     weighted average of pixels is.
+// * The input is the linear HDR frame, not the tonemapped one. "Brighter than
+// white" only means anything before the curve: after the tonemap has run,
+// everything above white has already been squashed flat and there is nothing
+// left to find. It also means the blur averages light, which is what a
+// weighted average of pixels is.
 //
-//   * The result is added to the light rather than mixed into the finished
-//     value, so a bright pixel spills onto its neighbours without those
-//     neighbours losing their own color.
+// * The result is added to the light rather than mixed into the finished
+// value, so a bright pixel spills onto its neighbours without those
+// neighbours losing their own color.
 //
 // What it deliberately does not do:
 //
-//   * The godrays, the motion blur and the vignette are all added in final.fsh,
-//     after the bloom buffer has been built, so none of them feeds back into the
-//     glow: a shaft of light crossing the screen does not brighten what it
-//     crosses.
-//   * Nothing is carried across frames. Each frame's bloom is built from that
-//     frame alone, so it cannot smear or accumulate.
+// * The godrays, the motion blur and the vignette are all added in final.fsh,
+// after the bloom buffer has been built, so none of them feeds back into the
+// glow: a shaft of light crossing the screen does not brighten what it
+// crosses.
+// * Nothing is carried across frames. Each frame's bloom is built from that
+// frame alone, so it cannot smear or accumulate.
 //
 // Cost: four passes at half and quarter resolution, plus two fetches in
 // final.fsh. Each buffer is smaller than the frame by the square of its scale,
@@ -78,7 +78,7 @@
 // washes the contrast out; raising it picks out only the genuinely overexposed
 // things - the sun, lava, a torch flame.
 //
-// ⚠️ The default in the option list is 0.0, and at 0.0 this is not a threshold
+// The default in the option list is 0.0, and at 0.0 this is not a threshold
 // at all: the ramp in BloomContribution below leaves a contribution of exactly
 // 1.0 for every pixel there is, so the blur is of the whole frame and adds a
 // fixed fraction of it everywhere. With the values as shipped (0.0 here, 0.35
