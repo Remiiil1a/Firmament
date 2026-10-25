@@ -68,7 +68,7 @@
 #include "/environment/lighting/diffuse.glsl"
 
 layout(location = 0) out vec4 out0;
-layout(location = 1) out float out1;
+layout(location = 1) out vec2 out1;
 
 #if defined(TRANSLUCENT)
 	#define opaqueDepth vxDepthTexOpaque
@@ -178,7 +178,19 @@ void voxy_emitFragment(VoxyFragmentParameters parameters) {
 	#endif
 
 	out0 = fragmentColor;
-	out1 = skyLight;
+
+	// Batch 650: the water mask travels with the skylight, and this is what the
+	// reference packs do for LOD terrain in their own way - the material channel is
+	// written by the Voxy programs themselves, because nothing else can know what a
+	// Voxy pixel is.
+	//
+	// The mask matters outside this program: the screen-space shadow in the deferred
+	// pass asks colortex2.g whether it is standing on water, and until now a Voxy
+	// pixel answered nothing, so a lake was shadowed like the land beside it - which
+	// at dusk showed as black patches and long dark stripes. The material id is
+	// already decoded a few lines up for the water shading, so asking it costs
+	// nothing.
+	out1 = vec2(skyLight, materialID == WATER ? 1.0 : 0.0);
 
 	#if defined(FANCY_TRANSLUCENTS) && !defined(TRANSLUCENT)
 		out2 = fragmentColor;

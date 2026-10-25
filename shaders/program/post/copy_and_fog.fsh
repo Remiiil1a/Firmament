@@ -532,16 +532,18 @@ void main() {
 			//
 			// Where there is no normal there is nothing to ask: Voxy and the DH
 			// terrain write no material buffer - the gap the ambient occlusion above
-			// already documents.
+			// already documents - so those pixels keep the weight they had. Asking a
+			// pixel with no normal for NdotL and assuming the answer would be wrong
+			// either way; leaving the weight alone is at least the behaviour the
+			// effect already had over distant terrain.
 			//
-			// Batch 649: and that absence is now a reason to skip the effect rather
-			// than to assume the surface faces the sun. The author's screenshots show
-			// LOD water going black at dusk with long dark stripes across it, which is
-			// this effect running at a grazing angle on a surface whose material was
-			// never written - so the water mask below could not recognise it either.
-			// Nothing here can tell a Voxy lake from Voxy stone, and shading a lake like
-			// the land around it is what went wrong; leaving it unshadowed is the
-			// failure that does not exist on screen.
+			// What does NOT happen any more is refusing the effect for want of a
+			// material (batch 649 did that, and batch 650 took it back out). Distant
+			// terrain is the whole reason this effect exists, so removing it there was
+			// the wrong answer to the water problem. The right one is to write the
+			// water mask where the water is drawn: the Voxy programs decode the block
+			// id already, and they write colortex2.g again since batch 650, so the
+			// mask below now answers for LOD water as well.
 			vec4 sssMaterial = texelFetch(colortex7, ivec2(gl_FragCoord), 0);
 			bool sssHasMaterial = dot(sssMaterial.xyz, sssMaterial.xyz) > 0.5;
 			float sssNdotL = 1.0;
@@ -555,7 +557,7 @@ void main() {
 			float sssWeight = SSS_STRENGTH * sssSunFade * sssNdotL * smoothstep(
 				sssReach * 0.85, sssReach * 1.15, sssDistance);
 
-			if (sssWeight > 0.0 && sssHasMaterial && !sssTranslucent && sssWater < 0.5) {
+			if (sssWeight > 0.0 && !sssTranslucent && sssWater < 0.5) {
 				float lit = ScreenSpaceShadow(
 					depthtex1,
 					gbufferProjection,
