@@ -1048,34 +1048,9 @@ void main() {
 		// compares have to be measured with for the comparison to mean anything.
 		float fogOwnDepth = texelFetch(depthtex0, pixel, 0).r;
 
-		// ⚠️ The held item is left out of the fog, and that is a fix rather than an
-		// omission (batch 636, from the hand/TAA audit).
-		//
-		// The item is rasterised with the hand's own projection, so the depth in
-		// depthtex0 at those pixels is in the hand's depth space: Bliss converts it
-		// back before using it (convertHandDepth, all_solid.fsh:242) and Sundial does
-		// the same algebra (Composite7.frag:106). This pass does not, and it is the one
-		// place where that matters for a still picture - FogViewDistance linearises that
-		// number with the world's projection (:200), which puts the item about a tenth
-		// of a block from the eye, so the tap gate (:307) flips along the item's
-		// silhouette. The step that leaves is multiplied into `shown` AFTER the resolve,
-		// and the history deliberately stores the frame WITHOUT it (:1037-1043), so no
-		// amount of accumulation can smooth it: a hard, unchanging edge - which is the
-		// report exactly.
-		//
-		// Skipped rather than converted, because the conversion needs the hand's own
-		// depth scale, which is not declared anywhere in this pack and whose value
-		// cannot be established from here. The item is also at arm's length, well inside
-		// the first cell of a volumetric layer that is gated at a block, so the fog it
-		// would receive is a negligible part of the effect.
-		bool fogHandPixel = texelFetch(depthtex0, pixel, 0).r
-			< texelFetch(depthtex2, pixel, 0).r;
+		vec4 volumetrics = UpsampleVolumetrics(screenCoord, fogOwnDepth);
 
-		if (!fogHandPixel) {
-			vec4 volumetrics = UpsampleVolumetrics(screenCoord, fogOwnDepth);
-
-			shown = shown * volumetrics.a + volumetrics.rgb;
-		}
+		shown = shown * volumetrics.a + volumetrics.rgb;
 	#endif
 
 	gl_FragData[0] = vec4(shown, 1.0);
