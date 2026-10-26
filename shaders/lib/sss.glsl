@@ -114,6 +114,13 @@ uniform int frameCounter;
 // of them declare it themselves.
 uniform vec2 texelSize;
 
+// This frame's sub-pixel offset, in the same units the vertex programs add to the
+// clip position (lib/taa.glsl computes it, shaders.properties exposes it as a
+// custom uniform). The deferred pass does not include lib/taa.glsl, so it is
+// declared here; this file is only included from that one program, so there is no
+// second declaration to collide with.
+uniform vec2 taaJitter;
+
 // Cheap per-pixel value in 0..1, used to offset the first step of the ray so that
 // neighbouring pixels do not march through the same sample positions.
 //
@@ -198,6 +205,23 @@ float SssScreenNoise(vec2 fragCoord) {
 			-viewPos.z);
 		originProjPos.z += projection[3].z;
 		originProjPos.xy += projection[2].xy * viewPos.z;
+
+		// Sundial's TAA compensation, which the first version of this port dropped
+		// and which is very likely why the stripes survived the port (batch 655).
+		//
+		// The geometry in the depth buffer was rasterised with this frame's jitter
+		// added to its clip position, so the surface this fragment belongs to is not
+		// where the unjittered projection puts it - it is half the jitter away, in
+		// screen units. Without this line the ray starts from a slightly different
+		// point than the depth samples it compares against, and at a grazing sun
+		// every sample then lands on the neighbouring surface instead of on the ray:
+		// the whole slope reads as occluded in bands, which is exactly the report.
+		//
+		// Adding `jitter * w` before the perspective divide is Sundial's own
+		// formulation; ours is the same number in our units. taaJitter is the NDC
+		// offset the vertex programs add (lib/taa.glsl, shaders.properties), so the
+		// screen offset is half of it.
+		originProjPos.xy += taaJitter * originProjPos.w;
 
 		float projScale = 0.5 / originProjPos.w;
 		vec4 originCoord = vec4(originProjPos.xyz * projScale + 0.5, 0.0);
