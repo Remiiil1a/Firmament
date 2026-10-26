@@ -437,8 +437,26 @@ void main() {
 		}
 
 		if (sssDepth < 1.0) {
+			// Batch 656: and the other half of the TAA pairing.
+			//
+			// Batch 655 put Sundial's `originProjPos.xy += taaOffset * w` inside the
+			// march, but their caller also does the opposite before it: it reconstructs
+			// the view position from a DE-JITTERED coordinate. Doing only the second
+			// half leaves the origin off by the jitter instead of on it - which is
+			// worse than before, and would explain a shadow that lines up at one field
+			// of view and not at another, because the size of the error is the size of
+			// the frame's sub-pixel offset while the surface pattern it is compared
+			// against is fixed.
+			//
+			// The geometry in the depth buffer was drawn with this frame's offset added
+			// to its clip position, so the content of this pixel belongs half an offset
+			// earlier in screen space. taaJitter is that offset in NDC (the vertex
+			// programs add it as `TaaJitter() * w`), so subtracting it here asks where
+			// the surface under this pixel actually is, and the march adds it back when
+			// it projects.
 			vec3 sssNdcPos = vec3(
-				gl_FragCoord.xy * windowToNdc - 1.0, sssDepth * 2.0 - 1.0);
+				gl_FragCoord.xy * windowToNdc - 1.0 - taaJitter,
+				sssDepth * 2.0 - 1.0);
 			vec4 sssViewH = gbufferProjectionInverse * vec4(sssNdcPos, 1.0);
 			vec3 sssViewPos = sssViewH.xyz / sssViewH.w;
 			float sssDistance = length(sssViewPos);
