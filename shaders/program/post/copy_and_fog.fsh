@@ -412,29 +412,23 @@ void main() {
 		// ScreenSpaceShadow, at the call below - and the comment on the two
 		// uniforms at the top of the file says the same thing about which of
 		// the two depth buffers this pass names as the surface.
-		float sssDepth = texelFetch(depthtex0, ivec2(gl_FragCoord), 0).r;
-
-		// Batch 652: the ray starts from the OPAQUE surface, which is the one the
-		// trace walks through.
+		// Batch 657: the effect stands on the OPAQUE depth and nothing else, which is
+		// what both reference packs do, and the translucents are left alone entirely.
 		//
-		// This pass used to start from the depth that includes translucents, and the
-		// reason was to shade the surfaces only that buffer contains. The water mask
-		// below now refuses those surfaces outright, and what is left is the damage a
-		// mismatch does: the start point sits in front of the geometry the samples are
-		// compared against, so a ray that should have found open sky finds the ground
-		// it started from, and the surface shadows itself everywhere. The author's
-		// screenshots show exactly that - a stepped hillside whose top faces are all
-		// darkened, in stripes - against the reference pack where the same hillside is
-		// lit and only the shadow map's own shadows appear.
+		// The pipeline makes this safe and it is worth saying why, because the
+		// opposite was assumed for many batches: this is the `deferred` pass, and Iris
+		// draws the translucent geometry AFTER it. So at this moment the opaque depth
+		// buffer describes the surface this pixel shows - the water is not there yet -
+		// and whatever is written here is something the water is then composited over,
+		// exactly as in the references. There is therefore no water to exclude, no
+		// mask to write and no second buffer to consult.
 		//
-		// Both reference packs evaluate their screen-space shadow on the opaque depth
-		// for this reason, and neither needs a water mask because a water surface is
-		// never their receiver at all.
-		float sssOpaqueSurface = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
-
-		if (sssOpaqueSurface < 1.0) {
-			sssDepth = sssOpaqueSurface;
-		}
+		// What that removes: the water mask fetch and its test, the translucent test
+		// built on comparing the two depth buffers, and the special case in the Voxy
+		// programs that wrote a mask for this pass. All of it existed to answer a
+		// question that the pass ordering answers on its own, and every one of them
+		// was a place where the two could disagree.
+		float sssDepth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
 
 		if (sssDepth < 1.0) {
 			// Batch 656: and the other half of the TAA pairing.
@@ -471,62 +465,14 @@ void main() {
 			// distance reading as zero, which is what the post passes get for it.
 			float sssReach = max(min(sssShadowDistance, far), 32.0);
 
-			// Whether the surface this pixel is looking at is translucent - water,
-			// ice, glass, and the water drawn on LOD terrain.
-			//
-			// The two depth buffers answer that between them: only one of them has
-			// the translucent pass in it, so they differ exactly where something
-			// translucent is in front. That is the whole of the test.
-			//
-			// Such a pixel is left out of the screen-space shadows. What is seen of
-			// water is the sky and the world reflected in it plus the light that
-			// came through it, and none of those is something a shadow should be
-			// multiplying. It matters most at a distance, where a water surface is
-			// seen at a grazing angle and the ray finds occluders far more often:
-			// that is why water on LOD terrain came out darker than the same water
-			// in the near world, and why this is where that difference is settled.
-			float sssSurfaceDepth = texelFetch(depthtex0, ivec2(gl_FragCoord), 0).r;
-			float sssOpaqueDepth = texelFetch(depthtex1, ivec2(gl_FragCoord), 0).r;
-			bool sssTranslucent = sssSurfaceDepth + 1.0e-6 < sssOpaqueDepth;
-
-			// And the water mask, which answers a different question (batch 648,
-			// from the comparative audit).
-			//
-			// Neither pack this was compared against ever runs a screen-space shadow
-			// on a water surface, and not because they test for water: their effect is
-			// evaluated on the OPAQUE surface only, so a water pixel is not the surface
-			// being shaded. This pass is deliberately different - it stands on the
-			// depth that includes translucents, so a lake IS a receiver here, which is
-			// what shades ice and glass correctly - but for water it is wrong, and the
-			// author has seen how: at dusk the sun grazes the surface, the ray finds
-			// occluders all along it, and the water goes black in patches.
-			//
-			// colortex2.g is the pack's own water mask, written by the surface program
-			// and already trusted one pass over by the volumetric fog. One fetch.
-			float sssWater = texelFetch(colortex2, ivec2(gl_FragCoord), 0).g;
-
-			// Painted magenta wherever the test above says "translucent", so that
-			// it can be checked against what is on screen - in both the near world
-			// and on LOD terrain - rather than being trusted.
-			//
-			// Hung on the depth debug view rather than on DEBUG as a whole: DEBUG
-			// is an enum whose name is defined whatever it is set to, so an
-			// #ifdef on it is true in every mode and would paint over the image
-			// permanently. See the values in lang/zh_CN.lang.
-			//
-			// The guard around the test is not decoration. DEBUG and DEBUG_DEPTH
-			// are declared in postprocessing.fsh, which is a different program,
-			// and an option is a macro - so this pass cannot see either of them,
-			// and a test on two names the preprocessor has never heard of is a
-			// test of 0 against 0. Written plainly, this painted every translucent
-			// surface in the frame half magenta in every mode. Written with the
-			// guard, the marking appears in the depth debug view and nowhere else,
-			// which is what it was for.
-			#if defined(DEBUG) && DEBUG == DEBUG_DEPTH
-				if (sssTranslucent) {
-					background = mix(background, vec3(1.0, 0.0, 1.0), 0.5);
-				}
-			#endif
+			// The translucent test and the water mask that used to stand here are
+			// gone as of batch 657, and the reason is the pass ordering: Iris draws
+			// the translucent geometry after this pass, so the opaque depth is already
+			// the surface this pixel shows and the water is composited over whatever
+			// is written here. Both references rely on exactly that and carry no such
+			// test. Keeping ours also had a concrete hazard once the receiver moved to
+			// depthtex1: the mask is written by a pass that has not run yet, so the
+			// value read here is the previous frame's.
 
 			// Faded out while the light is low, and that is the whole of it.
 			//
@@ -591,7 +537,7 @@ void main() {
 			float sssWeight = SSS_STRENGTH * sssSunFade * smoothstep(
 				sssReach * 0.85, sssReach * 1.15, sssDistance);
 
-			if (sssWeight > 0.0 && !sssTranslucent && sssWater < 0.5) {
+			if (sssWeight > 0.0) {
 				float lit = ScreenSpaceShadow(
 					depthtex1,
 					gbufferProjection,

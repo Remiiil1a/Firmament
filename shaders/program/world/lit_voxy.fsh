@@ -184,24 +184,14 @@ void voxy_emitFragment(VoxyFragmentParameters parameters) {
 	// written by the Voxy programs themselves, because nothing else can know what a
 	// Voxy pixel is.
 	//
-	// Batch 656: and the translucent pass answers "water" unconditionally.
-	//
-	// Batch 650 asked the decoded material id here, which is right in principle and
-	// depends on one thing nobody in this project has verified: what Voxy actually
-	// puts in `parameters.customId`. If it is Voxy's own id rather than the block id
-	// our decoder expects, `materialID == WATER` is never true and the mask silently
-	// never fires - which is exactly what the author then reported: LOD water
-	// flickering with shadows in every situation, at any time of day.
-	//
-	// The translucent Voxy pass draws the water, and for LOD geometry it draws
-	// nothing else that is not also a translucent; so the pass itself is the answer,
-	// and it does not depend on decoding anything. The material id test stays beside
-	// it, because when the decode is right it is the more precise of the two.
-	#ifdef TRANSLUCENT
-		out1 = vec2(skyLight, 1.0);
-	#else
-		out1 = vec2(skyLight, materialID == WATER ? 1.0 : 0.0);
-	#endif
+	// Batch 657 took the branch that used to be here out again. It said "the
+	// translucent pass is water" without asking anything, which was a reasonable
+	// guess for a mask the screen-space shadow read - but that shadow no longer reads
+	// a mask at all (it stands on the opaque depth, where water is not the surface
+	// being shaded), and the mask's one remaining consumer is the volumetric fog.
+	// Guessing on the fog's behalf is not worth the risk, so the decoded material id
+	// is the only test again, exactly as it was before the guess.
+	out1 = vec2(skyLight, materialID == WATER ? 1.0 : 0.0);
 
 	#if defined(FANCY_TRANSLUCENTS) && !defined(TRANSLUCENT)
 		out2 = fragmentColor;
