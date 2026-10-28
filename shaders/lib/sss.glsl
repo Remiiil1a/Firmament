@@ -272,6 +272,28 @@ float SssScreenNoise(vec2 fragCoord) {
 		// shrinks with distance because the depth buffer's precision does: at a
 		// hundred blocks a fixed window would accept the sky.
 		float maximumThickness = 0.0005 * viewLength;
+
+		// Batch 658: and it is widened by the ray's own depth gradient, because a
+		// fixed window cannot work at a grazing sun and that is the report.
+		//
+		// When the light is a couple of degrees above the horizon the ray runs almost
+		// parallel to the ground, so between two samples the ray's depth changes by far
+		// more than the window is wide. The surface it is walking along then sits
+		// sometimes inside the window and sometimes outside it, sample after sample,
+		// and the result is the banding reported at sunrise and sunset - bands that
+		// move with the camera and read as flicker.
+		//
+		// The gradient is the depth the ray covers per unit of screen, times one texel:
+		// that is exactly how much the comparison can legitimately be off by when the
+		// ray is this shallow, so the window is at least that wide. A steep hit - a
+		// cliff face, a tree trunk - has a small gradient and keeps the sharp window it
+		// needs, so this widens the test only where it was wrong.
+		float depthGradient = abs(stepSize.z)
+			/ max(length(stepSize.xy), 1.0e-6)
+			* max(texelSize.x, texelSize.y);
+
+		maximumThickness = max(maximumThickness, depthGradient * 2.0);
+
 		sampleCoord.z -= maximumThickness;
 
 		for (int i = 0; i < SSS_SAMPLES; i++) {
