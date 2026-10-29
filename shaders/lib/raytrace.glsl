@@ -141,9 +141,23 @@ bool Raytrace(
 	// better than a vec3 + float.
 	vec4 velocityAndThickness = vec4(reflectDirection, thicknessControl);
 
-	// If the reflection is towards the viewer, immediately reject it since no
-	// good reflection is really feasible here.
-	if (dot(viewPos, reflectDirection) < 0.0) {
+	// The reflection is refused only when it heads BEHIND the camera plane,
+	// which is the one case the depth buffer can never answer: view space looks
+	// down -Z, so a reflected direction with a positive Z is going back over the
+	// camera's shoulder and every sample past the crossing would project to a
+	// mirrored place on the wrong side of the screen.
+	//
+	// What used to stand here was `dot(viewPos, reflectDirection) < 0.0`, and it
+	// is not that test. With V the view direction and N the normal,
+	// dot(P, R) = |P| * (1 - 2 (V.N)^2), so it was true exactly when the view
+	// ray was within 45 degrees of the surface normal - and on a floor or a
+	// ceiling the reflected ray keeps the view's own Z, so nothing was going
+	// behind anything. What it actually refused was every pixel where you look
+	// down at more than 45 degrees: a conic on a plane, a disc on the screen,
+	// 16% of the frame at a 30-degree pitch and 32% at 45. `_team_bfog/reflection_45deg_refusal.py`
+	// counts it. On a wall the two tests agree by accident, which is why the
+	// mistake could live this long. Batch 662 replaced it.
+	if (reflectDirection.z > 0.0) {
 		return false;
 	}
 
@@ -418,12 +432,15 @@ bool ScreenSpaceRaytrace(
 	out vec2 hitPos,
 	out vec3 hitViewPos
 ) {
-	// The same refusal Raytrace makes, for the same reason: a reflection that
-	// points back at the viewer reflects the viewer, and there is no camera in
-	// the depth buffer to find.
-	if (dot(viewPos, reflectDirection) < 0.0) {
-		return false;
-	}
+	// No "points back at the viewer" test here, and that is deliberate (batch
+	// 662 - see the note on the same test in Raytrace above). The case it was
+	// meant to catch is a ray heading behind the camera plane, and this function
+	// already answers that exactly: below, `directionClip.w < 0` is that
+	// condition (`w` is -direction.z), and it clamps `maxT` to the camera plane;
+	// a negative result makes `!(maxT > 0)` refuse the ray before the march
+	// starts. Everything else the old test refused - the whole cone where you
+	// look at a floor or a ceiling more squarely than 45 degrees - is a ray that
+	// marches perfectly well forward and finds what is above or below.
 
 	// The ray in the projection's own coordinates, where a point on it is
 	// start + t * direction with the division by w still to be done. Keeping it
