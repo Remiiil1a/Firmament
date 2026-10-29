@@ -75,21 +75,17 @@ uniform sampler2D colortex0;
 // since. The reflection is faded out by it.
 uniform sampler2D colortex2;
 
-// The depth of the surface each pixel shows, translucents included. It is the
-// one the reflection's "is this pixel seen through water" test needs.
-uniform sampler2D depthtex0;
-
-// The held item's depth, which the opaque buffer knows nothing about.
+// The depth of the surface each pixel shows with the translucents in it, and the
+// held item's own depth, which the opaque buffer knows nothing about. Both are
+// declared in environment_reflection.glsl now (batch 663), which reads the pair
+// at the far end of the trace to keep the hand out of reflections; a uniform may
+// only be declared once per program. The tests below use them unchanged.
 //
-// The hand is drawn over the world after the opaque pass, and it writes its own
-// depth buffer rather than depthtex1 - so at a pixel the hand covers, depthtex1
-// still describes the surface BEHIND it. A reflection computed from that surface
-// and added to the pixel lands on the hand, which is how a held iron block came
-// to be shaded with the floor's reflection. Once the composite below started
-// replacing rather than adding, it also scaled the hand's own colour down by that
-// reflection's weight, and the item went dark.
-uniform sampler2D depthtex2;
-
+// The hand is drawn over the world after the opaque pass and writes its own
+// depth buffer rather than depthtex1, so at a pixel it covers depthtex1 still
+// describes the surface BEHIND it - which is why a reflection computed from that
+// surface and added to the pixel used to land on the hand, and how a held iron
+// block came to be shaded with the floor's reflection.
 uniform mat4 gbufferProjectionInverse;
 
 // The reflection this pass produced last frame, and the distance it was

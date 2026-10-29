@@ -45,6 +45,19 @@ uniform sampler2D colortex7;
 uniform sampler2D colortex8;
 uniform sampler2D depthtex1;
 
+// The depth of the surface each pixel shows with the translucents in it, and
+// the one with neither the translucents nor the hand.
+//
+// Batch 663 reads the pair at the far end of the trace: the hand and the held
+// item are in depthtex1 - which is what the march walks through - but not in
+// depthtex2, so a hit that lands where the first is nearer has found the
+// viewmodel rather than a place in the world. They are declared here because
+// this is where they are read; the pass that includes this file uses the same
+// two uniforms for its own "seen through water" and "hand in front" tests, and
+// a uniform may only be declared once per program.
+uniform sampler2D depthtex0;
+uniform sampler2D depthtex2;
+
 uniform mat4 gbufferProjection;
 uniform mat4 gbufferModelView;
 
@@ -394,7 +407,32 @@ vec3 EnvironmentReflection(
 						1.0,
 						(1.0 - max(hitPosAbs.x, hitPosAbs.y)) / 0.10);
 
-					environment = mix(environment, hitColor, edgeFade);
+					// Batch 663: the hand and the held item are not part of the
+					// world, so they are not part of what the world reflects.
+					//
+					// They are drawn in front of the camera at their own depth,
+					// which means the march - walking depthtex1 - can land on
+					// them like any other geometry, and what it then samples out
+					// of the previous frame is the player's own arm where a
+					// floor or a wall should be. The two depth buffers separate
+					// the case exactly: depthtex0 has the hand in it, depthtex2
+					// does not, so the hand is where the first is the nearer.
+					// A hit there is treated as a miss, which is the same answer
+					// the surface would have given before the trace ran: the sky.
+					//
+					// The texel is clamped because a hit two thousandths of a
+					// pixel outside the buffer is not a place, and a fetch there
+					// has no defined result.
+					ivec2 hitTexel = clamp(
+						ivec2(hitPos * 2.0 / windowToNdc),
+						ivec2(0),
+						ivec2(textureSize(depthtex0, 0)) - 1);
+					float handFade = texelFetch(depthtex0, hitTexel, 0).r
+						< texelFetch(depthtex2, hitTexel, 0).r
+						? 0.0
+						: 1.0;
+
+					environment = mix(environment, hitColor, edgeFade * handFade);
 				}
 			}
 		#endif
