@@ -38,8 +38,10 @@
 // anything moving relative to the world is handled by rejecting history that
 // does not match the current frame rather than by tracking it. What the pack does
 // have is one shared, well-defined camera reprojection, in /lib/reproject.glsl,
-// which the resolve, the reflection's history and the motion blur all take their
-// movement from.
+// which the resolve and the motion blur take their movement from. (The
+// reflection's own history took it from there too until batch 664 removed that
+// history: the reflection is applied by composite1 before the resolve now, and
+// the resolve's history is the only one it has.)
 
 // What this pass does with the frames it is given. **Off by default.**
 //
@@ -63,10 +65,12 @@
 // correlation and not a diagnosis, and the eight attempts recorded at the time
 // failed to turn it into one - so the choice made then was to leave the pass
 // available to whoever wants to look at it and take it out of the default path.
-// It is not deleted because the buffer it writes, colortex3, is also the picture
-// the environment reflection is traced over (composite3.fsh reads it): removing
-// the pass means keeping that write, and a mistake there breaks something else
-// entirely.
+// It is not deleted because the write it owns is the pack's temporal history:
+// colortex3 is what every frame of the resolve accumulates onto, and since batch
+// 664 it carries the environment reflection too - the reflection is applied by
+// composite1 ahead of the resolve, because being in this history is what averages
+// its dither. Removing the pass means keeping that write, and a mistake there
+// breaks something else entirely.
 //
 // **Anti-aliasing does not need it.** SMAA is the supported answer and is on the
 // effect menu; what is lost by leaving this off is the temporal averaging of the

@@ -872,11 +872,12 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // which from the picture - which is how seven attempts at its blur were made
 // without once establishing whether the blur was running at all.
 //
-// Unlike the others this one is not read by the surface programs: it replaces
-// the finished frame in composite3, which is the pass that applies the
-// reflection - see environment_reflection.glsl. Turning it on leaves the sky and the terrain as the reflection
-// alone, so what is shown is exactly what the reflection contributed, at four
-// times its strength so that a faint one can be seen.
+// Unlike the others this one is not read by the surface programs, and it is not a
+// picture of the frame either: it is a READOUT, written by composite1 when it
+// applies the reflection - see the note at the readout in that file and in
+// environment_reflection.glsl. Three numbers are shown: the reflectance the
+// material buffer holds, the smoothness gate it produces, and whether the
+// material buffers were written for the pixel at all.
 #define PBR_DEBUG_REFLECTION 11
 #define PBR_DEBUG PBR_DEBUG_NONE // [PBR_DEBUG_NONE PBR_DEBUG_HEIGHT PBR_DEBUG_SMOOTHNESS PBR_DEBUG_F0 PBR_DEBUG_NORMAL PBR_DEBUG_MIP PBR_DEBUG_TANGENT_NORMAL PBR_DEBUG_MATERIAL_AO PBR_DEBUG_SUBSURFACE PBR_DEBUG_EMISSION PBR_DEBUG_REFLECTION]
 
@@ -944,12 +945,12 @@ struct PbrSurface {
 	// dielectric. metalness above says whether there is a metal here; this says
 	// which one, which is what PbrMetalF82 needs for the colour it reflects at a
 	// grazing angle. It is carried rather than recomputed because the byte it
-	// came from is gone by the time the reflection is applied: the deferred pass
-	// (composite3) has only the two material buffers this file's callers write -
-	// a normal and a roughness in one, a reflectance in the other - and the
-	// byte's only place left is the alpha of the reflectance, written as
-	// metalID / 255 at the bottom of lit.fsh and read back in
-	// environment_reflection.glsl.
+	// came from is gone by the time the reflection is applied: the pass that
+	// applies it (composite1, since batch 664) has only the two material buffers
+	// this file's callers write - a normal and a roughness in one, a reflectance
+	// in the other - and the byte's only place left is the alpha of the
+	// reflectance, written as metalID / 255 at the bottom of lit.fsh and read back
+	// in environment_reflection.glsl.
 	float metalID;
 	// Emission strength, 0.0 when the material does not emit.
 	float emission;
@@ -1066,7 +1067,7 @@ const vec3 PBR_LUMINANCE = vec3(0.2126, 0.7152, 0.0722);
 //
 // Declared out here rather than next to the BRDF below, which is where it
 // belongs thematically, because a pass with no block atlas has no PBR_SURFACE
-// and the guard below would remove it - and composite3 includes this file
+// and the guard below would remove it - and composite1 includes this file
 // without ever drawing a block. Nothing outside this file calls it as things
 // stand: reflections.glsl carries its own PbrReflectionFresnel, and that is what
 // the environment reflection actually evaluates. What keeps this out here is
@@ -2499,10 +2500,10 @@ vec3 PbrDebugColor(
 		// Not for the hand, and that exclusion is not a detail (batch 623).
 		//
 		// The step-back below is worth making only where the deferred reflection will
-		// actually replace this term, and the deferred pass does not cover the hand:
+		// actually replace this term, and the reflection does not cover the hand:
 		// the hand is drawn over the world with a depth buffer of its own, so
-		// composite3 skips those pixels outright - see the depthtex2 test in that
-		// pass. Retargeting this guard from the old sky-reflection option to PBR_SSR
+		// composite1 skips those pixels outright for the reflection - see the
+		// depthtex2 test in that pass. Retargeting this guard from the old sky-reflection option to PBR_SSR
 		// in batch 622 therefore took the environment response away from held items
 		// without giving them anything back, and a held metal - which has no diffuse
 		// response at all - came out black. Batches 621 section 20 and 623 are the

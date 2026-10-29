@@ -17,30 +17,41 @@
 // The environment reflection of a PBR material, as applied by the pass that
 // adds it to the picture.
 //
-// It reads colortex3: the frame resolved over the last few frames, with no
-// reflection in it. That is the buffer a reflection wants, because it is the
-// only picture of the world on screen that has stopped moving. A trace over a
-// single raw frame would re-answer every frame from a foot that the jitter has
-// shifted, and nothing downstream averages the result, because the reflection is
-// added after the temporal resolve. That is what a crawling reflection is, and
-// why it reads worse at a lower frame rate.
+// It samples colortex4: the deferred pass's copy of this frame, written by
+// /program/post/copy_and_fog.fsh. That is a raw single frame rather than a
+// resolved one, and the per-frame dither of the trace is exactly what the
+// temporal resolve is for - which is where this reflection is applied now,
+// ahead of that resolve, since batch 664.
 //
-// colortex3 is composite1's output and not the deferred pass's: the deferred
-// pass leaves a raw, unresolved frame, and composite1 is what resolves it and
-// writes it here. It is the anti-aliasing history as well, and that is why it is
-// declared with colortex3Clear=false - see the note in shaders.properties and
-// lib/taa.glsl.
+// The move is the whole of batch 664. A reflection added AFTER a temporal
+// resolve is a fresh noisy sample every frame, with nothing downstream to
+// average it: that is what a crawling reflection is, and it reads worse at a
+// lower frame rate. Both reference packs trace their reflections before their
+// temporal stage for the same reason. A reflection added BEFORE it is part of
+// what the history accumulates, and the history averages the dither for free.
 //
-// composite3 owns both halves of that arrangement: it runs after composite1,
-// which writes colortex3, and it never writes a reflection back into it - its
-// DRAWBUFFERS is 09, so it writes colortex0 and colortex9 and nothing else - so
-// the trace finds the world and never another reflection. (The only writer of
-// colortex1 anywhere in the pack is /program/post/volumetric_fog.fsh.)
+// Sampling colortex4 rather than colortex3 is what makes that legal. composite1
+// writes colortex3, and a buffer a pass writes is not one it may trace over: the
+// read side is the previous frame's resolved image, reflection and all, so a
+// trace over it would sample a picture that already contains a reflection - the
+// feedback loop whose symptom was a black blot that grew (BATCH_LOG.md 210).
+// colortex4 carries no reflection, and it is this frame's world, which is also
+// the frame the reflection is being added to.
 //
-// The uniform it needs is declared here rather than in the pass, because the
-// pass includes this file.
+// The price of the move is recorded where the reflection is applied, in
+// composite1.fsh. Batches 220 and 267 chose the other side of that trade - a
+// pass of its own, after the resolve, tracing over the resolved colortex3 - and
+// batch 664 was the author's decision to move the reflection back.
+//
+// The uniforms are declared here rather than in the pass, because the pass
+// includes this file. colortex3 is declared here too although this file no
+// longer samples it: the pass that includes it does - that buffer is its
+// anti-aliasing history, written with colortex3Clear=false, see the note in
+// shaders.properties and lib/taa.glsl - and a uniform may only be declared once
+// per program.
 
 uniform sampler2D colortex3;
+uniform sampler2D colortex4;
 uniform sampler2D colortex7;
 uniform sampler2D colortex8;
 uniform sampler2D depthtex1;
@@ -51,11 +62,13 @@ uniform sampler2D depthtex1;
 // Batch 663 reads the pair at the far end of the trace: the hand and the held
 // item are in depthtex1 - which is what the march walks through - but not in
 // depthtex2, so a hit that lands where the first is nearer has found the
-// viewmodel rather than a place in the world. They are declared here because
-// this is where they are read; the pass that includes this file uses the same
-// two uniforms for its own "seen through water" and "hand in front" tests, and
-// a uniform may only be declared once per program.
-uniform sampler2D depthtex0;
+// viewmodel rather than a place in the world.
+//
+// depthtex2 is declared here because this is where it is read. depthtex0 is not:
+// the pass that includes this file (composite1) reads it in its fog upscale,
+// which sits above this include in its source, so THAT pass declares it and this
+// file uses that declaration - a uniform may only be declared once per program,
+// and a shader has to see one before the code that uses it.
 uniform sampler2D depthtex2;
 
 uniform mat4 gbufferProjection;
@@ -76,8 +89,8 @@ uniform vec2 windowToNdc;
 // This is the only place the environment reflection exists. It used to be added
 // where each surface was drawn, which meant the reflection could not include the
 // world: a surface is drawn while the frame it belongs to is still being filled,
-// so the depth buffer it would have to trace against is not finished. Here, one
-// pass later, it is.
+// so the depth buffer it would have to trace against is not finished. Here, in
+// the composite stage, it is.
 // seenThrough: whether this pixel is being looked at through something
 // translucent - water, ice, glass. The caller answers it because it is a
 // question about the two depth buffers, and only the caller has both; see
@@ -108,7 +121,7 @@ vec3 EnvironmentReflection(
 		// no reflection at all, and the reason for that is not about the
 		// surface - it is about where the reflection would be put.
 		//
-		// Water is drawn after the pass that copies the world into colortex3,
+		// Water is drawn after the pass that copies the world into colortex4,
 		// and it refracts what is behind it, so the picture of a block under
 		// the surface is not where the block is. The depth and the material of
 		// that block still are: depthtex1 is the opaque depth, and the block is
@@ -379,9 +392,16 @@ vec3 EnvironmentReflection(
 					// at - not a rule here, which could only bring the ring
 					// back.
 					//
-					// What the ray found, which is the previous frame: the frame
-					// this one is being drawn from is complete in depth but not in
-					// colour at this point in the pipeline.
+					// What the ray found, in the deferred pass's copy of THIS
+					// frame.
+					//
+					// colortex4 and not colortex3, and that is not a detail: the
+					// pass that calls this one (composite1) writes colortex3, so
+					// what a read there returns is the previous frame's resolved
+					// image - reflection included - and a trace that samples a
+					// picture containing itself feeds on itself. colortex4 is
+					// copy_and_fog.fsh's copy of the world as this frame left it,
+					// which is also the frame this reflection is added to.
 					//
 					// One sample, and this is where the traced half used to be spread
 					// over the cone the surface's roughness opens - an eight-tap ring
@@ -396,7 +416,7 @@ vec3 EnvironmentReflection(
 					// at once, so one sample of that range is an arbitrary choice
 					// rather than an answer. The traced half is a picture, and one
 					// sample of a picture is that picture.
-					vec3 hitColor = texture(colortex3, hitPos).rgb;
+					vec3 hitColor = texture(colortex4, hitPos).rgb;
 
 					// Fade the result out near the edge of the screen, where the
 					// ray is about to leave the buffer and there is nothing more

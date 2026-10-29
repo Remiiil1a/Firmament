@@ -66,26 +66,45 @@ uniform sampler2D colortex0;
 
 // The previous frame, resolved, which is what this pass accumulates onto.
 //
-// It is also the buffer the environment reflection traces over, one pass later.
-// Nothing may be added to what is written into it here: a reflection in the
-// history would be pulled back out again by the neighbourhood clamp below, whose
-// neighbourhood is read from colortex0 and has no reflection in it. See
-// composite3.fsh.
-uniform sampler2D colortex3;
+// Declared by /environment/lighting/environment_reflection.glsl, which this pass
+// includes above the first use of it (HistorySample); a uniform may only be
+// declared once per program, and that include is where this pass's buffer
+// declarations now live.
+//
+// Since batch 664 this buffer also carries the environment reflection, because
+// the reflection is applied ahead of the resolve below. That is the point of the
+// move - the resolve averages the reflection's dither - and the trade it brings,
+// a reflection in the history that can trail something moving on its own, is
+// recorded where the reflection is applied in main().
 
 // The depth buffer that includes translucents, so that it matches what is
 // actually in colortex0. (depthtex1 is the opaque-only depth, which the water
 // reflections use.)
+//
+// Declared HERE rather than in /environment/lighting/environment_reflection.glsl,
+// although that file reads this buffer too: the fog upscale above reads it long
+// before that include, and a shader has to see a declaration before the code that
+// uses it. The library is included lower in this file and uses this declaration.
+// depthtex2 is the other way round - this pass only reads it in main(), which is
+// below the include, so the library declares it.
 uniform sampler2D depthtex0;
 
 // The depth without the hand and without translucents (batch 635). The hand is in
 // depthtex0 and absent from this one, so comparing the two is how a hand pixel is
-// recognised without a mask buffer - the same pair composite3 uses.
-uniform sampler2D depthtex2;
+// recognised without a mask buffer - the same pair the reflection's own
+// hand-in-front test uses, in main().
+//
+// Also declared in /environment/lighting/environment_reflection.glsl.
 
 // The volumetric fog, which this pass composites into the frame in front of the
 // resolve. See the note where it is added, near the bottom of the file.
 uniform sampler2D colortex1;
+
+// The sky light at this pixel, written by the surface programs and not touched
+// since. It arrived with the environment reflection in batch 664: the reflection
+// is faded out by it, and this pass reads it nowhere else. (Its other reader,
+// copy_and_fog.fsh, declares its own copy.)
+uniform sampler2D colortex2;
 
 uniform mat4 gbufferProjectionInverse;
 uniform mat4 gbufferModelViewInverse;
@@ -372,9 +391,19 @@ uniform float blindness;
 
 #include "/lib/raytrace.glsl"
 
-// The environment reflection used to be applied by this pass. It now has a pass
-// of its own, one later, because the buffer it has to read is the resolved image
-// - which is the buffer this pass writes. See composite3.fsh.
+// The environment reflection, back in this pass as of batch 664.
+//
+// It has to come after the four includes above: EnvironmentReflection calls into
+// the sky, the material model, the reflection helpers and the tracer. And it has
+// to come before HistorySample and main(), because it is where the uniforms this
+// pass uses for them are declared - colortex3, colortex4, depthtex0, depthtex1,
+// depthtex2, gbufferProjection, gbufferModelView and windowToNdc - and a shader
+// has to see a declaration before the code that uses it.
+//
+// Where it samples, and why that is no longer the resolved image, is at the top
+// of that file. Where it is applied, and the trade that comes with applying it
+// before the resolve, is in main().
+#include "/environment/lighting/environment_reflection.glsl"
 
 // TEMPORARY DIAGNOSTIC (b501): the End's sky and the view bob.
 //
@@ -387,8 +416,11 @@ uniform float blindness;
 // index 1 the history. Both are written whether anti-aliasing is on or off.
 // colortex3 used to be skipped when it was off, because nothing read the
 // buffer in that case - which stopped being true when the environment
-// reflection moved into a pass of its own: that pass reads this one for the
-// world to trace over.
+// reflection moved into a pass of its own (batch 267): that pass read this one
+// for the world to trace over. Batch 664 moved the reflection back into this
+// pass and it traces colortex4 now, so colortex3 is this pass's own history
+// again; it is still written unconditionally, because the write is what keeps
+// the buffer flow through the pipeline the same on both settings.
 /* DRAWBUFFERS:03 */
 
 // The resolved image of the previous frame, at the given screen position,
@@ -511,7 +543,9 @@ void main() {
 	vec3 current = texelFetch(colortex0, pixel, 0).rgb;
 
 	// Kept as it arrived, for the debug view below: the repair further down would
-	// otherwise hide exactly what that view exists to show.
+	// otherwise hide exactly what that view exists to show - and since batch 664
+	// the environment reflection is added to `current` after this line, so the
+	// left half of that view is the frame with no reflection in it either.
 	vec3 currentRaw = current;
 
 	// Whether what the geometry wrote here is a colour at all.
@@ -531,6 +565,222 @@ void main() {
 	// "is this inside the range I can use" is false of it, which is why the
 	// negation is the check. See BATCH_LOG.md 131.
 	bool currentUsable = dot(current, current) < 1.0e18;
+
+	// BATCH 664: THE ENVIRONMENT REFLECTION, APPLIED BEFORE THE RESOLVE.
+	//
+	// It used to be a pass of its own, after this one (batch 267), tracing the
+	// resolved colortex3. It is applied to `current` here instead, before the
+	// resolve consumes it, for one reason: the trace dithers its ray start every
+	// frame, and a reflection added after the resolve is a fresh noisy sample with
+	// nothing downstream to average it. Ahead of the resolve, the history averages
+	// it - which is what both reference packs do with theirs.
+	//
+	// WHAT THIS COSTS, recorded because it is the thing to look at in game: the
+	// reflection now enters the anti-aliasing history, and that history has no
+	// motion vectors for anything that moves on its own - only the camera's. The
+	// reflection of a moving object can therefore trail behind it, where before it
+	// was answered afresh every frame and could not. Batch 220 took the reflection
+	// out of this pass for a related reason and batch 267 gave it a pass of its
+	// own after the resolve to stop it crawling; batch 664 is the author's decision
+	// to move it back and take the other side of that trade. The neighbourhood
+	// clamp below is the only thing that limits such a trail, and it is
+	// deliberately left exactly as it was: do not weaken it to make a reflection
+	// look sharper.
+	//
+	// One-step rollback: `git -C Firmament checkout -- shaders/` restores the
+	// pre-664 tree - composite3.fsh and .vsh with their two dimension copies, the
+	// three program.composite3 lines in shaders.properties, and a library that
+	// traces the resolved colortex3. There is nothing else to put back.
+	#if defined(PBR_SSR)
+	// The view position is rebuilt here rather than passed in: this pass has only
+	// the pixel it is writing, and every buffer it needs is read by coordinate.
+	//
+	// depthtex1 rather than depthtex0: the tracer marches the opaque depth buffer,
+	// so the ray has to start on the surface that buffer describes. depthtex0 has
+	// the translucents in it, and at any pixel where a water or glass surface is
+	// in front the two are different surfaces - so the ray would set out from the
+	// glass and immediately meet the block behind it, which is a reflection of the
+	// wrong thing from the wrong place.
+	float reflectionDepth = texelFetch(depthtex1, pixel, 0).r;
+
+	// Whether the hand is in front of whatever this pixel's opaque depth
+	// describes - see the note on depthtex2 above. A pixel the item covers is the
+	// item's to shade, and no reflection of the world behind it may be computed
+	// for it, let alone replace any of its colour.
+	//
+	// Which buffer holds the hand, corrected in batch 634 from the TAA audit: Iris
+	// and OptiFine both document depthtex2 as the depth WITHOUT the hand and
+	// without translucents, so the hand is in depthtex0 and absent from depthtex2
+	// - the opposite of what this test assumed until then, which made it false at
+	// every pixel and left the hand shaded with the reflection of the wall behind
+	// it. Comparing against depthtex2 this way is true exactly where something is
+	// in the frame that depthtex2 does not have. Translucents satisfy it too, and
+	// they are already refused below by seenThrough.
+	bool handInFront = texelFetch(depthtex0, pixel, 0).r
+		< texelFetch(depthtex2, pixel, 0).r;
+
+	if (reflectionDepth < 1.0 && !handInFront) {
+		vec3 reflectionNdc = vec3(
+			gl_FragCoord.xy * windowToNdc,
+			reflectionDepth * 2.0) - 1.0;
+		vec4 reflectionViewPosH =
+			gbufferProjectionInverse * vec4(reflectionNdc, 1.0);
+		vec3 reflectionViewPos =
+			reflectionViewPosH.xyz / reflectionViewPosH.w;
+
+		// Whether this pixel is being looked at through something translucent,
+		// which the reflection declines to be computed for - see the note on the
+		// parameter in environment_reflection.glsl.
+		//
+		// The two depth buffers answer it between them: only one of them has the
+		// translucent pass in it, so the one with the translucents in it being the
+		// nearer of the two means there is a water, ice or glass surface in front
+		// of whatever is drawn at this pixel.
+		bool seenThrough = texelFetch(depthtex0, pixel, 0).r
+			< texelFetch(depthtex1, pixel, 0).r;
+
+		// How much of the environment this pixel takes, as a colour, out of the
+		// function as well as the colour it takes: with energy conservation on,
+		// that fraction is what the reflection replaces in the picture rather than
+		// something added to it.
+		vec3 reflectionWeight;
+
+		// Whether the trace found the world, and how far away what it found was.
+		// Both are read by the reflection debug view below.
+		bool reflectionHit;
+		float reflectionHitDistance;
+
+		vec3 environmentReflection = EnvironmentReflection(
+			reflectionViewPos,
+			texelFetch(colortex2, pixel, 0).r,
+			seenThrough,
+			reflectionWeight,
+			reflectionHit,
+			reflectionHitDistance);
+
+		// The reflection is checked here, before anything is done with it.
+		//
+		// This is the only guard it needs now. In composite3 there were two of
+		// them, and they cleaned two different values: the one added to the
+		// picture, and the one written to a private history. Only the second sat
+		// at the end of the pass, which is how a non-finite reflection used to
+		// black out its pixel every frame without ever growing in a buffer - and
+		// why that black blot came and went with the view angle. There is no
+		// private history any more: the anti-aliasing history is the only one, and
+		// what is added to `current` here is what reaches it.
+		//
+		// Zero rather than something clever. A reflection that cannot be trusted
+		// is not a reflection, and adding nothing is the only replacement that
+		// cannot make the picture worse.
+		if (!(dot(environmentReflection, environmentReflection) < 1.0e18)) {
+			environmentReflection = vec3(0.0);
+		}
+
+		#if PBR_DEBUG == PBR_DEBUG_REFLECTION
+		// A READOUT, not a picture of the reflection, and that is the whole point
+		// of the change (batch 627).
+		//
+		// Every round of this investigation guessed which gate had refused a
+		// surface, and each guess cost a build and a screenshot. Three numbers
+		// settle it at a glance, and none of them is visible in any other debug
+		// view:
+		//
+		// red   - the reflectance the material buffer holds, times four so
+		// that a dielectric's few percent is visible at all
+		// green - the smoothness gate that reflectance and the roughness
+		// produce, 0..1, after the metal threshold is applied
+		// blue  - 1 where the material buffers were actually written for this
+		// pixel (the stored normal is a unit vector) and 0 where they
+		// were not
+		//
+		// A surface with no reflection is now diagnosable from one frame:
+		// blue 0            - the program that drew this pixel never wrote the
+		// material buffers at all
+		// blue 1, green 0   - the material is there and too rough to reflect
+		// blue 1, green > 0 - it should reflect, so whatever is missing is
+		// further down
+		// For a dropped item against a block side by side that is the whole
+		// question, and it is three colours rather than three builds.
+		//
+		// It also has to COMPILE, which the previous version did not: it
+		// still referenced PBR_MIN_REFLECTION_DISTANCE after that constant was
+		// deleted in batch 622, and nothing in the check chain ever compiles a
+		// debug view, so the break was invisible until someone asked for the
+		// view. The chain now has a stage that checks every PBR_ identifier used
+		// in the tree is defined somewhere.
+		// Red is scaled by four so that a dielectric`s few percent is not
+		// indistinguishable from zero on screen: 0.04 arrives as 0.16.
+		//
+		vec4 readMaterial = texelFetch(colortex7, pixel, 0);
+		vec4 readReflectance = texelFetch(colortex8, pixel, 0);
+		float readMetalness = step(0.5, readReflectance.a * 255.0);
+
+		// Blue has three states rather than two, because "the buffers were never
+		// written", "they were written and the trace missed" and "the trace hit"
+		// are three different faults, and a screenshot can hold all of them:
+		//
+		// 0.0        nothing was written - the program never filled colortex7
+		// 0.35       written, and the pixel fell back to the sky
+		// 0.5 .. 1.0 written, and the trace hit; brighter means farther, so a
+		// very dim hit is something a few centimetres away
+		float readWritten = dot(readMaterial.xyz, readMaterial.xyz) > 0.5
+			? 1.0
+			: 0.0;
+
+		float readBlue = readWritten;
+		if (readWritten > 0.5) {
+			readBlue = reflectionHit
+				? clamp(0.5 + reflectionHitDistance * 0.125, 0.5, 1.0)
+				: 0.35;
+		}
+
+		// Straight to the colour output, and the resolve below is skipped: a
+		// readout averaged with the anti-aliasing history is no longer a readout.
+		// This is also what the block did in composite3, where nothing resolved
+		// after it - the move changed nothing about what it shows.
+		gl_FragData[0] = vec4(
+			clamp(dot(readReflectance.rgb, vec3(0.33333)) * 4.0, 0.0, 1.0),
+			clamp(PbrReflectionSmoothness(readMaterial.w, readMetalness),
+				0.0, 1.0),
+			readBlue,
+			1.0);
+
+		// The second output is still written, because this pass has one and
+		// leaving it unwritten would leave colortex3 undefined for the frame
+		// rather than merely un-anti-aliased. It gets the current frame instead of
+		// the resolve, which is exactly "no history", so the diagnostic does not
+		// leave a trail of itself in the buffer the next frame reads.
+		gl_FragData[1] = vec4(
+			max(current, vec3(1.0e-7)),
+			currentUsable ? 1.0 : 0.0);
+
+		return;
+		#elif defined(PBR_ENERGY_CONSERVATION)
+		// The reflection REPLACES the fraction of the picture it stands for
+		// instead of being added to it.
+		//
+		// This is the difference between a metal and a metal with a white film
+		// over it, and it is the one structural thing the packs this was compared
+		// against do differently: Bliss composites
+		// mix(DarkenedDiffuseLighting, reflection, F0), and the fraction there is
+		// the same Fresnel this pass has already worked out as `reflectionWeight`.
+		//
+		// Added rather than replaced, a full-strength reflection at a grazing
+		// angle sits on top of a full diffuse response, so the surface is brighter
+		// than the light falling on it and its own colour is diluted toward the
+		// sky's - which is what "washed out" is, on glass, on emerald and on gold
+		// at the same time.
+		//
+		// It rides on PBR_ENERGY_CONSERVATION rather than being unconditional,
+		// because it is the same bargain that option makes for the direct light,
+		// and turning the option off has to give the old additive look back.
+		current = current * (vec3(1.0) - reflectionWeight)
+			+ environmentReflection;
+		#else
+		current += environmentReflection;
+		#endif
+	}
+	#endif
 
 	vec3 resolved;
 
@@ -906,8 +1156,7 @@ void main() {
 
 	resolved = mix(current, history, historyWeight);
 
-	// And the result, before it reaches the history - the same guard the
-	// reflection's own history has in composite3. It is a hedge: resolved is
+	// And the result, before it reaches the history. It is a hedge: resolved is
 	// built from the expressions above, and every one of them is finite by the
 	// argument in the note, but if a black blot is what follows from being
 	// wrong - and it does, because the buffer cannot hold a NaN and turns one
@@ -965,16 +1214,26 @@ void main() {
 		}
 	#endif
 
-	// The environment reflection is not applied here.
+	// The environment reflection has already been applied, above, to `current`.
 	//
-	// It has a pass of its own, one later, because the buffer it has to read is
-	// the resolved image - the one this pass is about to write - and a pass
-	// cannot read what it is writing. Applying it here would also put it into
-	// the history below, where the neighbourhood clamp pulls it back out again
-	// every frame: that clamp is bounded by the variance of colortex0, and
-	// colortex0 has no reflection in it.
+	// Its effect on the history written below is the whole of batch 664, so it is
+	// spelled out here: `resolved` is the frame the next one accumulates onto, so
+	// this frame's reflection is in the history now. The neighbourhood clamp above
+	// is what decides how much of it survives there, and it is worth being exact
+	// about which way it cuts: eight of its nine values are read from colortex0 and
+	// carry no reflection, while the ninth is this pixel's own `current`, which
+	// does carry one. So the clamp's own upper end is at least this frame's
+	// reflective value - the reflection is not clamped away - while the mean and
+	// the lower end sit around the surface's reflection-free brightness, which is
+	// what rejects a stale reflection that no longer matches the frame. Before the
+	// move the reflection deliberately stayed out of this buffer; now it is
+	// deliberately in it, because being in it is what averages the dither. The
+	// trade that comes with that is recorded where the reflection is applied.
 	//
-	// See composite3.fsh.
+	// The fog below goes the other way and is still kept out of the history: its
+	// own temporal stage would otherwise be averaged twice. The two are not a
+	// contradiction - they are the difference between a sample that has no
+	// temporal stage of its own (the reflection) and one that does (the fog).
 
 	// What the screen shows, which is the resolved frame unless the debug view
 	// below is on. The history written underneath is the resolved frame either

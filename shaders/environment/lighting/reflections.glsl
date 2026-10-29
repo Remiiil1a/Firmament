@@ -147,11 +147,12 @@ vec3 PbrVisibleNormal(
 		// this was found on it is a NaN.
 		//
 		// A NaN here is not an inaccurate highlight. Fc is a vec3 of them and
-		// the whole Fresnel term is, so the reflection is a NaN, and composite3
-		// adds it to the picture - where the value added and the value checked
-		// were not the same variable, so it reached the screen and was drawn as
-		// black. It reads as a blot rather than as speckles because the
-		// condition is a band of angles rather than a single pixel, and it is
+		// the whole Fresnel term is, so the reflection is a NaN, and the pass
+		// that applies it adds it to the picture (composite3 when this was
+		// found, composite1 since batch 664) - where the value added and the
+		// value checked were not the same variable, so it reached the screen and
+		// was drawn as black. It reads as a blot rather than as speckles because
+		// the condition is a band of angles rather than a single pixel, and it is
 		// intermittent because that band moves as the surface and the camera
 		// do.
 		//

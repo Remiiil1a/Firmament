@@ -279,7 +279,7 @@ uniform vec2 windowToNdc;
 // The bundle below also serves an entity drawn after the deferred pass
 // (batch 629): gbuffers_entities_translucent.fsh - the program the third-person
 // player, its armour, whatever it holds and the dropped items are drawn by -
-// defines AFTER_DEFERRED, so it runs after composite3. The material this file
+// defines AFTER_DEFERRED, so it runs after composite1. The material this file
 // writes for it therefore arrives after the pass that would have used it, which
 // is why a dropped item had a highlight and no reflection while a mob had both.
 // The trace this bundle exists for is the answer, and it is the hand's answer for

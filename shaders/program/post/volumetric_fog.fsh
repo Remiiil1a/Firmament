@@ -148,8 +148,9 @@ uniform vec3 fogSunColor;
 uniform vec3 cameraPosition;
 
 // The frame's number, to stir the dither with. It is one of the mod's uniforms
-// and the composite stage is given it - composite3.fsh reads it for its own
-// history - so like cameraPosition this one is safe to use here.
+// and the composite stage is given it - composite1.fsh reads it, for its resolve
+// and for the reflection it now applies - so like cameraPosition this one is safe
+// to use here.
 uniform int frameCounter;
 
 // The fade of the shadow test at the map's own border needs no uniform of its

@@ -104,7 +104,7 @@ const int colortex10Format = RGBA8;
 //
 // composite5 does the same thing for colortex11. composite6 writes colortex0,
 // which DRAWBUFFERS can name, so it keeps the older directive, as do
-// composite1, composite3, the deferred pass and the shadow pass.
+// composite1, the deferred pass and the shadow pass.
 /* RENDERTARGETS: 10 */
 
 layout(location = 0) out vec4 smaaEdges;

@@ -21,13 +21,14 @@
 //
 // This is the pack's motion vector, and there is exactly one of it. Before batch
 // 353 the same arithmetic was written out in more than one place - in composite1's
-// anti-aliasing mode, in composite3 for the reflection's own history, and in the
-// motion blur - and three copies of a reprojection is three places to fix the next
-// time one of them is found to be wrong. They are one function now; see
-// BATCH_LOG.md 211. (The plan written for it, MOTION_VECTORS_TAA_PLAN.md, was
-// removed in the 2026-10-02 cleanup of old notes. The batch number is recorded
-// as it stands and is not evidence either way for the count; what the code shows
-// is the three callers listed at the bottom of this note.)
+// anti-aliasing mode, in the reflection's own pass, and in the motion blur - and
+// three copies of a reprojection is three places to fix the next time one of them
+// is found to be wrong. They are one function now; see BATCH_LOG.md 211. (The plan
+// written for it, MOTION_VECTORS_TAA_PLAN.md, was removed in the 2026-10-02
+// cleanup of old notes. The batch number is recorded as it stands and is not
+// evidence either way for the count; what the code shows is the two callers
+// listed at the bottom of this note, the reflection's history having been the
+// third until batch 664 removed it.)
 //
 // What this is NOT is object motion. The shader mod hands a pack the previous
 // camera and the previous matrices and nothing else - no previous position per
@@ -69,15 +70,15 @@
 // what is left of the split is `travelView` in motion_blur.glsl, which is the
 // rotation-only part.
 //
-// Three programs do that: composite1 (both of its modes - the previous-frame
+// Two programs do that: composite1 (both of its modes - the previous-frame
 // matrices and previousCameraPosition are declared right above the include, and
 // viewWidth and viewHeight arrive through lib/taa.glsl, which composite1 includes
-// before this file), composite3 (the reflection's history, same declarations), and
-// environment/effects/motion_blur.glsl. That last one is the exception the note
-// here used to say did not exist: it includes this file too, at the point where it
-// has all four names in hand, and it takes `previousCoord` from it and derives its
-// own screen-space displacement instead of using `velocityPixels` - because its
-// offset is a fraction of the screen rather than pixels. The reason recorded for
+// before this file), and environment/effects/motion_blur.glsl. That last one is
+// the exception the note here used to say did not exist: it includes this file
+// too, at the point where it has all four names in hand, and it takes
+// `previousCoord` from it and derives its own screen-space displacement instead
+// of using `velocityPixels` - because its offset is a fraction of the screen
+// rather than pixels. The reason recorded for
 // keeping it out was that the blur reprojects a *direction* under the previous
 // frame's rotation with the camera's translation left out; what the code does now
 // is hand this function a point whose translation has been cancelled
@@ -95,8 +96,10 @@
 //
 // The two flags are kept apart rather than folded into one, because the callers
 // fold them differently: composite1 asks each on its own and only then combines
-// them with the frame counter, while composite3 wants the single question "is
-// there a history to read at all". Folding them here would decide that for both.
+// them with the frame counter, while the motion blur only wants the coordinate.
+// (A third caller, the reflection's history, wanted the single question "is there
+// a history to read at all" until batch 664 removed it.) Folding them here would
+// decide that for the others.
 struct Reprojection {
 	vec2 previousCoord;
 	vec2 velocityPixels;
