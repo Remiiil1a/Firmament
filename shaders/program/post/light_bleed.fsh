@@ -165,7 +165,7 @@ uniform float viewHeight;
 // The #ifdef below, and not #if defined, is what makes this a switch at all.
 // Iris only treats a bare #define as a boolean option when something has
 // referenced it with #ifdef or #ifndef - see the note at the top of
-// lib/sss.glsl. Written the other way the option does not appear in the menu at
+// lib/smaa.glsl. Written the other way the option does not appear in the menu at
 // all, while the code behind it still compiles and runs.
 //#define INDIRECT_BOUNCE
 

@@ -33,10 +33,10 @@ const int shadowcolor0Format = R16_SNORM;
 // The material table, for STAINED_GLASS, and the option that turns the tint
 // below on and off. Uniforms: none
 //
-// AmbientOcclusion is where the surface of this program ends: what the table
-// exposes here is STAINED_GLASS and, under COLORED_SHADOWS_PORTAL,
-// NETHER_PORTAL. The option itself is a bare #define in that file, which is
-// what makes it a switch - see the note at the top of /lib/sss.glsl.
+// What the table exposes to this program is STAINED_GLASS and, under
+// COLORED_SHADOWS_PORTAL, NETHER_PORTAL. The option itself is a bare #define in
+// that file, which is what makes it a switch - the rule is written down at the
+// top of /lib/smaa.glsl.
 #include "/environment/materialIDs.glsl"
 
 // The material list above is what decides which blocks tint the light, and the

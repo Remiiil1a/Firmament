@@ -126,7 +126,6 @@ value.PBR_FORMAT.PBR_OFF=关闭
 value.PBR_FORMAT.LAB_PBR=LabPBR
 option.PBR_FORMAT.comment=是否读取 PBR 资源包的法线贴图（_n）与高光贴图（_s），遵循 shaderLABS 的 LabPBR 1.3 标准；下面的每项材质效果仍可单独关闭，且只影响方块图集。没有 PBR 资源包时可以关掉以免读取开销——没有材质贴图的资源包会被解码为平坦法线、无反射、无发射。
 
-
 option.PBR_TANGENT_ATTRIBUTE=使用几何切线
 option.PBR_TANGENT_ATTRIBUTE.comment=是否用几何体自身携带的切线构建材质切线基，而不是从屏幕空间导数重建。后者会在一定距离之外无法再描述表面，法线贴图从那个距离起看起来整体反转，靠 mip 参数都调不掉。默认开启（属于正确性修复）；不带切线的几何体会自动退回旧方法。
 
@@ -205,7 +204,6 @@ option.PBR_SSR.comment=材质的反射是否可以包含世界而不只是天空
 option.PBR_SSR_STEPS=反射追踪步数
 option.PBR_SSR_STEPS.comment=反射追踪最多走多少步，只有材质反射使用这一项。步数越多越容易命中、命中后也细化得更好，而代价无论是否命中都要付出——反射开销太高时，这是第一个该调低的选项。
 
-
 option.PBR_DEFAULT_MATERIAL=默认材质
 option.PBR_DEFAULT_MATERIAL.comment=资源包没有提供可用高光数据的方块，是否退回为普通电介质处理；否则它们会被解码成「无反射且完全粗糙」。关闭可以完全忠于资源包的原始数据。
 
@@ -239,22 +237,11 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 659]
+option.PBR_DEBUG=材质调试视图 [build 660]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
 option.TAA_DEBUG.comment=屏幕左半边显示这一趟收到的画面，右半边显示它做出来的画面。要看黑团最先出现在哪一边，而不是它扩散到哪一边：两半是同一帧，而历史缓冲全屏共享，所以它的范围永远跨界、说明不了什么。左边 ⇒ 源头在上游，右边 ⇒ 是历史造成的。关掉「时间抗锯齿」时这一项没有意义。
-option.SSS_GAIN= 屏幕空间阴影深度增益
-option.AMBIENT_OCCLUSION= 环境光遮蔽（实验）
-option.AMBIENT_OCCLUSION.comment=让角落、墙根、方块交界处变暗——那些地方光照不到，而本包和原版一样只按光照等级给光，一堵墙从底到顶一样亮。它依据深度缓冲，属于屏幕空间效果，草、栅栏这类薄物体容易漏。默认关闭，因为它改变整幅画面的明暗；它跑在时间抗锯齿之前，采样噪点会被平均掉。开了看不出区别就打开「遮蔽调试视图」；Voxy 的远景地形暂时还没有。
-option.AO_STRENGTH= 遮蔽强度
-option.AO_STRENGTH.comment=作用多少。默认 1.0 是满量，也是上限：再高会把全遮挡的像素算成负数，画出来是黑的。调到 0 等于关掉，但不用动上面的开关，做对比最干净。
-option.AO_RADIUS= 遮蔽半径
-option.AO_RADIUS.comment=一个采样点最多离被测试的点多远（格），也就是效果的尺度：约一格够到两墙相交的墙角和栅栏下的缝。调大不额外增加开销，但同样多的采样摊在更大的盘上，结果更粗也更广。
-option.AO_SAMPLES= 遮蔽采样数
-option.AO_SAMPLES.comment=每个像素取多少采样点：这一项就是这一趟的开销（每次一次深度读取），也是噪点的旋钮——翻倍约等于噪点降三成、开销翻倍。默认 24；噪点闪就调高，嫌贵就调低。
-option.AO_DEBUG= 遮蔽调试视图
-option.AO_DEBUG.comment=只显示遮蔽的测量值本身：白 = 周围没被挡住的方向多，黑 = 全被挡住。它用来把「遮蔽没生效」和「算出来是零」分开。墙角、砖缝、草根处发暗是正常的；整屏均匀的灰说明容差不对。
 screen.END= 末地
 screen.END_BODY_SETTINGS= 末地的天体设置
 screen.SKY_SETTINGS= 天空、日月
@@ -270,9 +257,6 @@ screen.WATER_COLOUR_SETTINGS= 水色与吸收
 screen.LIGHTING_SKY_SETTINGS= 天空光照
 screen.LIGHTING_BLOCK_SETTINGS= 方块光与光溢出
 screen.SHADOWS= 阴影
-screen.SHADOW_SETTINGS= 实时阴影
-screen.SSS_SETTINGS= 屏幕空间阴影
-screen.AO_SETTINGS= 环境光遮蔽
 screen.DEBUG_VIEWS= 调试视图
 screen.DEV_TOOLS= 开发者开关
 option.TAA= 时间抗锯齿（TAA）
@@ -333,7 +317,6 @@ option.TAA_JITTER.comment=亚像素偏移的半径，单位为像素。1 让每�
 
 option.TAA_CLAMP=历史钳制范围
 option.TAA_CLAMP.comment=允许历史像素超出当前帧邻域多少个标准差。它防止运动物体拖出旧画面、贴图被平均成涂抹；闪烁就调高，发糊就调低。
-
 
 option.TAA_SHARPEN=锐化
 option.TAA_SHARPEN.comment=对合成后的画面锐化多少，以补偿多帧平均带来的软化。少量即可，过多会把本要消除的锯齿带回来。
@@ -751,23 +734,6 @@ value.DEBUG.DEBUG_SKYLIGHT= 天光可视化调试
 value.DEBUG.DEBUG_DEPTH= 深度缓冲调试（远处有没有深度）
 value.DEBUG.DEBUG_PLUME_DENSITY= 烟柱密度（下界自己的场）
 
-option.SCREENSPACE_SHADOWS=屏幕空间阴影（远景）
-option.SCREENSPACE_SHADOWS.comment=给阴影贴图够不到的远景补阴影：沿太阳方向在深度缓冲里走射线，被挡住处判为阴影。它只用在那段距离之外并平滑淡入，同一处阴影不会被压暗两次。两条固有边界：射线只走到屏幕里已有的几何，草、栅栏这类薄物体容易漏。远处出现细密噪点就调高步数、缩短射线；整体发灰就调低强度。
-
-option.SSS_STRENGTH=阴影强度
-option.SSS_STRENGTH.comment=远景阴影压暗多少。它乘的是整个颜色而不是只乘阳光——到这一步阳光与天光已经相加，所以接近 1.0 会连天光一起压掉。
-
-option.SSS_DARK_LIMIT=最大压暗上限
-option.SSS_DARK_LIMIT.comment=这一项最多把像素压暗到原来的几分之几，0.5 就是最暗只到一半。它乘在整个颜色上（阳光、天光、环境、反射到这一步已经是一个数），强度与最暗程度本来是同一个旋钮：满强度时全遮挡的像素只剩四分之一亮度，在暗处那不是阴影而是一个洞。这一项把两者分开。
-option.SSS_SAMPLES=射线采样数
-option.SSS_SAMPLES.comment=射线在一段固定屏幕长度内取多少个样本。数值越高开销越大，只是同一条射线更细；影子的长度在任何设置下都一样。
-
-option.SSS_STEPS=射线步数
-option.SSS_STEPS.comment=射线走多少步。同样长度下步子越细，越不容易从两块地形之间漏过去、留下亮线；代价是每步多一次深度采样。
-
-option.SSS_LENGTH=阴影高度
-option.SSS_LENGTH.comment=射线需要爬升多少高度，单位为方块。实际射程取决于太阳高度：太阳越低，同样的设置射得越远。
-
 value.ATMOSPHERE_MODEL.GRADIENT=梯度大气
 value.ATMOSPHERE_MODEL.MINISHITA=物理大气
 
@@ -779,7 +745,4 @@ value.WATER_ABSORPTION_METHOD.REFRACTION_ASSISTED=折射辅助吸收
 screen.ATMOSPHERE=大气
 screen.VOLUMETRIC_FOG_SETTINGS=体积雾
 screen.NETHER_SETTINGS=下界
-
-
-
 

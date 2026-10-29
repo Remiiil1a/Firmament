@@ -318,7 +318,6 @@ option.PBR_PARALLAX_SHADOW_STRENGTH.comment=How much of the direct light a \
 	quarter the shadow is hiding the displacement more than it explains it. No \
 	effect while Parallax self-shadow is off.
 
-
 option.PBR_MATERIAL_AO=Material occlusion
 option.PBR_MATERIAL_AO.comment=Darkens the ambient and block light reaching a \
 	fragment by the occlusion baked into the blue channel of the normal map, \
@@ -406,7 +405,6 @@ option.PBR_SSR_STEPS.comment=How many steps the reflection trace may take; \
 	them better, and the cost is paid whether or not anything is found - the \
 	first setting to lower if reflections are too expensive.
 
-
 option.PBR_DEFAULT_MATERIAL=Default material
 option.PBR_DEFAULT_MATERIAL.comment=Whether blocks the pack gives no usable \
 	specular data for fall back to a plain dielectric; without it they decode to \
@@ -482,7 +480,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 659]
+option.PBR_DEBUG=Material debug view [build 660]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -496,36 +494,6 @@ option.TAA_DEBUG.comment=Shows the picture this pass was handed on the left \
 	frame and the history buffer is shared, so its extent always crosses the \
 	middle and says nothing. Left means the source is upstream, right means the \
 	history makes it. Does nothing with temporal anti-aliasing off.
-option.SSS_GAIN=Sky shadow depth gain
-option.AMBIENT_OCCLUSION=Ambient occlusion (experimental)
-option.AMBIENT_OCCLUSION.comment=Darkens corners, wall bases and block joins: \
-	this pack, like the game, lights a surface by its light level alone. Being \
-	screen-space, it misses thin things such as grass and fences. Off by default: \
-	it changes the brightness of the whole picture, and it runs before the \
-	temporal resolve, so anti-aliasing averages its noise away. If turning it on \
-	seems to do nothing, turn on the occlusion debug view below; Voxy terrain has \
-	none of it yet.
-option.AO_STRENGTH=Occlusion strength
-option.AO_STRENGTH.comment=How much of it to apply. The default 1.0 is the \
-	full amount and the ceiling - above it a fully occluded pixel goes negative, \
-	drawn as black. Setting it to 0 turns the effect off without touching the \
-	option above.
-option.AO_RADIUS=Occlusion radius
-option.AO_RADIUS.comment=How far a sample may be from the point it tests, in \
-	blocks: about a block reaches the corner where two walls meet and the gap \
-	under a fence. Raising it costs nothing extra, but the same samples over a \
-	larger disk come out coarser as well as broader.
-option.AO_SAMPLES=Occlusion samples
-option.AO_SAMPLES.comment=How many samples are taken per pixel: the pass's \
-	cost, one depth fetch each, and the noise dial - doubling the count is about \
-	a third less noise for twice the work. Default 24; raise it if the result \
-	flickers, lower it if it costs too much.
-option.AO_DEBUG=Occlusion debug view
-option.AO_DEBUG.comment=Shows the occlusion measurement itself: white where \
-	much of the pixel's surroundings is unblocked, black where all of it is \
-	blocked. It separates "the occlusion is not running" from "it is computing \
-	zero". Dark at corners and joins is correct; a uniformly grey screen means \
-	the tolerance is wrong.
 screen.END=The End
 screen.END_BODY_SETTINGS=The End's body
 screen.SKY_SETTINGS=Sky, sun and moon
@@ -541,9 +509,6 @@ screen.WATER_COLOUR_SETTINGS=Colour and absorption
 screen.LIGHTING_SKY_SETTINGS=Sky light
 screen.LIGHTING_BLOCK_SETTINGS=Block light and bleed
 screen.SHADOWS=Shadows
-screen.SHADOW_SETTINGS=Real-time shadows
-screen.SSS_SETTINGS=Screen-space shadows
-screen.AO_SETTINGS=Ambient occlusion
 screen.DEBUG_VIEWS=Debug views
 screen.DEV_TOOLS=Developer switches
 option.TAA=Temporal anti-aliasing
@@ -621,7 +586,6 @@ option.TAA_CLAMP.comment=How far outside the current frame's neighbourhood the \
 	history may fall, in standard deviations. It stops moving objects dragging \
 	their old positions behind them and textures being averaged into a smudge; \
 	raise it if the image flickers, lower it if surfaces look smeared.
-
 
 option.TAA_SHARPEN=Sharpening
 option.TAA_SHARPEN.comment=How much to sharpen the resolved image, to counter \
@@ -1474,41 +1438,6 @@ value.DEBUG.DEBUG_SKYLIGHT=Sky light
 value.DEBUG.DEBUG_DEPTH=Depth buffer (is distant terrain in it)
 value.DEBUG.DEBUG_PLUME_DENSITY=Plume density (the Nether's own field)
 
-option.SCREENSPACE_SHADOWS=Screen-space shadows (distance)
-option.SCREENSPACE_SHADOWS.comment=Shadows for terrain the shadow map does not \
-	reach: a ray is walked from the fragment towards the sun through the depth \
-	buffer, and shadowed wherever something is in the way. It applies only past \
-	the shadow distance. Two limits are inherent: the ray only reaches geometry \
-	on screen, and thin things such as grass and fences are easy to miss. Noise \
-	in the distance: raise the step count or shorten the ray. Overall grey: lower \
-	the strength.
-
-option.SSS_STRENGTH=Shadow strength
-option.SSS_STRENGTH.comment=How much the distance shadows darken. It \
-	multiplies the whole colour: sunlight and sky light are already added \
-	together by then, so a value near 1.0 takes some sky light with it too.
-
-option.SSS_DARK_LIMIT=Maximum darkening
-option.SSS_DARK_LIMIT.comment=The most this effect may darken a pixel, as a \
-	fraction of its own colour: 0.5 is no darker than half. It multiplies the \
-	whole colour, already one number by this point, so strength and darkness were \
-	one dial - at full strength a fully occluded pixel keeps a quarter of its \
-	colour, which on a dim surface is a hole rather than a shadow.
-option.SSS_SAMPLES=Ray samples
-option.SSS_SAMPLES.comment=How many samples the ray takes across a fixed \
-	length of screen. More samples cost more and only make the same ray finer: \
-	the shadow is the same length at every setting.
-
-option.SSS_STEPS=Ray steps
-option.SSS_STEPS.comment=How many steps the ray takes. More steps means finer \
-	ones over the same length, which keeps it from slipping between two pieces of \
-	terrain and leaving streaks of light; each costs a depth sample.
-
-option.SSS_LENGTH=Shadow height
-option.SSS_LENGTH.comment=How high above the ground the ray has to climb, in blocks. \
-	The distance that takes depends on how high the sun is, so this is a height \
-	and not a length: a low sun reaches much further through the same setting.
-
 option.CLOUD_MULTIPLE_SCATTER=Scattering inside the cloud
 option.CLOUD_MULTIPLE_SCATTER_OCTAVES=Scattering passes
 option.CLOUD_MULTIPLE_SCATTER_FALLOFF=Scattering falloff
@@ -1573,7 +1502,4 @@ value.TONEMAP.TONEMAP_UNCHARTED2=Uncharted 2
 screen.ATMOSPHERE=Atmosphere
 screen.VOLUMETRIC_FOG_SETTINGS=Volumetric fog
 screen.NETHER_SETTINGS=The Nether
-
-
-
 

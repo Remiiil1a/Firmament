@@ -472,7 +472,7 @@ const float VOLUMETRIC_FOG_FAR_TAPER = 0.25;
 #endif
 // The block above is empty on purpose, and empty is the whole of its work:
 // the #ifdef registration above is the same "not decoration" case as
-// lib/smaa.glsl and lib/sss.glsl, and it is the only thing keeping this switch
+// lib/smaa.glsl, and it is the only thing keeping this switch
 // in the menu. Batch 533 took the last shader-side test of this macro away: the
 // pass used to branch on it to know which buffer it was reading, and it now
 // asks the buffer for its own size instead (textureSize, in

@@ -42,11 +42,10 @@
 // denoise only for best results".
 //
 // What SMAA does not do is denoise. It can only move an edge; it cannot average a
-// per-frame sample out, so the dithered noise of the screen-space shadows, of the
-// ambient occlusion and of the godrays is left exactly as it was drawn. With the
-// temporal resolve off, that noise does not shimmer - the jitter is what made it
-// move - but it is still a fixed dither rather than a smooth gradient. See the
-// note on that in BATCH_LOG.md 140.
+// per-frame sample out, so the dithered noise of effects such as the godrays is
+// left exactly as it was drawn. With the temporal resolve off, that noise does not
+// shimmer - the jitter is what made it move - but it is still a fixed dither
+// rather than a smooth gradient. See the note on that in BATCH_LOG.md 140.
 //
 // Off by default since the v1.0.0 presets: the factory default is the Medium
 // tier, which is defined as this pack's own defaults with this off and the
@@ -64,11 +63,9 @@
 // does not appear in the menu. What a user sees is two sliders for a feature with
 // no switch to turn it on.
 //
-// The same rule and the same trick are in lib/sss.glsl, on SCREENSPACE_SHADOWS,
-// where it is written down for the first time, and in
-// environment/clouds/volumetric.glsl. The two options below live inside the branch
-// because they only mean anything while SMAA is on, which is how
-// environment/lighting/ssao.glsl holds the occlusion's own settings.
+// The same rule and the same trick are in environment/clouds/volumetric.glsl.
+// The two options below live inside the branch because they only mean anything
+// while SMAA is on.
 #ifdef SMAA
 
 // How far apart two neighbouring pixels have to be before the edge between them

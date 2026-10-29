@@ -61,9 +61,9 @@
 // the answer either: it is documented as writing the *inner* geometry of the
 // beam into the depth textures and as not applying to this outer translucent
 // geometry, which is the quad in question. It would also make the beam's pixels
-// look like opaque surfaces to the deferred pass's screen-space shadows, and
-// those multiply what they find; a light beam is not something to darken. Left
-// alone, reported rather than set.
+// read as an opaque surface to everything downstream that consults the depth
+// buffer, and a light beam is not something to occlude with. Left alone, reported
+// rather than set.
 //
 // Recorded: Sundial-Lite's beacon program drops the beam's translucent half too
 // (its gbuffers_beaconbeam.fsh discards under `color.w < 0.999`). That is a

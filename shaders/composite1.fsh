@@ -860,8 +860,8 @@ void main() {
 	// factor runs from exp(-|velocity|^2) scaled between two limits).
 	//
 	// This is what makes a long history usable. A long history is the only way to
-	// average the noise out of an image - the dither in the screen-space shadows
-	// moves every frame precisely so that this can - but a long history is also
+	// average the noise out of an image - the dither of the godrays moves every
+	// frame precisely so that this can - but a long history is also
 	// what smears anything that moves on its own, and there are no motion vectors
 	// here to reproject those with. Splitting the two by motion gives the noise
 	// reduction where the picture is holding still and drops back to a short

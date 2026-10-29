@@ -70,7 +70,7 @@
 //
 // **Anti-aliasing does not need it.** SMAA is the supported answer and is on the
 // effect menu; what is lost by leaving this off is the temporal averaging of the
-// dither, so the screen-space shadows, the ambient occlusion and the godrays
+// dither, so the effects that dither - the godrays, and the sky's own dither -
 // keep their noise. See the recorded note at BATCH_LOG.md 163.
 //
 // The two numbers are frozen. TAA_ON was 1 before a second mode existed at all,
@@ -86,8 +86,8 @@
 // move since the previous frame.
 //
 // This is the option that decides how much of the noise in the image averages
-// away: the dither of the screen-space shadows in the distance, and the sky's
-// own. Raising it leaves less noise and resolves more detail, because a longer
+// away: the dither of the godrays and the sky's own. Raising it leaves less noise
+// and resolves more detail, because a longer
 // history is the only thing that can average a per-frame sample out at all -
 // with a still camera the frame is a weighted average over roughly
 // 1 / (1 - TAA_STRENGTH) frames, which is about 6.7 at the default 0.85.

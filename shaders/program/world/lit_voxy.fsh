@@ -186,11 +186,10 @@ void voxy_emitFragment(VoxyFragmentParameters parameters) {
 	//
 	// Batch 657 took the branch that used to be here out again. It said "the
 	// translucent pass is water" without asking anything, which was a reasonable
-	// guess for a mask the screen-space shadow read - but that shadow no longer reads
-	// a mask at all (it stands on the opaque depth, where water is not the surface
-	// being shaded), and the mask's one remaining consumer is the volumetric fog.
-	// Guessing on the fog's behalf is not worth the risk, so the decoded material id
-	// is the only test again, exactly as it was before the guess.
+	// guess for a mask the screen-space shadow read - but that shadow was removed
+	// altogether in batch 660, and the mask's one remaining consumer is the
+	// volumetric fog. Guessing on the fog's behalf is not worth the risk, so the
+	// decoded material id is the only test, exactly as it was before the guess.
 	out1 = vec2(skyLight, materialID == WATER ? 1.0 : 0.0);
 
 	#if defined(FANCY_TRANSLUCENTS) && !defined(TRANSLUCENT)

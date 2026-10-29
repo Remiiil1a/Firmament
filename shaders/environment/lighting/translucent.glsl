@@ -232,8 +232,8 @@ vec3 parallaxWaterNormal(
 	// check for a number, because there is no check for a number to write that
 	// catches one: every comparison a NaN takes part in is false, so asking
 	// whether the value is too small answers yes for a NaN, for zero, and for
-	// nothing else. This is the same way the ambient occlusion in
-	// program/post/copy_and_fog.fsh tests its factor.
+	// nothing else. That is the shape this pack uses wherever a factor has to be
+	// validated at the point of use.
 	//
 	// This is in the tangent space WaterNormal returns - the in-plane components
 	// and the one out of the plane - so the flat surface is the third axis, and
