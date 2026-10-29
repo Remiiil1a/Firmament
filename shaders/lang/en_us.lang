@@ -400,10 +400,11 @@ option.PBR_SSR.comment=Whether a reflection may include the world and not only \
 	Very expensive, so turn it off if the frame budget is tight.
 
 option.PBR_SSR_STEPS=Reflection trace steps
-option.PBR_SSR_STEPS.comment=How many steps the reflection trace may take; \
-	only the material reflections use this. More steps find more hits and refine \
-	them better, and the cost is paid whether or not anything is found - the \
-	first setting to lower if reflections are too expensive.
+option.PBR_SSR_STEPS.comment=How many steps the reflection trace may take; the \
+	material reflections and the held item and delayed entity traces read this, \
+	while the water keeps a fixed budget of its own. More steps find more hits and \
+	refine them better, and the cost is paid whether or not anything is found - \
+	the first setting to lower if reflections are too expensive.
 
 option.PBR_DEFAULT_MATERIAL=Default material
 option.PBR_DEFAULT_MATERIAL.comment=Whether blocks the pack gives no usable \
@@ -480,7 +481,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 660]
+option.PBR_DEBUG=Material debug view [build 661]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \

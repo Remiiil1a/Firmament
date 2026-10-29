@@ -202,7 +202,7 @@ option.PBR_SSR=屏幕空间反射
 option.PBR_SSR.comment=材质的反射是否可以包含世界而不只是天空，做法是让反射射线穿过深度缓冲去追踪。只有天空反射时，所有带反射率的表面都会染上同一层天空色；开启后，抛光方块会映出地形、树木以及射线在屏幕上找到的一切。它只能反射屏幕内、且只能取上一帧，射线没打中任何东西时回退到天空。开销很大，帧率吃紧时可以先关掉。
 
 option.PBR_SSR_STEPS=反射追踪步数
-option.PBR_SSR_STEPS.comment=反射追踪最多走多少步，只有材质反射使用这一项。步数越多越容易命中、命中后也细化得更好，而代价无论是否命中都要付出——反射开销太高时，这是第一个该调低的选项。
+option.PBR_SSR_STEPS.comment=反射追踪最多走多少步：材质反射与手持物、延迟实体的追踪用这一项，水面用自己固定的预算。步数越多越容易命中、命中后也细化得更好，而代价无论是否命中都要付出——反射开销太高时，这是第一个该调低的选项。
 
 option.PBR_DEFAULT_MATERIAL=默认材质
 option.PBR_DEFAULT_MATERIAL.comment=资源包没有提供可用高光数据的方块，是否退回为普通电介质处理；否则它们会被解码成「无反射且完全粗糙」。关闭可以完全忠于资源包的原始数据。
@@ -237,7 +237,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 660]
+option.PBR_DEBUG=材质调试视图 [build 661]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图

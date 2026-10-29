@@ -774,13 +774,31 @@ const float PBR_WETNESS_DARKENING = 0.66;
 
 // How many steps the reflection trace may take.
 //
-// Only the material reflections use this; the water reflections keep their own
-// budget - the fixed 24 in lib/raytrace.glsl, which is not an option - because
-// spending this many steps on the water and on every smooth pixel of the screen
-// are two very different propositions. More steps find more
-// hits and refine the ones they find better, and the cost is paid whether or not
-// anything is found at all.
-#define PBR_SSR_STEPS 12 // [8 12 16 24 32]
+// The material reflections and the hand and delayed-entity traces read this; the
+// water reflections keep their own budget - the fixed 24 in lib/raytrace.glsl,
+// which is not an option - because spending this many steps on the water and on
+// every smooth pixel of the screen are two very different propositions. More
+// steps find more hits and refine the ones they find better, and the cost is
+// paid whether or not anything is found at all.
+//
+// Batch 631 cut this from 24 to 12 when the reflection's eight-tap ring was
+// removed, and batch 661 put it back, because that cut was the wrong half of the
+// trade: the ring was blur, but the steps are reach. `_team_bfog/ssr_step_budget_660.py`
+// runs the screen-space ladder of lib/raytrace.glsl through the b621 model and
+// counts, for rays whose true hit is on screen and unoccluded, how many it finds:
+//
+//    12 steps   91.8%      24 steps   96.9%      48 steps   97.9%
+//
+// and the loss at 12 is concentrated in the four-to-eight-block band (82.4%
+// against 91.2%), which is exactly the band a reflection of a wall or a tree
+// four blocks away lands in - a coherent region of the screen, which is what the
+// author saw as a circular hole in the reflection debug view.
+//
+// The ladder's *distribution* was measured at the same time and left alone: a
+// curve that crowds the samples towards the eye reports 96.9% at 16 steps and
+// 95.9% at 24, which is inside the model's own noise, and the even ladder is
+// what batch 621 tuned the dither against.
+#define PBR_SSR_STEPS 24 // [8 12 16 24 32 48]
 
 // How much sky a surface has to see before it reflects any of it.
 //
