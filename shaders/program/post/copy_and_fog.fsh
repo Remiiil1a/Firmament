@@ -463,6 +463,19 @@ void main() {
 			// either of them is small - a window a few blocks wide would read as a
 			// line rather than as a transition - and it also covers the shadow
 			// distance reading as zero, which is what the post passes get for it.
+			//
+			// Batch 659 has to say plainly that the derivation is not verified: the
+			// number comes from `uniform.float.sssShadowDistance = shadowDistance` in
+			// shaders.properties, where `shadowDistance` is a shader OPTION and not one
+			// of the loader's uniforms, and nothing in this repository can prove the
+			// loader resolves an option name there. If it does not, the uniform reads
+			// zero, the floor takes over, and this handover happens at 32 blocks -
+			// inside the shadow map, which is the double-darkening the floor was never
+			// meant to allow. One frame with the value painted to the screen settles it
+			// (see HANDOVER's SSS section, where it is listed as the first thing to
+			// measure). Until then this line is unchanged from batch 654: a wrong reach
+			// is a wrong gate, and moving the gate without the number would only hide
+			// it.
 			float sssReach = max(min(sssShadowDistance, far), 32.0);
 
 			// The translucent test and the water mask that used to stand here are
@@ -518,22 +531,44 @@ void main() {
 			// batch 653's note has what happened when the two sides were in different
 			// spaces.
 			//
+			// NOT clamped to zero, and that is the whole point (batch 659). The
+			// reference hands its march the raw dot, which is negative for a surface
+			// facing away from the light, and the fade inside ScreenSpaceShadow is
+			// `1 - abs(NdotL) * 10` - so the far side of a hill, with |NdotL| near one,
+			// fades the effect out. Passing `clamp(dot, 0.0, 1.0)` threw the sign away
+			// before that abs could see it: -0.7 became 0, abs() of it became 0, and the
+			// fade came out at 1.0 - the full effect, on exactly the surfaces the
+			// reference spends the fade to exclude. That is a whole hillside of distant
+			// terrain per pixel, and distant terrain is where this effect lives.
+			//
 			// Where there is no normal - Voxy and the DH terrain write no material
-			// buffer - the answer is zero rather than one, because zero is the value
+			// buffer - the answer stays zero rather than one, because zero is the value
 			// that leaves that fade fully open. Distant terrain is the whole reason the
-			// effect exists and it must not be the case it refuses.
+			// effect exists and it must not be the case it refuses. What that costs is
+			// written down in HANDOVER: without a normal the fade cannot tell the
+			// sunlit side of a LOD hill from the shaded one, so LOD terrain keeps the
+			// effect at full strength on both.
 			vec4 sssMaterial = texelFetch(colortex7, ivec2(gl_FragCoord), 0);
 			bool sssHasMaterial = dot(sssMaterial.xyz, sssMaterial.xyz) > 0.5;
 			float sssNdotL = 0.0;
 
 			if (sssHasMaterial) {
-				sssNdotL = clamp(dot(normalize(sssMaterial.xyz), sssLightWorld), 0.0, 1.0);
+				sssNdotL = dot(normalize(sssMaterial.xyz), sssLightWorld);
 			}
 
 			// Faded in past the shadow distance. This is the pack's policy about WHERE
 			// the effect applies, not part of the ported march: inside that distance the
-			// shadow map is both more accurate and already paid for. The march's own
-			// distance fade is inside ScreenSpaceShadow.
+			// shadow map is both more accurate and already paid for.
+			//
+			// As of batch 659 this is also the ONLY distance policy in the chain. The
+			// march used to carry the reference's own fade as well - out at 109 blocks,
+			// from ITS shadow distance of 120 - and the two multiplied. They barely
+			// overlap: with this pack's default reach of 128 the caller is at zero until
+			// 108.8 blocks and the march was at zero from 109.09, so the product was a
+			// 0.3-block shell peaking near 1e-7 - the effect was numerically absent, and
+			// with a smaller reach it was instead a thin ring of distances whose share of
+			// the screen is what the field of view changes. The note in lib/sss.glsl
+			// where that constant used to be has the arithmetic.
 			float sssWeight = SSS_STRENGTH * sssSunFade * smoothstep(
 				sssReach * 0.85, sssReach * 1.15, sssDistance);
 

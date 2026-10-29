@@ -42,10 +42,15 @@
 //
 //  * the depth buffer. Sundial reads a packed float32 depth out of colortex6 and
 //    has a negative-depth branch for its LOD terrain. In this pack the LOD
-//    terrain (Voxy) writes the same depth textures as the vanilla world - see
-//    BATCH_LOG 3090, and the note in voxy.json that refuses
-//    excludeLodsFromVanillaDepth for exactly this reason - so the plain depth
-//    texture can be sampled and the LOD branch is not needed.
+//    terrain (Voxy) is relied on to write the same depth textures as the vanilla
+//    world - see BATCH_LOG 3090 - so the plain depth texture can be sampled and the
+//    LOD branch is not needed. Note what that premise is: the loader's behaviour,
+//    not something these files state. voxy.json does not set
+//    excludeLodsFromVanillaDepth in either direction, so the default applies, and a
+//    frame in game is the only proof. HANDOVER keeps it as an open item for exactly
+//    that reason, because if LOD depth is NOT in depthtex1 then the `sssDepth < 1.0`
+//    test at the call site skips every LOD pixel and the effect has no far terrain
+//    to work on at all.
 //  * the hand. Sundial remaps the hand's depth with MC_HAND_DEPTH and offsets it.
 //    This pack's receiver is the opaque surface, where the hand is not present at
 //    all, so both are dropped rather than carried as dead weight.
@@ -56,18 +61,32 @@
 //    as zero and the expression collapses to the solid case - which is what the
 //    effect is for here. Foliage translucency is a separate feature in this pack
 //    (PBR_SUBSURFACE) and is not this file's business.
-//  * the sub-texel refinement. Sundial re-reads the depth with textureGather and
-//    bilinearly reconstructs the four taps around a hit. textureGather needs GLSL
-//    4.0 and this pack is #version 150, so the refinement is a plain bilinear
-//    texture fetch at the sample coordinate, which asks the same question.
+//  * the sub-texel refinement. Sundial re-reads the depth with textureGather,
+//    bilinearly reconstructs the depth surface from the four taps around a hit, and
+//    then RE-RUNS the test on the reconstructed value. textureGather needs GLSL 4.0
+//    and this pack is #version 150, so the four taps are read with texelFetch and
+//    combined by hand - the arithmetic is the reference's, only the instruction that
+//    reads the texels is not. Batch 654's first version left a plain sampled read in
+//    its place and said the two asked the same question. They do not: a sampled read
+//    of a depth texture is nearest, so it returns the same texel the coarse test has
+//    already accepted and can reject nothing. The missing re-test is restored in
+//    batch 659, and the note at the loop below says what its absence looked like.
 //  * the noise. Sundial reads two values from a blue-noise texture; this pack has
 //    no such texture bound for this pass, so SssScreenNoise below provides the one
 //    value the march uses, in the same 0..1 role.
+//  * the distance fade. Sundial's shadowWeight fades the effect out at ITS shadow
+//    distance, 120 blocks. This pack has a shadow distance of its own and applies the
+//    handover in the caller, so the march's copy is gone as of batch 659: the two
+//    were multiplied, they barely overlap, and the note where that constant used to
+//    be has the numbers. The NdotL half of shadowWeight is the reference's and is
+//    untouched.
 //
-// The shadow's own distance fade is INSIDE the function (shadowWeight below), and
-// that is why the caller no longer applies one of its own: batches 645-651 each
-// added a fade, a reach or a threshold at the call site, and every one of them was
-// a substitute for this.
+// There is therefore no distance policy in this file. It fades by nothing but the
+// light's angle, and the caller alone decides where the handover from the shadow map
+// to this happens. Batches 645-651 each added a fade, a reach or a threshold at the
+// call site trying to compensate for the inverse mistake - a policy in here that the
+// caller could not see and could not reconcile with its own - and batch 654 deleted
+// those. What replaces them is one policy, in one place, at the call.
 
 // Whether to cast shadows for terrain the shadow map does not reach.
 //
@@ -101,17 +120,36 @@
 	// of view.
 	const float SSS_SCREEN_STEP = 0.003;
 
-	// Sundial's shadowDistance, used by the effect's own fade at the end. The
-	// caller's shadow distance is a different number and is not consulted.
-	const float SSS_DISTANCE = 120.0;
+	// Batch 659 removed a constant here that Sundial's function carries: its own
+	// shadowDistance, 120, used by a distance fade INSIDE the march.
+	//
+	// The fade is not part of the arithmetic; it is that pack's answer to "where does
+	// my shadow map stop". This pack has its own answer, in its own units, and applies
+	// it at the call site (the `sssReach` fade in /program/post/copy_and_fog.fsh),
+	// because this pass cannot see a shadow distance that the caller has to derive. Two
+	// fades then multiplied - the caller's fade IN past 0.85 * reach and the march's
+	// fade OUT at 109 blocks - and they hardly overlap at all:
+	//
+	//   reach 128 (this pack's default shadow distance): the caller is at zero until
+	//   108.8 blocks and the march is at zero from 109.09 blocks, so the product is
+	//   non-zero over 0.3 blocks and peaks at about 1e-7. The effect is not "weak"
+	//   there, it is numerically absent.
+	//   reach 96: a 27-block band, 82 to 109 - which is what the report describes as
+	//   the effect appearing and disappearing as the field of view changes, because
+	//   that band is a distance range, and the field of view decides how much of the
+	//   screen that range covers.
+	//
+	// One policy, in one place: the caller decides where the handover happens and the
+	// march divides by nothing. The march's other fade - the one on NdotL, which is
+	// what keeps the effect to the surfaces the shadow map is worst at - is unchanged.
 #endif
 
 // The frame number, so that the dither below can move from frame to frame.
 uniform int frameCounter;
 
-// The size of one texel, for the origin nudge in ScreenSpaceShadow. Declared here
-// rather than assumed: this file is included by more than one program and not all
-// of them declare it themselves.
+// The size of one texel, for the origin nudge and the sub-texel reconstruction in
+// ScreenSpaceShadow. The value comes from shaders.properties (batch 659): it is not one
+// of the loader's uniforms, and this pack used to read the name without ever setting it.
 uniform vec2 texelSize;
 
 // This frame's sub-pixel offset, in the same units the vertex programs add to the
@@ -153,11 +191,21 @@ float SssScreenNoise(vec2 fragCoord) {
 	//
 	// Sundial compares the four answers as float bit patterns, because a division by
 	// zero produces an infinity or a NaN and a plain min would keep the NaN - every
-	// comparison with a NaN is false, so a NaN silently wins. That trick needs
-	// floatBitsToUint, which this pack's #version 150 does not have without an
-	// extension, so the same guarantee is spelled out instead: `t > 0.0` is false
-	// both for a NaN and for a non-positive answer, so each becomes the sentinel and
-	// can never win the min. The behaviour is the reference's; the spelling is not.
+	// comparison with a NaN is false, so a NaN silently wins. The same guarantee is
+	// spelled out instead: `t > 0.0` is false both for a NaN and for a non-positive
+	// answer, so each becomes the sentinel and can never win the min. The behaviour
+	// is the reference's; the spelling is not.
+	//
+	// It is also stricter in one case, and that case is why the line is worth keeping
+	// rather than rewriting as the bit comparison: a reach of exactly zero has the
+	// smallest bit pattern of any non-negative float, so the reference would let it
+	// win the min. A zero reach makes targetCoord equal originCoord, the normalisation
+	// below then multiplies by inversesqrt(0) and the ray starts from a NaN - which
+	// the reference's own edge test happens to break on, one sample later. Rejecting
+	// the zero here answers the same picture without the NaN.
+	//
+	// The note this replaces claimed #version 150 has no floatBitsToUint. It does;
+	// that builtin is core since GLSL 1.30. Corrected in batch 659.
 	float SssAxisReach(
 		float origin, float direction, float originW, float directionW, float target
 	) {
@@ -258,12 +306,16 @@ float SssScreenNoise(vec2 fragCoord) {
 		// proportional to: 1/length rather than length.
 		float viewLength = inversesqrt(dot(viewPos, viewPos));
 
-		// The effect fades out at the shadow distance, and fades out again where the
-		// surface faces the sun - the latter because a face the sun is lighting
-		// squarely is where the shadow map is at its most reliable, and where the
-		// screen-space guess would be at its least. Both terms are Sundial's.
-		float shadowWeight = clamp(1.0 - abs(NdotL) * 10.0, 0.0, 1.0)
-			* clamp(1.0 - 1.1 / viewLength / SSS_DISTANCE, 0.0, 1.0);
+		// The effect fades out where the surface faces the sun: a face the sun is
+		// lighting squarely is where the shadow map is at its most reliable, and where
+		// the screen-space guess is at its least. That one term is Sundial's, and it is
+		// the reason this effect belongs to a low sun - at |NdotL| above 0.1, which is a
+		// surface more than about six degrees off grazing, the weight is exactly zero.
+		//
+		// Sundial's second term, the distance fade, is gone (batch 659); the note where
+		// its constant used to be says why, and what the product of it and the caller's
+		// own fade worked out to. The distance policy lives in the caller alone.
+		float shadowWeight = clamp(1.0 - abs(NdotL) * 10.0, 0.0, 1.0);
 
 		vec4 sampleCoord = originCoord + noise * stepSize;
 		sampleCoord.z -= 2.0e-7;
@@ -273,37 +325,51 @@ float SssScreenNoise(vec2 fragCoord) {
 		// hundred blocks a fixed window would accept the sky.
 		float maximumThickness = 0.0005 * viewLength;
 
-		// Batch 658: and it is widened by the ray's own depth gradient, because a
-		// fixed window cannot work at a grazing sun and that is the report.
+		// Batch 658 widened this window by the ray's own depth gradient - two texels'
+		// worth of it - on the theory that a grazing ray crosses the whole window
+		// between two samples, so the surface it is grazing falls in and out of the
+		// window sample after sample. Batch 659 took it out again, for three reasons:
 		//
-		// When the light is a couple of degrees above the horizon the ray runs almost
-		// parallel to the ground, so between two samples the ray's depth changes by far
-		// more than the window is wide. The surface it is walking along then sits
-		// sometimes inside the window and sometimes outside it, sample after sample,
-		// and the result is the banding reported at sunrise and sunset - bands that
-		// move with the camera and read as flicker.
+		//  * it did not remove the stripes it was added for; the batch after it left
+		//    the symptom open;
+		//  * it was the only term in this test made of the PROJECTION - two texels'
+		//    worth of the ray's depth slope is proportional to tan(fov/2), so the
+		//    criterion the player gets changed character when they zoomed, which is
+		//    the other half of the report;
+		//  * it could only widen, and a wider window cannot tell an occluder from the
+		//    surface the ray is already grazing, so it trades stripes for a slope that
+		//    is uniformly over-darkened.
 		//
-		// The gradient is the depth the ray covers per unit of screen, times one texel:
-		// that is exactly how much the comparison can legitimately be off by when the
-		// ray is this shallow, so the window is at least that wide. A steep hit - a
-		// cliff face, a tree trunk - has a small gradient and keeps the sharp window it
-		// needs, so this widens the test only where it was wrong.
-		float depthGradient = abs(stepSize.z)
-			/ max(length(stepSize.xy), 1.0e-6)
-			* max(texelSize.x, texelSize.y);
-
-		maximumThickness = max(maximumThickness, depthGradient * 2.0);
+		// The reference does not widen anything. It reconstructs the depth surface
+		// around a hit and re-tests on that, in the loop below: that rejects a hit the
+		// surface does not support without accepting anything the plain test refused.
 
 		sampleCoord.z -= maximumThickness;
 
 		for (int i = 0; i < SSS_SAMPLES; i++) {
-			// Sundial compares these as bit patterns for the NaN reason noted on
-			// SssAxisReach; #version 150 has no floatBitsToUint here, and a plain
-			// comparison is enough at this point: sampleCoord is built from finite
-			// values and a NaN that did slip through would only cost one extra sample
-			// before the guard below stops the loop anyway.
-			if (any(greaterThan(sampleCoord.xy, vec2(1.0)))
-				|| shadow < 0.01) {
+			// Stop at whichever of the screen's four edges comes first.
+			//
+			// Sundial compares these two coordinates as float bit patterns, a trick
+			// that orders them monotonically only for non-negative values - so its test
+			// also stops on a NEGATIVE coordinate, which is what leaving through the
+			// left or the bottom edge produces. A plain `greaterThan(..., 1.0)` does
+			// not stop there, and every sample after it is read at a coordinate outside
+			// the texture: what comes back is then whatever the sampler does with a
+			// coordinate it was never given, and for a clamped depth texture that is
+			// the first column or the last row of the screen. The ray can be called
+			// blocked by geometry that is nowhere near it, and which edge that is moves
+			// with the field of view.
+			//
+			// `insideScreen` is written as the positive test and negated on purpose: a
+			// NaN fails every comparison, so it is not inside, and the loop stops -
+			// which is the third thing the reference's bit comparison does for free.
+			// Batch 659 restored both halves; batch 654's port had only the `> 1.0`
+			// half and the comment above the loop said a NaN could not reach here,
+			// which was a guess and is now not needed.
+			bool insideScreen = all(greaterThanEqual(sampleCoord.xy, vec2(0.0)))
+				&& all(lessThanEqual(sampleCoord.xy, vec2(1.0)));
+
+			if (!insideScreen || shadow < 0.01) {
 				break;
 			}
 
@@ -311,6 +377,54 @@ float SssScreenNoise(vec2 fragCoord) {
 
 			bool hit = abs(sampleCoord.z - sampleDepth) < maximumThickness
 				&& sampleDepth < 1.0;
+
+			// Sundial's sub-texel refinement, which batch 654's port left out: the four
+			// depth texels around the hit are read, combined bilinearly - a plane through
+			// the local depth surface - and the test is run again on that value.
+			//
+			// It is a rejection filter, and it is the reference's answer to exactly the
+			// problem batch 658 tried to answer by widening the window. A depth buffer is
+			// a staircase of per-texel depths; at a grazing sun the ray runs close enough
+			// to the surface that one step of that staircase is the whole thickness
+			// window, so which texel a sample happens to land on decides the hit. That
+			// decision alternates along the ray, which is what the stripes are. Requiring
+			// a hit to be supported by the surface the four texels agree on removes the
+			// ones the staircase invented, and it cannot invent one of its own.
+			//
+			// The reference uses textureGather, which is GLSL 4.0 and this pack is
+			// #version 150, so the four taps are fetched individually. This only runs on
+			// a hit - the rare outcome, and one that ends the march anyway - so the four
+			// extra fetches land on pixels that were about to stop.
+			//
+			// The guard is not decoration. texelSize is a name this pack has to supply
+			// itself (shaders.properties), and a march that divided by a zero it never
+			// noticed would answer "not blocked" for every hit it found - the effect
+			// silently doing nothing, which is the failure mode this whole file has cost
+			// the most batches to. A zero now costs the refinement and nothing else.
+			if (hit && texelSize.x > 0.0) {
+				vec2 texelCoord = sampleCoord.xy / texelSize - 0.5;
+				vec2 baseTexel = floor(texelCoord);
+				vec2 fraction = texelCoord - baseTexel;
+
+				// The four taps are clamped to the buffer, because a hit in the last
+				// column or row would otherwise fetch the texel after it, and `texelFetch`
+				// outside a texture has no defined value.
+				ivec2 lastTexel = ivec2(1.0 / texelSize - 1.0);
+				ivec2 lower = clamp(ivec2(baseTexel), ivec2(0), lastTexel);
+				ivec2 upper = clamp(ivec2(baseTexel) + ivec2(1), ivec2(0), lastTexel);
+
+				float nearRow = mix(
+					texelFetch(depthTexture, ivec2(lower.x, lower.y), 0).r,
+					texelFetch(depthTexture, ivec2(upper.x, lower.y), 0).r,
+					fraction.x);
+				float farRow = mix(
+					texelFetch(depthTexture, ivec2(lower.x, upper.y), 0).r,
+					texelFetch(depthTexture, ivec2(upper.x, upper.y), 0).r,
+					fraction.x);
+
+				hit = abs(sampleCoord.z - mix(nearRow, farRow, fraction.y))
+					< maximumThickness;
+			}
 
 			// Sundial's `shadow *= clamp(absorption - float(hit), 0.0, 1.0)` with
 			// absorption at its solid-surface value of 1.0, which makes this a hard
