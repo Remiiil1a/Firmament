@@ -250,9 +250,9 @@ vec3 EndDebugColor() {
 // Recorded: this used to be an option, HIDE_END_FLASH, and batch 333 removed the
 // switch and made the removal unconditional, on the user's report that turning
 // it on or off made no visible difference and that the flash is not wanted
-// either way. What the code here can say about that is the shape of composite1's
+// either way. What the code here can say about that is the shape of composite2's
 // overwrite: the End's sky is drawn by gbuffers_skytextured.fsh through SkyColor,
-// and composite1.fsh then writes the sky again over any pixel in the End whose
+// and composite2.fsh then writes the sky again over any pixel in the End whose
 // depthtex0 is exactly 1.0 - the far plane, where nothing wrote depth - so a
 // flash quad left at that depth is overwritten whether this ran or not, and one
 // that wrote a nearer depth is not. That nearer case is what the removal covers.

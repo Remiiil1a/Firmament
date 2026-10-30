@@ -189,7 +189,7 @@ vec3 MotionBlur(vec2 screenCoord) {
 
 	// The absolute world position of this pixel's surface, so the previous frame's
 	// camera can be applied to it. Working in absolute terms is what makes this
-	// survive the camera moving; composite1 does the same.
+	// survive the camera moving; composite2 does the same.
 	vec3 cameraRelativePosMB = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
 	vec3 worldPos = cameraRelativePosMB + cameraPosition;
 

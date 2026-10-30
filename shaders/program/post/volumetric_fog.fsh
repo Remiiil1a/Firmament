@@ -64,7 +64,7 @@
 // they occupy is far smaller than the whole ray of medium that stopping there threw
 // away.
 //
-// What this does NOT affect: the upscale in composite1 gates its taps by
+// What this does NOT affect: the upscale in composite2 gates its taps by
 // comparing depthtex0 with depthtex0 - fragment against fragment - so which depth
 // the MARCH stopped at is a separate question from which fog texel belongs to which
 // surface. The two are genuinely separable and only the march changes here.
@@ -148,8 +148,8 @@ uniform vec3 fogSunColor;
 uniform vec3 cameraPosition;
 
 // The frame's number, to stir the dither with. It is one of the mod's uniforms
-// and the composite stage is given it - composite1.fsh reads it, for its resolve
-// and for the reflection it now applies - so like cameraPosition this one is safe
+// and the composite stage is given it - composite1.fsh reads it for the trace's
+// dither and composite2.fsh for its resolve - so like cameraPosition this one is safe
 // to use here.
 uniform int frameCounter;
 
@@ -332,10 +332,10 @@ layout(location = 0) out vec4 fogScatter;
 // as a constant.
 //
 // The plan was Salvi's variance clipping - the same bound the temporal resolve
-// uses in composite1.fsh, the history held inside the current texel's
+// uses in composite2.fsh, the history held inside the current texel's
 // neighbourhood mean plus or minus a multiple of its standard deviation. It is
 // the right bound for a resolve because a resolve HAS the current frame's
-// neighbourhood: composite1 reads colortex0, which this frame's geometry has
+// neighbourhood: composite2 reads colortex0, which this frame's geometry has
 // just written.
 //
 // This pass does not have it, and that is the whole story of this stage's
@@ -595,7 +595,7 @@ void main() {
 	// slide at the distances the shafts are read at.
 	//
 	// The same term is already added in lit.vsh:405 (the terrain - which is exactly
-	// why the terrain's own shadows never moved), composite1.fsh:614 (the TAA anchor) and
+	// why the terrain's own shadows never moved), composite2.fsh (the TAA anchor) and
 	// lit.vsh:224 (the wind field). This pass was the only world-position rebuild in the
 	// pack that used the 3x3 alone. Bliss adds it too - lib/overworld_fog.glsl:290 is
 	// `gbufferModelViewInverse[3].xyz + cameraPosition + d * rayStartPos` - and so do
@@ -1430,7 +1430,7 @@ void main() {
 			// fog sideways across a sky that is not moving.
 			//
 			// The split is on the OPAQUE surface being at the far plane, which is
-			// the same test composite1.fsh makes to mean "nothing was drawn here" and
+			// the same test composite2.fsh makes to mean "nothing was drawn here" and
 			// the same depthtex1 the march read - not on surfaceDistance reaching
 			// VOLUMETRIC_FOG_DISTANCE, which is where the MARCH stops and not where
 			// the surface is. The two are different questions: a hill two hundred
@@ -1443,7 +1443,7 @@ void main() {
 			// open air, and air is what the sky's anchor is for.
 			//
 			// The held item is not reprojected like the world, for the reason
-			// composite1.fsh gives in full: it is attached to the camera, so it
+			// composite2.fsh gives in full: it is attached to the camera, so it
 			// stays put relative to the eye while the world slides past, and
 			// reprojecting it with the camera's translation makes it drag its own
 			// history along with the walking. Cancelling the translation the same
@@ -1623,7 +1623,7 @@ void main() {
 			// The frame's pixels and not this buffer's, which is the one thing
 			// about this number that was got wrong here first. The weight below is
 			// the temporal resolve's, and the resolve's velocity is measured on the
-			// frame's grid (composite1.fsh); measuring this one on the fog's grid
+			// frame's grid (composite2.fsh); measuring this one on the fog's grid
 			// makes a texel of motion mean a quarter of a pixel, so a slow pan that
 			// moves the picture one pixel a frame scores a stillness of 0.94 and
 			// keeps almost the whole history - which is exactly the movement the
@@ -1642,7 +1642,7 @@ void main() {
 
 			// How much of the history this texel keeps.
 			//
-			// The shape is the temporal resolve's, in composite1.fsh: the option
+			// The shape is the temporal resolve's, in composite2.fsh: the option
 			// is the weight for a texel that did not move, and exp(-|v|^2) takes it
 			// towards seven tenths of itself as the texel starts to move. That is
 			// what makes a long history usable at all - a long history is the only

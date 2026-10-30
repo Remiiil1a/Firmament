@@ -20,7 +20,7 @@
 // pixel has moved since.
 //
 // This is the pack's motion vector, and there is exactly one of it. Before batch
-// 353 the same arithmetic was written out in more than one place - in composite1's
+// 353 the same arithmetic was written out in more than one place - in composite2's
 // anti-aliasing mode, in the reflection's own pass, and in the motion blur - and
 // three copies of a reprojection is three places to fix the next time one of them
 // is found to be wrong. They are one function now; see BATCH_LOG.md 211. (The plan
@@ -70,9 +70,9 @@
 // what is left of the split is `travelView` in motion_blur.glsl, which is the
 // rotation-only part.
 //
-// Two programs do that: composite1 (both of its modes - the previous-frame
+// Two programs do that: composite2 (both of its modes - the previous-frame
 // matrices and previousCameraPosition are declared right above the include, and
-// viewWidth and viewHeight arrive through lib/taa.glsl, which composite1 includes
+// viewWidth and viewHeight arrive through lib/taa.glsl, which composite2 includes
 // before this file), and environment/effects/motion_blur.glsl. That last one is
 // the exception the note here used to say did not exist: it includes this file
 // too, at the point where it has all four names in hand, and it takes
@@ -95,7 +95,7 @@
 // this pixel has moved since, in pixels of the current frame.
 //
 // The two flags are kept apart rather than folded into one, because the callers
-// fold them differently: composite1 asks each on its own and only then combines
+// fold them differently: composite2 asks each on its own and only then combines
 // them with the frame counter, while the motion blur only wants the coordinate.
 // (A third caller, the reflection's history, wanted the single question "is there
 // a history to read at all" until batch 664 removed it.) Folding them here would
@@ -138,7 +138,7 @@ Reprojection ReprojectWorldPosition(vec3 worldPosition, vec2 screenCoord) {
 	//
 	// What this does and does not do: a NaN coordinate sets offScreen, so a caller
 	// that tests offScreen is safe from it. A caller that uses previousCoord
-	// without testing sets its own trap - see how composite1 treats the same value
+	// without testing sets its own trap - see how composite2 treats the same value
 	// before it reaches HistorySample.
 	result.offScreen =
 		!(all(greaterThanEqual(result.previousCoord, vec2(0.0)))

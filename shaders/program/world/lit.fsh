@@ -878,7 +878,7 @@ void main() {
 				// framebuffer: it marches to the first surface it is TOLD about, and its idea of
 				// what is solid is this buffer's green channel (see volumetric_fog.fsh, batch
 				// 593). Written as zero, the portal said air-keep-marching, so the fog integrated
-				// the medium behind the gate and composite1 painted it back on top: that is the
+				// the medium behind the gate and composite2 painted it back on top: that is the
 				// terrain and plume the author could see through the surface.
 				// Green = stop the medium here, at the portal's own depth in depthtex0.
 				// Red stays zero: this surface is not lit by the sky and must stay out of the
