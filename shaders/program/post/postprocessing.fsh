@@ -114,7 +114,7 @@ uniform sampler2D colortex1;
 #define GODRAYS_STRENGTH 5.0 // [0.0 0.25 0.5 0.75 1.0 1.5 2.0 3.0 4.0 5.0 6.0 8.0 10.0]
 
 // The fog is marched at a quarter of the frame's resolution by default, and the
-// depth-gated filter that puts it back on the frame lives in composite2.fsh - see
+// depth-gated filter that puts it back on the frame lives in composite1.fsh - see
 // it there, and see the note below for why this pass no longer has a copy.
 #ifdef VOLUMETRIC_FOG
 
@@ -139,7 +139,7 @@ uniform sampler2D colortex1;
 
 // The fog upscale used to be defined between this line and the #endif below -
 // three constants and two functions, some four hundred lines of it. It is in
-// composite2.fsh now, and the reason is the whole of batch 581: the fog is
+// composite1.fsh now, and the reason is the whole of batch 581: the fog is
 // composited in front of the temporal resolve, so that is the pass where the filter
 // is needed for the picture.
 //
@@ -176,7 +176,7 @@ uniform sampler2D colortex1;
 	// The three views that read the fog buffer. Until batch 581 this was two
 	// branches, because the third of them showed the depth-gated upscale's output
 	// and that was the only thing in this pass that needed the depth texture, the
-	// projection inverse and the frame's size. The upscale is in composite2.fsh now,
+	// projection inverse and the frame's size. The upscale is in composite1.fsh now,
 	// so all three do the same plain read of the same buffer and need the same one
 	// declaration.
 	//
@@ -330,7 +330,7 @@ void main() {
 		finalColor = texture(colortex1, screenCoord).rgb;
 	#elif DEBUG == DEBUG_GODRAYS_UPSAMPLED
 		// This view used to show the depth-gated upscale’s own output. That
-		// filter moved to composite2.fsh with the fog it exists for (batch 581), and
+		// filter moved to composite1.fsh with the fog it exists for (batch 581), and
 		// it is deliberately NOT kept here as a second copy — a second copy of a
 		// filter is two places for the next fix to land in one of. So this view now
 		// does the read its neighbour above does, and the two are identical.
@@ -422,7 +422,7 @@ void main() {
 
 		#ifdef VOLUMETRIC_FOG
 			// THE FOG IS NOT ADDED HERE ANY MORE (batch 581). It is composited in
-			// composite2, in front of the temporal resolve, which is the pass whose
+			// composite1, in front of the temporal resolve, which is the pass whose
 			// history and motion vectors can average it - this pass has neither, so
 			// adding it here meant the fog had never been resolved by anything but
 			// its own quarter-resolution denoise.
@@ -431,7 +431,7 @@ void main() {
 			// in it, and the multiplication by the medium's transmittance happened
 			// there too. Nothing below needs to know: the bloom, the vignette and the
 			// tonemap all read one picture, which is the point of the move. See the
-			// note in composite2.fsh for the placement, and its UpsampleVolumetrics
+			// note in composite1.fsh for the placement, and its UpsampleVolumetrics
 			// for the filter, which this pass no longer has a copy of.
 			//
 			// What this pass still does with the fog is SHOW it: the

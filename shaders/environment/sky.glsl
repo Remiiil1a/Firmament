@@ -19,8 +19,8 @@
 // Guarded against a second inclusion: this file is pulled in by the sky drawing
 // itself, by fog, by the water reflections, and by the material reflections
 // added under PBR_REFLECTIONS. As the pack stands, every program that wants it
-// names it once - lit.fsh (under TRANSLUCENT or APPLY_FOG), composite1.fsh and
-// composite2.fsh, copy_and_fog.fsh, gbuffers_skytextured.fsh, sky.fsh,
+// names it once - lit.fsh (under TRANSLUCENT or APPLY_FOG), composite1.fsh,
+// copy_and_fog.fsh, gbuffers_skytextured.fsh, sky.fsh,
 // clouds.vsh and lit_voxy.fsh - so the guard is what would make a second
 // inclusion harmless rather than something the pack relies on today.
 //

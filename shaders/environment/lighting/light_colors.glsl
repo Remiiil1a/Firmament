@@ -41,8 +41,8 @@
 
 // Whether light-emitting blocks take their real color, rather than being tinted
 // by their own texture. Also what decides whether the light bleed pass is
-// switched on: program.composite3.enabled in shaders.properties is
-// COLORED_LIGHTS || INDIRECT_BOUNCE, and composite3.fsh is the pass. Note that
+// switched on: program.composite2.enabled in shaders.properties is
+// COLORED_LIGHTS || INDIRECT_BOUNCE, and composite2.fsh is the pass. Note that
 // the pass's own code carries no guard of ours - with this off and
 // INDIRECT_BOUNCE on it still runs, and what changes is the mask it reads, since
 // LightSourceSurfaceColor returns the plain texture color when this is off.

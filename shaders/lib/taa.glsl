@@ -24,13 +24,13 @@
 // pixel, and the average over several frames resolves detail that no single
 // frame can - which is far cheaper than rendering at a higher resolution.
 //
-// The two halves of that live here and in composite2:
+// The two halves of that live here and in composite1:
 //
 //  - TaaJitter() (below) is added to the clip position by the four world
 //    vertex shaders - lit.vsh, unlit.vsh, sky.vsh and clouds.vsh, all with the
 //    same `gl_Position.xy += TaaJitter() * gl_Position.w` - and that is what
 //    offsets the sample position.
-//  - The composite2 pass reprojects the previous frame's result onto the
+//  - The composite1 pass reprojects the previous frame's result onto the
 //    current one and averages the two.
 //
 // The reprojection has no *object* motion in it - the shader mod hands a pack the
@@ -40,7 +40,7 @@
 // have is one shared, well-defined camera reprojection, in /lib/reproject.glsl,
 // which the resolve and the motion blur take their movement from. (The
 // reflection's own history took it from there too until batch 664 removed that
-// history: the reflection is applied by composite2 before the resolve now, and
+// history: the reflection is applied by composite1 before the resolve now, and
 // the resolve's history is the only one it has.)
 
 // What this pass does with the frames it is given. **Off by default.**
@@ -50,7 +50,7 @@
 // averages consecutive frames after reprojecting them onto the current one.
 //
 // OFF is close to a copy, so that the buffer flow through the pipeline does not
-// change: composite2.fsh takes `resolved = currentUsable ? current : vec3(0.0)`
+// change: composite1.fsh takes `resolved = currentUsable ? current : vec3(0.0)`
 // and writes it to both colortex0 and colortex3, rather than doing the
 // reprojection, the clamp and the history blend. "Close to", because a pixel
 // the geometry left not-a-number still comes out black rather than as itself.
@@ -58,7 +58,7 @@
 // **Why Off is still the default: a black blot.** Recorded here as the history
 // of the decision, not as a diagnosis: it was reported, reproduced by the user,
 // and chased through many batches before the chain that carries it was found -
-// see BATCH_LOG.md 136 onwards, and the guards in composite2.fsh that came
+// see BATCH_LOG.md 136 onwards, and the guards in composite1.fsh that came
 // out of it. What is established is only the shape of the experiment: with this
 // pass on, a small black region appears in the frame every now and then and
 // grows; with it off, none appears at all, over versions of testing. That is a
@@ -68,7 +68,7 @@
 // It is not deleted because the write it owns is the pack's temporal history:
 // colortex3 is what every frame of the resolve accumulates onto, and since batch
 // 664 it carries the environment reflection too - the reflection is applied by
-// composite2 ahead of the resolve, because being in this history is what averages
+// composite1 ahead of the resolve, because being in this history is what averages
 // its dither. Removing the pass means keeping that write, and a mistake there
 // breaks something else entirely.
 //
@@ -96,7 +96,7 @@
 // with a still camera the frame is a weighted average over roughly
 // 1 / (1 - TAA_STRENGTH) frames, which is about 6.7 at the default 0.85.
 //
-// It is no longer also the weight for a pixel that *did* move: composite2 keeps
+// It is no longer also the weight for a pixel that *did* move: composite1 keeps
 // less of the history where the pixel moved - historyWeight is this value times
 // mix(0.7, 1.0, stillness) - so raising this does not buy ghosting behind
 // anything that moves on its own.
@@ -155,7 +155,7 @@
 // so nothing in the GUI can turn it on - TAA_DEBUG appears under
 // screen.DEBUG_VIEWS in shaders.properties so that the debug-view switch can
 // reach it, but what actually enables it is editing this line back to an active
-// #define and rebuilding. It is read with plain #ifdef in composite2.fsh rather
+// #define and rebuilding. It is read with plain #ifdef in composite1.fsh rather
 // than compared against a value, so leaving it commented out is the normal
 // state and costs nothing.
 //#define TAA_DEBUG

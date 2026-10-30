@@ -14,16 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// The environment reflection of a PBR material, as traced by composite1 and
-// applied by composite2.
+// The environment reflection of a PBR material, as applied by the pass that
+// adds it to the picture.
 //
 // It samples colortex4: the deferred pass's copy of this frame, written by
 // /program/post/copy_and_fog.fsh. That is a raw single frame rather than a
 // resolved one, and the per-frame dither of the trace is exactly what the
-// temporal resolve is for - which is where this reflection is applied, ahead of
-// that resolve, since batch 664. Batch 666 split the trace that fills it out of
-// that pass into composite1, which writes it to colortex9; the pass that resolves
-// reads it back from there, filters it and applies it.
+// temporal resolve is for - which is where this reflection is applied now,
+// ahead of that resolve, since batch 664.
 //
 // The move is the whole of batch 664. A reflection added AFTER a temporal
 // resolve is a fresh noisy sample every frame, with nothing downstream to
@@ -32,25 +30,27 @@
 // temporal stage for the same reason. A reflection added BEFORE it is part of
 // what the history accumulates, and the history averages the dither for free.
 //
-// Sampling colortex4 rather than colortex3 is what makes that legal. The pass
-// that applies the reflection (composite2) writes colortex3, and a buffer a pass
-// writes is not one it may trace over: the read side is the previous frame's
-// resolved image, reflection and all, so a trace over it would sample a picture
-// that already contains a reflection - the feedback loop whose symptom was a
-// black blot that grew (BATCH_LOG.md 210). colortex4 carries no reflection, and
-// it is this frame's world, which is also the frame the reflection is being
-// added to.
+// Sampling colortex4 rather than colortex3 is what makes that legal. composite1
+// writes colortex3, and a buffer a pass writes is not one it may trace over: the
+// read side is the previous frame's resolved image, reflection and all, so a
+// trace over it would sample a picture that already contains a reflection - the
+// feedback loop whose symptom was a black blot that grew (BATCH_LOG.md 210).
+// colortex4 carries no reflection, and it is this frame's world, which is also
+// the frame the reflection is being added to.
 //
 // The price of the move is recorded where the reflection is applied, in
-// composite2.fsh. Batches 220 and 267 chose the other side of that trade - a
+// composite1.fsh. Batches 220 and 267 chose the other side of that trade - a
 // pass of its own, after the resolve, tracing over the resolved colortex3 - and
 // batch 664 was the author's decision to move the reflection back.
 //
 // The uniforms are declared here rather than in the pass, because the pass
-// includes this file. A uniform may only be declared once per program, so what
-// the including pass owns is declared there and used here - depthtex0 and
-// frameCounter, today.
+// includes this file. colortex3 is declared here too although this file no
+// longer samples it: the pass that includes it does - that buffer is its
+// anti-aliasing history, written with colortex3Clear=false, see the note in
+// shaders.properties and lib/taa.glsl - and a uniform may only be declared once
+// per program.
 
+uniform sampler2D colortex3;
 uniform sampler2D colortex4;
 uniform sampler2D colortex7;
 uniform sampler2D colortex8;
@@ -65,7 +65,7 @@ uniform sampler2D depthtex1;
 // viewmodel rather than a place in the world.
 //
 // depthtex2 is declared here because this is where it is read. depthtex0 is not:
-// the pass that includes this file (composite1) reads it in its own hand test,
+// the pass that includes this file (composite1) reads it in its fog upscale,
 // which sits above this include in its source, so THAT pass declares it and this
 // file uses that declaration - a uniform may only be declared once per program,
 // and a shader has to see one before the code that uses it.
@@ -80,15 +80,7 @@ uniform vec2 windowToNdc;
 // ViewDistanceFromDepth. Both constants guarded a refusal that turned out to be
 // aimed at the wrong cause - see the two removal notes in the body.
 
-// The environment this fragment reflects, in linear RGB, and NOT multiplied by
-// the material's reflection weight.
-//
-// The weight is a separate question, and since batch 666 it is answered in the
-// pass that applies the reflection: PbrEnvironmentReflectionWeight in
-// composite2.fsh works it out from this colour and the material buffers. It is
-// not done here because this result travels between two passes in one RGBA16F,
-// which also has to carry the trace's distance - see the note on the buffer in
-// composite1.fsh.
+// The environment this fragment reflects, in linear RGB.
 //
 // Zero wherever there is nothing to reflect anything - see
 // PbrReflectionPossible - which is most of the screen: only surfaces with a
@@ -103,28 +95,28 @@ uniform vec2 windowToNdc;
 // translucent - water, ice, glass. The caller answers it because it is a
 // question about the two depth buffers, and only the caller has both; see
 // the note on it below for what it is for.
-// reflectionHitOut: whether the trace found the world at all. The trace pass
-// writes it into colortex9's alpha, where the filter and the reflection debug
-// view both read it - the debug view paints the pixels that fell back to the sky,
-// which is how a boundary in the reflection is told apart from a boundary in the
-// material without guessing, and that took several rounds to learn.
+// reflectionWeightOut: how much of the environment this pixel ends up taking, as
+// a colour. The caller uses it to take that fraction *out* of the picture
+// under PBR_ENERGY_CONSERVATION, so that the reflection replaces the light it
+// stands for instead of being added on top of it. See the note on it where it
+// is filled in.
+// reflectionHitOut: whether the trace found the world at all. Read by the
+// reflection debug view, which paints the pixels that fell back to the sky:
+// that is how a boundary in the reflection is told apart from a boundary in
+// the material without guessing, which took several rounds to learn.
 // reflectionHitDistanceOut: how far from the fragment the hit was, in blocks, and
-// zero where there was no hit. It is the distance the trace pass stores in the
-// same channel, and the filter and the debug view both compare it.
+// zero where there was no hit. Used by the same debug view to mark the hits
+// that are near enough to be this block's own geometry, and by the body to
+// refuse them.
 vec3 EnvironmentReflection(
 	vec3 viewPos,
 	float skyLight,
 	bool seenThrough,
+	out vec3 reflectionWeightOut,
 	out bool reflectionHitOut,
 	out float reflectionHitDistanceOut
 ) {
 	#if defined(PBR_SSR)
-		// Neither output is written on every path below: a trace that misses the
-		// world has no hit and no distance. They are initialised here rather than
-		// left undefined, which is what they were until batch 666 - the debug
-		// readout read the flag either way, and the buffer stores it now.
-		reflectionHitOut = false;
-		reflectionHitDistanceOut = 0.0;
 		// A fragment that is being seen through something translucent is given
 		// no reflection at all, and the reason for that is not about the
 		// surface - it is about where the reflection would be put.
@@ -150,6 +142,10 @@ vec3 EnvironmentReflection(
 		// there - which is exactly when this happens, and exactly when a
 		// reflection drawn here would be drawn in the wrong place.
 		if (seenThrough) {
+			reflectionWeightOut = vec3(0.0);
+
+			reflectionHitOut = false;
+			reflectionHitDistanceOut = 0.0;
 			return vec3(0.0);
 		}
 
@@ -173,18 +169,26 @@ vec3 EnvironmentReflection(
 		float metalness = step(0.5, metalID);
 
 		if (!PbrReflectionPossible(worldNormal, roughness, f0)) {
+			reflectionWeightOut = vec3(0.0);
+
+			reflectionHitOut = false;
+			reflectionHitDistanceOut = 0.0;
 			return vec3(0.0);
 		}
 
-		// The smoothness gate, read here rather than where the weight is applied:
-		// it is what decides whether this surface reflects anything at all - see
-		// PbrReflectionSmoothness - and a surface that reflects nothing must not
-		// pay for the sky model or the trace. (The same gate is applied again,
-		// with the rest of the weight, by the pass that composites the result; this
-		// is the copy that stops the work from happening.)
+		// How much of the environment this surface may reflect at all, worked
+		// out here rather than at the end so that a surface that reflects
+		// nothing pays for nothing. Most of the screen is rough enough that this
+		// is zero, and the sky model and the trace are both expensive enough
+		// that evaluating them to multiply the answer by zero is the largest
+		// waste this pass had.
 		float reflectionWeight = PbrReflectionSmoothness(roughness, metalness);
 
 		if (reflectionWeight <= 1.0e-4) {
+			reflectionWeightOut = vec3(0.0);
+
+			reflectionHitOut = false;
+			reflectionHitDistanceOut = 0.0;
 			return vec3(0.0);
 		}
 
@@ -207,6 +211,7 @@ vec3 EnvironmentReflection(
 			dot(-viewPos, view * vec3(1.0, 0.0, 0.0)),
 			dot(-viewPos, view * vec3(0.0, 1.0, 0.0)),
 			dot(-viewPos, view * vec3(0.0, 0.0, 1.0))));
+		float NdotV = max(dot(worldNormal, viewDirection), 1.0e-4);
 
 		vec3 worldReflected =
 			PbrReflectionDirection(worldNormal, viewDirection);
@@ -391,7 +396,7 @@ vec3 EnvironmentReflection(
 					// frame.
 					//
 					// colortex4 and not colortex3, and that is not a detail: the
-					// pass that resolves the frame (composite2) writes colortex3, so
+					// pass that calls this one (composite1) writes colortex3, so
 					// what a read there returns is the previous frame's resolved
 					// image - reflection included - and a trace that samples a
 					// picture containing itself feeds on itself. colortex4 is
@@ -452,17 +457,79 @@ vec3 EnvironmentReflection(
 			}
 		#endif
 
-		// The environment, unweighted, is what this function returns, and the
-		// weight that used to be finished here is gone (batch 666). Every term of
-		// it - the strength by metalness, the Fresnel, the smoothness gate, how
-		// much environment there is to reflect, and the clamp - is now in
-		// PbrEnvironmentReflectionWeight in composite2.fsh, which is the pass that
-		// composites the result and is therefore the pass that needs the weight.
-		// Nothing was dropped in the move: the note there is where each term of
-		// the weight is explained.
-		return environment;
+		// The smoothness gate is the one that decides whether this surface
+		// reflects anything at all - see PbrReflectionSmoothness. It scales the
+		// traced result as well as the sky, because both are answering the same
+		// question: what does a surface this rough reflect? A rough surface
+		// should be shown neither the sky nor a mirror image of the world.
+		//
+		// A metal is not held back by the global reflection strength. That
+		// strength is there because a flat wash of environment over every
+		// dielectric is what this looked like before it existed, and a metal is
+		// the one case where the reflection is the material rather than a sheen
+		// on top of it: Sundial gives it no such factor at all, and this dial is
+		// how much of one to keep.
+		float strength = mix(
+			PBR_REFLECTIONS_STRENGTH,
+			PBR_METAL_REFLECTION_STRENGTH,
+			metalness);
+
+		// Nothing to reflect is not the same as reflecting black.
+		//
+		// The weight below is what the caller takes OUT of the picture when it
+		// replaces instead of adding, so it may only be as large as what the
+		// reflection actually brings back. Indoors, underground and wherever the
+		// sky is out of sight, the environment here is nothing at all - and a
+		// weight of nearly one against an environment of zero is a surface
+		// multiplied towards black and given nothing in its place. That is what
+		// happened to metals: their Fresnel is high at every angle, so they lost
+		// most of their own light to a reflection that had no light in it.
+		//
+		// The floor is a luminance of a fiftieth, which is the point where a
+		// reflection stops being able to stand in for a surface's own colour.
+		float environmentLuminance = dot(
+			environment,
+			vec3(0.2126, 0.7152, 0.0722));
+		float environmentPresent = smoothstep(0.0, 0.02, environmentLuminance);
+
+		// How much of the environment this surface takes, as a colour, before the
+		// environment itself is multiplied in.
+		//
+		// Reported separately as well as used below, because the caller needs it:
+		// with PBR_ENERGY_CONSERVATION on, the reflection REPLACES that fraction
+		// of the picture instead of being added to it, which is the difference
+		// between a metal and a metal with a white film over it. Bliss composites
+		// the same way - mix(DarkenedDiffuseLighting, reflection, F0) - and it is
+		// why its metals stay the colour of their metal.
+		// The clamp is applied once and the clamped value is what is returned, and
+		// that is not tidiness - it is the difference between a metal and a blown-out
+		// white mirror (batch 626).
+		//
+		// With PBR_SPECULAR_STRENGTH at 2.0 a metal's weight is routinely above one:
+		// iron's reflectance is 0.78, so 2.0 * 0.78 is 1.56. The composite below
+		// subtracts `weight` from the picture and adds the reflection back in its
+		// place, so an unclamped weight subtracts one at most - the clamp on the
+		// weight the caller reads - and adds one and a half. The surface then reflects
+		// half again more than the light that reached it, its own colour is replaced by
+		// more than all of it, and what is left on screen is a pale wash where the
+		// metal's reflectance should have been visible. It went unnoticed until the
+		// strength was raised from 1.0, which is the only value at which every weight
+		// was already below one.
+		//
+		// A surface cannot reflect more than all of the environment it stands in, which
+		// is what the clamp says; the strength then only decides how quickly a surface
+		// gets there, not how far past it goes.
+		vec3 weight = strength
+			* PbrReflectionFresnel(f0, PbrMetalF82(metalID), NdotV, roughness)
+			* reflectionWeight
+			* environmentPresent;
+		reflectionWeightOut = clamp(weight, vec3(0.0), vec3(1.0));
+
+		return reflectionWeightOut * environment;
 	#else
-		// Nothing here reflects anything.
+		// Nothing here reflects anything, so nothing may be taken out of the
+		// picture in its name either.
+		reflectionWeightOut = vec3(0.0);
 
 		reflectionHitOut = false;
 		reflectionHitDistanceOut = 0.0;

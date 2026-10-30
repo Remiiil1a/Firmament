@@ -1190,7 +1190,7 @@ vec4 TranslucentLighting(
 			// water looked at along the surface. The water is then coloured by
 			// whatever is at that position, terrain included, and because that
 			// position slides quickly across the picture as the view turns, what it
-			// reads is dragged along with the camera; the resolve in composite2 then
+			// reads is dragged along with the camera; the resolve in composite1 then
 			// accumulates the darker end of it until it is black.
 			//
 			// That this case is the reported one is not a guess: batch 450 painted
