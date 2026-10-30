@@ -16,6 +16,109 @@ report problems in this project, not in Steadfast's.
 
 ---
 
+## v1.0.5 - 2026-10-30
+
+The material reflections, rebuilt: they find the surface that is actually in front
+of them rather than only the sky behind them, they stand in for the light they
+reflect rather than adding to it, and they are resolved with the picture, so their
+grain is averaged away. The screen-space shadows and the ambient occlusion are gone
+by the author's decision - the pack's shadows are the shadow map's now, and the
+Shadows page lists its options directly. Two shipped defaults changed with the
+reflections, so an existing picture will change.
+
+### Added
+
+* **Dropped items** - an item on the ground was the one surface with no reflection
+  at all: the pack draws it after the world, so its material arrived too late for
+  the reflection to see. Dropped items - and the third-person player, its armour and
+  the item in its hand - are traced by a path of their own now, with the same
+  strength, the same Fresnel and the same smoothness gate the blocks get.
+* **48 steps in the trace-step list** - for a frame-rate budget that can afford it.
+
+### Changed
+
+* **The trace samples the screen rather than the world** - its samples used to fall
+  2, 6, 14, 30 and 62 metres from the eye, so a block four metres in front of a
+  polished floor sat between two samples and the floor reflected the sky instead.
+  The samples are spread evenly across the screen now, where the same 24 put the
+  first twelve inside eight metres; a model of both traces found the true reflection
+  in 37% of the rays it could judge, and finds it in 97% now.
+* **A reflection stands in for the light it reflects** - at a grazing angle a
+  full-strength reflection was laid on top of a complete diffuse surface, so a
+  surface could be brighter than the light falling on it: glass read milky, emerald
+  pale and gold flat. Under **Energy conservation** the reflected part is taken out
+  of the surface's own light.
+* **Highlights** - a highlight is the light's colour now, tinted by the surface only
+  where the surface is metal. A saturated block used to tint its own sun highlight,
+  which is why the blocks that most need to look glossy looked the dullest.
+* **Two shipped defaults** - **Energy conservation** ships on, where it shipped off;
+  **Sun and moon size** ships at 4.0, where it shipped at 1.0, so a glint on a
+  smooth surface is a disc about two degrees across instead of half a degree. The
+  two are a pair chosen by eye, and together they let a glint be brighter than the
+  light that made it - that is the author's setting, not an oversight. For the old
+  picture, turn Energy conservation off and set Sun and moon size back to 1.0.
+* **The reflection is resolved with the picture** - it belongs to the frame the
+  pack's temporal smoothing averages now, so the grain that sat on every reflection
+  is averaged away and a camera that holds still sees a steady reflection. The trade
+  is real and the author took it: the reflection of something that is moving can
+  trail.
+* **The reflection options** - "Sky reflection strength" is "Reflection strength"
+  now, because there is no separate sky reflection any more, and the trace-step text
+  says what the option covers: the material reflections, the hand's own trace and
+  the trace for dropped items, with water keeping a budget of its own.
+
+### Fixed
+
+* **Metal** - it reflected more light than fell on it and overwrote its own colour
+  with the environment, so iron, gold and copper went white in a reflection and
+  near-black when the camera was in a cave, the scene was backlit, or the block was
+  in the player's hand.
+* **The bright line along block edges, inside reflections** - the outermost texel of
+  a block sprite is bevelled, so its normal turns away from the eye and a reflection
+  ray built from it hit the block's own bright rim; those texels reflect as the flat
+  face they belong to now.
+* **A ring of missing reflection on the ground** - the trace had been cut to 12
+  steps, which reached nothing four to eight metres out, and on a floor that
+  distance is a ring around the player.
+* **A disc of missing reflection when looking steeply down** - both tracers refused
+  any ray whose eye-to-surface angle was steeper than 45 degrees, which draws a
+  circle on a floor and has nothing to do with what the ray could reach.
+* **The player's hand and the held item** - a reflection ray that lands on the hand
+  used to take the arm's colour; it falls back to the sky the pixel would have shown
+  instead.
+* **Reflections while the camera holds still** - standing still settled a reflection
+  at about half strength and moving brought it back to full; it is the same
+  brightness either way now.
+* **The sky at grazing angles** - looking almost along a reflective block, its sky
+  reflection disappeared and left a dark band along the horizon.
+* **Mobs and the third-person player** - a fallback that made the entities drawn
+  after the world smooth enough to reflect was also smoothing every mob and the
+  player, which is where the patch of white on a cow's back came from.
+* **Iron items on the ground** - the trace found nothing on open ground and a metal
+  has almost no diffuse light of its own to fall back on; a miss takes the sky the
+  ray pointed at now.
+* **Turning Screen-space reflections off** - the pack failed to build with that
+  option off, and only with it off; it builds now.
+* **The reflection debug view** - it compiles again, and instead of a picture of the
+  reflection blown up four times it reads out the three numbers a reflection depends
+  on: how much the material reflects, how smooth the surface is, and how far the
+  trace reached.
+
+### Removed
+
+* **Screen-space shadows and ambient occlusion** - with the options behind them: the
+  screen-space shadow page (its switch and five sliders) and the ambient occlusion
+  page (its switch and three sliders) are gone, and so is the occlusion debug view.
+  Beyond the shadow map's reach there is no second attempt at a shadow now. This is
+  the author's decision: the effect's bugs cost more than it added.
+* **The Shadows page** - it lists its options directly now; it used to hold three
+  sub-pages, and the eleven real-time shadow options sit on the page itself.
+* **The separate sky-reflection options** - "Sky reflections", "Roughness spread"
+  and "Reflection blur" are gone. What is left describes the one reflection the pack
+  has: its strength, how much sky it needs, how smooth a surface has to be, the
+  screen-space trace and its step count. A rough surface's reflection of the world
+  is one sample per pixel now, and the dither it carries is averaged over time.
+
 ## v1.0.4 - 2026-10-21
 
 The nether portal, the end portal and the end gateway are drawn by the pack now,
