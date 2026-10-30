@@ -982,17 +982,22 @@ void main() {
 	// format with no negative zero in it, so the largest of the nine is the
 	// largest of the nine whichever order they arrive in.
 	if (currentUsable) {
-		neighborhoodSum += current;
-		neighborhoodSquareSum += current * current;
+		// currentRaw rather than current, and that is the whole of batch 665: the
+		// eight fetched neighbours have no reflection in them (colortex0 does not
+		// carry one), so the ninth - the centre, folded in here - must not either,
+		// or the bound this band produces is a bound for a different picture than
+		// the one the history holds. See the note on reflectionDelta above.
+		neighborhoodSum += currentRaw;
+		neighborhoodSquareSum += currentRaw * currentRaw;
 		neighborhoodCount += 1.0;
-		neighborhoodMaximum = max(neighborhoodMaximum, current);
+		neighborhoodMaximum = max(neighborhoodMaximum, currentRaw);
 	}
 
 	// No usable neighbour at all would leave the maximum at its starting
 	// value, which is not a bound a colour can be clamped to. The loop cannot
 	// leave it there: the clamped pixel coordinates make it at least one.
 	if (neighborhoodCount < 1.0) {
-		neighborhoodMaximum = current;
+		neighborhoodMaximum = currentRaw;
 	}
 
 	// Divided by how many neighbours were usable rather than by nine: a skipped
@@ -1103,7 +1108,30 @@ void main() {
 	// never above the upper one, whatever the deviation does.
 	historyUpper = min(historyUpper, neighborhoodMaximum);
 
-	history = clamp(history, historyLower, historyUpper);
+	// BATCH 665: the clamp judges the SCENE part of the history and leaves the
+	// reflection part alone.
+	//
+	// Every sample this band was built from comes from colortex0 - the frame with
+	// no reflection in it (the centre sample was folded in as `currentRaw` for that
+	// reason, see the note there) - while `history` is last frame's resolved
+	// picture, which does carry one. Comparing them directly makes the reflection's
+	// own brightness look like a stale sample: the bound sits at the scene's
+	// brightness, the reflected history is brighter than that, 85% of it is rejected
+	// every frame, and the reflection settles at about half strength while the
+	// camera is still. Then the camera moves, the history weight drops towards 0.7
+	// only by a little - but `mix(current, history, weight)` starts taking the
+	// current frame's full reflection, and the reflection brightens. The author
+	// reported exactly that asymmetry ("静止时反射会变暗，视角移动时反射又会变亮",
+	// batch 665).
+	//
+	// So the difference the reflection made is removed before the clamp and put
+	// back after it: what the band bounds is the scene, which is what the band was
+	// measured on. `reflectionDelta` is zero for every pixel no reflection was
+	// applied to, so nothing about the rest of the frame changes.
+	vec3 reflectionDelta = currentUsable ? current - currentRaw : vec3(0.0);
+
+	history = clamp(history - reflectionDelta, historyLower, historyUpper)
+		+ reflectionDelta;
 
 	// How far this pixel moved since the previous frame, in pixels.
 	// Measured from this pixel to where this pixel's history was - the anchor's own
