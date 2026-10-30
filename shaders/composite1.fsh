@@ -42,7 +42,10 @@
 //   rgb - the environment the surface reflects: the sky and the traced world
 //         combined, NOT multiplied by the material's reflection weight.
 //   a   - the distance the trace travelled, in blocks, where it found the world;
-//         zero where it fell back to the sky.
+//         NEGATIVE where it fell back to the sky, and -far in that case, which is
+//         "as far as this expression can say" - see the note at the write. The sign
+//         is what the debug view reads to tell a hit from the sky, the magnitude is
+//         what the filter reads to spread its taps; neither alone would do.
 //
 // The weight is deliberately not in the buffer. The apply needs all three of the
 // colour, the weight and the distance, one RGBA16F holds two of them, and the
@@ -105,6 +108,11 @@ uniform mat4 gbufferProjectionInverse;
 // Bayer8, and by frame through this counter, so that a fixed screen grid does not
 // reinforce itself into a visible pattern. Read by environment_reflection.glsl.
 uniform int frameCounter;
+
+// The far plane, in blocks. Used here for one thing only: the sentinel this pass
+// writes into the alpha channel where the trace fell back to the sky. See the note
+// at the write, and the one on the buffer above.
+uniform float far;
 
 // The pack's sky, for the reflected sky and its dither.
 // Uniforms: dimension, biome_category, the atmosphere's own
@@ -232,7 +240,28 @@ void main() {
 		}
 
 		environmentReflection = environment;
-		reflectionRayLength = reflectionHit ? reflectionHitDistance : 0.0;
+
+		// BATCH 667: a pixel whose ray missed still has a reflection - the sky -
+		// and it has to be marked as one, because the filter in composite2 spreads
+		// its taps by the distance in this channel:
+		//
+		//   coordOffset = 4 * offset * clamp(roughness * 20, 0, 1)
+		//                 * (1 - exp(-distance / far * 1000))
+		//
+		// A zero there makes that factor zero and collapses every tap onto the
+		// pixel itself, so a sky pixel would be left exactly as it was written -
+		// which is why batch 666's filter changed nothing on screen: the surfaces
+		// the author looked at reflect the sky, not the world (the blue 0.35 of
+		// the reflection debug view, i.e. the "no reflection" discs of batch 661).
+		// The reference pack marks the same case with a large number, for the same
+		// reason; this pack uses a NEGATIVE one, so that the debug view's "did the
+		// trace hit" test (alpha > 1e-6) still tells the two apart, and the filter
+		// takes abs() before comparing depths.
+		//
+		// -far rather than any large number: divided by far it is exactly 1, and
+		// one is already past the saturating end of the expression above, so the
+		// sky spreads as far as the filter can spread anything.
+		reflectionRayLength = reflectionHit ? reflectionHitDistance : -far;
 	}
 	#endif
 

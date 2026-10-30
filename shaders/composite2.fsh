@@ -598,17 +598,24 @@ vec3 PbrEnvironmentReflectionWeight(
 //
 // THE CENTRE GATE. The reference filters only where
 // `abs(depth) < 1.0 && reflectionColor.w > 1e-6`, and its w is never zero for a
-// reflection: its trace writes rayLength / far for a hit and a large number for
-// the sky fallback, so that gate means "there is a reflection here". This pack's
-// alpha is zero for the sky fallback - the channel is the distance, and zero is
-// what tells this filter and the debug readout that the ray found nothing - so
-// the gate in main() means "the trace found the world". A pixel whose trace fell
-// back to the sky is therefore left unfiltered, deliberately: the sky half of a
-// reflection is already averaged over the surface's own cone inside the trace
-// (environment_reflection.glsl), so the part this filter would blur is not there
-// to blur, and where the cone is smaller than a pixel the surface is a mirror,
-// which this filter would not blur either - its spread is under a texel at that
-// roughness.
+// reflection: its trace writes rayLength / far for a hit and a LARGE NUMBER for
+// the sky fallback, so that gate means "there is a reflection here" - traced world
+// or sky.
+//
+// Batch 666 read that as "the trace found the world", because this pack's alpha
+// was zero for the sky fallback, and left sky pixels unfiltered. That was the
+// whole reason the filter was invisible on screen: the surfaces the author looked
+// at reflect the sky (the blue 0.35 of the debug readout, the "no reflection"
+// discs of batch 661), and the spread expression collapses to zero at a distance
+// of zero, so those pixels came out of the filter exactly as they went in. Batch
+// 667 fixed the two halves of it: the trace pass now writes -far for the sky, and
+// the gate in main() is "this pixel has a reflection", which is the reference's
+// gate.
+//
+// The alpha's sign is what keeps the debug readout's "did the trace hit" answer
+// available (alpha > 0 is a hit), which is why the sky's sentinel is negative
+// rather than the reference's large positive number; the three depth comparisons
+// below take abs() and are otherwise the reference's.
 const int REFLECTION_FILTER_RADIUS = 1;
 
 vec3 ReflectionFilter(
@@ -632,8 +639,12 @@ vec3 ReflectionFilter(
 	// reference uses.
 	float originRoughnessInv = 100.0 / max(originRoughness, 1.0e-5);
 
-	// The reference's quantity: see the note on the units above.
-	float originReflectionDepth = originRayLength / far;
+	// The reference's quantity: see the note on the units above. abs(), because a
+	// pixel that fell back to the sky is written as -far by the trace pass (batch
+	// 667): the sign distinguishes a hit from the sky for the debug readout, the
+	// magnitude is what this expression needs, and it is the same "as far as it
+	// goes" the reference stores for its own sky pixels.
+	float originReflectionDepth = abs(originRayLength) / far;
 
 	vec2 coordOffset = vec2(
 		4.0 * offset
@@ -671,7 +682,7 @@ vec3 ReflectionFilter(
 
 			float sampleRoughness = clamp(sampleMaterial.w, 0.0, 1.0);
 			float sampleMetalness = step(0.5, sampleReflectance.a * 255.0);
-			float sampleReflectionDepth = sampleReflection.a / far;
+			float sampleReflectionDepth = abs(sampleReflection.a) / far;
 
 			// The reference's weight, term for term. The roughness term's log is
 			// clamped where the reference passes it a zero: that happens when the
@@ -1054,12 +1065,19 @@ void main() {
 			reflectionEnvironment);
 	}
 
-	// THE FILTER, where the trace found the world. The gate is the reference's
-	// "there is a reflection here", in this pack's terms - see the note on it at
-	// the filter itself. Both of the reference's offsets are evaluated, over the
-	// same unfiltered buffer, and the two results are averaged; that note also
-	// says what the reference does instead and why this is second-order.
-	if (reflectionRayLength > 1.0e-6) {
+	// THE FILTER, wherever this pixel has a reflection - the traced world OR the
+	// sky it fell back to. The gate is the reference's "there is a reflection
+	// here"; batch 666 had it as "the trace hit", which is narrower than the
+	// reference and is why the filter changed nothing on screen: the surfaces that
+	// were looked at reflect the sky (the blue 0.35 of the debug readout, the "no
+	// reflection" discs of batch 661), and those pixels were skipped. See the note
+	// at the write in composite1.fsh, where the sky is now marked with -far so the
+	// spread expression has a magnitude to work with.
+	//
+	// Both of the reference's offsets are evaluated over the same unfiltered
+	// buffer, and the two results are averaged; the note at the function says what
+	// the reference does instead and why this is second-order.
+	if (dot(reflectionEnvironment, reflectionEnvironment) > 0.0) {
 		reflectionEnvironment = 0.5 * (
 			ReflectionFilter(
 				reflectionEnvironment, reflectionRayLength, pixel, 6.0)
