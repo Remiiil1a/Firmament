@@ -226,8 +226,26 @@ vec3 ApplyFog(
 		// is standing in the same water the camera is: nothing can be read as
 		// deeper than the eye it is being looked at from.
 		float waterLevel = max(skyLight, eyeSkylight);
-		float waterPath = (-15.0) * waterLevel + 15.0
-			+ length(cameraRelativePos);
+
+		// A sky light of zero is not "this is as deep as water gets" - it is the
+		// reading a fragment gives when the game has no sky light for it at all, and
+		// the entities and the hand under water are exactly that case: batch 680's
+		// diagnostic view reads their pixels as depth written, not water, and a sky
+		// light of zero, while the kelp beside them reads one. Taking the column from
+		// that zero put every one of them fifteen metres down, multiplied them by the
+		// deep-water colour, and made them the same colour as the water behind them -
+		// which is what the author saw as the model being see-through. Batch 678 had
+		// already tried to floor the reading with the eye's own sky light, and it did
+		// nothing there for the same reason: under the surface that reading is zero
+		// as well.
+		//
+		// So the column is only taken when there is a light to take it from. What is
+		// left is the distance from the eye, which is the half of the path that does
+		// not depend on a light map: a hand a metre away keeps nearly all of its own
+		// colour, and the far water stays as dark as it was, because there the
+		// distance is the whole of the term.
+		float waterColumn = waterLevel > 0.001 ? 15.0 - 15.0 * waterLevel : 0.0;
+		float waterPath = waterColumn + length(cameraRelativePos);
 		background *= WaterAttenuation(waterPath);
 	}
 
