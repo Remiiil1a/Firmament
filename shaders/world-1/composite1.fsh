@@ -625,9 +625,24 @@ void main() {
 		< texelFetch(depthtex2, pixel, 0).r;
 
 	if (reflectionDepth < 1.0 && !handInFront) {
+		// The jitter is taken back out of the pixel's position, and that is batch
+		// 673 - it is what the reflection's own shake was.
+		//
+		// The gbuffer passes draw this frame through TaaJitter(), so the depth at
+		// this pixel belongs to a surface that was drawn one jitter away from the
+		// pixel's own position. Projected back without removing it, the ray starts
+		// off the surface it belongs to by up to half a pixel of that surface's
+		// own depth - and the error is a different amount every frame, because the
+		// jitter is. A ray that lands near an edge then finds it on one frame and
+		// misses it on the next, which is noise no resolve can average away.
+		//
+		// Removing it here puts the ray back on the surface. The trace is then
+		// entirely unjittered, and it takes the jitter back into account on every
+		// read it makes of the (jittered) frame's buffers - see the parameter in
+		// lib/raytrace.glsl. With TAA off TaaJitter() is zero and nothing moves.
 		vec3 reflectionNdc = vec3(
-			gl_FragCoord.xy * windowToNdc,
-			reflectionDepth * 2.0) - 1.0;
+			gl_FragCoord.xy * windowToNdc - TaaJitter(),
+			reflectionDepth * 2.0 - 1.0);
 		vec4 reflectionViewPosH =
 			gbufferProjectionInverse * vec4(reflectionNdc, 1.0);
 		vec3 reflectionViewPos =
