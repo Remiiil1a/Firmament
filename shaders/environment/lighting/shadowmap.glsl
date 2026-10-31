@@ -171,6 +171,14 @@ const float entityShadowDistanceMul = 0.25;
 	#define WATER_CAUSTICS_DISTANCE 48.0 // [8.0 16.0 24.0 32.0 48.0 64.0]
 #endif
 
+// The whole function belongs inside the WATER_CAUSTICS guard: it reads
+// causticsFade and calls WaterCaustics, and both only exist while the option
+// is on. The guard used to end above it, so turning the option off left those
+// two names undeclared and every program including this file failed to
+// compile. The chain never compiled that state - sweep only opens options that
+// are off by default - so it stayed green until the off state was run by hand.
+// Upstream Steadfast 0.9.0 fixed the same shape by moving its own #endif down.
+#ifdef WATER_CAUSTICS
 float SampleWaterCaustics(
 	float shadowSample,
 	float withinShadowMap,
@@ -257,6 +265,7 @@ float SampleWaterCaustics(
 	float caustics = WaterCaustics(worldPos, timeSeconds);
 	return shadowSample * max(0.0, 1.0 + causticsStrength * caustics);
 }
+#endif
 
 float ShadowMapping(
 	uint materialID,

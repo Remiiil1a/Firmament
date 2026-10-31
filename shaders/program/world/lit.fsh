@@ -1271,7 +1271,15 @@ void main() {
 				|| materialID == STAINED_GLASS;
 		#endif
 
-		float reflectionStrength = reflective ? skyLight : 0.0;
+		// Water and ice lose their reflection as the skylight goes away - that is
+		// what keeps cave water from being a mirror. Glass must not: its
+		// reflectance is the material's own, not something the sky above it
+		// supplies, and under GLASS_REFLECTIONS it shares this same variable.
+		bool waterOrIce = materialID == WATER || materialID == ICE;
+		float skylightFade = waterOrIce
+			? max(0.0, (1.25 * skyLight) - 0.25)
+			: skyLight;
+		float reflectionStrength = reflective ? skylightFade : 0.0;
 	#endif
 
 	// No need for this with Colorwheel as it handles this in its material

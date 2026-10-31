@@ -578,7 +578,13 @@ vec4 TranslucentLighting(
 		}
 	#endif
 
-	if (reflectionStrength > 0.0001) {
+	// Seen from under the water there is no world above to reflect, and the
+	// screen-space pass would only find the water itself. isEyeInWaterFog is
+	// the pack's own alias (declared in /environment/fog.glsl, which every
+	// program that includes this file includes first); the game's
+	// isEyeInWater is not available in all of those stages, so it cannot be
+	// read here.
+	if (reflectionStrength > 0.0001 && isEyeInWaterFog == 0) {
 		// For non-water, allow the fresnel to go to zero and use the face
 		// normal instead of any normal-mapping.
 		//

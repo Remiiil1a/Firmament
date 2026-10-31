@@ -18,7 +18,12 @@
 
 #version 150 compatibility
 #define HAS_BLOCK_ATTRIBUTES
-#define NORMALS_ARE_IN_WORLD_SPACE
+// Create Aeronautics draws through the water shader as well, with the same
+// non-identity normal matrix; see gbuffers_terrain.vsh for the whole story.
+//#define CREATE_AERONAUTICS_COMPATIBILITY
+#ifndef CREATE_AERONAUTICS_COMPATIBILITY
+	#define NORMALS_ARE_IN_WORLD_SPACE
+#endif
 // Keep this in sync with gbuffers_water.fsh - it has to be defined in both
 // stages, or the sprite bounds varying that parallax mapping needs would only
 // exist on one side.

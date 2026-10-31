@@ -443,7 +443,18 @@ vec3 BlockLighting(
 
 // Tilt the path of the sun sideways. This is a standard shader effect that
 // makes shadows look much better.
-const float	sunPathRotation	= -40.0f;
+//
+// Both declarations below were exposed to the menu in batch 669, following
+// upstream Steadfast 0.9.0, which collects settings like these into its own
+// pipeline file. The value is written as -40.0 rather than -40.0f so the
+// loader can read a default out of the value list.
+const float	sunPathRotation	= -40.0; // [-45.0 -40.0 -35.0 -30.0 -25.0 -20.0 -15.0 -10.0 -5.0 0.0 5.0 10.0 15.0 20.0 25.0 30.0 35.0 40.0 45.0]
+
+// How much of the ambient occlusion the game bakes into block lighting is
+// allowed to reach the shader. 1.0 is vanilla. Declaring it is what makes
+// the value settable at all: with no declaration the loader uses 1.0 and
+// the menu has nothing to show.
+const float ambientOcclusionLevel = 1.0; // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
 
 #if !defined(EXTERNALLY_DEFINED_UNIFORMS)
 	#if WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED

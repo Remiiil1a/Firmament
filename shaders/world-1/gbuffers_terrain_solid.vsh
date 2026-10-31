@@ -24,7 +24,15 @@
 
 #define HAS_BLOCK_ATTRIBUTES
 #define HAS_WAVING_FOLIAGE
-#define NORMALS_ARE_IN_WORLD_SPACE
+// Create Aeronautics draws through the terrain shader but hands it a
+// non-identity normal matrix, and the pack has no way to tell those draws
+// apart, so the world-space-normal shortcut has to be switchable off. Off by
+// default: it costs a matrix multiply per terrain vertex, which is the whole
+// reason the shortcut exists.
+//#define CREATE_AERONAUTICS_COMPATIBILITY
+#ifndef CREATE_AERONAUTICS_COMPATIBILITY
+	#define NORMALS_ARE_IN_WORLD_SPACE
+#endif
 // Keep this in sync with gbuffers_terrain_solid.fsh - it has to be defined in
 // both stages, or the sprite bounds varying that parallax mapping needs would
 // only exist on one side.
