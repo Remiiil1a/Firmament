@@ -96,6 +96,14 @@ uniform sampler2D colortex1;
 	uniform sampler2D colortex4;
 #endif
 
+// The two images the water interaction simulation publishes (batch 683). They
+// are bound by name from shaders.properties, so a program only has to declare
+// the sampler it wants to read - and it reads whatever the last frame left there.
+#if DEBUG == DEBUG_WAVEINFO
+	uniform sampler2D wave_sim_b_sampler;
+	uniform sampler2D wave_sim_info_sampler;
+#endif
+
 // Whether to draw the medium the light travels through, and the shafts it
 // scatters towards the eye.
 //
@@ -189,7 +197,15 @@ uniform sampler2D colortex1;
 // and only one of them can be true of a given pixel. The buffers say which.
 #define DEBUG_WATERFLAG 7
 #define DEBUG_WATERSOURCE 8
-#define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_GODRAYS_UPSAMPLED DEBUG_SKYLIGHT DEBUG_DEPTH DEBUG_PLUME_DENSITY DEBUG_WATERFLAG DEBUG_WATERSOURCE]
+
+// The water interaction simulation's own state (batch 683).
+//
+// Water that does not react has two possible reasons and they look the same on
+// screen: the two compute passes never ran (then no amount of work on the water
+// program will help), or they ran and the field never reached the normal. This
+// view reads the buffers the passes hand over, so the reading is direct.
+#define DEBUG_WAVEINFO 9
+#define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_GODRAYS_UPSAMPLED DEBUG_SKYLIGHT DEBUG_DEPTH DEBUG_PLUME_DENSITY DEBUG_WATERFLAG DEBUG_WATERSOURCE DEBUG_WAVEINFO]
 
 #if DEBUG == DEBUG_GODRAYS_NOISY || DEBUG == DEBUG_GODRAYS_SMOOTH || DEBUG == DEBUG_GODRAYS_UPSAMPLED
 	// The three views that read the fog buffer. Until batch 581 this was two
@@ -293,6 +309,26 @@ void main() {
 	// Determine the position of this fragment on the screen in screen
 	// coordinates (0.0 to 1.0).
 	vec2 screenCoord = gl_FragCoord.xy * windowToScreen;
+
+	#if DEBUG == DEBUG_WAVEINFO
+		// Red: whether the simulation published anything at all this frame - the
+		// ready flag the second sub-step writes. Zero means the two compute passes
+		// did not run, or ran and failed, and the water programs then leave the
+		// surface alone; that is the first thing to settle.
+		//
+		// Green: the size of the pressure field at this screen position, and blue:
+		// the size of its gradient. They are sampled by screen position rather than
+		// by world position, so they are not a picture of where the waves are - what
+		// they say is whether the field carries energy at all.
+		vec4 waveInfo = texelFetch(wave_sim_info_sampler, ivec2(1, 0), 0);
+		vec4 waveField = texture(wave_sim_b_sampler, screenCoord);
+
+		finalColor = vec3(
+			waveInfo.z,
+			clamp(abs(waveField.r), 0.0, 1.0),
+			clamp(length(waveField.ba) * 8.0, 0.0, 1.0));
+		return;
+	#endif
 
 	#if DEBUG == DEBUG_WATERFLAG
 		// What the three interesting channels hold at this pixel.
