@@ -481,7 +481,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 671]
+option.PBR_DEBUG=Material debug view [build 672]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1525,3 +1525,6 @@ option.HORIZON_OCCLUDES_SUN_AND_MOON.comment=Off is what the game does on its ow
 option.WATER_F0=Water surface Fresnel
 option.WATER_F0.comment=The fraction of light a flat water surface reflects head-on. 0.02 is the measured value and lets more of the water show; the default is higher because 0.02 makes water read as too clear.
 value.WATER_CHARACTER.CLEAR=Crystal clear (measured)
+option.ROUGH_REFRACTION=Rough refraction
+option.ROUGH_REFRACTION.comment=Softens what the water shows through it, so that a sharp edge behind the water bends instead of printing through it. Off is the sharp, single-sample refraction.
+option.ROUGH_REFRACTION_STRENGTH=Rough refraction strength

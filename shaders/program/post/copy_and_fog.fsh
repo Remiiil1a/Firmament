@@ -399,23 +399,24 @@ void main() {
 	// programs themselves, which means the reflection added here is not fogged
 	// with it. That is the price of adding it after the fact in this
 	// configuration; the refraction-assisted one above gets it right.
-	if (depth < 1.0) {
-		// Declared and never read. There is no side effect to be had here:
-		// ViewPosFromDepth (line 199) only reads gl_FragCoord and its arguments
-		// and returns a value, so calling it and dropping the result computes
-		// nothing that anything can observe, and viewPos goes out of scope with
-		// the block.
-		//
-		// The shape is worth knowing before trusting it. The refraction-assisted
-		// branch above (line 582) opens with the same line and then passes the
-		// result to ApplyFog; here only the declaration survives. The branch
-		// this sits in is taken when the absorption method is not
-		// refraction-assisted, and in that configuration APPLY_FOG is defined by
-		// lit.fsh, so a forgotten fog call here would have compiled and done
-		// nothing. That is a code question: reported in the audit, not touched.
-		vec3 viewPos = ViewPosFromDepth(gbufferProjectionInverse, depth);
-
-	}
+	// Batch 672 removed a declaration here: the branch used to open with
+	// `vec3 viewPos = ViewPosFromDepth(...)` and nothing read it. It was a
+	// leftover of the shape the refraction-assisted branch above has, where the
+	// same line is fed to ApplyFog - and in this branch the fog has already been
+	// applied by the surface programs themselves (lit.fsh defines APPLY_FOG
+	// whenever the absorption method is not the refraction-assisted one), so
+	// there is nothing here for a fog call to do. The audit had reported it as a
+	// code question; batch 672 answers it by deleting the line.
+	//
+	// Note that this branch is not the shipped one: with the refraction-assisted
+	// absorption - the only value that ships - the branch above is the one
+	// compiled, and the assembled deferred program carries DRAWBUFFERS:405.
+	// So the fog was already a fullscreen pass in the deferred program rather
+	// than a per-fragment cost in every gbuffer program, which is the change
+	// upstream 0.9.0 is credited with in the triage. The evidence is in the
+	// front end's assembly: gbuffers_terrain.fsh has no FogV2 in it at all, and
+	// gbuffers_water.fsh has eleven because the water is drawn after this pass
+	// and fogs itself.
 
 	gl_FragData[1] = vec4(scene, 1.0);
 

@@ -75,6 +75,18 @@ const float GLASS_F0 = 0.04;
 // Screenspace terrain refraction for water
 #include "/environment/water/refraction.glsl"
 
+// Whether the refraction sample is softened before it becomes the background,
+// and by how much. Upstream Steadfast 0.9.0 ships this on at 0.45; it is a
+// setting because it is a look rather than a correction, and because the
+// inline form here costs four colour taps and four depth reads per water
+// pixel that is refracting at all.
+//
+// The bubble is what it is for: without it a refraction that lands on a
+// sharp edge shows that edge bending, which reads as glass rather than as
+// water.
+#define ROUGH_REFRACTION
+#define ROUGH_REFRACTION_STRENGTH 0.45 // [0.0 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
+
 #if WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED
 	// Integration between water absorption and refraction
 	#include "/environment/water/absorption_refraction.glsl"
@@ -1183,10 +1195,65 @@ vec4 TranslucentLighting(
 				}
 			#endif
 
-			vec3 dstColor = RefractionSafeSample(
-				colortex4, 
-				refractedScreenPos.xy
-			).rgb;
+			// Rough refraction (batch 672, following upstream 0.9.0): the sample is
+			// softened before it becomes the background.
+			//
+			// Upstream blurs a half resolution copy of the frame with a thirteen tap
+			// kernel and no depth rejection at all, which needs a pass and a buffer
+			// this pack does not have to spare - colortex6 belongs to the light
+			// bleed, and its sampling radius is tuned. This is the same idea inline:
+			// the centre plus the four diagonal taps at one texel, and every tap is
+			// checked against the depth buffer first. That check is not optional
+			// here: the reason the sampling in this file goes through
+			// RefractionSafeSample at all is that a tap in front of the water must
+			// not be read, and a blur that ignores it would drag the edge it is
+			// softening into the water.
+			//
+			// One texel is also as far as this can go without vouching for more:
+			// RefractTrace's gather checked the four texels around this position,
+			// and the diagonal taps sit on those.
+			//
+			// opaqueDepth is the program's own depth buffer - depthtex1 in the
+			// normal programs, Voxy's own texture in the patch (see lit_voxy.fsh) -
+			// so this compiles for both without asking which one it is.
+			vec3 dstColor;
+			#ifdef ROUGH_REFRACTION
+				// The offsets are in the colour buffer's texels: on distant-horizons
+				// terrain the depth buffer the trace uses is a different texture, and
+				// it need not have the screen's resolution.
+				vec2 refractionTexel = 1.0 / vec2(textureSize(colortex4, 0));
+				vec3 sharp = RefractionSafeSample(
+					colortex4,
+					refractedScreenPos.xy).rgb;
+				vec3 sum = sharp;
+				float taken = 1.0;
+				for (int i = 0; i < 4; i++) {
+					vec2 at = refractedScreenPos.xy + vec2(
+						(i == 0 || i == 3) ? -1.0 : 1.0,
+						(i < 2) ? -1.0 : 1.0) * refractionTexel;
+					if (any(lessThan(at, vec2(0.0)))
+						|| any(greaterThan(at, vec2(1.0)))) {
+						continue;
+					}
+					// Nearest, not bilinear: an interpolated depth across a silhouette
+					// is a number that belongs to neither side, which is exactly the
+					// fringe depthRange goes out of its way to avoid.
+					float tapDepth = texelFetch(
+						opaqueDepth,
+						ivec2(at * vec2(textureSize(opaqueDepth, 0))),
+						0).r;
+					if (tapDepth < gl_FragCoord.z) {
+						continue;
+					}
+					sum += RefractionSafeSample(colortex4, at).rgb;
+					taken += 1.0;
+				}
+				dstColor = mix(sharp, sum / taken, ROUGH_REFRACTION_STRENGTH);
+			#else
+				dstColor = RefractionSafeSample(
+					colortex4,
+					refractedScreenPos.xy).rgb;
+			#endif
 
 			// When the trace reports that it reached the sky, what it hands back
 			// is the position the ray *left* the water at - and on Voxy terrain that
