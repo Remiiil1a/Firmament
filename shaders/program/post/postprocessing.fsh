@@ -87,6 +87,15 @@ uniform sampler2D colortex13;
 // version exists for and the one the old version could not draw.
 uniform sampler2D colortex1;
 
+// Read by the two water views below (batch 680). colortex2's red channel is the
+// sky light every shaded fragment wrote and its green channel is the water flag
+// (see gl_FragData[1] in lit.fsh); colortex4 is the deferred pass's copy of the
+// frame, the buffer the water surface's refraction samples.
+#if DEBUG == DEBUG_WATERFLAG || DEBUG == DEBUG_WATERSOURCE
+	uniform sampler2D colortex2;
+	uniform sampler2D colortex4;
+#endif
+
 // Whether to draw the medium the light travels through, and the shafts it
 // scatters towards the eye.
 //
@@ -170,7 +179,17 @@ uniform sampler2D colortex1;
 #define DEBUG_SKYLIGHT 4
 #define DEBUG_DEPTH 5
 #define DEBUG_PLUME_DENSITY 6
-#define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_GODRAYS_UPSAMPLED DEBUG_SKYLIGHT DEBUG_DEPTH DEBUG_PLUME_DENSITY]
+
+// Two views for the water question of batch 680: what the buffers hold where a
+// hand, a held item or the player's own model looks see-through under water.
+//
+// They exist because the pack cannot answer it by reading the code: the
+// candidates put the same symptom on screen - a fragment shaded with the water
+// material, a fragment drawn after the deferred pass, a pixel nothing drew -
+// and only one of them can be true of a given pixel. The buffers say which.
+#define DEBUG_WATERFLAG 7
+#define DEBUG_WATERSOURCE 8
+#define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_GODRAYS_UPSAMPLED DEBUG_SKYLIGHT DEBUG_DEPTH DEBUG_PLUME_DENSITY DEBUG_WATERFLAG DEBUG_WATERSOURCE]
 
 #if DEBUG == DEBUG_GODRAYS_NOISY || DEBUG == DEBUG_GODRAYS_SMOOTH || DEBUG == DEBUG_GODRAYS_UPSAMPLED
 	// The three views that read the fog buffer. Until batch 581 this was two
@@ -274,6 +293,41 @@ void main() {
 	// Determine the position of this fragment on the screen in screen
 	// coordinates (0.0 to 1.0).
 	vec2 screenCoord = gl_FragCoord.xy * windowToScreen;
+
+	#if DEBUG == DEBUG_WATERFLAG
+		// What the three interesting channels hold at this pixel.
+		//
+		// Red:   1.0 where the fragment that wrote this pixel was shaded as WATER
+		//        (colortex2.g). A hand, a held item or a player model lit as water
+		//        is the black-silhouette, refracting look of the reported bug.
+		// Green: the sky light that fragment wrote (colortex2.r). Zero means no
+		//        program that shades a surface has written this pixel at all -
+		//        which is what a pixel looks like before the passes that run
+		//        after the deferred pass fill it.
+		// Blue:  1.0 where the opaque depth buffer has nothing here, i.e. the sky
+		//        and everything drawn after that snapshot.
+		//
+		// So: red is a water-shaded fragment, yellow is ordinary world geometry,
+		// green is something drawn after the deferred pass, blue is sky, black is
+		// a pixel nothing has drawn in.
+		vec4 waterFlag = texelFetch(colortex2, ivec2(gl_FragCoord.xy), 0);
+		float depthHere = texelFetch(depthtex1, ivec2(gl_FragCoord.xy), 0).r;
+
+		finalColor = vec3(
+			waterFlag.g,
+			waterFlag.r,
+			depthHere >= 1.0 ? 1.0 : 0.0);
+		return;
+	#endif
+
+	#if DEBUG == DEBUG_WATERSOURCE
+		// The copy the water surface refracts, as the deferred pass left it. A
+		// see-through region whose pixels are not the world here is being
+		// covered by something else; one whose pixels ARE the world here is the
+		// water surface reading them.
+		finalColor = texture(colortex4, screenCoord).rgb;
+		return;
+	#endif
 
 	#if DEBUG == DEBUG_DEPTH
 		// What the scene actually has in the opaque depth buffer here.
