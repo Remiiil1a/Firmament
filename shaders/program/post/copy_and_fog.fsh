@@ -253,9 +253,20 @@ void main() {
 			dot(viewPosAtFar, viewRotation * vec3(0.0, 1.0, 0.0)),
 			dot(viewPosAtFar, viewRotation * vec3(0.0, 0.0, 1.0))));
 
-		// Below the horizon only. Above it the sky quads do cover the view, and a
-		// pixel up there that is black is black sky and not a hole.
-		if (worldDir.y < 0.0) {
+		// Batch 675: underwater these pixels are not sky, and that is what made
+		// the surface look like a bright band at the horizon in the author's
+		// screenshot. The fill above was written for a camera in the air, where
+		// the ray that crosses a lake and leaves under the sky quads is looking
+		// at the sky. Under the surface the same ray is looking at more water, and
+		// the colour of more water is the water's own fog colour - upstream
+		// 0.9.0 returns exactly this in its fog function for a pixel nothing drew
+		// while the eye is under the surface, which is where its fix for the
+		// horizon underwater came from.
+		if (isEyeInWaterFog == 1) {
+			background = underwaterFogColor;
+		} else if (worldDir.y < 0.0) {
+			// Below the horizon only. Above it the sky quads do cover the view, and a
+			// pixel up there that is black is black sky and not a hole.
 			background = SkyDither(
 				gl_FragCoord.xy,
 				SkyColor(worldDir) + SkyStars(worldDir));

@@ -736,6 +736,31 @@ vec4 TranslucentLighting(
 				? SkyColor(reflected)
 				: SkyColor(reflected) + SkyStars(reflected));
 
+		// A face that stands up reflects the zenith rather than the horizon
+		// (batch 675, and the fix is upstream 0.9.0's, word for word).
+		//
+		// The reflection of a vertical face points almost level, and the level
+		// direction is the brightest band the sky has: SkyColor at the horizon
+		// outshines it everywhere above. So every side of every waterfall and every
+		// wall of water was reflecting the brightest part of the sky merely for
+		// standing up - and in a cave, or after dark, that band is the blue the
+		// horizon keeps long after the zenith above it has gone dark. That is the
+		// blue the author saw on the sides of water in dark places.
+		//
+		// Upstream's own comment is "otherwise sideways water faces are way too
+		// bright", and its answer is the one below: straight up instead. The dither
+		// stays, so that the flat colour does not band.
+		//
+		// The test is the exactly-vertical one, as upstream writes it. A face that
+		// leans - water on a stair, a mod's slope - has a reflection that really is
+		// part way between the two, and the waves already tilt it; this is only for
+		// the case where the face normal carries no height at all.
+		if (abs(worldNormal.y) <= 1.0e-4) {
+			skyReflection = SkyDither(
+				gl_FragCoord.xy,
+				SkyColor(vec3(0.0, 1.0, 0.0)));
+		}
+
 		#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
 			// The sun and the moon are added on top, on water only. The sky model
 			// is atmosphere only, so without them the water reflected the air
