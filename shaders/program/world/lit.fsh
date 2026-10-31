@@ -1297,21 +1297,30 @@ void main() {
 				// Whether to enable a different style water.
 				//#define VANILLA_ISH_WATER 
 				#ifndef VANILLA_ISH_WATER
-					// TODO: Use dedicated water color uniform?
-					surfaceColor.rgb = mix(
-						surfaceColor.rgb,
-						skyAmbient,
-						reflectionStrength);
-					surfaceColor.a = 0.25 * (1.0 - reflectionStrength);
-
-					// The alpha test further down throws away anything with an
-					// alpha below 1/10000, and at full sky light this expression
-					// lands on exactly zero - so the brightest water, which is the
-					// water most worth drawing, was the water that disappeared.
-					// Everything the surface actually shows is added afterwards by
-					// TranslucentLighting; this is only a floor to keep the
-					// fragment alive long enough to get there.
-					surfaceColor.a = max(surfaceColor.a, 1.0 / 1024.0);
+					// The surface carries no colour of its own. This is upstream
+					// 0.9.0's water, ported in batch 676, and it is the change the
+					// author was looking for: everything the water shows is added
+					// afterwards by TranslucentLighting - the reflection at its
+					// Fresnel weight, the refraction of what stands behind it, and
+					// the absorption over the distance through the water.
+					//
+					// What stood here before was 0.8.0's: the water texture's own
+					// colour, mixed towards the sky's ambient colour by the
+					// reflection strength, at an alpha of up to a quarter. In a cave
+					// there is no sky light for that strength, so the mix left the
+					// texture's blue alone and laid it over the stone behind at a
+					// quarter opacity - which is the blue film the author saw on the
+					// sides of water in dark places. In daylight the same quarter of
+					// a bright texture is the sheet that made the underside of a
+					// surface read as sky instead of water.
+					//
+					// 0.01 rather than 0, in upstream's words: "I would rather use
+					// 0, but that results in water being discarded via the alpha
+					// test". The floor this used to need at full sky light - the
+					// note that stood here about the brightest water disappearing -
+					// is exactly what that number is for.
+					surfaceColor = vec4(0.0);
+					surfaceColor.a = 0.01;
 				#else
 					surfaceColor *= texture(gtexture, surfaceTexCoord);
 
