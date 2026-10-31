@@ -79,6 +79,13 @@ const int colortex5Format = R8;
 // codebase.
 #include "/environment/water/absorption_settings.glsl"
 
+// The attenuation itself, for the water this pass sits inside of (batch 677).
+// It is the same function the surface programs use: the coefficients are in
+// reciprocal metres, so exp(coefficients * path) is Beer's law over the path
+// the light travelled. The file is standalone - it needs nothing but its own
+// tables - so including it here costs a few constants.
+#include "/environment/water/absorption.glsl"
+
 // vec4 Fog(...)
 //
 // At this point in the file only the legacy wrapper is asked for: Fog() takes
@@ -183,6 +190,26 @@ vec3 ApplyFog(
 
 	vec3 worldSpaceVector = normalize(cameraRelativePos);
 	vec3 sky = SkyDither(fragCoord.xy, SkyColor(worldSpaceVector));
+
+	// Under water, the light that reaches this pixel travelled through water to
+	// get here - and that is the half of the underwater look this pass did not
+	// have. Upstream 0.9.0 does exactly this in its fog function (batch 677
+	// ports it); everything else about the water was already here.
+	//
+	// The depth is the light's path, in metres: how far down the water column
+	// this surface is - the sky light level is one level per vertical metre, so
+	// sixteen minus the level times fifteen is that depth - plus the distance
+	// from the camera, because everything on the way there is water as well.
+	//
+	// This is what the far edge of the water needed. The sky seen through the
+	// surface, or anything standing past the fog's own reach, was being carried
+	// to the screen as itself; multiplied by this it is the water's own colour
+	// like everything else, because at a hundred metres the factor is nothing.
+	if (isEyeInWaterFog == 1) {
+		float waterPath = (-15.0) * skyLight + 15.0
+			+ length(cameraRelativePos);
+		background *= WaterAttenuation(waterPath);
+	}
 
 	// Compute the fog against the sky background
 	float fragDistance = max(
@@ -374,6 +401,22 @@ void main() {
 			skylight
 		);
 	} else {
+		// Batch 677: under water there is no sky to be seen. The light arriving
+		// from that direction came through the whole water column, and what is
+		// left of it is the water's own colour - which is what upstream 0.9.0
+		// returns for the same case.
+		//
+		// This is the band at the far edge of the water in the author's
+		// screenshot: the game's sky, drawn before this pass, with nothing here
+		// to attenuate it because this branch only ever ran the fog for pixels
+		// that had geometry in them. A water surface covers the sky most of the
+		// time, and where it does the surface's own absorption deals with it -
+		// but at the edge of a chunk, or wherever the surface geometry stops
+		// short, the raw sky was on screen and bright.
+		if (isEyeInWaterFog == 1) {
+			scene = underwaterFogColor;
+		}
+
 		#ifdef DISTANT_HORIZONS
 			depth = texelFetch(dhDepthTex0, ivec2(gl_FragCoord), 0).r;
 			if (depth < 1.0) {
