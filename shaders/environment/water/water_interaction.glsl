@@ -6,9 +6,9 @@
 // tilt added to the normal they were about to use. So the water reacts to
 // movement through it, and nothing about the surface geometry changes.
 //
-// The simulation is two compute programs (world0/prepare1.csh and
-// world0/prepare2.csh), which hand their field over through custom images. That
-// is why this is Iris only: OptiFine has neither compute shaders nor images.
+// The simulation is two compute programs (prepare1.csh and prepare2.csh at the
+// pack root), which hand their field over through custom images. That is why
+// this is Iris only: OptiFine has neither compute shaders nor images.
 //
 // Everything below is either compiled into those two programs (the
 // simulation half, WATER_INTERACTION_SIM) or into the water programs (the

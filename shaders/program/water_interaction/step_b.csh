@@ -1,8 +1,8 @@
 // Water interaction waves: sub-step 2
 //
 // Ported from porting_kit/ (Eclipse's effect). Integrates the second step from wave_sim_a into wave_sim_b and writes
-the surface gradient the water programs read, then publishes the player
-position and the ready flag for the next frame.
+// the surface gradient the water programs read, then publishes the player
+// position and the ready flag for the next frame.
 //
 // The program is Iris only, and every part of it that touches an image is kept
 // behind IS_IRIS: on a loader without custom images the body does nothing and
@@ -76,10 +76,15 @@ void main() {
 	pressure *= pow(0.985, dt) * borderFade;
 	pressureVelocity *= borderFade;
 
+	// Where the player is, in world xz. Taken outside the injection test because
+	// the state this pass publishes at the end is the same position: it is what
+	// the next frame re-anchors the grid to and what tells third person and boats
+	// apart from an ordinary first person swim.
+	vec2 playerWorldXZ
+		= cameraPosition.xz - WaterInteractionCameraOffset();
+
 	// --- inject energy where the player moves through the water -------------
 	if (WaterInteractionSourceActive()) {
-		vec2 playerWorldXZ
-			= cameraPosition.xz - WaterInteractionCameraOffset();
 		vec2 playerTexel = WaterInteractionTexelCoord(
 			playerWorldXZ,
 			cameraPosition,

@@ -2,7 +2,7 @@
 //
 // Ported from porting_kit/ (Eclipse's effect). Reads the previous full state from wave_sim_b and integrates one step
 // of the wave equation into wave_sim_a. Runs in the prepare1 pass, that is
-after the shadow pass and before the gbuffer programs, so the water program
+// after the shadow pass and before the gbuffer programs, so the water program
 // can read the same frame's field.
 //
 // The program is Iris only, and every part of it that touches an image is kept
