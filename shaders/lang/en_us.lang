@@ -481,7 +481,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 669]
+option.PBR_DEBUG=Material debug view [build 670]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1520,3 +1520,5 @@ value.ambientOcclusionLevel.0.9=90%
 value.ambientOcclusionLevel.1.0=100%
 option.CREATE_AERONAUTICS_COMPATIBILITY=Create Aeronautics lighting fix
 option.CREATE_AERONAUTICS_COMPATIBILITY.comment=Create Aeronautics draws through the terrain shader with a non-identity normal matrix. On disables the world-space-normal shortcut so its lighting is right, at the cost of a matrix multiply per terrain vertex.
+option.HORIZON_OCCLUDES_SUN_AND_MOON=Sun and moon set into the horizon
+option.HORIZON_OCCLUDES_SUN_AND_MOON.comment=Off is what the game does on its own: the body is there, and then it is gone in one frame.

@@ -36,70 +36,104 @@
 // that the END_DEBUG view reaches here too.
 #include "/environment/sky.glsl"
 
-#if END_SKY == END_SKY_OFF
-	#include "/program/world/unlit.fsh"
-#else
-	// This program draws every textured thing in the sky. In the overworld that
-	// is the sun and the moon, which are just passed through - but the End draws
-	// its sky as a texture on a box around the player rather than as the
-	// generated sky the overworld uses, and that box arrives here. Left alone it
-	// would be drawn as whatever texture it carries, so in the End this draws
-	// the sky instead.
-	#include "/lib/srgb.glsl"
+// Whether the sun and the moon fade out as they reach the horizon. On by
+// default: it is a setting because the fade is a look rather than a correction,
+// and its off state is exactly what the game does on its own - the body is there,
+// and then it is gone in one frame.
+#define HORIZON_OCCLUDES_SUN_AND_MOON
 
-	uniform sampler2D gtexture;
+// This program draws every textured thing in the sky. In the overworld that is
+// the sun and the moon, which are just passed through - but the End draws its
+// sky as a texture on a box around the player rather than as the generated sky
+// the overworld uses, and that box arrives here. Left alone it would be drawn as
+// whatever texture it carries, so in the End this draws the sky instead.
+//
+// One main since batch 670. Until then the END_SKY == END_SKY_OFF state included
+// /program/world/unlit.fsh and let that file's main do the pass-through, which
+// meant two copies of it (the note further down used to say so). The two say the
+// same thing for this program: with the option off EndSkyDimension() is false for
+// every fragment, so the branch below is the pass-through, and unlit.fsh's other
+// blocks - END_DEBUG_TINT, SUPPRESS_END_FLASH, DROP_TRANSLUCENT_FRAGMENTS - are
+// dead here, because this program defines none of those macros. Keeping one main
+// is also what lets the sun and the moon fade in one place.
+#include "/lib/srgb.glsl"
 
-	in vec4 tinting;
-	in vec2 texcoord;
+uniform sampler2D gtexture;
 
-	uniform mat4 gbufferModelViewInverse;
-	uniform mat4 gbufferProjectionInverse;
-	uniform vec2 windowToNdc;
-	uniform float blindness;
+in vec4 tinting;
+in vec2 texcoord;
 
-	void main() {
-		if (!EndSkyDimension()) {
-			// The sun and moon, and anything else textured in the sky.
+uniform mat4 gbufferModelViewInverse;
+uniform mat4 gbufferProjectionInverse;
+uniform vec2 windowToNdc;
+uniform float blindness;
+
+void main() {
+	// The direction is worked out from the pixel rather than from the box the
+	// pixel came from, so that it agrees with the generated sky drawn by the
+	// program next to this one, and so that the sun and moon cannot appear in the
+	// End on top of it.
+	vec2 ndcPos = gl_FragCoord.xy * vec2(windowToNdc) - 1.0;
+	vec4 viewVecH = gbufferProjectionInverse * vec4(ndcPos, 1.0, 1.0);
+	vec3 viewVec = normalize(viewVecH.xyz / viewVecH.w);
+
+	// Note: w must be 0.0 in homogenous coordinates, as 1.0 means a point in
+	// space rather than a vector.
+	vec3 worldDir = (gbufferModelViewInverse * vec4(viewVec, 0.0)).xyz;
+
+	if (!EndSkyDimension()) {
+		// The sun and the moon, and anything else textured in the sky.
+		//
+		// Note: the two bodies' images are the game's here, and are not replaced
+		// with this pack's copies of them. That was tried, by sampling img/sun.png
+		// and the phase row with this same texcoord instead, and what it drew was
+		// a large, half-transparent body: the coordinate this program is handed is
+		// not the sprite's own. See BATCH_LOG.md 185.
+		vec4 srgb = tinting * texture(gtexture, texcoord);
+		vec4 fragmentColor = SrgbToLinear(srgb);
+		fragmentColor.rgb *= UNLIT_BRIGHTNESS;
+
+		#ifdef HORIZON_OCCLUDES_SUN_AND_MOON
+			// The game draws the bodies as flat quads on a sphere: they do not fade,
+			// they simply stop being drawn once the quad is under the horizon. Two
+			// terms make this read as a body setting.
 			//
-			// This is /program/world/unlit.fsh, which is what this program uses
-			// in every other dimension. It cannot be used here as well because a
-			// program has only one main, so if it ever changes, this needs to
-			// change with it.
+			//  * The body fades as its centre reaches the horizon. worldSunVector is
+			//    the direction to the sun, so its y is the sine of the sun's
+			//    altitude, and the factor of five spreads the fade over the last ten
+			//    degrees or so - about the size of the quad the game draws.
+			//  * The part of the quad that is already below the horizon is dropped
+			//    per pixel. That is horizonOcclusion, and it is what makes the disc
+			//    sink into the horizon instead of dimming where it stands.
 			//
-			// Note: the two bodies' images are the game's here, and are not
-			// replaced with this pack's copies of them. That was tried, by
-			// sampling img/sun.png and the phase row with this same texcoord
-			// instead, and what it drew was a large, half-transparent body: the
-			// coordinate this program is handed is not the sprite's own. See
-			// BATCH_LOG.md 185.
-			vec4 srgb = tinting * texture(gtexture, texcoord);
-			vec4 fragmentColor = SrgbToLinear(srgb);
-			fragmentColor.rgb *= UNLIT_BRIGHTNESS;
-
-		/* DRAWBUFFERS:0 */
-			gl_FragData[0] = fragmentColor;
-			return;
-		}
-
-		// The direction is worked out from the pixel rather than from the box
-		// the pixel came from, so that it agrees with the generated sky drawn by
-		// the program next to this one, and so that the sun and moon cannot
-		// appear in the End on top of it.
-		vec2 ndcPos = gl_FragCoord.xy * vec2(windowToNdc) - 1.0;
-		vec4 viewVecH = gbufferProjectionInverse * vec4(ndcPos, 1.0, 1.0);
-		vec3 viewVec = normalize(viewVecH.xyz / viewVecH.w);
-
-		// Note: w must be 0.0 in homogenous coordinates, as 1.0 means a point in
-		// space rather than a vector.
-		vec3 worldDir = (gbufferModelViewInverse * vec4(viewVec, 0.0)).xyz;
-
-		// Asked for through SkyColor rather than directly, so that the END_DEBUG
-		// view is visible here too - this is the path the End's own sky takes,
-		// and a diagnostic that only worked in the overworld would not be much
-		// of one.
-		vec3 sky = SkyColor(worldDir);
+			// The moon needs its own curve: the sun does not wash it out, it arrives
+			// as the sun leaves, so it comes in at a tenth and brightens as it
+			// clears the horizon.
+			//
+			// None of this touches the pack's own sun.png and moonPhases.png - those
+			// are the images the water reflects, and bodies.glsl fades them on the
+			// same reasoning but on its own curve, because a reflection is seen from
+			// below the horizon as well as above it.
+			bool isSun = dot(worldDir, worldSunVector) > 0.0;
+			float fade = clamp(5.0 * worldSunVector.y, 0.0, 1.0);
+			if (!isSun) {
+				fade = 0.1 * (1.0 - fade);
+				fade += 0.9 * clamp(10.0 * -worldSunVector.y, 0.0, 1.0);
+			}
+			float horizonOcclusion = clamp(20.0 * worldDir.y, 0.0, 1.0);
+			fragmentColor.rgb *= fade * horizonOcclusion;
+		#endif
 
 	/* DRAWBUFFERS:0 */
-		gl_FragData[0] = vec4(sky * max(0.0, 1.0 - 10.0 * blindness), 1.0);
+		gl_FragData[0] = fragmentColor;
+		return;
 	}
-#endif
+
+	// Asked for through SkyColor rather than directly, so that the END_DEBUG view
+	// is visible here too - this is the path the End's own sky takes, and a
+	// diagnostic that only worked in the overworld would not be much of one.
+	vec3 sky = SkyColor(worldDir);
+
+/* DRAWBUFFERS:0 */
+	gl_FragData[0] = vec4(sky * max(0.0, 1.0 - 10.0 * blindness), 1.0);
+}
