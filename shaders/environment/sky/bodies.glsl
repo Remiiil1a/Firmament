@@ -55,6 +55,15 @@
 // Whether the reflections see the sun and the moon.
 #define WATER_SKY_BODIES
 
+// Whether the sun and the moon go out at the horizon, rather than being cut
+// off in one frame the way the game does it.
+//
+// The option lives here, in the file both readings of the bodies share,
+// rather than in gbuffers_skytextured.fsh where the sky's own copy of the
+// fade is: the sky in the water and the sky above it are the same body, and
+// batch 671 is what it looked like when only one of them faded.
+#define HORIZON_OCCLUDES_SUN_AND_MOON
+
 // The cosine of the half-angle the game draws a body's quad at.
 //
 // The game draws the sun and the moon as quads sixty wide at a distance of a
@@ -210,9 +219,9 @@ vec2 SkyBodyQuad(vec3 viewDir, vec3 bodyDir, vec3 right, vec3 up, float halfSize
 // changes. That mismatch is what a reflection of the sun swinging about the water
 // as you walk is.
 //
-// The two fades below still read the world space direction, because how high a
-// body is does not depend on which frame it is measured in, up to the bob, and
-// they only drive a slow fade either side of the horizon.
+// The fades at the end of the function still read the world space direction,
+// because how high a body is does not depend on which frame it is measured in,
+// up to the bob; how they are shaped is told where they are computed.
 vec3 SkyBodies(vec3 viewDir, vec3 bodyDir, mat3 worldToSpace) {
 #ifndef WATER_SKY_BODIES
 	return vec3(0.0);
@@ -304,11 +313,45 @@ vec3 SkyBodies(vec3 viewDir, vec3 bodyDir, mat3 worldToSpace) {
 	// Each body fades as it sets and rises rather than switching at the horizon,
 	// and rain covers both - the same rain that greys the sky and hides the
 	// stars, so that the water and the sky above it agree about the weather.
-	float sunUp = smoothstep(-0.12, 0.02, worldSunVector.y);
-	float moonUp = smoothstep(-0.12, 0.02, -worldSunVector.y);
+	//
+	// Batch 671: these are the sky's own curves, taken from
+	// gbuffers_skytextured.fsh, and that is the point of the batch. Until then
+	// the reflection used a slow smoothstep either side of the horizon, so the
+	// sun in the water was still at about nine tenths of its brightness when the
+	// sun in the sky had already gone - the author saw exactly that.
+	//
+	// Two terms, as in the sky. The body's centre altitude drives the fade, and
+	// the part of the image below the horizon is dropped per pixel: the
+	// direction behind this pixel *is* the reflected ray, so its world space Y
+	// is the height of the piece of the body being drawn, and the lower half of
+	// the disc goes into the horizon first.
+	#ifdef HORIZON_OCCLUDES_SUN_AND_MOON
+		float sunUp = clamp(5.0 * worldSunVector.y, 0.0, 1.0);
+		// The moon arrives as the sun leaves, so it comes in dim and brightens as
+		// it clears the horizon - the same curve the sky uses for it.
+		float moonUp = 0.1 * (1.0 - sunUp)
+			+ 0.9 * clamp(10.0 * -worldSunVector.y, 0.0, 1.0);
+
+		// worldToSpace takes a world direction into the space the bodies are drawn
+		// in (view space in this program, world space in the Voxy patch - see the
+		// note at the top of the function), so its transpose takes the pixel's
+		// direction back to world space, where the horizon is.
+		float bodyAltitude = (transpose(worldToSpace) * viewDir).y;
+		float bodyHorizon = clamp(20.0 * bodyAltitude, 0.0, 1.0);
+	#else
+		// The option's off state: the game's own cut, so that the body in the water
+		// goes at the same moment as the body in the sky. (Before batch 671 the
+		// reflection had a slow smoothstep of its own either side of the horizon;
+		// that is what made the two disagree, so it is not the fallback.)
+		float sunUp = step(0.0, worldSunVector.y);
+		float moonUp = step(0.0, -worldSunVector.y);
+		float bodyHorizon = 1.0;
+	#endif
+
 	float clear = 1.0 - rainStrength;
 
-	return (sunColor * sunUp + moonColor * moonUp) * (WATER_BODY_BRIGHTNESS * clear);
+	return (sunColor * sunUp + moonColor * moonUp)
+		* (bodyHorizon * WATER_BODY_BRIGHTNESS * clear);
 #endif
 }
 

@@ -65,54 +65,26 @@ vec3 RefractionBasedWaterAbsorption(
 			// refraction trace & reflection tracing code.
 			float depthInMeters = dot(viewPos - viewPosRefracted, upVector);
 
-			// This is the reference equation for water depth: 0.0 at the
-			// surface, rising to a maximum of 1.0 at 15 blocks below it, which
-			// is intentionally the same range as skylight attenuation (worked
-			// through in the branch below).
+			// Batch 671: this is in metres now, not in a normalised 0..1
+			// depth - the absorption is Beer's law and it wants the length
+			// the light travelled. The cap is at sixteen metres because
+			// that is where skylight has been fully attenuated, and this
+			// file used to normalise to one at fifteen blocks.
 			//
-			// Note the 15 rather than 16 - the 1/16 offset is already on top of
-			// the 1/16 slope, so 15 is where the clamp bites. Above 15 blocks
-			// the clamp holds this at 1.0 rather than letting the falloff run
-			// exponential off the top of the scale.
-			waterDepth = clamp(
-				depthInMeters * (1.0 / 16.0) + 1.0 / 16.0,
-				0.0,
-				1.0);
+			// The clamp is not cosmetic: past sixteen blocks the falloff
+			// would keep running exponentially off the top of the scale,
+			// and the water would go blacker with depth than any of the
+			// coefficients were chosen to do.
+			waterDepth = clamp(depthInMeters, 0.0, 16.0);
 		} else {
-			// This is an optimized form of the calculation:
+			// Skylight is attenuated by one level per vertical metre below
+			// the surface, so the same number comes out of it directly as
+			// metres (batch 671; upstream 0.9.0 writes it this way). Sixteen
+			// levels of it are all the light the game carries, so sixteen is
+			// the deepest this can describe, and it starts at one metre so
+			// that water right at the surface is not unnaturally clear.
 			//
-			// (1.0 - skylight) * (15.0 / 16.0) + 1.0 / 16.0
-			//
-			// Which is equivalent to the calculation above, as skylight
-			// attenuates over 15 blocks.
-			//
-			// For example, 1 block of depth will have a skylight level of 14.
-			// This will be encoded in a lightmap coordinate of 14.5 / 16.0.
-			// This is then passed to the following calculation:
-			//
-			// skylight = (lmcoord.y - (0.5 / 16.0)) * (16.0 / 15.0)
-			//
-			// This results in a value of 14.0 / 15.0, which, when plugged into
-			// the equation above, gives a waterDepth of 0.125.
-			//
-			// When we plug a `depthInMeters` of 1.0 into the equation based on
-			// water height instead of skylight, we get 1/16 + 1/16, or 1/8,
-			// which is also equivalent to 0.125, a match.
-			//
-			// Here is how it is optimized:
-			//
-			// (1.0 - skylight) * (15.0 / 16.0) + 1.0 / 16.0
-			// 15.0 / 16.0 - (15.0 / 16.0) * skylight + 1.0 / 16.0
-			// 1.0 - (15.0 / 16.0) * skylight
-			// (-15.0 / 16.0) * skylight + 1.0
-			//
-			// This final form is in the format of a fused multiply-add, which
-			// is a single instruction.
-			//
-			// The pair of constants below is baked in as a literal 15/16 and a
-			// literal 1.0 rather than derived from a block count, so the
-			// branch would keep this slope even if the 15 above were ever
-			// changed. Both arms of the #if use the same arithmetic on purpose;
+			// Both arms of the #if below use the same arithmetic on purpose;
 			// they differ only in where the skylight comes from.
 			#if defined(EXTERNALLY_DEFINED_UNIFORMS)
 				// This program was not given this pack's sky light buffer: Voxy
@@ -130,13 +102,13 @@ vec3 RefractionBasedWaterAbsorption(
 				// - the lake bed - and over open water the two agree closely,
 				// which is also why the underwater absorption in
 				// environment/lighting/diffuse.glsl makes the same substitution.
-				waterDepth = (-15.0 / 16.0) * surfaceSkyLight + 1.0;
+				waterDepth = (-16.0) * surfaceSkyLight + 16.0;
 			#else
 				float skylight = RefractionSafeSample(
 					skylightBuffer,
 					refractedScreenPos.xy
 				).r;
-				waterDepth = (-15.0 / 16.0) * skylight + 1.0;
+				waterDepth = (-16.0) * skylight + 16.0;
 			#endif
 		}
 
@@ -172,9 +144,10 @@ vec3 RefractionBasedWaterAbsorption(
 		// factor is exactly zero, so the light that came through the surface was
 		// thrown away and the absorption below was left multiplying nothing. The
 		// pixel was zero - not dark water, which the absorption is perfectly
-		// capable of being: WaterAbsorption(1.0) is exp(-16, -3, -1), a deep
-		// blue-green with the red gone. That is what the depth below is for, and
-		// what a second, unbounded darkening on top of a bounded one took away.
+		// capable of being: sixteen metres of it is exp(-16, -3, -1) for the
+		// TROPICAL set, a deep blue-green with the red gone. That is what the
+		// depth below is for, and what a second, unbounded darkening on top of a
+		// bounded one took away.
 		//
 		// It was only half, and this file carried the other half wrongly for two
 		// batches. Removing the line on its own changed nothing, because the light
@@ -186,9 +159,27 @@ vec3 RefractionBasedWaterAbsorption(
 		// (batch 451), which gives those pixels the sky. With that in place the
 		// absorption is handed the sky and the water comes out the deep
 		// blue-green it should have been.
-		float fadeFactor = min(-viewPos.z / 24.0, 1.0);
-		waterDepth = 0.25 + 0.75 * fadeFactor;
+		// Batch 671: no estimate of the depth at all here. What the pixel
+		// does get is the distance the ray travelled through the water - added
+		// below, like every other path - so the water in front of the sky is
+		// as thick as it actually was along the view ray, instead of being
+		// assumed deep and then faded back for the first 24 blocks.
+		waterDepth = 0.0;
 	}
 
-	return background * WaterAbsorption(waterDepth);
+	// The length of the path through the water, which is the number Beer's law
+	// wants. Batch 671: upstream 0.9.0 measures it as the difference along Z
+	// rather than with distance(), and its own note explains why that is a
+	// strong approximation - both ends of the segment are mostly along the view
+	// direction, and distance() is more expensive.
+	//
+	// Which of the two forms applies is the camera's own position: in the water
+	// the path starts at the eye, out of it the path starts at the surface.
+	if (isEyeInWaterFog == 1) {
+		waterDepth += abs(viewPos.z);
+	} else {
+		waterDepth += abs(viewPos.z - viewPosRefracted.z);
+	}
+
+	return background * WaterAttenuation(waterDepth);
 }

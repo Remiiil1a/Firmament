@@ -31,11 +31,11 @@
 // that the END_DEBUG view reaches here too.
 #include "/environment/sky.glsl"
 
-// Whether the sun and the moon fade out as they reach the horizon. On by
-// default: it is a setting because the fade is a look rather than a correction,
-// and its off state is exactly what the game does on its own - the body is there,
-// and then it is gone in one frame.
-#define HORIZON_OCCLUDES_SUN_AND_MOON
+// HORIZON_OCCLUDES_SUN_AND_MOON is declared in /environment/sky/bodies.glsl,
+// which this program includes through /environment/sky.glsl and the water
+// includes as well, so that the body above and the body in the water are one
+// decision. It is on by default; its off state is what the game does on its
+// own - the body is there, and then it is gone in one frame.
 
 // This program draws every textured thing in the sky. In the overworld that is
 // the sun and the moon, which are just passed through - but the End draws its
