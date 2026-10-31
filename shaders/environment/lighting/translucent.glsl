@@ -38,6 +38,21 @@
 	#define WATER_PARALLAX_DISTANCE 48.0 // [8.0 16.0 24.0 32.0 48.0 64.0]
 #endif
 
+// Water interaction waves (batch 682). The simulation lives in
+// program/water_interaction and is stepped by two compute programs; this
+// include brings in its constants and the one function the water normal
+// below is tilted by. It is Iris only, and it degrades to nothing on its own
+// when the simulation has not run - see the guards inside.
+//
+// Inside the same guard as the buffers above, and not because the simulations
+// are the same thing: the two samplers this file declares are handed over by
+// Iris, and the Voxy patch is handed its uniforms by name instead. A sampler
+// it was never given compiles and reads zero, which is exactly the kind of
+// silent miss that patch exists to avoid - so it never sees this include.
+#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
+	#include "/environment/water/water_interaction.glsl"
+#endif
+
 // Whether glass and stained glass reflect, the way water and ice already do.
 //
 // Glass reflects about 4% of the light that lands on it head on and nearly all
@@ -276,10 +291,20 @@ vec3 parallaxWaterNormal(
 	// angle - they do not agree, and what the difference looks like is which way
 	// across the face the waves run and how the field is stretched over it.
 	if (sideways) {
-		return normalize(
+		vec3 sidewaysNormal = normalize(
 			worldTBN[0] * waterNormal.x
 				+ worldTBN[1] * waterNormal.y
 				+ worldTBN[2] * waterNormal.z);
+
+		// The wave field is a top-down height map, so it describes water that
+		// lies flat and leaves a standing face alone. It is still offered here
+		// rather than tested for: the function's own gate is what decides, and
+		// keeping one gate is what keeps the two paths agreeing.
+		#if defined(WATER_INTERACTION) && !defined(EXTERNALLY_DEFINED_UNIFORMS)
+			return WaterInteractionNormal(sidewaysNormal, waterWorldPos);
+		#else
+			return sidewaysNormal;
+		#endif
 	}
 
 	// Water lying flat on the ground, which is the common case: the face is
@@ -291,7 +316,24 @@ vec3 parallaxWaterNormal(
 	// The same reasoning covers the view direction the parallax mapping is given
 	// further up - it is written in the field's axes for the same reason, not
 	// because the face frame is assumed to be the world's.
-	return facing * waterNormal.xzy;
+	vec3 flatNormal = facing * waterNormal.xzy;
+
+	// BATCH 682: the simulated ripples are added here, at the end of the
+	// normal, and not at any one place that consumes it. Everything the water
+	// does with a normal - the reflection's direction, the Fresnel term, the
+	// refraction's offset and the absorption along its path - reads what this
+	// function returns, so one insertion is what makes the waves affect all of
+	// them at once, the way a real surface would.
+	//
+	// `waterWorldPos` is the field's own coordinate: for a face lying flat it
+	// is the world xz the wave simulation is indexed by. It is deliberately not
+	// the camera-relative position, because the simulation is anchored to the
+	// world rather than to the camera.
+	#if defined(WATER_INTERACTION) && !defined(EXTERNALLY_DEFINED_UNIFORMS)
+		return WaterInteractionNormal(flatNormal, waterWorldPos);
+	#else
+		return flatNormal;
+	#endif
 }
 
 #if !defined(EXTERNALLY_DEFINED_UNIFORMS)

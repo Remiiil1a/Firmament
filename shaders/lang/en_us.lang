@@ -481,7 +481,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 681]
+option.PBR_DEBUG=Material debug view [build 682]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1528,3 +1528,20 @@ value.WATER_CHARACTER.CLEAR=Crystal clear (measured)
 option.ROUGH_REFRACTION=Rough refraction
 option.ROUGH_REFRACTION.comment=Softens what the water shows through it, so that a sharp edge behind the water bends instead of printing through it. Off is the sharp, single-sample refraction.
 option.ROUGH_REFRACTION_STRENGTH=Rough refraction strength
+screen.WATER_INTERACTION_SETTINGS=Water interaction
+option.WATER_INTERACTION=Waves from movement
+option.WATER_INTERACTION.comment=Water reacts to being moved through: swimming \
+or rowing leaves waves behind you, which fade as the surface calms down. \
+Turn it off and the water is exactly the water this pack drew before. \
+Iris only, since the simulation runs in compute shaders.
+option.WATER_INTERACTION_STRENGTH=Wave strength
+option.WATER_INTERACTION_STRENGTH.comment=How much of the simulated ripple is\
+ taken on top of the regular water waves. 1.00 is the ported effect as it was\
+ tuned; lower it if the wake feels too strong, raise it if it is too subtle.
+option.WATER_SIM_QUALITY=Simulation detail
+option.WATER_SIM_QUALITY.comment=Grid resolution of the wave simulation. The \
+wave speed and the steepness are rescaled to stay the same at every level, so \
+this only changes how much fine detail the ripples carry - and what it costs.
+value.WATER_SIM_QUALITY.0=Low
+value.WATER_SIM_QUALITY.1=Medium
+value.WATER_SIM_QUALITY.2=High
