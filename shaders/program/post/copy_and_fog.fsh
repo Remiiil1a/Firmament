@@ -286,7 +286,20 @@ void main() {
 	// something that is not - so the beacon beam, the glint on a held item, the
 	// End's light flash and the star field are all left alone here whether or not
 	// they wrote depth, and so is anything a future pass draws below the horizon.
-	if (depth >= 1.0 && background == vec3(0.0)) {
+	// Whether anything at all had been drawn at this pixel by the time this pass
+	// runs, recorded before the fill below gives it a colour - batch 679.
+	//
+	// The fill stays, and its underwater branch stays with it: a pixel nothing has
+	// drawn in yet is where the passes that run after this one paint, and they paint
+	// over whatever is left here, so what this file writes underneath them cannot be
+	// seen. What must not happen is the *other* use of the same question, further
+	// down - the branch that replaces the sky with the water's colour asked the depth
+	// buffer, and everything drawn after this pass has no depth in it either. That is
+	// what put the water's colour where the player's own model and its held item are,
+	// and made them show the water through themselves.
+	bool unwrittenPixel = depth >= 1.0 && background == vec3(0.0);
+
+	if (unwrittenPixel) {
 		// The far plane through the inverse projection is a direction rather than
 		// a point, and it is turned into the world's axes the same way the cloud
 		// layer's ray and the fog's own position are, for the reason given at
@@ -434,7 +447,22 @@ void main() {
 		// but at the edge of a chunk, or wherever the surface geometry stops
 		// short, the raw sky was on screen and bright.
 		if (isEyeInWaterFog == 1) {
-			scene = underwaterFogColor;
+			// ... and only where the sky itself had already drawn, which is batch 679
+			// and the reason this branch used to eat the player's own model.
+			//
+			// "No depth in depthtex1" is not the question "did anything draw here":
+			// that buffer is a copy taken before the passes that run after this one -
+			// the translucent ones, and with them the player model's second skin layer,
+			// the hand and the held item - so everything they draw is still at the far
+			// plane here, and unwritten everywhere else. The only trace they leave in
+			// this pass is that nothing has been drawn in the pixel yet, which is what
+			// `unwrittenPixel` recorded above. A sky pixel is not unwritten, by
+			// contrast: the sky quads put their colour in it and write no depth, so its
+			// depth is the far plane and its colour is the sky. That difference is all
+			// this branch has to go on, this early in the frame, and it is enough.
+			if (!unwrittenPixel) {
+				scene = underwaterFogColor;
+			}
 		}
 
 		#ifdef DISTANT_HORIZONS
