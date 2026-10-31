@@ -206,7 +206,27 @@ vec3 ApplyFog(
 	// to the screen as itself; multiplied by this it is the water's own colour
 	// like everything else, because at a hundred metres the factor is nothing.
 	if (isEyeInWaterFog == 1) {
-		float waterPath = (-15.0) * skyLight + 15.0
+		// Which sky light this pixel is read against, and that is batch 678.
+		//
+		// colortex2 is a light map, and the two kinds of fragment write different
+		// things into it: a world surface writes the sky light the sky reaches it
+		// with, which is what this term wants, while an entity or the hand writes
+		// its own light map - the light the game gives that model where it stands,
+		// which is not a measure of how much water is above it at all. Under the
+		// surface that difference is large: the hand and the player read well below
+		// the water's own light, so they came out multiplied by a deep blue and
+		// looked as if they were being seen through the water rather than through
+		// the air in front of the camera.
+		//
+		// `eyeSkylight` is the pack's own measure of how much sky the player can
+		// see, smoothed by the game's own ten ticks each way (see
+		// shaders.properties and environment/fog.glsl). Taking the larger of the
+		// two keeps the world's own reading wherever it is the brighter one - which
+		// is every surface the sky reaches - and puts a floor under everything that
+		// is standing in the same water the camera is: nothing can be read as
+		// deeper than the eye it is being looked at from.
+		float waterLevel = max(skyLight, eyeSkylight);
+		float waterPath = (-15.0) * waterLevel + 15.0
 			+ length(cameraRelativePos);
 		background *= WaterAttenuation(waterPath);
 	}
