@@ -1108,8 +1108,11 @@ void main() {
 	// never above the upper one, whatever the deviation does.
 	historyUpper = min(historyUpper, neighborhoodMaximum);
 
-	// BATCH 665: the clamp judges the SCENE part of the history and leaves the
-	// reflection part alone.
+	// BATCH 665 fixed the reflection being cut by the clamp; BATCH 674 makes the
+	// clamp let it through so that it can be averaged.
+	//
+	// Both halves of the story matter, because the first one had a cost that only
+	// showed up later.
 	//
 	// Every sample this band was built from comes from colortex0 - the frame with
 	// no reflection in it (the centre sample was folded in as `currentRaw` for that
@@ -1119,19 +1122,40 @@ void main() {
 	// brightness, the reflected history is brighter than that, 85% of it is rejected
 	// every frame, and the reflection settles at about half strength while the
 	// camera is still. Then the camera moves, the history weight drops towards 0.7
-	// only by a little - but `mix(current, history, weight)` starts taking the
-	// current frame's full reflection, and the reflection brightens. The author
-	// reported exactly that asymmetry ("静止时反射会变暗，视角移动时反射又会变亮",
-	// batch 665).
+	// - but `mix(current, history, weight)` starts taking the current frame's full
+	// reflection, and the reflection brightens. The author reported exactly that
+	// asymmetry ("静止时反射会变暗，视角移动时反射又会变亮", batch 665).
 	//
-	// So the difference the reflection made is removed before the clamp and put
-	// back after it: what the band bounds is the scene, which is what the band was
-	// measured on. `reflectionDelta` is zero for every pixel no reflection was
-	// applied to, so nothing about the rest of the frame changes.
+	// Batch 665 answered it by taking the reflection difference out before the clamp
+	// and putting it back after. That does keep the band from cutting the reflection
+	// - and it also stops the reflection from ever being averaged: both operands of
+	// `mix(current, history, weight)` end up carrying THIS frame's reflection, so
+	// the mix reproduces it exactly and the temporal resolve has nothing to average.
+	// Which is why the trace's dither still showed as noise after batch 664 moved
+	// the reflection into this pass; the author reported that on 2026-10-31.
+	//
+	// Widening the band by the magnitude of the reflection answers both at once.
+	// The reflected part of the history is inside the band, so it is not cut back to
+	// the scene (batch 665's fix survives); it is also not taken out of the blend,
+	// so two frames of reflection average with the same weight the rest of the
+	// picture uses, and the dither's noise falls by that weight. The mean is the
+	// same on both sides of the asymmetry above, because both operands carry a
+	// complete reflection: only the noise is averaged, not the brightness.
+	//
+	// What it costs is the same thing a longer history always costs: a reflection
+	// now lives about as long as the picture around it, so what moves on its own
+	// trails a little further. That trade was already made when the reflection
+	// moved into this pass (batch 664); this lengthens it by the weight the option
+	// already had.
+	//
+	// A pixel with no reflection has reflectionDelta == 0 and keeps exactly the
+	// bounds it had.
 	vec3 reflectionDelta = currentUsable ? current - currentRaw : vec3(0.0);
 
-	history = clamp(history - reflectionDelta, historyLower, historyUpper)
-		+ reflectionDelta;
+	history = clamp(
+		history,
+		historyLower - abs(reflectionDelta),
+		historyUpper + abs(reflectionDelta));
 
 	// How far this pixel moved since the previous frame, in pixels.
 	// Measured from this pixel to where this pixel's history was - the anchor's own
