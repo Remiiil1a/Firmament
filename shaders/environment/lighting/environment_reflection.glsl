@@ -320,24 +320,7 @@ vec3 EnvironmentReflection(
 				// instead of reinforcing it.
 				float traceDither = fract(
 					Bayer8(gl_FragCoord.xy) * 1.32
-					+ float(frameCounter % 4) * 0.25);
-
-				// Batch 673: a quarter of a cell per frame, over four frames, rather
-				// than 0.618 of one. The old step is the golden ratio, which is as
-				// spread out as a sequence can be - and the reflection's answer
-				// depends on where in the cell the ladder starts, so a jump of six
-				// tenths of a cell is a near-total reshuffle of every pixel's samples
-				// every frame, which is what the resolve was being asked to average
-				// away. Measured in _team_bfog/ssr_temporal_model.py over two phases
-				// one frame apart: 30.6% of the floor's rays change what they find,
-				// and the fallback's sample moves 19.9 px on average. Four smaller
-				// steps keep the samples moving (so the lattice still dissolves) while
-				// making consecutive frames resemble each other.
-				//
-				// The cycle length is four because the resolve's own weight is 0.85 at
-				// rest, so it keeps a memory of about seven frames - long enough to
-				// take a whole cycle and a half of this one.
-				vec2 taaJitterOffset = TaaJitter() * 0.5;
+					+ float(frameCounter) * 0.618034);
 
 				if (ScreenSpaceRaytrace(
 					depthtex1,
@@ -346,7 +329,6 @@ vec3 EnvironmentReflection(
 					viewPos,
 					mat3(gbufferModelView) * worldReflected,
 					windowToNdc,
-					taaJitterOffset,
 					traceDither,
 					hitPos,
 					hitViewPos

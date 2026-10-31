@@ -425,12 +425,6 @@ bool ScreenSpaceRaytrace(
 	vec3 viewPos,
 	vec3 reflectDirection,
 	vec2 windowToNdc,
-	// Where the pixel this ray starts from sits in the frame's own, jittered
-	// screen, relative to the position the ray's arithmetic produces in the
-	// unjittered one. Batch 673: the trace is done unjittered and the depth
-	// buffer is a jittered rendering, so every read out of it is taken one
-	// half-jitter to the side. See the note where it is used.
-	vec2 jitterOffset,
 	// Where in the first cell of the ladder to start, in [0, 1). See the note
 	// on the ladder below: without this the ladder is a fixed lattice in the
 	// screen, and a lattice plus a point sample is a moire.
@@ -528,10 +522,6 @@ bool ScreenSpaceRaytrace(
 	float frontU = 0.0;
 	float frontPenetration = 0.0;
 
-	// The same for the fallback at the end of the function: the last sample the
-	// ray was still in front of. Batch 673.
-	float lastInFrontU = 0.0;
-
 	// The view Z of the previous sample, which is what the tolerance below is
 	// measured against. It has to be the step that was actually taken and not
 	// the span divided by the count: this ladder is even in the screen, and one
@@ -581,18 +571,8 @@ bool ScreenSpaceRaytrace(
 		vec3 sampleNdc = sampleClip.xyz / sampleClip.w;
 		vec2 sampleScreen = sampleNdc.xy * 0.5 + 0.5;
 
-		// The geometry this trace works in is unjittered; the frame it reads is
-		// not. A surface whose unjittered screen position is `sampleScreen` was
-		// drawn one half-jitter along from it (the jitter is in NDC, and a screen
-		// coordinate is half of the NDC one), so that is where the depth buffer
-		// holds it. Everything below reads and writes the jittered coordinate: the
-		// depth fetches, the bounds test, and the hit position handed back - the
-		// caller samples the colour buffer with it, and that buffer is jittered
-		// too.
-		vec2 depthScreen = sampleScreen + jitterOffset;
-
-		if (depthScreen.x < 0.0 || depthScreen.x > 1.0
-			|| depthScreen.y < 0.0 || depthScreen.y > 1.0) {
+		if (sampleScreen.x < 0.0 || sampleScreen.x > 1.0
+			|| sampleScreen.y < 0.0 || sampleScreen.y > 1.0) {
 			break;
 		}
 
@@ -609,7 +589,6 @@ bool ScreenSpaceRaytrace(
 		// the reflection being made of the surface. Bliss rejects a hit within
 		// about two thousandths of the screen for the same reason.
 		if (all(lessThan(abs(sampleNdc.xy - startNdc), windowToNdc * 2.0))) {
-			lastInFrontU = u;
 			frontU = u;
 			frontPenetration = 0.0;
 			previousZ = rayZ;
@@ -617,7 +596,7 @@ bool ScreenSpaceRaytrace(
 		}
 
 		// What the depth buffer holds at this pixel.
-		float surfaceDepth = texture(depthBuffer, depthScreen).x;
+		float surfaceDepth = texture(depthBuffer, sampleScreen).x;
 
 		// A pixel the world does not cover holds the clear value, and nothing
 		// can be met there. That is not a reason to stop the march: a ray that
@@ -628,9 +607,6 @@ bool ScreenSpaceRaytrace(
 		// instead, the way the surface's own pixels are, and the march carries
 		// on.
 		if (surfaceDepth >= 1.0) {
-			// Sky is in front of nothing, so it is a valid near end for the
-			// fallback's bisection as well (batch 673).
-			lastInFrontU = u;
 			frontU = u;
 			frontPenetration = 0.0;
 			previousZ = rayZ;
@@ -639,7 +615,7 @@ bool ScreenSpaceRaytrace(
 
 		// As a view Z.
 		vec4 surfaceHomogeneous = gbufferProjectionInverse * vec4(
-			sampleScreen * 2.0 - 1.0,
+			sampleNdc.xy,
 			surfaceDepth * 2.0 - 1.0,
 			1.0);
 		float surfaceZ = surfaceHomogeneous.z / surfaceHomogeneous.w;
@@ -689,8 +665,8 @@ bool ScreenSpaceRaytrace(
 					vec2 midScreen = midNdc.xy * 0.5 + 0.5;
 
 					vec4 midHomogeneous = gbufferProjectionInverse * vec4(
-						midScreen * 2.0 - 1.0,
-						texture(depthBuffer, midScreen + jitterOffset).x * 2.0 - 1.0,
+						midNdc.xy,
+						texture(depthBuffer, midScreen).x * 2.0 - 1.0,
 						1.0);
 					float midSurfaceZ = midHomogeneous.z / midHomogeneous.w;
 
@@ -711,21 +687,17 @@ bool ScreenSpaceRaytrace(
 			vec2 hitScreen = hitNdc.xy * 0.5 + 0.5;
 
 			// The surface's own position, which is what the caller's history
-			// and its edge fade are both about. Handed back in the frame's own,
-			// jittered screen, because that is the frame it is read from.
+			// and its edge fade are both about.
 			vec4 hitHomogeneous = gbufferProjectionInverse * vec4(
-				hitScreen * 2.0 - 1.0,
-				texture(depthBuffer, hitScreen + jitterOffset).x * 2.0 - 1.0,
+				hitNdc.xy,
+				texture(depthBuffer, hitScreen).x * 2.0 - 1.0,
 				1.0);
 
-			hitPos = hitScreen + jitterOffset;
+			hitPos = hitScreen;
 			hitViewPos = hitHomogeneous.xyz / hitHomogeneous.w;
 			return true;
 		}
 
-		if (penetration <= 0.0) {
-			lastInFrontU = u;
-		}
 		frontU = u;
 		frontPenetration = penetration;
 		previousZ = rayZ;
@@ -745,58 +717,14 @@ bool ScreenSpaceRaytrace(
 	// 0.19 to 0.90 of the distance behind the ray, uncapped, which is why its
 	// reflections fill the silhouette and why it stretches.
 	//
-	// BISECTED since batch 673, which changes the cost of the trade and not the
-	// trade. The coarse sample was one ladder cell wide, and the ladder's phase
-	// moves every frame - so a pixel the fallback answered was re-sampled a cell
-	// away a frame later, and a cell is tens of pixels out at the far end of the
-	// ladder. That is the flicker the author reported on the material
-	// reflection. Bisecting between the last sample that was in front and the
-	// first that was behind puts the answer on the surface the ray went behind,
-	// which is what the clean-crossing path already did and what makes those
-	// pixels stop moving between frames (measured in
-	// _team_bfog/ssr_temporal_model.py: the sample's frame-to-frame movement is
-	// about a fifth of what it was, and a pixel that flips between a clean hit
-	// and this fallback lands about half as far away). The answer is still the
-	// one the trade chose - a surface behind the ray rather than the sky - so
-	// the fill and the stretch stay exactly as they were.
-	//
-	// Five fetches, and only on the pixels that reach this branch.
+	// Deliberately not bisected. A bisected version of a wrong answer is still a
+	// wrong answer, and the five fetches would buy an edge that is straighter
+	// than the truth deserves; the coarse sample is what the same trade costs
+	// everyone else.
 	if (hasBehind) {
-		float behindLoU = lastInFrontU;
-		float behindHiU = behindU;
-
-		if (behindHiU > behindLoU) {
-			for (int j = 0; j < SCREEN_REFINEMENT_STEPS; j++) {
-				float behindMidU = 0.5 * (behindLoU + behindHiU);
-				float behindMidT = ScreenLadderParameter(
-					startClip, directionClip,
-					startAxis, endAxis, startOnAxis, directionOnAxis, behindMidU);
-				vec4 behindMidClip = startClip + directionClip * behindMidT;
-				if (behindMidClip.w <= 0.0) {
-					break;
-				}
-				vec3 behindMidNdc = behindMidClip.xyz / behindMidClip.w;
-				vec2 behindMidScreen = behindMidNdc.xy * 0.5 + 0.5;
-
-				vec4 behindMidHomogeneous = gbufferProjectionInverse * vec4(
-					behindMidScreen * 2.0 - 1.0,
-					texture(depthBuffer, behindMidScreen + jitterOffset).x * 2.0 - 1.0,
-					1.0);
-				float behindMidSurfaceZ =
-					behindMidHomogeneous.z / behindMidHomogeneous.w;
-
-				// Behind is the surface being nearer than the ray, as above.
-				if (-behindMidClip.w < behindMidSurfaceZ) {
-					behindHiU = behindMidU;
-				} else {
-					behindLoU = behindMidU;
-				}
-			}
-		}
-
 		float behindT = ScreenLadderParameter(
 			startClip, directionClip,
-			startAxis, endAxis, startOnAxis, directionOnAxis, behindHiU);
+			startAxis, endAxis, startOnAxis, directionOnAxis, behindU);
 		vec4 behindClip = startClip + directionClip * min(behindT, maxT);
 		vec3 behindNdc = behindClip.xyz / behindClip.w;
 
@@ -808,11 +736,11 @@ bool ScreenSpaceRaytrace(
 			vec2(1.0));
 
 		vec4 behindHomogeneous = gbufferProjectionInverse * vec4(
-			behindScreen * 2.0 - 1.0,
-			texture(depthBuffer, behindScreen + jitterOffset).x * 2.0 - 1.0,
+			behindNdc.xy,
+			texture(depthBuffer, behindScreen).x * 2.0 - 1.0,
 			1.0);
 
-		hitPos = behindScreen + jitterOffset;
+		hitPos = behindScreen;
 		hitViewPos = behindHomogeneous.xyz / behindHomogeneous.w;
 		return true;
 	}
