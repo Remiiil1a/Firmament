@@ -56,8 +56,6 @@ Renewed](https://github.com/Poudingue/Vanilla-Normals-Renewed)，以 GPLv3 授�
   夹角，而太阳照不到的空气由天光托底，不再是一片黑。
 * **附魔光效强度**：附魔物品与盔甲上的闪光可以调得更亮。游戏是以"叠加自身颜色"
   的方式画这层的，所以它贡献的光按设置值的平方增长——出厂值 2.0 时是原来的四倍。
-* **远景**：给阴影贴图够不到的远景补上屏幕空间阴影——Distant Horizons 与 Voxy
-  的 LOD 地形本来一点阴影都没有。
 * **不是平铺在地面的水**：瀑布侧面、沿坡流下的水现在也按水面绘制，
   表面样式、水色与反射都和静水一致，并按**该面自己的切线基**铺开，
   而不是按假定的世界轴。
@@ -134,16 +132,15 @@ Renewed](https://github.com/Poudingue/Vanilla-Normals-Renewed)，以 GPLv3 授�
 |---|---|
 | **Steadfast 0.8.0** | coderbot——原光影，以及全部基础渲染、配置与风格 |
 | **Firmament 修改** | Remiiil1a——方向、测试、调参；代码由 **DeepSeek V4.1 Flash**（AI）编写 |
-| **参考了其代码** | 参考 **TheCMK** 的 **Mellow Shader v3.4**（MIT）、**geforcelegend** 的 **Sundial Lite**（GPLv3），以及 **X0nk** 的 **Bliss Shader**（**Chocapic13** 光影的改版） |
-| **Eclipse Shader** | [Merlin1809](https://github.com/Merlin1809/Eclipse-Shader)——水面互动的灵感来源与代码参考：玩家与船经过水面留下的波浪是 Eclipse 的波浪方程组织方式，经 `porting_kit/` 移植并按本包的水面着色方式适配 |
+| **参考了其代码** | 参考 **TheCMK** 的 **Mellow Shader v3.4**（MIT）、**geforcelegend** 的 **Sundial Lite**（GPLv3）、**X0nk** 的 **Bliss Shader**（**Chocapic13** 光影的改版），以及 **Merlin1809** 的 **Eclipse Shader**（[GitHub](https://github.com/Merlin1809/Eclipse-Shader)）——**Bliss 的改版**，本包水面互动的波浪来自它 |
 | **labPBR 标准** | shaderLABS 社区——材质通道布局与约定 |
 
 被参考的项目**没有任何素材被搬到这里**——没有贴图、没有 logo、没有截图；
 它们与本包没有隶属关系，也没有为本包背书。它们的名字不是本包名称与标识的一部分。
 
-四个被参考的项目在光影菜单里有各自独立的条目：
-**「制作与许可 → 特别鸣谢」**。Bliss 与 **Chocapic13** 一并署名——它是 Chocapic13 光影的改版，
-而它自己的许可文件里放的正是 Chocapic13 的声明，不是它自己的。
+被参考的项目在光影菜单里有各自独立的条目：
+**「制作与许可 → 特别鸣谢」**。Bliss 与 Eclipse 都是 **Chocapic13** 光影的改版（Eclipse 改的是 Bliss），
+它们的许可文件里放的正是 Chocapic13 的声明、而不是自己的，所以两者都与 Chocapic13 一并署名。
 
 ## 许可
 

@@ -69,8 +69,6 @@ screenshots are kept in the repository and are not part of the download.
   of armour can be made brighter. The game adds the glint's own colour to the
   frame, so the light it contributes grows with the square of the setting: at the
   shipped value of 2.0 it contributes four times what it did.
-* **Distant terrain** - screen-space shadows for terrain past the shadow map's
-  reach, which is what Distant Horizons and Voxy terrain otherwise never gets.
 * **Water that is not flat on the ground** - the sides of waterfalls and of water
   running downhill are drawn as water, with the same surface, colour and
   reflections as a still surface, laid out in the frame the face actually has
@@ -170,18 +168,18 @@ screenshots are kept in the repository and are not part of the download.
 |---|---|
 | **Steadfast 0.8.0** | coderbot - the original shader, and all of the base rendering, profiles and style |
 | **Firmament edit** | Remiiil1a - direction, testing, tuning; code written by **DeepSeek V4.1 Flash** (AI) |
-| **Referenced code** | follows **Mellow Shader v3.4** by **TheCMK** (MIT), **Sundial Lite** by **geforcelegend** (GPLv3), and **Bliss Shader** by **X0nk**, an edit of **Chocapic13's** shaders |
-| **Eclipse Shader** | [Merlin1809](https://github.com/Merlin1809/Eclipse-Shader) - the idea and the code of the water interaction: the waves a player or a boat leaves behind are Eclipse's arrangement of the wave equation, ported through `porting_kit/` and adapted to how this pack shades water |
+| **Referenced code** | follows **Mellow Shader v3.4** by **TheCMK** (MIT), **Sundial Lite** by **geforcelegend** (GPLv3), **Bliss Shader** by **X0nk** (an edit of **Chocapic13's** shaders), and **Eclipse Shader** by **Merlin1809** ([GitHub](https://github.com/Merlin1809/Eclipse-Shader)), an edit of **Bliss Shader** whose water interaction this pack's waves come from |
 | **labPBR standard** | the shaderLABS community - material channel layout and conventions |
 
 No assets are reused from any of the referenced packs - no textures, no logos, no
 screenshots - and none of them is affiliated with this one or endorses it. Their
 names are not part of this pack's name or branding.
 
-All four referenced packs have their own entries in the settings menu, under
-**Credits & licence → Special thanks**. Bliss is credited together with
-**Chocapic13**, whose shaders it is an edit of: its own licence file carries
-Chocapic13's notice rather than one of its own.
+The referenced packs have their own entries in the settings menu, under
+**Credits & licence → Special thanks**. Bliss and Eclipse are both edits of
+**Chocapic13's** shaders - Eclipse edits Bliss - and both carry Chocapic13's
+notice in their own licence files rather than one of their own, so both are
+credited together with him.
 
 ## Licence
 
