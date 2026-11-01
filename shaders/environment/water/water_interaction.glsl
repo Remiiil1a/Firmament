@@ -90,16 +90,21 @@ const float WATER_SIM_DELTA = WATER_SIM_GRID_SCALE;
 	const float WATER_SIM_STEP_INTERVAL = 0.0;
 #endif
 
-// How far apart the neighbours a step reads are. At half the rate a step has to
-// cover twice the ground to keep the wave speed the same, which is what this
-// does - the original implementation's trick, kept exactly because any other
-// way of compensating (a bigger delta) changes the spring term's balance as
-// well and the waves stop looking like water.
-#if WATER_SIM_RATE == 0
-	const int WATER_SIM_STEP_OFFSET = 2;
-#else
-	const int WATER_SIM_STEP_OFFSET = 1;
-#endif
+// Neighbour distance of one step: one texel, at every rate.
+//
+// The original implementation reads two texels apart at 30 fps, and that is how
+// it keeps the wave speed while stepping half as often. It was tried here (batch
+// 685 to 688) and taken back out: the wider stencil is a different spatial
+// operator, not the same one twice, and in this pack it left the field with
+// standing patterns that the next wave then beat against.
+//
+// So a locked rate now advances the equation fewer times, each step by the amount
+// a step can safely take, and nothing else changes. The cost is honest: at 30 fps
+// the waves travel at half the speed they do at 60, because an explicit scheme
+// cannot double what one step advances without leaving the range it is stable in
+// - two steps are two steps. Speed parity would need extra sub-step passes, which
+// is a different change and not one to make while this one is still being judged.
+const int WATER_SIM_STEP_OFFSET = 1;
 
 // ---------------------------------------------------------------------------
 //   Helpers both halves use
