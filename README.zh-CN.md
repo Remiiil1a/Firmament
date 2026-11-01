@@ -94,7 +94,7 @@ Renewed](https://github.com/Poudingue/Vanilla-Normals-Renewed)，以 GPLv3 授�
 ## 运行要求
 
 * **Iris + Sodium**，Minecraft 1.21.x。**不支持 OptiFine**。
-* **Voxy** 与 **Distant Horizons** 都支持；上面说的远景阴影需要装了其中之一才有意义。
+* **Voxy** 与 **Distant Horizons** 都支持，远景地形因此与近处画在同一帧里。
 * 材质相关功能需要 **labPBR 资源包**。没有资源包时本包照常工作，
   材质会解码成平坦表面。
 * **低档是本修改版提供的最低档位。** 低档之下不再有档位，也不打算再加：
@@ -111,8 +111,6 @@ Renewed](https://github.com/Poudingue/Vanilla-Normals-Renewed)，以 GPLv3 授�
 
 ## 已知限制
 
-* **远景阴影只到深度缓冲能到的地方**：背对镜头、屏幕外、被挡住的地形不投影，
-  草与栅栏这类薄物体也容易漏。
 * **TAA 的重投影里没有"物体"运动**——上一帧的相机参与了重投影，但没有任何东西告诉它
   实体、粒子或正在下落的方块是怎么动的，所以那类东西靠"丢弃与当前帧不符的历史"处理，
   而不是靠跟踪。

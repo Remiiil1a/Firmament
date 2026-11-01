@@ -119,8 +119,8 @@ screenshots are kept in the repository and are not part of the download.
 ## Requirements
 
 * **Iris + Sodium**, on Minecraft 1.21.x. OptiFine is not supported.
-* **Voxy** and **Distant Horizons** are both supported, and the distant-terrain
-  shadows above need one of them to be worth anything.
+* **Voxy** and **Distant Horizons** are both supported, so distant terrain is drawn
+  in the same frame as the rest of it.
 * The material features need a **labPBR resource pack**. Without one the pack
   works normally; materials simply decode to a flat surface.
 * **The Low tier is the lowest one this edit ships.** There is no tier below it,
@@ -140,9 +140,6 @@ screenshots are kept in the repository and are not part of the download.
 
 ## Known limitations
 
-* **Distant shadows only reach as far as the depth buffer does**: terrain behind
-  the camera, off screen, or hidden does not cast, and thin things like grass and
-  fences are easy to miss.
 * **TAA has no object motion vectors** - the previous frame's camera is used for
   the reprojection, but nothing tells it how an entity, a particle or a falling
   block moved, so those are handled by rejecting history that disagrees rather
