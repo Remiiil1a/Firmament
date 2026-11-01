@@ -37,23 +37,6 @@
 // level: only the amount of spatial detail changes.
 #define WATER_SIM_QUALITY 1 // [0 1 2]
 
-// How often the wave simulation is stepped: 30 fps, 60 fps, or once per frame.
-//
-// The field is a state that evolves, so how often it is advanced is a real
-// choice rather than a quality setting: at 30 the ripples travel in coarser
-// steps and the simulation costs a third of what it does when it runs every
-// frame at 120 fps, at 60 it is halved, and "every frame" is what the pack did
-// before this option existed (it scales the step by the frame time, so the
-// waves travel at the same speed whatever the frame rate is).
-//
-// This is Eclipse's arrangement, and so is the way the step is kept honest when
-// it is limited: the lock is not "run less often and hope", it is "advance by
-// the step that interval implies, and look two texels away instead of one when
-// the interval doubles", which is what keeps the propagation speed the same at
-// 30 as at 60. A time stamp in the state image is what makes the two compute
-// passes agree on whether this frame is a step.
-#define WATER_SIM_RATE 2 // [0 1 2]
-
 // Half-width of the simulated area, in blocks. The original implementation's 25
 // block radius.
 const float WATER_SIM_RADIUS = 25.0;
@@ -81,31 +64,6 @@ const float WATER_SIM_GRID_SCALE
 // (delta * texel * 60 blocks per second) is constant.
 const float WATER_SIM_DELTA = WATER_SIM_GRID_SCALE;
 
-// The minimum time between two steps, in seconds; zero means every frame.
-#if WATER_SIM_RATE == 0
-	const float WATER_SIM_STEP_INTERVAL = 1.0 / 30.0;
-#elif WATER_SIM_RATE == 1
-	const float WATER_SIM_STEP_INTERVAL = 1.0 / 60.0;
-#else
-	const float WATER_SIM_STEP_INTERVAL = 0.0;
-#endif
-
-// Neighbour distance of one step: one texel, at every rate.
-//
-// The original implementation reads two texels apart at 30 fps, and that is how
-// it keeps the wave speed while stepping half as often. It was tried here (batch
-// 685 to 688) and taken back out: the wider stencil is a different spatial
-// operator, not the same one twice, and in this pack it left the field with
-// standing patterns that the next wave then beat against.
-//
-// So a locked rate now advances the equation fewer times, each step by the amount
-// a step can safely take, and nothing else changes. The cost is honest: at 30 fps
-// the waves travel at half the speed they do at 60, because an explicit scheme
-// cannot double what one step advances without leaving the range it is stable in
-// - two steps are two steps. Speed parity would need extra sub-step passes, which
-// is a different change and not one to make while this one is still being judged.
-const int WATER_SIM_STEP_OFFSET = 1;
-
 // ---------------------------------------------------------------------------
 //   Helpers both halves use
 // ---------------------------------------------------------------------------
@@ -132,18 +90,6 @@ vec2 WaterInteractionAnchorWorld(vec2 anchorTexel) {
 uniform sampler2D wave_sim_b_sampler;
 uniform sampler2D wave_sim_info_sampler;
 
-// One texel of the field, with everything outside the grid read as zero.
-//
-// Zero rather than a clamp for the reason the simulation itself reads zero at its
-// edge: outside the simulated area is water that nothing has disturbed.
-vec4 WaterInteractionTexel(ivec2 texel, int resolution) {
-	if (any(lessThan(texel, ivec2(0)))
-		|| any(greaterThanEqual(texel, ivec2(resolution)))) {
-		return vec4(0.0);
-	}
-	return texelFetch(wave_sim_b_sampler, texel, 0);
-}
-
 // Adds the simulated ripple to the water normal.
 //
 // `normalTangent` is the pack's own water normal in the space WaterNormal returns
@@ -151,13 +97,13 @@ vec4 WaterInteractionTexel(ivec2 texel, int resolution) {
 // the same frame the simulated field lives in: x is east and y is north, and the
 // caller's swizzle turns that into world axes. So the ripple is added there, in
 // the same space and at the same point as the pack's own wave normals, which is
-// where the original implementation adds it as well.
+// where the original implementation adds it as well (batch 685).
 //
 // `worldXZ` is the fragment's world position, and it is deliberately the position
 // *before* the parallax mapping moved the surface: parallax moves where the pack
 // samples its own wave field, and a ripple sampled at the moved position slides
 // with the parallax and reads as a pattern painted onto that surface rather than
-// as water standing in the world. (Batch 685; the first version sampled after.)
+// as water standing in the world.
 //
 // Only flat water calls this. A height field describes no standing face, and the
 // caller already knows whether the face is flat.
@@ -165,41 +111,27 @@ vec3 WaterInteractionTangent(vec3 normalTangent, vec2 worldXZ) {
 	// The first sub-step publishes the grid centre it used, the second a ready
 	// flag. A frame in which the simulation did not run leaves the image zero, and
 	// then the water is left exactly as it was - which is also the whole fallback
-	// when compute shaders are unavailable, and the state of every frame the frame
-	// rate limit skips.
+	// when compute shaders are unavailable.
 	if (!(texelFetch(wave_sim_info_sampler, ivec2(1, 0), 0).z > 0.5)) {
 		return normalTangent;
 	}
 
 	vec2 anchorWorld = texelFetch(wave_sim_info_sampler, ivec2(0, 0), 0).xy;
 
-	int resolution = WATER_SIM_RESOLUTION;
-
-	// Continuous texel coordinate: texel centres sit at integer values.
 	vec2 coord = (worldXZ - anchorWorld) / WATER_SIM_TEXEL_SIZE
-		+ 0.5 * float(resolution);
+		+ 0.5 * float(WATER_SIM_RESOLUTION);
 
-	if (any(isnan(coord))) { return normalTangent; }
+	// Texel centres sit at integer coordinates, so the sampler's uv is one half
+	// texel further in.
+	vec2 uv = (coord + 0.5) / float(WATER_SIM_RESOLUTION);
 
-	// The field is interpolated here rather than by the sampler, and that is batch
-	// 688: the sampler behind a custom image is created by the loader, not by this
-	// pack, and a nearest neighbour one turns the ripple into a blocky lattice whose
-	// motion beats against the grid - patches that appear to advance more slowly
-	// than the rest and then stand still, which is what the author reported. Four
-	// fetches and the weights below depend on nothing but the field itself.
-	vec2 base = coord - 0.5;
-	ivec2 firstTexel = ivec2(floor(base));
-	// `texelWeight`, not `weight`: the blend weight of the ripple against the
-	// pack's own normal is also called weight, and one name for two quantities in
-	// nested scopes is what the pack's declaration audit reports.
-	vec2 texelWeight = base - vec2(firstTexel);
+	// Outside the simulated area there is nothing to read; NaN is rejected by the
+	// same comparison.
+	if (any(isnan(uv)) || any(greaterThan(abs(uv - 0.5), vec2(0.5)))) {
+		return normalTangent;
+	}
 
-	vec4 wave = mix(
-		mix(WaterInteractionTexel(firstTexel, resolution),
-			WaterInteractionTexel(firstTexel + ivec2(1, 0), resolution), texelWeight.x),
-		mix(WaterInteractionTexel(firstTexel + ivec2(0, 1), resolution),
-			WaterInteractionTexel(firstTexel + ivec2(1, 1), resolution), texelWeight.x),
-		texelWeight.y);
+	vec4 wave = texture(wave_sim_b_sampler, uv);
 
 	// The pressure field is signed, crests positive and troughs negative, so the
 	// blend weight uses its magnitude. This also rejects NaN.
