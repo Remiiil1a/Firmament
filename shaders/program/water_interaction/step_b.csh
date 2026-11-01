@@ -69,10 +69,15 @@ void main() {
 		clamp(sampleCoord + ivec2(0, -neighbourOffset), ivec2(1), ivec2(resolution - 2))).r;
 
 	// --- integrate -----------------------------------------------------------
+	// The same two quantities as the first sub-step: `dt` for the time-based decay,
+	// and a step that a locked rate leaves alone because the wider neighbour stencil
+	// is what carries the coarser step. See the note there.
 	float dt = WATER_SIM_STEP_INTERVAL > 0.0
 		? WATER_SIM_STEP_INTERVAL * 60.0
 		: clamp(frameTime * 60.0, 0.25, 2.0);
-	float delta = min(WATER_SIM_DELTA * dt, 1.4);
+	float delta = WATER_SIM_STEP_INTERVAL > 0.0
+		? WATER_SIM_DELTA
+		: min(WATER_SIM_DELTA * dt, 1.4);
 
 	pressureVelocity += delta * (-2.0 * pressure + pRight + pLeft) * 0.25;
 	pressureVelocity += delta * (-2.0 * pressure + pUp + pDown) * 0.25;

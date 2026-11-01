@@ -81,9 +81,22 @@ void main() {
 		|| any(greaterThan(abs(shift), ivec2(resolution / 2)));
 	shift = reset ? ivec2(0) : shift;
 
-	ivec2 sampleCoord = clamp(coord + shift, ivec2(1), ivec2(resolution - 2));
-
 	// --- read the previous state ---------------------------------------------
+	//
+	// The four neighbours and the sample itself, read through the shift - and
+	// *zero* where the shifted coordinate falls outside the grid.
+	//
+	// Zero rather than the clamped edge value, and that is one of the two things the
+	// frame rate limit needed. The field is anchored to the world, so a step taken
+	// after a longer pause re-anchors it by more texels at once; a clamped read then
+	// repeats the edge of the old field into the strip the field has just moved into.
+	// A copy of the edge is not water: it sits at full pressure, it carries no
+	// velocity, and being re-created by every step it does not decay like the rest -
+	// and the next wave that arrives beats against it. That is the "waves stuck in
+	// some places, then interacting with the new ones" that was reported.
+	//
+	// Water that has only just entered the simulated area has not been disturbed, so
+	// zero is also the true value rather than a patch over the problem.
 	float pressure = 0.0;
 	float pressureVelocity = 0.0;
 	float pLeft = 0.0;
@@ -92,34 +105,47 @@ void main() {
 	float pDown = 0.0;
 
 	if (!reset) {
-		vec4 state = imageLoad(wave_sim_b, sampleCoord);
+		int offset = WATER_SIM_STEP_OFFSET;
+		ivec2 origin = coord + shift;
+		bool originInside = all(greaterThanEqual(origin, ivec2(0)))
+			&& all(lessThan(origin, ivec2(resolution)));
+		vec4 state = originInside ? imageLoad(wave_sim_b, origin) : vec4(0.0);
 		pressure = state.r;
 		pressureVelocity = state.g;
 
-		int offset = WATER_SIM_STEP_OFFSET;
 		pLeft = imageLoad(wave_sim_b,
-			clamp(sampleCoord + ivec2(-offset, 0), ivec2(1), ivec2(resolution - 2))).r;
+			clamp(origin + ivec2(-offset, 0), ivec2(0), ivec2(resolution - 1))).r *
+			float(originInside && origin.x - offset >= 0);
 		pRight = imageLoad(wave_sim_b,
-			clamp(sampleCoord + ivec2(offset, 0), ivec2(1), ivec2(resolution - 2))).r;
+			clamp(origin + ivec2(offset, 0), ivec2(0), ivec2(resolution - 1))).r *
+			float(originInside && origin.x + offset < resolution);
 		pUp = imageLoad(wave_sim_b,
-			clamp(sampleCoord + ivec2(0, offset), ivec2(1), ivec2(resolution - 2))).r;
+			clamp(origin + ivec2(0, offset), ivec2(0), ivec2(resolution - 1))).r *
+			float(originInside && origin.y + offset < resolution);
 		pDown = imageLoad(wave_sim_b,
-			clamp(sampleCoord + ivec2(0, -offset), ivec2(1), ivec2(resolution - 2))).r;
+			clamp(origin + ivec2(0, -offset), ivec2(0), ivec2(resolution - 1))).r *
+			float(originInside && origin.y - offset >= 0);
 	}
 
 	// --- integrate -----------------------------------------------------------
 	//
-	// The step is advanced by the time that actually passed, so that waves travel
-	// at the same speed whatever the frame rate is. A limited rate advances by the
-	// interval it locks to, and with the neighbour offset above that keeps the same
-	// speed at half the rate.
+	// `dt` is the time this step covers, and it is what the time-based decay terms
+	// use: the field should calm down at the same rate per second whatever the step
+	// rate is.
 	float dt = WATER_SIM_STEP_INTERVAL > 0.0
 		? WATER_SIM_STEP_INTERVAL * 60.0
 		: clamp(frameTime * 60.0, 0.25, 2.0);
 
-	// Capped so that the explicit integration stays stable (CFL) when the frame
-	// rate drops far below 60.
-	float delta = min(WATER_SIM_DELTA * dt, 1.4);
+	// How far one step advances the wave equation. At a locked rate this must NOT be
+	// scaled by `dt`, and that was the other half of the reported bug: the wider
+	// neighbour stencil above already covers the extra ground a coarser step spans,
+	// so scaling the step as well advanced the equation by the interval AND by the
+	// width - four times the propagation at 30 fps rather than half. That is not a
+	// slower simulation, it is an unstable one, and an unstable one leaves patches
+	// oscillating that then beat against the next waves to arrive.
+	float delta = WATER_SIM_STEP_INTERVAL > 0.0
+		? WATER_SIM_DELTA
+		: min(WATER_SIM_DELTA * dt, 1.4);
 
 	pressureVelocity += delta * (-2.0 * pressure + pRight + pLeft) * 0.25;
 	pressureVelocity += delta * (-2.0 * pressure + pUp + pDown) * 0.25;
