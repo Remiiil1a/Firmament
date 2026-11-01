@@ -84,8 +84,12 @@ void main() {
 
 	pressure += delta * pressureVelocity;
 
-	pressureVelocity -= 0.0014 * delta * pressure;
-	pressureVelocity *= 1.0 - 0.006 * delta;
+	// The spring and the velocity damping are rates per second, so they take the
+	// time a step covers rather than the step's own size - see the note in the
+	// first sub-step, this is the third of the locked-rate bugs.
+	float decayStep = WATER_SIM_DELTA * dt;
+	pressureVelocity -= 0.0014 * decayStep * pressure;
+	pressureVelocity *= 1.0 - 0.006 * decayStep;
 
 	float distanceFromCentre
 		= length(vec2(coord) - 0.5 * float(resolution));

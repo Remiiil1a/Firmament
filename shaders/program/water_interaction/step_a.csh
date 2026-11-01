@@ -152,12 +152,22 @@ void main() {
 
 	pressure += delta * pressureVelocity;
 
-	// A spring term, which is what makes the field behave like a water surface
-	// rather than like a diffusing blur.
-	pressureVelocity -= 0.0014 * delta * pressure;
-
-	// Velocity damping, so the water eventually calms down.
-	pressureVelocity *= 1.0 - 0.006 * delta;
+	// The spring and the velocity damping are rates measured per second, so they
+	// take the time this step covers - not `delta`, which is how far the equation
+	// advances and is deliberately left unscaled at a locked rate.
+	//
+	// Using `delta` here was the third of the locked-rate bugs (batch 687): a step at
+	// 30 fps is one of thirty a second rather than one of sixty, so a per-step decay
+	// settles at half the speed per second - ripples that linger far too long, and
+	// the next wave arriving on top of them. That is the "stuck waves interacting
+	// with the new ones" as it looked from the water.
+	//
+	// `WATER_SIM_DELTA * dt` is the same product the unlocked path integrates with,
+	// so every rate now calms down at the same rate per second, which is the whole
+	// point of the limit: it should cost less, not behave differently.
+	float decayStep = WATER_SIM_DELTA * dt;
+	pressureVelocity -= 0.0014 * decayStep * pressure;
+	pressureVelocity *= 1.0 - 0.006 * decayStep;
 
 	// Radial damping, so the border of the grid never reflects waves back in.
 	float distanceFromCentre
