@@ -99,7 +99,11 @@ uniform sampler2D colortex1;
 // The two images the water interaction simulation publishes (batch 683). They
 // are bound by name from shaders.properties, so a program only has to declare
 // the sampler it wants to read - and it reads whatever the last frame left there.
-#if DEBUG == DEBUG_WAVEINFO
+//
+// One block for both views that read them (batch 688 added the second): two
+// blocks would be two declarations of one sampler whenever the debug option is
+// off, because then every DEBUG_* macro is zero and both conditions are true.
+#if DEBUG == DEBUG_WAVEINFO || DEBUG == DEBUG_WAVEFIELD
 	uniform sampler2D wave_sim_b_sampler;
 	uniform sampler2D wave_sim_info_sampler;
 #endif
@@ -205,7 +209,18 @@ uniform sampler2D colortex1;
 // program will help), or they ran and the field never reached the normal. This
 // view reads the buffers the passes hand over, so the reading is direct.
 #define DEBUG_WAVEINFO 9
-#define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_GODRAYS_UPSAMPLED DEBUG_SKYLIGHT DEBUG_DEPTH DEBUG_PLUME_DENSITY DEBUG_WATERFLAG DEBUG_WATERSOURCE DEBUG_WAVEINFO]
+
+// The wave field drawn in its own space (batch 688).
+//
+// DEBUG_WAVEINFO reads the image at the screen's own coordinates, which says
+// whether the field carries energy but not where: the field is indexed by world
+// position, so a screenshot of it can only be read if the same world-to-texel
+// mapping the water uses is applied here. This view rebuilds the world position of
+// each pixel from the depth buffer and does exactly that, so what it draws is the
+// field as the water sees it - which is what a report of "the waves advance more
+// slowly in some places" needs in order to be judged.
+#define DEBUG_WAVEFIELD 10
+#define DEBUG DEBUG_NONE // Debugging [DEBUG_NONE DEBUG_GODRAYS_NOISY DEBUG_GODRAYS_SMOOTH DEBUG_GODRAYS_UPSAMPLED DEBUG_SKYLIGHT DEBUG_DEPTH DEBUG_PLUME_DENSITY DEBUG_WATERFLAG DEBUG_WATERSOURCE DEBUG_WAVEINFO DEBUG_WAVEFIELD]
 
 #if DEBUG == DEBUG_GODRAYS_NOISY || DEBUG == DEBUG_GODRAYS_SMOOTH || DEBUG == DEBUG_GODRAYS_UPSAMPLED
 	// The three views that read the fog buffer. Until batch 581 this was two
@@ -309,6 +324,34 @@ void main() {
 	// Determine the position of this fragment on the screen in screen
 	// coordinates (0.0 to 1.0).
 	vec2 screenCoord = gl_FragCoord.xy * windowToScreen;
+
+	#if DEBUG == DEBUG_WAVEFIELD
+		// The whole field, scaled into the top left quarter of the frame, and drawn
+		// there rather than in place: it is a world-indexed image, so this pass cannot
+		// put it where the water is without rebuilding a world position per pixel - and
+		// what a report of "the waves advance more slowly in some places" needs is to
+		// see the field's own structure, which the whole image shows directly.
+		//
+		// Red is the pressure, green its gradient (scaled so ordinary ripples are
+		// visible), and outside the quarter the frame is the ready flag - so a black
+		// frame means the simulation never published.
+		float ready = texelFetch(wave_sim_info_sampler, ivec2(1, 0), 0).z;
+		ivec2 resolution = textureSize(wave_sim_b_sampler, 0);
+		vec2 fieldUv = gl_FragCoord.xy * windowToScreen * 2.0;
+		if (all(lessThan(fieldUv, vec2(1.0)))) {
+			vec4 wave = texelFetch(
+				wave_sim_b_sampler,
+				min(ivec2(fieldUv * vec2(resolution)), resolution - ivec2(1)),
+				0);
+			finalColor = vec3(
+				clamp(abs(wave.r) * 2.0, 0.0, 1.0),
+				clamp(length(wave.ba) * 8.0, 0.0, 1.0),
+				0.0);
+		} else {
+			finalColor = vec3(ready * 0.25, ready * 0.25, ready * 0.5);
+		}
+		return;
+	#endif
 
 	#if DEBUG == DEBUG_WAVEINFO
 		// Red: whether the simulation published anything at all this frame - the

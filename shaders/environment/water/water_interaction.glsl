@@ -127,6 +127,18 @@ vec2 WaterInteractionAnchorWorld(vec2 anchorTexel) {
 uniform sampler2D wave_sim_b_sampler;
 uniform sampler2D wave_sim_info_sampler;
 
+// One texel of the field, with everything outside the grid read as zero.
+//
+// Zero rather than a clamp for the reason the simulation itself reads zero at its
+// edge: outside the simulated area is water that nothing has disturbed.
+vec4 WaterInteractionTexel(ivec2 texel, int resolution) {
+	if (any(lessThan(texel, ivec2(0)))
+		|| any(greaterThanEqual(texel, ivec2(resolution)))) {
+		return vec4(0.0);
+	}
+	return texelFetch(wave_sim_b_sampler, texel, 0);
+}
+
 // Adds the simulated ripple to the water normal.
 //
 // `normalTangent` is the pack's own water normal in the space WaterNormal returns
@@ -156,20 +168,33 @@ vec3 WaterInteractionTangent(vec3 normalTangent, vec2 worldXZ) {
 
 	vec2 anchorWorld = texelFetch(wave_sim_info_sampler, ivec2(0, 0), 0).xy;
 
+	int resolution = WATER_SIM_RESOLUTION;
+
+	// Continuous texel coordinate: texel centres sit at integer values.
 	vec2 coord = (worldXZ - anchorWorld) / WATER_SIM_TEXEL_SIZE
-		+ 0.5 * float(WATER_SIM_RESOLUTION);
+		+ 0.5 * float(resolution);
 
-	// Texel centres sit at integer coordinates, so the sampler's uv is one half
-	// texel further in.
-	vec2 uv = (coord + 0.5) / float(WATER_SIM_RESOLUTION);
+	if (any(isnan(coord))) { return normalTangent; }
 
-	// Outside the simulated area there is nothing to read; NaN is rejected by the
-	// same comparison.
-	if (any(isnan(uv)) || any(greaterThan(abs(uv - 0.5), vec2(0.5)))) {
-		return normalTangent;
-	}
+	// The field is interpolated here rather than by the sampler, and that is batch
+	// 688: the sampler behind a custom image is created by the loader, not by this
+	// pack, and a nearest neighbour one turns the ripple into a blocky lattice whose
+	// motion beats against the grid - patches that appear to advance more slowly
+	// than the rest and then stand still, which is what the author reported. Four
+	// fetches and the weights below depend on nothing but the field itself.
+	vec2 base = coord - 0.5;
+	ivec2 firstTexel = ivec2(floor(base));
+	// `texelWeight`, not `weight`: the blend weight of the ripple against the
+	// pack's own normal is also called weight, and one name for two quantities in
+	// nested scopes is what the pack's declaration audit reports.
+	vec2 texelWeight = base - vec2(firstTexel);
 
-	vec4 wave = texture(wave_sim_b_sampler, uv);
+	vec4 wave = mix(
+		mix(WaterInteractionTexel(firstTexel, resolution),
+			WaterInteractionTexel(firstTexel + ivec2(1, 0), resolution), texelWeight.x),
+		mix(WaterInteractionTexel(firstTexel + ivec2(0, 1), resolution),
+			WaterInteractionTexel(firstTexel + ivec2(1, 1), resolution), texelWeight.x),
+		texelWeight.y);
 
 	// The pressure field is signed, crests positive and troughs negative, so the
 	// blend weight uses its magnitude. This also rejects NaN.
