@@ -288,6 +288,34 @@ vec3 BlockLightTint(vec2 lightMapCoord) {
 	#endif
 }
 
+// The flood fill, which is where block light's colour comes from when the option
+// above is on.
+//
+// The first condition is COLORED_LIGHTS, because the option is the whole
+// of whether this pack has a colour of its own for block light to have: with it
+// off the module has to be absent from the translation unit, or the compiled
+// program would carry three sampler uniforms it has no use for and would no
+// longer be the program that was compiled before the flood fill existed.
+//
+// The second condition is the Voxy build. The flood fill needs samplers of the
+// pack's own, and a program whose uniforms are supplied from outside the pack
+// cannot have them - Voxy compiles its own terrain shader and binds exactly what
+// voxy.json names, so a sampler declared here would be unbound and read zero for
+// the whole frame (see the note at the top of lit_voxy.fsh).
+// BLOCK_LIGHT_FLOOD_FILL is the one name both this include and BlockLightColorAt
+// test, so the two cannot disagree about whether the module is present.
+//
+// It sits here because BlockLightTint has just been defined, which is the
+// function the module's own fallback is built on, and because the only caller -
+// BlockLightColorAt, further down - has to see the module before it can call it.
+//
+// Uniforms: the two propagation fields (light_volume_a_sampler and
+// light_volume_b_sampler) and the info image (light_volume_info_sampler).
+#if defined(COLORED_LIGHTS) && !defined(EXTERNALLY_DEFINED_UNIFORMS)
+	#define BLOCK_LIGHT_FLOOD_FILL
+	#include "/environment/lighting/light_volume.glsl"
+#endif
+
 float AmbientStrength(float worldDirY) {
 	// Mimic vanilla directional lighting by varying the strength of ambient
 	// lighting based on whether the face is facing upwards, downwards, or
@@ -418,10 +446,64 @@ float NightDesaturation(float skyLight, float blockLight) {
 	}
 #endif
 
+// The colour of block light at a fragment, before the falloff turns it into
+// brightness.
+//
+// This is where the pack's two answers meet. BlockLightTint is the colour the
+// lightmap says block light is; the flood fill is the colour the light actually
+// arrives in. The fill is asked first, and it returns the fallback itself
+// wherever it has nothing to say - outside its grid, before the propagation has
+// run a frame, where the field is too weak to be a colour, and where the game
+// does not call the surface lit by block light at all - so what comes back is
+// always a colour at the fallback's own brightness. The fill decides the hue and
+// nothing else.
+//
+// The strength the module reports is not read: the module has already mixed its
+// colour with the fallback by the time it returns, and the out parameter is only
+// there for a caller that wants to know how much of the result was the fill's.
+//
+// Wherever the include above is not taken - COLORED_LIGHTS off, or the Voxy
+// build, whose samplers are not the pack's - this compiles to one call that
+// returns exactly what BlockLighting multiplied before, which is the property
+// the option is required to have.
+vec3 BlockLightColorAt(
+	// Where this fragment sits in the lightmap, which is where its fallback
+	// colour comes from.
+	vec2 lightMapCoord,
+	// Where the fragment is relative to the camera, in world axes, and which way
+	// its surface faces. The fill is a grid of voxels around the player, so it is
+	// sampled by position, and the normal picks the empty voxel on this side of
+	// the surface - see LIGHT_VOLUME_NORMAL_OFFSET in the module.
+	vec3 cameraRelativePos,
+	vec3 worldNormal,
+	// The game's own block light level here, which the module uses as a gate: it
+	// colours only surfaces the lightmap already says are lit.
+	float blockLight
+) {
+	vec3 fallback = BlockLightTint(lightMapCoord);
+
+	#ifdef BLOCK_LIGHT_FLOOD_FILL
+		float strength;
+		vec3 colored = LightVolumeBlockLight(
+			fallback,
+			cameraRelativePos,
+			worldNormal,
+			blockLight,
+			strength);
+		return colored;
+	#else
+		return fallback;
+	#endif
+}
+
 vec3 BlockLighting(
 	// Where this fragment sits in the lightmap, which is where the color of its
 	// block light comes from.
 	vec2 lightMapCoord,
+	// Where this fragment is relative to the camera, and which way it faces,
+	// which is what the flood fill is sampled by. See BlockLightColorAt.
+	vec3 cameraRelativePos,
+	vec3 worldNormal,
 	float skyLight,
 	float blockLight,
 	float heldLight
@@ -444,7 +526,20 @@ vec3 BlockLighting(
 
 	// This method of combining held light and block light avoids weird lines
 	// where the lights intersect.
-	return BlockLightTint(lightMapCoord)
+	//
+	// The brightness envelope is the one built above out of the game's own block
+	// light level; the colour that goes through it is whatever BlockLightColorAt
+	// returns. The flood fill supplies a hue and never a brightness - the module
+	// builds its colour at the fallback's own brightness and mixes the two - so
+	// this is the same multiplication, on the same scale of colour, that was here
+	// before the fill existed. That is the whole safety property of the option:
+	// COLORED_LIGHTS can change what colour a surface is, not how bright its
+	// block light is.
+	return BlockLightColorAt(
+			lightMapCoord,
+			cameraRelativePos,
+			worldNormal,
+			blockLight)
 		* (BLOCKLIGHT_STRENGTH * min(1.0, blockLightIntensity + heldLightIntensity));
 }
 
@@ -525,8 +620,15 @@ void ApplyWaterAbsorption(
 }
 
 struct SurfaceFragment {
+	// The fragment's position relative to the camera, in world axes.
+	//
+	// This used to sit inside the REAL_TIME_SHADOWS block below, because the only
+	// thing in this struct that read it was the shadow map. The flood fill reads
+	// it too, and the flood fill has nothing to do with shadows, so the field is
+	// unconditional now - the same field with a wider guard rather than a second
+	// copy of it. See BlockLightColorAt.
+	vec3 cameraRelativePos;
 	#if defined(REAL_TIME_SHADOWS)
-		vec3 cameraRelativePos;
 		// The projected shadow map position to sample from.
 		//
 		// X and Y are coordinates in the shadow map texture, and Z is the
@@ -803,6 +905,8 @@ vec3 DiffuseLightingImpl(
 	// based on depth to avoid ruining submerged bases.
 	vec3 blocklightIndirect = BlockLighting(
 		fragment.lightMapCoord,
+		fragment.cameraRelativePos,
+		fragment.worldNormal,
 		fragment.skyLight,
 		fragment.blockLight,
 		fragment.heldLight

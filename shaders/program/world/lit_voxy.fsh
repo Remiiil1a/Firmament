@@ -115,6 +115,24 @@ void voxy_emitFragment(VoxyFragmentParameters parameters) {
 	float skyLight = LightMapToLight(parameters.lightMap.y);
 
 	vec4 fragmentColor = vec4(DiffuseLighting(SurfaceFragment(
+		// A position far outside the flood fill's grid, and deliberately so.
+		//
+		// This program has no camera-relative position of its own until the
+		// translucent branch below reconstructs one, and it does not need one:
+		// COLORED_LIGHTS is not defined in this translation unit - it is a
+		// #define in environment/lighting/light_colors.glsl, which lit.fsh
+		// includes and this chain does not - so the volume module is not included
+		// here and nothing reads this argument today.
+		//
+		// The sentinel is a guard against a future edit rather than a value the
+		// shader uses. Voxy draws the terrain beyond the game's own chunks, and
+		// the volume is a cube of light covering thirty-two blocks around the
+		// player, so level-of-detail terrain has no business inside it. If the
+		// module ever does compile into this program, a position outside the grid
+		// samples as black and the lightmap's own color comes back, which is the
+		// fallback - whereas zero is the camera's own position, and would tint the
+		// whole distant view with the light around the player's feet.
+		vec3(1.0e6),
 		// The linear RGB color of the surface at this position, including all
 		// AO and tinting.
 		surfaceColor.rgb,

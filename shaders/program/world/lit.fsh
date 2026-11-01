@@ -1796,8 +1796,11 @@ void main() {
 		#endif
 
 		SurfaceFragment surface = SurfaceFragment(
+			// Where this fragment sits relative to the camera. The flood fill is
+			// sampled by it as well as the shadow map - see the note on the field
+			// in diffuse.glsl.
+			cameraRelativePos,
 			#if defined(REAL_TIME_SHADOWS)
-				cameraRelativePos,
 				// The projected shadowmap position to sample from.
 				shadowPos,
 			#endif

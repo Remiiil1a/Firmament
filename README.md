@@ -119,6 +119,10 @@ screenshots are kept in the repository and are not part of the download.
 ## Requirements
 
 * **Iris + Sodium**, on Minecraft 1.21.x. OptiFine is not supported.
+* **Coloured block light** - like the water simulation, it needs Iris with compute
+  shaders and custom images: OpenGL 4.2 and up, which macOS does not have. On a
+  loader without them the pack still works, and block light keeps the lightmap's
+  colour.
 * **Voxy** and **Distant Horizons** are both supported, so distant terrain is drawn
   in the same frame as the rest of it.
 * The material features need a **labPBR resource pack**. Without one the pack

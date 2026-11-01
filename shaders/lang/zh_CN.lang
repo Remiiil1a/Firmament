@@ -215,7 +215,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 695]
+option.PBR_DEBUG=材质调试视图 [build 696]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -342,7 +342,7 @@ option.BLOCKLIGHT_STRENGTH=方块光强度
 option.BLOCKLIGHT_STRENGTH.comment=方块光在满亮度（光照等级 15）时有多亮。颜色取自光照贴图，亮度由这一项决定：调高更亮，不改光的颜色。
 
 option.BLOCKLIGHT_TEMPERATURE=方块光色温
-option.BLOCKLIGHT_TEMPERATURE.comment=方块光的色温，单位开尔文（K），每档 100K：把光照贴图的颜色整体挪暖或挪冷。尺度是摄影那套：火把 1800–2500K 是深橙，2700K 是常说的暖白，日光 5500–6500K，7000K 以上发蓝。它只改色相、不改亮度。
+option.BLOCKLIGHT_TEMPERATURE.comment=方块光的色温，单位开尔文（K），每档 100K：把光照贴图的颜色整体挪暖或挪冷。尺度是摄影那套：火把 1800–2500K 是深橙，2700K 是常说的暖白，日光 5500–6500K，7000K 以上发蓝。它只改色相、不改亮度。开启「彩色光源」时，它覆盖得到的地方改由那一项取色，其余地方仍由这一项决定。
 
 option.LIGHT_TINT_STRENGTH=光色染色强度
 option.LIGHT_TINT_STRENGTH.comment=表面在多大程度上「变成」附近光源的颜色，而不只是额外叠一层光：只叠光没法把被橙光照亮的墙变蓝，所以这一项还把表面自身的颜色朝附近光拉过去。范围随距离自动衰减，调高颜色更浓。
@@ -351,7 +351,7 @@ option.MIN_AMBIENT_BRIGHTNESS=最低环境光亮度
 option.MIN_AMBIENT_BRIGHTNESS.comment=环境光的下限：无论有没有光源照到，每个表面至少有这么亮；没有它时洞穴、下界、末地接近全黑。数值是线性光，默认 0.02 是「下限」而不是「亮度」——刚好让没有光的洞穴不至于全黑；调到暗处看得清为止，0.0 恢复原样。
 
 option.COLORED_LIGHTS=彩色光源
-option.COLORED_LIGHTS.comment=光源方块是否使用它真正发出的光的颜色——灵魂灯笼的蓝、红石火把的红——而不是所有方块光共用的暖橙色。发光方块取自己光的颜色，周围表面由屏幕空间的光色扩散染色；关闭会去掉这两部分，也最省性能。
+option.COLORED_LIGHTS.comment=光源方块发出的光是否带自己的颜色——灵魂灯笼的蓝、红石火把的红——而不是所有方块光共用的一个暖色平均值。颜色像游戏传播亮度那样在周围的方块之间扩散，两种光相遇会混合而不是一种压过另一种；发光方块自身也取自己光的颜色。关闭最省性能，此时由下面的「方块光色温」决定颜色。
 
 option.COLORED_LIGHTS_STRENGTH=光源自身配色
 option.COLORED_LIGHTS_STRENGTH.comment=光源方块自身的表面在多大程度上取光的颜色而不是贴图的颜色。1.0 完全用光的颜色照亮，贴图的明暗变化始终保留；想保留发光部位的贴图细节就调低。

@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 695]
+option.PBR_DEBUG=Material debug view [build 696]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -670,7 +670,8 @@ option.BLOCKLIGHT_TEMPERATURE.comment=The colour temperature of block light in \
 	kelvin: it moves the lightmap's colour warmer or cooler. The scale is a \
 	photographer's - a torch at 1800-2500 K reads deep orange, 2700 K the warm \
 	white most people mean, daylight 5500-6500 K, and 7000 K and up blue. It \
-	changes hue only, not brightness.
+	changes hue only, not brightness. Colored lights, above, takes the hue over \
+	wherever it has a colour to give, and is what lights everything else.
 
 option.LIGHT_TINT_STRENGTH=Light color tinting
 option.LIGHT_TINT_STRENGTH.comment=How far a surface takes the colour of \
@@ -687,11 +688,13 @@ option.MIN_AMBIENT_BRIGHTNESS.comment=A floor under the ambient light, whether \
 	black. Raise it until dark places are readable, 0.0 for the original look.
 
 option.COLORED_LIGHTS=Colored lights
-option.COLORED_LIGHTS.comment=Whether light sources take the colour of the \
-	light they give off - a soul lantern's blue, a redstone torch's red - instead \
-	of one warm orange for all block light. The glowing block takes its own \
-	light's colour and a screen-space bleed colours the surfaces around it; off \
-	removes both and is the cheapest setting.
+option.COLORED_LIGHTS.comment=Whether a light source colours the light it gives \
+	off - a soul lantern's blue, a redstone torch's red - instead of one warm \
+	average for all block light. The colour is carried through the blocks around \
+	you the way the game carries light brightness, so two sources meeting blend \
+	instead of one winning, and the glowing block takes its own light's colour \
+	as well. Off is the cheapest setting, and the block light temperature below \
+	is what then decides the colour.
 
 option.COLORED_LIGHTS_STRENGTH=Light source color
 option.COLORED_LIGHTS_STRENGTH.comment=How far a light source's own surface \

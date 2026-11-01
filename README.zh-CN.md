@@ -94,6 +94,9 @@ Renewed](https://github.com/Poudingue/Vanilla-Normals-Renewed)，以 GPLv3 授�
 ## 运行要求
 
 * **Iris + Sodium**，Minecraft 1.21.x。**不支持 OptiFine**。
+* **彩色方块光**：与水面模拟一样，需要带计算着色器与自定义图像的 Iris：
+  OpenGL 4.2 及以上，macOS 没有。加载器缺少这些能力时本包照常工作，
+  方块光保留光照贴图的颜色。
 * **Voxy** 与 **Distant Horizons** 都支持，远景地形因此与近处画在同一帧里。
 * 材质相关功能需要 **labPBR 资源包**。没有资源包时本包照常工作，
   材质会解码成平坦表面。
