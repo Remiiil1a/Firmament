@@ -66,6 +66,13 @@
 // unnamed, and the base is where its licence comes from. See NOTICE.md.
 #define THANKS_BLISS BY_X0NK // Authorship attribution. [BY_X0NK]
 
+// Eclipse, whose water interaction the simulation in environment/water is ported
+// from: credited for the code and for the idea, and the README says so as well.
+// The waves a player leaves behind in this pack are Eclipse's arrangement of the
+// wave equation, ported through porting_kit/ and adapted to how this pack shades
+// water. Its licence is its own - see NOTICE.md.
+#define THANKS_ECLIPSE BY_MERLIN1809 // Authorship attribution. [BY_MERLIN1809]
+
 #define FANTASY 0
 #define SEMI_NATURAL 1
 #define RETRO 2

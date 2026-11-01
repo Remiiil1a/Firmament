@@ -33,6 +33,13 @@ layout(rgba32f) uniform image2D wave_sim_info;
 
 void main() {
 #ifdef IS_IRIS
+#if defined(WATER_SIM_END_DIMENSION) && WATER_SIM_END == 0
+	// The End simulation is switched off. Returning without writing anything is what
+	// leaves the ready flag at zero, and the water then leaves the surface exactly as
+	// it was - the same fallback the whole effect uses when its programs do not run.
+	return;
+#endif
+
 	ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
 	int resolution = WATER_SIM_RESOLUTION;
 
@@ -98,7 +105,9 @@ void main() {
 
 	// Capped so that the explicit integration stays stable (CFL) when the frame
 	// rate drops far below 60.
-	float delta = min(WATER_SIM_DELTA * dt, 1.4);
+	// The travel factor is the End's low gravity, and it is applied to the step
+	// rather than to the equation: the same scheme, advancing less per step.
+	float delta = min(WATER_SIM_DELTA * dt, 1.4) * WATER_SIM_TRAVEL;
 
 	pressureVelocity += delta * (-2.0 * pressure + pRight + pLeft) * 0.25;
 	pressureVelocity += delta * (-2.0 * pressure + pUp + pDown) * 0.25;
@@ -107,10 +116,10 @@ void main() {
 
 	// A spring term, which is what makes the field behave like a water surface
 	// rather than like a diffusing blur.
-	pressureVelocity -= 0.0014 * delta * pressure;
+	pressureVelocity -= WATER_SIM_SPRING * delta * pressure;
 
 	// Velocity damping, so the water eventually calms down.
-	pressureVelocity *= 1.0 - 0.006 * delta;
+	pressureVelocity *= 1.0 - WATER_SIM_VELOCITY_DAMPING * delta;
 
 	// Radial damping, so the border of the grid never reflects waves back in.
 	float distanceFromCentre

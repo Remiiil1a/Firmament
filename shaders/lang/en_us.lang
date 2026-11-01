@@ -40,32 +40,29 @@ value.THANKS_BLISS.BY_X0NK=by X0nk
 profile.FIRMAMENT_MEDIUM=§2✎ Firmament§r - §a» Medium§r
 profile.FIRMAMENT_LOW=§2✎ Firmament§r - §e↓ Low§r
 profile.FIRMAMENT_HIGH=§2✎ Firmament§r - §b🔥 High§r
-profile.FIRMAMENT_TOASTER=§2✎ Firmament§r - §c▶ Toaster§r
 profile.MINISHITA_HIGH=§aMinishita (WIP)§r style - §b🔥 High§r
 profile.MINISHITA_MEDIUM=§aMinishita (WIP)§r style - §a» Medium§r
 profile.MINISHITA_LOW=§aMinishita (WIP)§r style - §e↓ Low§r
-profile.MINISHITA_TOASTER=§aMinishita (WIP)§r style - §c▶ Toaster§r
 profile.PARAGON_HIGH=§a★ Paragon§r style - §b🔥 High§r
 profile.PARAGON_MEDIUM=§a★ Paragon§r style - §a» Medium§r
 profile.PARAGON_LOW=§a★ Paragon§r style - §e↓ Low§r
-profile.PARAGON_TOASTER=§a★ Paragon§r style - §c▶ Toaster§r
 profile.FANTASY_HIGH=§d🪄 Fantasy§r style - §b🔥 High§r
 profile.FANTASY_MEDIUM=§d🪄 Fantasy§r style - §a» Medium§r
 profile.FANTASY_LOW=§d🪄 Fantasy§r style - §e↓ Low§r
-profile.FANTASY_TOASTER=§d🪄 Fantasy§r style - §c▶ Toaster§r
 profile.SEMI_NATURAL_HIGH=§b🗻 Semi-Natural§r style - §b🔥 High§r
 profile.SEMI_NATURAL_MEDIUM=§b🗻 Semi-Natural§r style - §a» Medium§r
 profile.SEMI_NATURAL_LOW=§b🗻 Semi-Natural§r style - §e↓ Low§r
-profile.SEMI_NATURAL_TOASTER=§b🗻 Semi-Natural§r style - §c▶ Toaster§r
 profile.RETRO_MEDIUM=§6😎 Retro§r style - §a» Medium§r
 profile.RETRO_LOW=§6😎 Retro§r style - §e↓ Low§r
-profile.RETRO_TOASTER=§6😎 Retro§r style - §c▶ Toaster§r
 profile.comment=\
 	§b🔥 High§r / §a» Medium§r / §e↓ Low§r / §c▶ Toaster§r - The performance tiers. \
 	They cover this edit's default configuration only.\n\n\
 	High: full-resolution volumetric fog and PBR parallax. Medium: the factory \
 	default. Low: no screen-space shadows or reflection trace, softer metal diffuse. \
-	Toaster: almost everything off.\n\n\
+	\n\n\
+	There is no tier below Low. This edit no longer carries one: a machine that \
+	needs it is better served by upstream Steadfast, which is built for that range \
+	and is linked in the README.\n\n\
 	§2✎ Firmament§r - §a» Medium§r is that default configuration itself, and is the \
 	same thing as Medium above.\n\n\
 	\
@@ -481,7 +478,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 690]
+option.PBR_DEBUG=Material debug view [build 691]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1545,3 +1542,11 @@ this only changes how much fine detail the ripples carry - and what it costs.
 value.WATER_SIM_QUALITY.0=Low
 value.WATER_SIM_QUALITY.1=Medium
 value.WATER_SIM_QUALITY.2=High
+option.WATER_SIM_END=End simulation
+option.WATER_SIM_END.comment=How water moves in the End. Off: no simulation there, the surface is what it was before the effect. On: exactly the overworld's waves. On (low gravity): the End has its own physics, so the ripples travel more slowly and settle more slowly, and they linger. Low gravity is the default, because water pulled down at the overworld's strength in the End reads as a pond that came along with the player.
+value.WATER_SIM_END.0=Off
+value.WATER_SIM_END.1=On
+value.WATER_SIM_END.2=On (low gravity)
+option.THANKS_ECLIPSE=Eclipse Shader
+option.THANKS_ECLIPSE.comment=The water interaction in this pack - the waves a player or a boat leaves behind - takes its idea and its code from Merlin1809's Eclipse Shader, and is credited here for both. Used under its own licence; no assets, logos or screenshots are reused. Repository: https://github.com/Merlin1809/Eclipse-Shader
+value.THANKS_ECLIPSE.BY_MERLIN1809=by Merlin1809

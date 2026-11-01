@@ -28,14 +28,63 @@
 	// plain define; the real use is in translucent.glsl.
 #endif
 
+// What the simulation does in the End, which has no weather and no tide to speak
+// of: nothing, the same waves as the overworld, or waves under a lighter pull.
+//
+// The last is the default, and it is a deliberate difference rather than a copy of
+// the overworld: the End is a place with its own physics, and water pulled down at
+// the overworld's strength there reads as a pond that came along with the player.
+// Low gravity here means the ripples travel more slowly and settle more slowly,
+// which is what a weaker pull does to a surface.
+//
+// The middle setting exists so the two can be compared directly, and so a player
+// who wants one physics everywhere can have it.
+#define WATER_SIM_END 2 // [0 1 2]
+
+// Whether this program is compiled for the End, and under which setting.
+//
+// The End's compute programs are their own files under world1/, and that is what
+// tells them apart: Iris looks a program up in the current dimension's folder
+// first, so the End runs those and every other dimension runs the root ones. The
+// files in world1/ set the define below.
+#if defined(WATER_SIM_END_DIMENSION) && WATER_SIM_END == 2
+	#define WATER_SIM_END_LOW_GRAVITY
+#endif
+
+// The spring, the velocity damping and the travel speed, as constants so that the
+// two physics differ by them rather than by branches inside the step.
+//
+// A weaker pull does two things to a surface: the waves travel more slowly, and
+// they keep going longer. The first is the travel factor, the second is a much
+// smaller spring and damping - the overworld's ripples are tuned to die out, and
+// under low gravity they should not.
+#ifdef WATER_SIM_END_LOW_GRAVITY
+	const float WATER_SIM_SPRING = 0.0005;
+	const float WATER_SIM_VELOCITY_DAMPING = 0.0025;
+	const float WATER_SIM_TRAVEL = 0.55;
+#else
+	const float WATER_SIM_SPRING = 0.0014;
+	const float WATER_SIM_VELOCITY_DAMPING = 0.006;
+	const float WATER_SIM_TRAVEL = 1.0;
+#endif
+
 // How far the simulated tilt is taken on top of the regular waves.
 #define WATER_INTERACTION_STRENGTH 1.00 // [0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00 1.05 1.10 1.15 1.20 1.25 1.30 1.35 1.40 1.45 1.50 1.55 1.60 1.65 1.70 1.75 1.80 1.85 1.90 1.95 2.00]
 
-// Simulation grid resolution. The wave equation is stepped in grid space, and
-// the quantities below are rescaled from the original implementation's grid to
-// this one, so the wave speed and the apparent steepness are the same at every
-// level: only the amount of spatial detail changes.
-#define WATER_SIM_QUALITY 1 // [0 1 2]
+// Simulation grid resolution, and it changes more than what the effect costs: it
+// changes what the waves look like.
+//
+// A coarser grid resolves less of the surface, so its ripples come out broader and
+// denser - the water reads as a close-knit texture of small swells. A finer grid
+// carries more detail, so the ripples are crisper and read as finer water. The
+// difference is visible while the water is still, before anything has disturbed
+// it, which is why it is written down here and not filed under cost.
+//
+// The wave speed and the steepness are rescaled by the constants below so that
+// they stay the same at every level; only the amount of detail changes. Low is the
+// default because the low performance tier turns the effect off entirely, and the
+// tiers that keep it are the ones with room to spare.
+#define WATER_SIM_QUALITY 0 // [0 1 2]
 
 // Half-width of the simulated area, in blocks. The original implementation's 25
 // block radius.

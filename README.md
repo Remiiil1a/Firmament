@@ -125,6 +125,10 @@ screenshots are kept in the repository and are not part of the download.
   shadows above need one of them to be worth anything.
 * The material features need a **labPBR resource pack**. Without one the pack
   works normally; materials simply decode to a flat surface.
+* **The Low tier is the lowest one this edit ships.** There is no tier below it,
+  and none is planned: a machine that needs one is better served by upstream
+  **Steadfast**, which is built for that range and is linked at the top of
+  this file.
 
 ## Installation
 
@@ -167,13 +171,14 @@ screenshots are kept in the repository and are not part of the download.
 | **Steadfast 0.8.0** | coderbot - the original shader, and all of the base rendering, profiles and style |
 | **Firmament edit** | Remiiil1a - direction, testing, tuning; code written by **DeepSeek V4.1 Flash** (AI) |
 | **Referenced code** | follows **Mellow Shader v3.4** by **TheCMK** (MIT), **Sundial Lite** by **geforcelegend** (GPLv3), and **Bliss Shader** by **X0nk**, an edit of **Chocapic13's** shaders |
+| **Eclipse Shader** | [Merlin1809](https://github.com/Merlin1809/Eclipse-Shader) - the idea and the code of the water interaction: the waves a player or a boat leaves behind are Eclipse's arrangement of the wave equation, ported through `porting_kit/` and adapted to how this pack shades water |
 | **labPBR standard** | the shaderLABS community - material channel layout and conventions |
 
-No assets are reused from any of the three referenced packs - no textures, no
-logos, no screenshots - and none of the three projects is affiliated with this one
-or endorses it. Their names are not part of this pack's name or branding.
+No assets are reused from any of the referenced packs - no textures, no logos, no
+screenshots - and none of them is affiliated with this one or endorses it. Their
+names are not part of this pack's name or branding.
 
-All three referenced packs have their own entries in the settings menu, under
+All four referenced packs have their own entries in the settings menu, under
 **Credits & licence → Special thanks**. Bliss is credited together with
 **Chocapic13**, whose shaders it is an edit of: its own licence file carries
 Chocapic13's notice rather than one of its own.

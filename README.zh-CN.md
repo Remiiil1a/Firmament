@@ -99,6 +99,9 @@ Renewed](https://github.com/Poudingue/Vanilla-Normals-Renewed)，以 GPLv3 授�
 * **Voxy** 与 **Distant Horizons** 都支持；上面说的远景阴影需要装了其中之一才有意义。
 * 材质相关功能需要 **labPBR 资源包**。没有资源包时本包照常工作，
   材质会解码成平坦表面。
+* **低档是本修改版提供的最低档位。** 低档之下不再有档位，也不打算再加：
+  需要更低配置的机器请用上游 **Steadfast**，它就是为那个范围做的，
+  下载地址在本文件开头。
 
 ## 安装
 
@@ -132,12 +135,13 @@ Renewed](https://github.com/Poudingue/Vanilla-Normals-Renewed)，以 GPLv3 授�
 | **Steadfast 0.8.0** | coderbot——原光影，以及全部基础渲染、配置与风格 |
 | **Firmament 修改** | Remiiil1a——方向、测试、调参；代码由 **DeepSeek V4.1 Flash**（AI）编写 |
 | **参考了其代码** | 参考 **TheCMK** 的 **Mellow Shader v3.4**（MIT）、**geforcelegend** 的 **Sundial Lite**（GPLv3），以及 **X0nk** 的 **Bliss Shader**（**Chocapic13** 光影的改版） |
+| **Eclipse Shader** | [Merlin1809](https://github.com/Merlin1809/Eclipse-Shader)——水面互动的灵感来源与代码参考：玩家与船经过水面留下的波浪是 Eclipse 的波浪方程组织方式，经 `porting_kit/` 移植并按本包的水面着色方式适配 |
 | **labPBR 标准** | shaderLABS 社区——材质通道布局与约定 |
 
-三个被参考的项目**没有任何素材被搬到这里**——没有贴图、没有 logo、没有截图；
+被参考的项目**没有任何素材被搬到这里**——没有贴图、没有 logo、没有截图；
 它们与本包没有隶属关系，也没有为本包背书。它们的名字不是本包名称与标识的一部分。
 
-三个被参考的项目在光影菜单里有各自独立的条目：
+四个被参考的项目在光影菜单里有各自独立的条目：
 **「制作与许可 → 特别鸣谢」**。Bliss 与 **Chocapic13** 一并署名——它是 Chocapic13 光影的改版，
 而它自己的许可文件里放的正是 Chocapic13 的声明，不是它自己的。
 
