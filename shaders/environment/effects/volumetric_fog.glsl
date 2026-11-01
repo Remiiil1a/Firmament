@@ -285,10 +285,10 @@ vec3 VolumetricFogTint() {
 // Nothing else needs changing to get the flat look back, and nothing in the pack
 // assumes the four are equal: FogTimeDensity is a partition of unity whatever the
 // four values are, which is what day_arc_check.py holds it to.
-#define FOG_DENSITY_MORNING 0.010 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
+#define FOG_DENSITY_MORNING 0.006 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
 #define FOG_DENSITY_NOON 0.0 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
-#define FOG_DENSITY_EVENING 0.004 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
-#define FOG_DENSITY_NIGHT 0.008 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
+#define FOG_DENSITY_EVENING 0.003 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
+#define FOG_DENSITY_NIGHT 0.004 // [0.0 0.001 0.002 0.003 0.004 0.006 0.008 0.010 0.015 0.025 0.04]
 
 // How much thicker the medium is in rain, as a multiplier on whichever of the four
 // above is current.

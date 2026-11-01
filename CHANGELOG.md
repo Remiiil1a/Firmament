@@ -16,6 +16,59 @@ report problems in this project, not in Steadfast's.
 
 ---
 
+## v1.0.6 - 2026-11-01
+
+The water, end to end, and the settings that go with it. Water now reacts to being
+moved through - swimming or rowing leaves waves behind, and they fade as the surface
+calms - and it is drawn from how light travels through it rather than from a colour
+of its own. The user-facing settings were rebuilt around three tiers.
+
+**Water**
+* The surface no longer carries a colour of its own: what is seen is the reflection,
+  the refraction behind it and the absorption over the distance travelled. Shallow
+  water is clearer, and the blue film that used to sit on the sides of water in the
+  dark is gone.
+* Absorption is measured in metres along the path the light actually travelled, with
+  `WATER_CHARACTER` choosing the coefficients and `WATER_F0` the reflectance.
+* The light that travels to a pixel is now taken into account under water as well:
+  the whole frame is attenuated by the water it looked through, and the sky seen
+  from below the surface takes the water's colour instead of its own.
+* A face that stands up reflects the zenith rather than the horizon, so the sides of
+  water stop glowing in caves and at night.
+* Rough refraction for the water surface, `ROUGH_REFRACTION` with a strength slider.
+* The material reflection is now actually averaged by the temporal resolve. It had
+  been in that pass since v1.0.5, but the clamp's workaround passed it through
+  untouched, so its noise was never averaged. Reflections trail a little longer now
+  and the grain is gone.
+
+**Water interaction**
+* Waves from movement: a two-step simulation in compute programs, its field carried
+  in three custom images, tilting the water's normal. It reaches the reflection, the
+  Fresnel term, the refraction and the absorption at once, and it is Iris only.
+* `WATER_INTERACTION_STRENGTH` and `WATER_SIM_QUALITY`. The quality option also
+  changes the look: low reads as a close-knit texture of small swells, high as finer
+  water - and low is the default, because the low tier turns the effect off.
+* The End has its own physics: `WATER_SIM_END` chooses off, the overworld's waves, or
+  waves under low gravity, which travel and settle more slowly. Low gravity is the
+  default - the End is not the overworld.
+* Credits: the water interaction's idea and code come from **Eclipse** by
+  Merlin1809, credited in the settings menu and in the README.
+
+**Profiles and defaults**
+* The profile list is now this edit's own three tiers: **High, Medium, Low**. The
+  styles inherited from Steadfast are removed.
+* Low turns the volumetric fog and the water simulation off and drops the PBR
+  reflection trace.
+* Shipped defaults changed, following the author's own settings: block light
+  temperature 2700 K, day and night sky lighting and night atmosphere
+  `SEMI_NATURAL`, and the morning/evening/night fog densities at 0.006 / 0.003 /
+  0.004. Existing pictures will look different.
+
+**Known issues**
+* The player's own model, held item and hand can still be seen through under water
+  when the camera is submerged. It is recorded, and its cause is not the water
+  simulation.
+
 ## v1.0.5 - 2026-10-30
 
 The material reflections, rebuilt: they find the surface that is actually in front
