@@ -37,6 +37,23 @@
 // level: only the amount of spatial detail changes.
 #define WATER_SIM_QUALITY 1 // [0 1 2]
 
+// How often the wave simulation is stepped: 30 fps, 60 fps, or once per frame.
+//
+// The field is a state that evolves, so how often it is advanced is a real
+// choice rather than a quality setting: at 30 the ripples travel in coarser
+// steps and the simulation costs a third of what it does when it runs every
+// frame at 120 fps, at 60 it is halved, and "every frame" is what the pack did
+// before this option existed (it scales the step by the frame time, so the
+// waves travel at the same speed whatever the frame rate is).
+//
+// This is Eclipse's arrangement, and so is the way the step is kept honest when
+// it is limited: the lock is not "run less often and hope", it is "advance by
+// the step that interval implies, and look two texels away instead of one when
+// the interval doubles", which is what keeps the propagation speed the same at
+// 30 as at 60. A time stamp in the state image is what makes the two compute
+// passes agree on whether this frame is a step.
+#define WATER_SIM_RATE 2 // [0 1 2]
+
 // Half-width of the simulated area, in blocks. The original implementation's 25
 // block radius.
 const float WATER_SIM_RADIUS = 25.0;
@@ -64,6 +81,26 @@ const float WATER_SIM_GRID_SCALE
 // (delta * texel * 60 blocks per second) is constant.
 const float WATER_SIM_DELTA = WATER_SIM_GRID_SCALE;
 
+// The minimum time between two steps, in seconds; zero means every frame.
+#if WATER_SIM_RATE == 0
+	const float WATER_SIM_STEP_INTERVAL = 1.0 / 30.0;
+#elif WATER_SIM_RATE == 1
+	const float WATER_SIM_STEP_INTERVAL = 1.0 / 60.0;
+#else
+	const float WATER_SIM_STEP_INTERVAL = 0.0;
+#endif
+
+// How far apart the neighbours a step reads are. At half the rate a step has to
+// cover twice the ground to keep the wave speed the same, which is what this
+// does - the original implementation's trick, kept exactly because any other
+// way of compensating (a bigger delta) changes the spring term's balance as
+// well and the waves stop looking like water.
+#if WATER_SIM_RATE == 0
+	const int WATER_SIM_STEP_OFFSET = 2;
+#else
+	const int WATER_SIM_STEP_OFFSET = 1;
+#endif
+
 // ---------------------------------------------------------------------------
 //   Helpers both halves use
 // ---------------------------------------------------------------------------
@@ -90,28 +127,31 @@ vec2 WaterInteractionAnchorWorld(vec2 anchorTexel) {
 uniform sampler2D wave_sim_b_sampler;
 uniform sampler2D wave_sim_info_sampler;
 
-// Adds the simulated ripple to a water normal.
+// Adds the simulated ripple to the water normal.
 //
-// `normalWorld` is this pack's water normal, which is a world space (world
-// aligned, y up) one, and `worldXZ` the fragment's world position - the field
-// is a top-down height map, so only its horizontal position can index it.
+// `normalTangent` is the pack's own water normal in the space WaterNormal returns
+// it in - in-plane x and y, z out of the surface - which for water lying flat is
+// the same frame the simulated field lives in: x is east and y is north, and the
+// caller's swizzle turns that into world axes. So the ripple is added there, in
+// the same space and at the same point as the pack's own wave normals, which is
+// where the original implementation adds it as well.
 //
-// The simulation writes a signed pressure field; its gradient is the slope of
-// the surface it stands for, and a surface's normal tilts against its gradient.
-// That is the whole of the shading: no geometry is moved, and the tilt is
-// blended in by the pressure's own magnitude (sqrt(sqrt()), which is the
-// original implementation's curve), so still water is untouched.
-vec3 WaterInteractionNormal(vec3 normalWorld, vec2 worldXZ) {
-	// A height field only describes water that lies flat, so a waterfall's side
-	// keeps the normal it had. The absolute value covers water seen from below.
-	if (abs(normalWorld.y) < 0.5) { return normalWorld; }
-
+// `worldXZ` is the fragment's world position, and it is deliberately the position
+// *before* the parallax mapping moved the surface: parallax moves where the pack
+// samples its own wave field, and a ripple sampled at the moved position slides
+// with the parallax and reads as a pattern painted onto that surface rather than
+// as water standing in the world. (Batch 685; the first version sampled after.)
+//
+// Only flat water calls this. A height field describes no standing face, and the
+// caller already knows whether the face is flat.
+vec3 WaterInteractionTangent(vec3 normalTangent, vec2 worldXZ) {
 	// The first sub-step publishes the grid centre it used, the second a ready
-	// flag. A frame in which the simulation did not run leaves the image zero,
-	// and then the water is left exactly as it was - which is also the whole
-	// fallback when compute shaders are unavailable.
+	// flag. A frame in which the simulation did not run leaves the image zero, and
+	// then the water is left exactly as it was - which is also the whole fallback
+	// when compute shaders are unavailable, and the state of every frame the frame
+	// rate limit skips.
 	if (!(texelFetch(wave_sim_info_sampler, ivec2(1, 0), 0).z > 0.5)) {
-		return normalWorld;
+		return normalTangent;
 	}
 
 	vec2 anchorWorld = texelFetch(wave_sim_info_sampler, ivec2(0, 0), 0).xy;
@@ -123,10 +163,10 @@ vec3 WaterInteractionNormal(vec3 normalWorld, vec2 worldXZ) {
 	// texel further in.
 	vec2 uv = (coord + 0.5) / float(WATER_SIM_RESOLUTION);
 
-	// Outside the simulated area there is nothing to read; NaN is rejected by
-	// the same comparison.
+	// Outside the simulated area there is nothing to read; NaN is rejected by the
+	// same comparison.
 	if (any(isnan(uv)) || any(greaterThan(abs(uv - 0.5), vec2(0.5)))) {
-		return normalWorld;
+		return normalTangent;
 	}
 
 	vec4 wave = texture(wave_sim_b_sampler, uv);
@@ -134,7 +174,7 @@ vec3 WaterInteractionNormal(vec3 normalWorld, vec2 worldXZ) {
 	// The pressure field is signed, crests positive and troughs negative, so the
 	// blend weight uses its magnitude. This also rejects NaN.
 	float pressure = abs(wave.r);
-	if (!(pressure > 1.0e-4)) { return normalWorld; }
+	if (!(pressure > 1.0e-4)) { return normalTangent; }
 
 	float weight = clamp(
 		WATER_INTERACTION_STRENGTH * sqrt(sqrt(pressure)),
@@ -142,18 +182,15 @@ vec3 WaterInteractionNormal(vec3 normalWorld, vec2 worldXZ) {
 		1.0);
 
 	vec2 gradient = vec2(wave.b, wave.a);
-	if (any(isnan(gradient))) { return normalWorld; }
+	if (any(isnan(gradient))) { return normalTangent; }
 
-	// The grid factor keeps the tilt independent of the quality level.
+	// The field behaves like a height: its normal tilts against the gradient, and
+	// the grid factor keeps the tilt independent of the quality level.
 	vec2 tilt = -gradient * WATER_SIM_GRID_SCALE;
 
-	// Water seen from below has a normal pointing down, and its ripple has to
-	// point the same way or the blend would flatten the surface towards the sky.
-	float sign = normalWorld.y < 0.0 ? -1.0 : 1.0;
+	vec3 rippleNormal = normalize(vec3(tilt.x, tilt.y, 1.0));
 
-	vec3 rippleNormal = normalize(vec3(tilt.x, sign, tilt.y));
-
-	return normalize(mix(normalWorld, rippleNormal, weight));
+	return normalize(mix(normalTangent, rippleNormal, weight));
 }
 
 #endif // shading half

@@ -481,7 +481,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 684]
+option.PBR_DEBUG=Material debug view [build 685]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1529,7 +1529,7 @@ option.ROUGH_REFRACTION=Rough refraction
 option.ROUGH_REFRACTION.comment=Softens what the water shows through it, so that a sharp edge behind the water bends instead of printing through it. Off is the sharp, single-sample refraction.
 option.ROUGH_REFRACTION_STRENGTH=Rough refraction strength
 screen.WATER_INTERACTION_SETTINGS=Water interaction
-option.WATER_INTERACTION=Waves from movement
+option.WATER_INTERACTION=Wave simulation
 option.WATER_INTERACTION.comment=Water reacts to being moved through: swimming \
 or rowing leaves waves behind you, which fade as the surface calms down. \
 Turn it off and the water is exactly the water this pack drew before. \
@@ -1545,3 +1545,8 @@ this only changes how much fine detail the ripples carry - and what it costs.
 value.WATER_SIM_QUALITY.0=Low
 value.WATER_SIM_QUALITY.1=Medium
 value.WATER_SIM_QUALITY.2=High
+option.WATER_SIM_RATE=Simulation rate limit
+option.WATER_SIM_RATE.comment=How often the wave simulation advances: 30 fps, 60 fps, or once per frame. A locked rate advances each step by the interval it locks to and doubles the neighbour distance, so the waves travel at the same speed for less cost; every frame scales the step by the frame time instead, which is what this pack did before the option existed.
+value.WATER_SIM_RATE.0=30 fps
+value.WATER_SIM_RATE.1=60 fps
+value.WATER_SIM_RATE.2=Every frame

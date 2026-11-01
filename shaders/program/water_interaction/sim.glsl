@@ -23,6 +23,12 @@
 
 uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
+
+// Seconds since the world loaded, and the clock the frame rate limit is kept
+// against: it is a monotonic counter rather than a sum of frame times, so a
+// dropped or duplicated frame cannot drift the lock (batch 685, the same clock
+// the original implementation uses).
+uniform float frameTimeCounter;
 uniform float frameTime;
 uniform int isEyeInWater;
 

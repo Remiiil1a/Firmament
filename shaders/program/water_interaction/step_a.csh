@@ -1,17 +1,17 @@
 // Water interaction waves: sub-step 1
 //
-// Ported from porting_kit/ (Eclipse's effect). Reads the previous full state from wave_sim_b and integrates one step
-// of the wave equation into wave_sim_a. Runs in the prepare1 pass, that is
-// after the shadow pass and before the gbuffer programs, so the water program
-// can read the same frame's field.
+// Ported from porting_kit/ (Eclipse's effect). Reads the previous full state from
+// wave_sim_b and integrates one step of the wave equation into wave_sim_a. Runs in
+// the prepare1 pass, that is after the shadow pass and before the gbuffer
+// programs, so the water program can read the same frame's field.
 //
 // The program is Iris only, and every part of it that touches an image is kept
-// behind IS_IRIS: on a loader without custom images the body does nothing and
-// the ready flag never rises, which is what leaves the water untouched.
-
-// The simulation side: the shared constants plus the uniforms and helpers
-// this pass runs on. See the note at the top of that file for why it is a
-// separate file from the one the water programs include.
+// behind IS_IRIS: on a loader without custom images the body does nothing and the
+// ready flag never rises, which is what leaves the water untouched.
+//
+// The simulation side: the shared constants plus the uniforms and helpers this
+// pass runs on. See the note at the top of that file for why it is a separate file
+// from the one the water programs include.
 #include "/program/water_interaction/sim.glsl"
 
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
@@ -24,7 +24,6 @@ layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 	const ivec3 workGroups = ivec3(64, 64, 1);
 #endif
 
-
 #ifdef IS_IRIS
 layout(rgba16f) uniform readonly image2D wave_sim_b;
 layout(rg16f) uniform writeonly image2D wave_sim_a;
@@ -33,6 +32,21 @@ layout(rgba32f) uniform image2D wave_sim_info;
 
 void main() {
 #ifdef IS_IRIS
+	// --- is this frame a step? ----------------------------------------------
+	//
+	// The second sub-step stores the time of the last step in the state image, and
+	// both passes read that same value here, so they always agree: either both
+	// advance the field this frame or neither does. When neither does, both return
+	// without writing anything - the images keep the state they hold, and the water
+	// keeps reading it, which is what makes a limited simulation rate cost nothing
+	// on the frames it skips.
+	vec4 previousState = imageLoad(wave_sim_info, ivec2(1, 0));
+	float lastStepTime = previousState.w;
+	bool stepThisFrame = WATER_SIM_STEP_INTERVAL <= 0.0
+		|| lastStepTime <= 0.0
+		|| frameTimeCounter - lastStepTime >= WATER_SIM_STEP_INTERVAL;
+	if (!stepThisFrame) { return; }
+
 	ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
 	int resolution = WATER_SIM_RESOLUTION;
 
@@ -43,16 +57,15 @@ void main() {
 	vec2 anchorWorld = WaterInteractionAnchorWorld(vec2(anchorTexel));
 
 	// The previous player position is written by the previous frame's second
-	// sub-step. Going through the image rather than previousCameraPosition is
-	// what keeps the grid exact in third person and on a boat, where the
+	// sub-step. Going through the image rather than previousCameraPosition is what
+	// keeps the grid exact in third person and on a boat, where the
 	// camera-to-player offset changes between frames.
-	vec4 previousState = imageLoad(wave_sim_info, ivec2(1, 0));
 	bool previousValid = previousState.z > 0.5
 		&& !isnan(previousState.x) && !isnan(previousState.y)
 		&& !isnan(previousCameraPosition.x) && !isnan(previousCameraPosition.z)
 		// The stored position has to be near the previous camera, which rejects
-		// garbage (and an all-zero image) without limiting how far from the
-		// world origin the player may be.
+		// garbage (and an all-zero image) without limiting how far from the world
+		// origin the player may be.
 		&& length(previousState.xy - previousCameraPosition.xz) < 64.0;
 
 	ivec2 previousAnchorTexel = previousValid
@@ -83,18 +96,26 @@ void main() {
 		pressure = state.r;
 		pressureVelocity = state.g;
 
+		int offset = WATER_SIM_STEP_OFFSET;
 		pLeft = imageLoad(wave_sim_b,
-			clamp(sampleCoord + ivec2(-1, 0), ivec2(1), ivec2(resolution - 2))).r;
+			clamp(sampleCoord + ivec2(-offset, 0), ivec2(1), ivec2(resolution - 2))).r;
 		pRight = imageLoad(wave_sim_b,
-			clamp(sampleCoord + ivec2(1, 0), ivec2(1), ivec2(resolution - 2))).r;
+			clamp(sampleCoord + ivec2(offset, 0), ivec2(1), ivec2(resolution - 2))).r;
 		pUp = imageLoad(wave_sim_b,
-			clamp(sampleCoord + ivec2(0, 1), ivec2(1), ivec2(resolution - 2))).r;
+			clamp(sampleCoord + ivec2(0, offset), ivec2(1), ivec2(resolution - 2))).r;
 		pDown = imageLoad(wave_sim_b,
-			clamp(sampleCoord + ivec2(0, -1), ivec2(1), ivec2(resolution - 2))).r;
+			clamp(sampleCoord + ivec2(0, -offset), ivec2(1), ivec2(resolution - 2))).r;
 	}
 
 	// --- integrate -----------------------------------------------------------
-	float dt = clamp(frameTime * 60.0, 0.25, 2.0);
+	//
+	// The step is advanced by the time that actually passed, so that waves travel
+	// at the same speed whatever the frame rate is. A limited rate advances by the
+	// interval it locks to, and with the neighbour offset above that keeps the same
+	// speed at half the rate.
+	float dt = WATER_SIM_STEP_INTERVAL > 0.0
+		? WATER_SIM_STEP_INTERVAL * 60.0
+		: clamp(frameTime * 60.0, 0.25, 2.0);
 
 	// Capped so that the explicit integration stays stable (CFL) when the frame
 	// rate drops far below 60.
@@ -172,8 +193,9 @@ void main() {
 
 	imageStore(wave_sim_a, coord, vec4(pressure, pressureVelocity, 0.0, 0.0));
 
-	// Publish the grid centre and the shift for the water program and for the
-	// next frame's first sub-step.
+	// Publish the grid centre and the shift for the water program and for the next
+	// frame's first sub-step. The time stamp is not written here: the second
+	// sub-step owns it, so that both passes of one frame read the same value.
 	if (all(equal(coord, ivec2(0, 0)))) {
 		imageStore(wave_sim_info, ivec2(0, 0),
 			vec4(anchorWorld.x, anchorWorld.y, vec2(shift)));

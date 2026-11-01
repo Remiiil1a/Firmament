@@ -168,6 +168,14 @@ vec3 parallaxWaterNormal(
 ) {
 	vec2 waterWorldPos = cameraRelativePos.xz + cameraPosition.xz;
 
+	// The same position before the parallax mapping below moves it, kept for the
+	// simulated wave field only (batch 685). Parallax moves where the pack samples
+	// its own wave field; a simulated ripple sampled at the moved position slides
+	// with the parallax and reads as a pattern painted onto that surface instead of
+	// as water standing in the world, so the simulation is indexed by the world
+	// position the fragment really is at.
+	vec2 waveFieldPos = waterWorldPos;
+
 	// Whether this face is standing up rather than lying flat - the side of a
 	// waterfall, or the face of water flowing down a slope.
 	bool sideways = abs(worldNormal.y) < 0.99;
@@ -275,6 +283,21 @@ vec3 parallaxWaterNormal(
 		waterNormal = vec3(0.0, 0.0, 1.0);
 	}
 
+	// BATCH 685: the simulated surface goes into the normal here - in the same
+	// tangent space the pack's own wave normals live in, before the swizzle below
+	// turns it into world axes. That is where the original implementation adds it,
+	// and the reason is not bookkeeping: mixing it in beforehand is what makes the
+	// two surfaces one surface, instead of a simulated tilt laid over an already
+	// transformed normal.
+	//
+	// Flat water only: the field is a top-down height map, and the caller is the
+	// one that knows which faces are flat.
+	#if defined(WATER_INTERACTION) && !defined(EXTERNALLY_DEFINED_UNIFORMS)
+		if (!sideways) {
+			waterNormal = WaterInteractionTangent(waterNormal, waveFieldPos);
+		}
+	#endif
+
 	// A face that is not horizontal needs a frame of its own. WaterNormal returns
 	// the normal in tangent space, where Z points out of the surface and X and Y
 	// point along it - and for water lying flat on the ground those two happen to
@@ -296,15 +319,10 @@ vec3 parallaxWaterNormal(
 				+ worldTBN[1] * waterNormal.y
 				+ worldTBN[2] * waterNormal.z);
 
-		// The wave field is a top-down height map, so it describes water that
-		// lies flat and leaves a standing face alone. It is still offered here
-		// rather than tested for: the function's own gate is what decides, and
-		// keeping one gate is what keeps the two paths agreeing.
-		#if defined(WATER_INTERACTION) && !defined(EXTERNALLY_DEFINED_UNIFORMS)
-			return WaterInteractionNormal(sidewaysNormal, waterWorldPos);
-		#else
-			return sidewaysNormal;
-		#endif
+		// No simulated ripple here: the field is a top-down height map, and a
+		// standing face is not what it describes. The normal was left untouched
+		// above for the same reason.
+		return sidewaysNormal;
 	}
 
 	// Water lying flat on the ground, which is the common case: the face is
@@ -316,24 +334,12 @@ vec3 parallaxWaterNormal(
 	// The same reasoning covers the view direction the parallax mapping is given
 	// further up - it is written in the field's axes for the same reason, not
 	// because the face frame is assumed to be the world's.
-	vec3 flatNormal = facing * waterNormal.xzy;
-
-	// BATCH 682: the simulated ripples are added here, at the end of the
-	// normal, and not at any one place that consumes it. Everything the water
-	// does with a normal - the reflection's direction, the Fresnel term, the
-	// refraction's offset and the absorption along its path - reads what this
-	// function returns, so one insertion is what makes the waves affect all of
-	// them at once, the way a real surface would.
-	//
-	// `waterWorldPos` is the field's own coordinate: for a face lying flat it
-	// is the world xz the wave simulation is indexed by. It is deliberately not
-	// the camera-relative position, because the simulation is anchored to the
-	// world rather than to the camera.
-	#if defined(WATER_INTERACTION) && !defined(EXTERNALLY_DEFINED_UNIFORMS)
-		return WaterInteractionNormal(flatNormal, waterWorldPos);
-	#else
-		return flatNormal;
-	#endif
+	// Everything the water does with a normal - the reflection's direction, the
+	// Fresnel term, the refraction's offset and the absorption along its path -
+	// reads what this function returns, and the simulated ripple is already part
+	// of `waterNormal` by this point, so it affects all of them at once, the way a
+	// real surface would.
+	return facing * waterNormal.xzy;
 }
 
 #if !defined(EXTERNALLY_DEFINED_UNIFORMS)
