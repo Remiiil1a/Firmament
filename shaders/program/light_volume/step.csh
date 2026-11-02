@@ -3,12 +3,11 @@
 // Included by the three shadowcomp entries - shadowcomp.csh at the root and the two
 // under world-1/ and world1/ - which supply the #version line and the note on where
 // this pass sits in the frame. What runs here is the shading half's other end, from
-// /environment/lighting/light_volume.glsl: every voxel of the grid takes the
-// brightest of its six neighbours out of the previous frame's field, one step
-// down, and then whatever state its own voxel of the world image is in - air,
-// an emitter, stained glass, or an opaque block. The four states and their
-// encoding are the table at the top of that file; this is the only place they
-// are read.
+// /environment/lighting/light_volume.glsl: every voxel of the grid blends the
+// neighbours that carry colour in the previous frame's field, one step down, and
+// then adds whatever state its own voxel of the world image is in - air, an
+// emitter, stained glass, or an opaque block. The four states and their encoding
+// are the table at the top of that file; this is the only place they are read.
 //
 // One step per frame, not a loop that converges inside one dispatch. The field is
 // a recurrence, not something solved: it arrives at the frame as an image,
@@ -44,16 +43,18 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-// 8 invocations per axis and 8 groups per axis: the whole 64-cubed grid in one
-// dispatch, one invocation per voxel.
+// 8 invocations per axis and 16 groups per axis: the whole 128-cubed grid in one
+// dispatch, one invocation per voxel. That is 2,097,152 invocations a frame, and it
+// is the same number at every setting of COLORED_LIGHT_RANGE - the option limits
+// how much of the grid is used, not what the dispatch costs.
 //
 // A shader constant rather than a line in shaders.properties, which is how this
 // pack declares work groups (see program/water_interaction/step_a.csh). The grid
-// is a fixed 64 cubed - the images are declared at that size unconditionally in
+// is a fixed 128 cubed - the images are declared at that size unconditionally in
 // shaders.properties - so the count is written out rather than derived from an
-// option: 8 groups of 8 invocations is exactly the grid, and a build-time
+// option: 16 groups of 8 invocations is exactly the grid, and a build-time
 // constant is what the loader requires of it.
-const ivec3 workGroups = ivec3(8, 8, 8);
+const ivec3 workGroups = ivec3(16, 16, 16);
 
 #ifdef IS_IRIS
 uniform vec3 cameraPosition;
@@ -94,6 +95,16 @@ layout(rgba16) uniform readonly image3D light_volume_world;
 layout(rgba16) uniform image3D light_volume_a;
 layout(rgba16) uniform image3D light_volume_b;
 
+// The held light: one texel in an image of its own, written by the hand program
+// (program/gbuffers_hand.vsh) and read here. It is deliberately not a texel of an
+// image the fill also reads or writes - batch 697 put it into an image the
+// propagation used, and that made three programs users of the same data, which is
+// exactly what batch 702 removed. One texel, one writer, one reader, never
+// cleared: the hand program rewrites it every frame, a zero included, so what is
+// read is this frame's answer or the frame before's, and no other state has to be
+// reconciled.
+layout(rgba16) uniform readonly image2D light_volume_held;
+
 // The previous frame's field at a voxel, or black outside the grid.
 //
 // Out of range reads as black rather than as a clamped sample: the grid is a cube
@@ -102,15 +113,21 @@ layout(rgba16) uniform image3D light_volume_b;
 // would make the edge of the cube a wall of light that the fill then carries
 // inwards. Which image to read is fromA, passed in, so that the parity is still
 // decided in one place.
-vec3 LightVolumePreviousField(ivec3 pos, bool fromA) {
+//
+// rgb is the field's colour and a is 1.0 when this neighbour carries any colour at
+// all, 0.0 when it is black. The blend below divides by that count, so it has to
+// come from the same read as the colour.
+vec4 LightVolumePreviousField(ivec3 pos, bool fromA) {
 	if (any(lessThan(pos, ivec3(0)))
 		|| any(greaterThanEqual(pos, ivec3(LIGHT_VOLUME_SIZE)))) {
-		return vec3(0.0);
+		return vec4(0.0);
 	}
 
-	return fromA
+	vec3 colour = fromA
 		? imageLoad(light_volume_a, pos).rgb
 		: imageLoad(light_volume_b, pos).rgb;
+
+	return vec4(colour, max(colour.r, max(colour.g, colour.b)) > 0.0 ? 1.0 : 0.0);
 }
 #endif
 
@@ -156,9 +173,8 @@ void main() {
 	vec4 world = imageLoad(light_volume_world, voxel);
 
 	// A solid voxel is black and stays black: light does not enter a block and
-	// does not come out of one. Everything else takes the brightest of the six
-	// neighbours from the frame before, one step down, and then what its own
-	// state does with that.
+	// does not come out of one. Everything else blends the six neighbours from
+	// the frame before, one step down, and then adds what its own state does.
 	vec3 next = vec3(0.0);
 
 	if (world.a > 0.75) {
@@ -169,19 +185,40 @@ void main() {
 		ivec3 previous = voxel + shift;
 		bool readFromA = !writeToA;
 
-		vec3 spread = LightVolumePreviousField(previous + ivec3(1, 0, 0), readFromA);
-		spread = max(spread, LightVolumePreviousField(previous + ivec3(-1, 0, 0), readFromA));
-		spread = max(spread, LightVolumePreviousField(previous + ivec3(0, 1, 0), readFromA));
-		spread = max(spread, LightVolumePreviousField(previous + ivec3(0, -1, 0), readFromA));
-		spread = max(spread, LightVolumePreviousField(previous + ivec3(0, 0, 1), readFromA));
-		spread = max(spread, LightVolumePreviousField(previous + ivec3(0, 0, -1), readFromA));
+		vec4 sum = vec4(0.0);
+		sum += LightVolumePreviousField(previous + ivec3(1, 0, 0), readFromA);
+		sum += LightVolumePreviousField(previous + ivec3(-1, 0, 0), readFromA);
+		sum += LightVolumePreviousField(previous + ivec3(0, 1, 0), readFromA);
+		sum += LightVolumePreviousField(previous + ivec3(0, -1, 0), readFromA);
+		sum += LightVolumePreviousField(previous + ivec3(0, 0, 1), readFromA);
+		sum += LightVolumePreviousField(previous + ivec3(0, 0, -1), readFromA);
 
-		// A maximum per channel, not a sum and not last-writer-wins: two colours
-		// that meet in a voxel come out as the brighter of each channel, which is
-		// what makes a red light beside a green one read as yellow where they
-		// overlap. The decay alone decides how far a colour reaches, so a voxel
-		// that has never been near a source stays black without a cutoff of its
-		// own.
+		// The mean of the neighbours that carry colour, rather than the
+		// brightest of them, for two reasons. It mixes colours: a red light and a
+		// green one meeting head-on used to come out as the brighter of each
+		// channel - full yellow - and now average to (0.5, 0.5, 0.0), a yellow at
+		// half the channel values, because the mean divides by the number of
+		// contributing neighbours. It also removes the axis preference: with a
+		// maximum, which side of a corner a voxel is on decides how much light it
+		// gets, and the falloff reads as a preference for one axis.
+		//
+		// The reach does not change, and that is the part that had to stay. Along
+		// a straight line from one source every contributing neighbour is the same
+		// distance away and therefore carries the same value, so the mean equals
+		// the maximum it replaced: the decay is still a factor of LIGHT_VOLUME_STEP
+		// per block (0.85), still 0.85^15 = 0.087 at fifteen blocks, and a light
+		// still takes twenty-five frames to fall below LIGHT_VOLUME_MINIMUM
+		// (0.85^25 = 0.017). Only where different paths or different colours meet
+		// does the result differ, and mixing there is the point.
+		//
+		// Eclipse sums its six neighbours with a fixed 1/6 and a 0.96 falloff
+		// (dimensions/shadowcomp.csh:101-102), but its field is log-encoded and it
+		// has a per-block data table to say which axes may mix at all (its
+		// 6-bit mixMask); neither is available here - our field is linear RGBA16
+		// and there is no block data - which is why this divides by the number of
+		// neighbours that actually contributed instead of by six. Dividing by six
+		// would make a lone source decay by 1/6 of the step it is documented to
+		// decay by.
 		//
 		// A filter is stained glass, and it is the one state that changes the
 		// light rather than adding to it: what crosses a pane takes the pane's
@@ -191,6 +228,8 @@ void main() {
 		// itself glow. Air and emitters are everything else, and they differ
 		// only in whether the voxel adds its own colour: an emitter is at full
 		// strength in the frame it is drawn, not one step away from where it is.
+		vec3 spread = sum.rgb / max(sum.a, 1.0);
+
 		if (world.a > 0.25) {
 			next = spread * world.rgb * LIGHT_VOLUME_STEP;
 		} else {
@@ -200,10 +239,10 @@ void main() {
 
 	// The option's radius, and the extent mask that makes it real: a voxel further
 	// than the active radius from the centre of the fixed grid stores black. The
-	// field is a 64-cubed image whatever the option says - that is the batch-696
-	// shape - and the option only decides how much of it the fill may use. The
-	// consumer fades the colour out towards the same radius, so the edge of what
-	// is used is a fade and not a cut.
+	// field is a 128-cubed image whatever the option says, and the option only
+	// decides how much of it the fill may use. The consumer fades the colour out
+	// towards the same radius, so the edge of what is used is a fade and not a
+	// cut.
 	//
 	// Chebyshev distance and not Euclidean: the grid is a cube and the mask has to
 	// cut it to a cube, so the farthest axis decides.
@@ -212,6 +251,26 @@ void main() {
 	if (max(fromCentre.x, max(fromCentre.y, fromCentre.z))
 		> LIGHT_VOLUME_ACTIVE_RADIUS) {
 		next = vec3(0.0);
+	}
+
+	// The held light, injected at exactly one voxel: the player's own block. The
+	// grid is centred on the player, so that voxel is LIGHT_VOLUME_GRID_RADIUS on
+	// every axis, whatever the active radius is. The read happens inside this one
+	// invocation, so the texel is fetched once per dispatch rather than two
+	// million times, and the injection is a max() so a field already reaching
+	// that voxel keeps its brighter value.
+	//
+	// One frame late by construction: the hand program draws in the gbuffers
+	// stage, after this pass, so what is read here was stored by the previous
+	// frame's hand. That is the same one-frame delay the recurrence has
+	// everywhere else, and it is why a source picked up now starts spreading on
+	// the next frame.
+	if (all(equal(voxel, ivec3(LIGHT_VOLUME_GRID_RADIUS)))) {
+		vec4 held = imageLoad(light_volume_held, ivec2(0, 0));
+
+		if (held.a > 0.5) {
+			next = max(next, held.rgb);
+		}
 	}
 
 	// The fourth channel is stored as 1.0 because there is nothing to put in it:

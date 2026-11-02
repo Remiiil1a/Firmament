@@ -126,15 +126,21 @@
 // other, and then the two would disagree about the grid - which is the kind of
 // disagreement that compiles everywhere.
 //
-// COLORED_LIGHT_RANGE is how far the colour is allowed to reach, as the side of a
-// cube in blocks: 32, 48 or 64. It is NOT the image size. The three images are 64
-// cubed and fixed, which is exactly what batch 696 shipped - the last build the
-// author confirmed working - and batch 697 making their size follow this option
-// is one of the plumbing changes this batch reverts. What the option changes now
-// is how much of that fixed grid the fill uses: the active radius is half of it,
-// 16, 24 or 32 blocks, the compute pass stores black outside that radius, and the
-// consumer fades the colour out towards it (see LIGHT_VOLUME_ACTIVE_RADIUS below).
-#define COLORED_LIGHT_RANGE 64 // [32 48 64]
+// COLORED_LIGHT_RANGE is the radius the colour is allowed to reach, in blocks:
+// 16, 24, 32, 48 or 64. A radius rather than the width of a cube, because that is
+// the number a player judges reach by, and the old option's numbers were the
+// width and read as twice the reach they gave.
+//
+// It does not change any image size. The three volumes are 128 cubed, fixed, and
+// their size is deliberately not connected to this option: a size that depends on
+// the properties preprocessor and a shader constant agreeing is the kind of
+// plumbing that broke in batch 697 and cost four batches to find. What the option
+// changes is how much of the fixed grid the fill uses - the compute stores black
+// beyond this radius and the consumer fades the colour out towards it (see
+// LIGHT_VOLUME_ACTIVE_RADIUS below) - and nothing else. In particular it does not
+// make the effect cheaper: the images keep their size and the dispatch keeps its
+// invocation count at every setting.
+#define COLORED_LIGHT_RANGE 32 // [16 24 32 48 64]
 
 // How saturated the colour the fill contributes is, applied where the field is
 // turned back into a tint in LightVolumeBlockLight below. 1.0 is the colour the
@@ -146,31 +152,38 @@
 // brightness after the mix, so the light stays as bright at every setting.
 #define COLORED_LIGHT_SATURATION 1.0 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5]
 
-// Voxels per side of the three images, and the same number halved.
+// Voxels per side of the three volumes, and the same number halved.
 //
-// One voxel is one block, so the grid covers 32 blocks in every direction from
-// the player. That is twice Minecraft's own block light range of 15, which
-// leaves the colour's whole falloff inside the grid and gives the edge fade
-// below room to run before the boundary is reached.
+// One voxel is one block, so the grid covers 64 blocks in every direction from
+// the player. The default 32-block radius uses half of it; the 48 and 64 settings
+// use more, which is why the grid is this large at all.
 //
-// It is a constant rather than an option because the option that used to move it
-// is one of the plumbing changes being reverted: the images in shaders.properties
-// are declared at this size unconditionally, as they were in batch 696. The cost
-// is fixed with it: RGBA16 is eight bytes a voxel, so one volume is 2 MiB and the
-// three are 6 MiB.
-#define LIGHT_VOLUME_SIZE 64
+// The size is a constant and not an option: the images in shaders.properties are
+// declared at 128 cubed unconditionally, so the shader and the properties file
+// cannot disagree about it.
+//
+// What it costs is the same at every setting. RGBA16 is eight bytes a voxel, so
+// one volume is 16 MiB and the three are 48 MiB, plus one texel for the held
+// light, so about 50 MiB in total; and the compute pass writes a whole volume
+// every frame, which is 2,097,152 invocations per frame at this size. Lowering
+// COLORED_LIGHT_RANGE reduces neither of those - it only lets the fill use less of
+// the grid - and saying so here is worthwhile because it is the one thing about
+// this design a player will assume the opposite of.
+#define LIGHT_VOLUME_SIZE 128
 
 // Half the grid, in voxels. This is the grid's centre in its own coordinates and
 // nothing else: LightVolumeCoord adds it to put the player at the middle of the
-// fixed grid, and the compute pass uses it as the centre of its extent mask.
+// fixed grid, and the compute pass uses it as the centre of its extent mask and as
+// the voxel the held light is injected at.
 #define LIGHT_VOLUME_GRID_RADIUS (LIGHT_VOLUME_SIZE / 2)
 
-// How much of that fixed grid the option above actually uses, in blocks: 16 at
-// the 32 setting, 24 at 48, and the whole 32 at the default 64. The compute pass
-// stores black outside it and the consumer's edge fade is measured from it, and
-// both read this one name so the cube the fill is limited to and the cube the
-// colour fades towards cannot disagree.
-#define LIGHT_VOLUME_ACTIVE_RADIUS (COLORED_LIGHT_RANGE / 2)
+// How much of that fixed grid the option above uses, in blocks. It is the radius
+// itself now, not half of a cube's width, so it can be 64 with a 128 grid and 16
+// with no smaller image behind it. The compute pass stores black outside it and
+// the consumer's edge fade is measured from it, and both read this one name so the
+// cube the fill is limited to and the cube the colour fades towards cannot
+// disagree.
+#define LIGHT_VOLUME_ACTIVE_RADIUS (COLORED_LIGHT_RANGE)
 
 // How much of a voxel's value survives one step of the fill.
 //
@@ -211,9 +224,9 @@
 //
 // Without this the cube the fill is limited to would be visible as exactly that
 // cut. The fade runs from 0.70 to 0.95 of the active radius, so the last quarter
-// of the radius is spent fading: 4 blocks at the smallest setting, 6 at the
-// middle one and 8 at the largest. A fraction rather than a distance keeps the
-// fade the same shape at every setting.
+// of the radius is spent fading: 4 blocks at the 16 setting, 6 at 24, 8 at 32, 12
+// at 48 and 16 at 64. A fraction rather than a distance keeps the fade the same
+// shape at every setting.
 #define LIGHT_VOLUME_EDGE_FADE_START 0.70
 #define LIGHT_VOLUME_EDGE_FADE_END 0.95
 
