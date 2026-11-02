@@ -190,33 +190,6 @@ in vec4 at_tangent;
 #include "/lib/encoding/face.glsl"
 #include "/environment/materialIDs.glsl"
 
-// The held light's colour, published to the flood fill.
-//
-// The palette is included here rather than at the top of the file because only
-// the hand program compiles this block: PBR_HAND_ITEMS is defined by root
-// gbuffers_hand.vsh and by no other program that includes this file, so
-// light_colors.glsl enters only that one program's logic. The declaration of the
-// held-light level is written here rather than in the root file for the same
-// reason a declaration is always written beside its use: a declaration only one
-// program can compile is still one declaration, and the source checker reads the
-// text of every program that includes this file.
-//
-// Which branch runs: the palette branch needs mc_Entity, which Iris documents
-// for the terrain and shadow stages only, so the hand program reads it as zero,
-// its material decodes to GENERIC, BlockLightColor answers black, and the live
-// branch is the held-light level below - an int, because that is how Iris
-// registers it. A float declaration of it never binds and reads zero, which is
-// exactly how this feature was silently dead in batch 697. The palette branch is
-// kept because a loader that did hand this program block attributes would give
-// the held block its own colour, and nothing at build time can tell the two
-// apart.
-#if defined(PBR_HAND_ITEMS) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
-	#include "/environment/lighting/light_colors.glsl"
-
-	// The game's light level for the item in the hand, 0 to 15.
-	uniform int heldBlockLightValue;
-#endif
-
 flat out uint perFace;
 
 // The raw block ID, before FetchMaterialID has had its say.
@@ -636,31 +609,6 @@ void main() {
 			cameraRelativePos.y -= 2.0 / 16.0;
 			viewPos = gbufferModelView * cameraRelativePos;
 		}
-	#endif
-
-	// The block in the hand, published to the flood fill.
-	//
-	// One texel, written every hand frame including the empty case: the
-	// propagation pass reads whatever is stored there, so a stale value would keep
-	// injecting an item the player has already put down. The alpha is the
-	// "something is held" flag; the colour is the palette's for the block in the
-	// hand, or the warm block-light colour that diffuse.glsl's own fallback uses
-	// when the palette has no answer and the game still says the hand is giving
-	// light.
-	//
-	// One frame late by construction: the hand is drawn in the gbuffers stage,
-	// after the propagation pass has run, so the next frame's step is the one that
-	// reads this. That is the recurrence's own one-frame step, not a missing flush.
-	#if defined(PBR_HAND_ITEMS) && defined(COLORED_LIGHTS) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
-		vec3 heldLightColor = BlockLightColor(materialID);
-
-		if (!any(greaterThan(heldLightColor, vec3(0.0)))
-			&& float(heldBlockLightValue) > 0.25) {
-			heldLightColor = vec3(1.0, 0.52, 0.20);
-		}
-
-		float heldLightIsSet = any(greaterThan(heldLightColor, vec3(0.0))) ? 1.0 : 0.0;
-		imageStore(light_volume_held, ivec2(0, 0), vec4(heldLightColor, heldLightIsSet));
 	#endif
 
 	// Transform to clip position.

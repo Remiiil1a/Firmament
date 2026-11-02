@@ -22,37 +22,6 @@
 // Edit the root file and regenerate (BATCH_LOG.md b510).
 #define DIMENSION_END
 
-
-// PBR_HAND_ITEMS is defined by gbuffers_hand.fsh, and the vertex stage reads it
-// too: the held light's colour is published from lit.vsh, which this file
-// includes, and only the hand program should compile that write. The two stages
-// already had to keep PBR_ATLAS in step for the sprite bounds varying; this is the
-// same rule for the same reason.
-#define PBR_HAND_ITEMS
-
-// The held light's one texel, in an image of its own.
-//
-// Deliberately not a texel of any image the propagation also uses: batch 697 put
-// it into an image the fill read and wrote, which made three programs users of the
-// same data, and batch 702 removed that image for it. This one has one writer
-// (lit.vsh, below) and one reader (the propagation pass), it is one texel, and it
-// is never cleared - see the declaration in shaders.properties and the injection
-// in program/light_volume/step.csh.
-//
-// The image write in lit.vsh uses `layout(rgba16) uniform image2D` and imageStore,
-// which are 420 features, and this program declares `#version 150`. Declaring the
-// extension is what makes the two legal together, exactly as root shadow.vsh does
-// for the writer; the version line is not raised, so a driver without the
-// extension compiles the write out instead of refusing the shader. Guarded by the
-// feature and not by COLORED_LIGHTS because that switch is a #define in
-// environment/lighting/light_colors.glsl, which is included from inside lit.vsh
-// and does not exist yet at this point of the translation unit.
-#ifdef IRIS_FEATURE_CUSTOM_IMAGES
-#extension GL_ARB_shader_image_load_store : enable
-
-layout(rgba16) uniform writeonly image2D light_volume_held;
-#endif
-
 // Unconditional, so that the sprite bounds varying exists whether or not
 // PBR_HAND_ITEMS is on in gbuffers_hand.fsh. Writing a varying the fragment
 // stage does not read costs a few instructions per vertex and nothing else,

@@ -163,7 +163,7 @@
 // cannot disagree about it.
 //
 // What it costs is the same at every setting. RGBA16 is eight bytes a voxel, so
-// one volume is 16 MiB and the three are 48 MiB, plus one texel for the held
+// one volume is 16 MiB and the three are 48 MiB
 // light, so about 50 MiB in total; and the compute pass writes a whole volume
 // every frame, which is 2,097,152 invocations per frame at this size. Lowering
 // COLORED_LIGHT_RANGE reduces neither of those - it only lets the fill use less of
@@ -174,7 +174,7 @@
 // Half the grid, in voxels. This is the grid's centre in its own coordinates and
 // nothing else: LightVolumeCoord adds it to put the player at the middle of the
 // fixed grid, and the compute pass uses it as the centre of its extent mask and as
-// the voxel the held light is injected at.
+// voxel at the centre of the grid, which is the one the player stands in.
 #define LIGHT_VOLUME_GRID_RADIUS (LIGHT_VOLUME_SIZE / 2)
 
 // How much of that fixed grid the option above uses, in blocks. It is the radius

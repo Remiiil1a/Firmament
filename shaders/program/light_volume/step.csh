@@ -95,15 +95,6 @@ layout(rgba16) uniform readonly image3D light_volume_world;
 layout(rgba16) uniform image3D light_volume_a;
 layout(rgba16) uniform image3D light_volume_b;
 
-// The held light: one texel in an image of its own, written by the hand program
-// (program/gbuffers_hand.vsh) and read here. It is deliberately not a texel of an
-// image the fill also reads or writes - batch 697 put it into an image the
-// propagation used, and that made three programs users of the same data, which is
-// exactly what batch 702 removed. One texel, one writer, one reader, never
-// cleared: the hand program rewrites it every frame, a zero included, so what is
-// read is this frame's answer or the frame before's, and no other state has to be
-// reconciled.
-layout(rgba16) uniform readonly image2D light_volume_held;
 
 // The previous frame's field at a voxel, or black outside the grid.
 //
@@ -185,40 +176,32 @@ void main() {
 		ivec3 previous = voxel + shift;
 		bool readFromA = !writeToA;
 
-		vec4 sum = vec4(0.0);
-		sum += LightVolumePreviousField(previous + ivec3(1, 0, 0), readFromA);
-		sum += LightVolumePreviousField(previous + ivec3(-1, 0, 0), readFromA);
-		sum += LightVolumePreviousField(previous + ivec3(0, 1, 0), readFromA);
-		sum += LightVolumePreviousField(previous + ivec3(0, -1, 0), readFromA);
-		sum += LightVolumePreviousField(previous + ivec3(0, 0, 1), readFromA);
-		sum += LightVolumePreviousField(previous + ivec3(0, 0, -1), readFromA);
+		vec3 spread = LightVolumePreviousField(
+			previous + ivec3(1, 0, 0), readFromA).rgb;
+		spread = max(spread, LightVolumePreviousField(
+			previous + ivec3(-1, 0, 0), readFromA).rgb);
+		spread = max(spread, LightVolumePreviousField(
+			previous + ivec3(0, 1, 0), readFromA).rgb);
+		spread = max(spread, LightVolumePreviousField(
+			previous + ivec3(0, -1, 0), readFromA).rgb);
+		spread = max(spread, LightVolumePreviousField(
+			previous + ivec3(0, 0, 1), readFromA).rgb);
+		spread = max(spread, LightVolumePreviousField(
+			previous + ivec3(0, 0, -1), readFromA).rgb);
 
-		// The mean of the neighbours that carry colour, rather than the
-		// brightest of them, for two reasons. It mixes colours: a red light and a
-		// green one meeting head-on used to come out as the brighter of each
-		// channel - full yellow - and now average to (0.5, 0.5, 0.0), a yellow at
-		// half the channel values, because the mean divides by the number of
-		// contributing neighbours. It also removes the axis preference: with a
-		// maximum, which side of a corner a voxel is on decides how much light it
-		// gets, and the falloff reads as a preference for one axis.
+		// Per-channel maximum, which is what this batch went back to. Batch
+		// 703 replaced it with the mean of the contributing neighbours to make
+		// two colours mix; the author tested it and reported that it broke the
+		// effect - the falloff flattened out and a lit area read as one broad
+		// wash instead of a cone around its source. The reasoning that made the
+		// mean look safe was wrong somewhere, and rather than keep tuning it
+		// blind, the maximum is back: it is the shape the pack shipped in 702
+		// and the one the author confirmed.
 		//
-		// The reach does not change, and that is the part that had to stay. Along
-		// a straight line from one source every contributing neighbour is the same
-		// distance away and therefore carries the same value, so the mean equals
-		// the maximum it replaced: the decay is still a factor of LIGHT_VOLUME_STEP
-		// per block (0.85), still 0.85^15 = 0.087 at fifteen blocks, and a light
-		// still takes twenty-five frames to fall below LIGHT_VOLUME_MINIMUM
-		// (0.85^25 = 0.017). Only where different paths or different colours meet
-		// does the result differ, and mixing there is the point.
-		//
-		// Eclipse sums its six neighbours with a fixed 1/6 and a 0.96 falloff
-		// (dimensions/shadowcomp.csh:101-102), but its field is log-encoded and it
-		// has a per-block data table to say which axes may mix at all (its
-		// 6-bit mixMask); neither is available here - our field is linear RGBA16
-		// and there is no block data - which is why this divides by the number of
-		// neighbours that actually contributed instead of by six. Dividing by six
-		// would make a lone source decay by 1/6 of the step it is documented to
-		// decay by.
+		// What that costs is mixing: two colours meeting head-on come out as
+		// the brighter of each channel rather than an average. Where that
+		// matters it is a real limitation, and the place to solve it is a
+		// proper energy-preserving blend, not the denominator.
 		//
 		// A filter is stained glass, and it is the one state that changes the
 		// light rather than adding to it: what crosses a pane takes the pane's
@@ -228,7 +211,6 @@ void main() {
 		// itself glow. Air and emitters are everything else, and they differ
 		// only in whether the voxel adds its own colour: an emitter is at full
 		// strength in the frame it is drawn, not one step away from where it is.
-		vec3 spread = sum.rgb / max(sum.a, 1.0);
 
 		if (world.a > 0.25) {
 			next = spread * world.rgb * LIGHT_VOLUME_STEP;
@@ -253,25 +235,7 @@ void main() {
 		next = vec3(0.0);
 	}
 
-	// The held light, injected at exactly one voxel: the player's own block. The
-	// grid is centred on the player, so that voxel is LIGHT_VOLUME_GRID_RADIUS on
-	// every axis, whatever the active radius is. The read happens inside this one
-	// invocation, so the texel is fetched once per dispatch rather than two
-	// million times, and the injection is a max() so a field already reaching
-	// that voxel keeps its brighter value.
-	//
-	// One frame late by construction: the hand program draws in the gbuffers
-	// stage, after this pass, so what is read here was stored by the previous
-	// frame's hand. That is the same one-frame delay the recurrence has
-	// everywhere else, and it is why a source picked up now starts spreading on
-	// the next frame.
-	if (all(equal(voxel, ivec3(LIGHT_VOLUME_GRID_RADIUS)))) {
-		vec4 held = imageLoad(light_volume_held, ivec2(0, 0));
 
-		if (held.a > 0.5) {
-			next = max(next, held.rgb);
-		}
-	}
 
 	// The fourth channel is stored as 1.0 because there is nothing to put in it:
 	// the colour is the whole of the state this image carries. It is written
