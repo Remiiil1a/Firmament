@@ -215,7 +215,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 698]
+option.PBR_DEBUG=材质调试视图 [build 699]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -275,6 +275,12 @@ value.PBR_DEBUG.PBR_DEBUG_SUBSURFACE=孔隙度／散射通道
 value.PBR_DEBUG.PBR_DEBUG_EMISSION=发射光
 value.PBR_DEBUG.PBR_DEBUG_REFLECTION=反射（单独显示，4 倍亮度）
 option.PBR_DEBUG.comment=用材质数据的可视化替换画面，这是判断资源包到底提供了哪些数据最快的方法。各个材质通道各有一个视图：均匀的灰或白说明资源包对该方块没有这项数据，切线空间法线里的纯黑说明取到了精灵之外的 texel。
+
+option.LIGHT_VOLUME_DEBUG=彩色光照诊断
+value.LIGHT_VOLUME_DEBUG.LIGHT_VOLUME_DEBUG_NONE=关闭
+value.LIGHT_VOLUME_DEBUG.LIGHT_VOLUME_DEBUG_FIELD=着色端读到的颜色场（4 倍）
+value.LIGHT_VOLUME_DEBUG.LIGHT_VOLUME_DEBUG_WORLD=写端写入的世界图（4 倍）
+option.LIGHT_VOLUME_DEBUG.comment=用来判断彩色方块光丢在哪一层的两个视图：「颜色场」显示着色端实际采样到的值，红色表示传播 pass 没跑过、或图像不存在；「世界图」显示阴影 pass 写进体素网格的内容，彩色是光源、深灰是实心方块、深蓝是染色玻璃、黑是空气。颜色场全黑而世界图有颜色 ⇒ 写端正常、问题在传播；世界图也全黑 ⇒ 根本没有写入。
 
 option.MOTION_BLUR=动态模糊
 option.MOTION_BLUR.comment=按相机在世界里的位移把画面沿运动方向糊开：走路、奔跑、下落、坐船、被击飞都会留下拖影。因为逐像素计算，走路时脚下地面飞快掠过、地平线几乎不动。位移和转头都会模糊，走路的摇晃不算——转头要超过几个像素/帧才计入。只模糊相机：会自己动的实体、水流、掉落物保持清晰，手持物品整块不参与。

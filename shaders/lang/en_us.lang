@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 698]
+option.PBR_DEBUG=Material debug view [build 699]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -510,6 +510,19 @@ option.PBR_DEBUG.comment=Draws the resource pack's material data instead of \
 	material channel gets a view of its own: flat grey or flat white means the \
 	pack supplies nothing for that block, and black in Tangent-space normal means \
 	a texel from outside the sprite.
+
+option.LIGHT_VOLUME_DEBUG=Coloured light diagnostic
+value.LIGHT_VOLUME_DEBUG.LIGHT_VOLUME_DEBUG_NONE=Off
+value.LIGHT_VOLUME_DEBUG.LIGHT_VOLUME_DEBUG_FIELD=Colour field the shading reads (x4)
+value.LIGHT_VOLUME_DEBUG.LIGHT_VOLUME_DEBUG_WORLD=World image the writer filled (x4)
+option.LIGHT_VOLUME_DEBUG.comment=Two views for finding the layer the coloured \
+	block light is lost in. Colour field shows what the shading side samples: red \
+	means the propagation pass has not run, or its images are not there. World \
+	image shows what the shadow pass wrote into the voxel grid: a colour is a \
+	light source, dark grey is a solid block, dark blue is stained glass and black \
+	is air. A black colour field over a coloured world image means the writer \
+	works and the propagation is the fault; a black world image means nothing is \
+	being written at all.
 
 option.GLASS_REFLECTIONS=Glass reflections
 option.GLASS_REFLECTIONS.comment=Whether glass and stained glass reflect the \

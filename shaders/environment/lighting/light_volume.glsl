@@ -75,6 +75,45 @@
 // whole of the encoding, and both are in this batch's contract.
 
 ///////////////////////////////////////////////////////////////////////////////
+//   The diagnostic
+///////////////////////////////////////////////////////////////////////////////
+
+// A view of the fill for the menu, and the reason it is two views rather than
+// one.
+//
+// "The coloured light does nothing" has three possible layers, and one picture
+// cannot tell them apart:
+//
+//  * the propagation pass is not running, or the custom images do not exist, so
+//    the field the shading side samples is black and its ready flag never rises;
+//  * the writer is not filling the world image, so there is nothing for the
+//    propagation to spread even though the pass itself runs;
+//  * both of those work and the shading side still finds nothing, which is a
+//    question about the consumer rather than about the feature.
+//
+// FIELD shows exactly what BlockLighting samples: the same function, the same
+// normal offset and the same two info texels, multiplied by four so that a
+// faint field is visible. Red is reserved for the ready flag being down - that
+// single colour means the propagation pass has not run or its images are not
+// there, and no amount of looking at the writer will explain it.
+//
+// WORLD shows what the writer put in the world image at this fragment's voxel:
+// emitters as their colour times four, a solid block as dark grey, a stained
+// glass filter as dark blue and air as black.
+//
+// Read together: red FIELD means the pass or the images are missing; a black
+// FIELD over a coloured WORLD means the writer works and the propagation is the
+// fault; a black WORLD means nothing is being written at all, and the other two
+// layers are not worth looking at first.
+//
+// NONE is the shipped state. It compiles the view in lit.fsh out of the terrain
+// programs, so the default build is exactly the build it was.
+#define LIGHT_VOLUME_DEBUG_NONE 0
+#define LIGHT_VOLUME_DEBUG_FIELD 1
+#define LIGHT_VOLUME_DEBUG_WORLD 2
+#define LIGHT_VOLUME_DEBUG LIGHT_VOLUME_DEBUG_NONE // [LIGHT_VOLUME_DEBUG_NONE LIGHT_VOLUME_DEBUG_FIELD LIGHT_VOLUME_DEBUG_WORLD]
+
+///////////////////////////////////////////////////////////////////////////////
 //   The grid
 ///////////////////////////////////////////////////////////////////////////////
 

@@ -156,6 +156,21 @@ uniform mat4 gbufferModelView;
 
 #include "/environment/lighting/diffuse.glsl"
 
+// The world image, samplable, for the LIGHT_VOLUME_DEBUG view at the end of
+// main(). The shadow pass writes this image and the propagation pass reads it
+// with imageLoad, so nothing sampled it before and its declaration in
+// shaders.properties said `none`; the sampler is there for the diagnostic only.
+//
+// The guard is two tests on purpose. At NONE no sampler is declared at all, and
+// when the option's names are undefined - which happens when COLORED_LIGHTS
+// itself is off and light_volume.glsl is therefore not in this translation unit
+// - both sides of the comparison are zero. The `defined` test is what keeps the
+// declaration out of that build, where it would be a sampler for an image the
+// pack never creates.
+#if defined(LIGHT_VOLUME_DEBUG) && LIGHT_VOLUME_DEBUG == LIGHT_VOLUME_DEBUG_WORLD
+	uniform sampler3D light_volume_world_sampler;
+#endif
+
 #if defined(AFTER_DEFERRED)
 	#define APPLY_FOG
 #endif
@@ -2305,6 +2320,69 @@ void main() {
 	// list at the bottom of this file is fixed, so that the attachments can
 	// never disagree with the writes. See the note there.
 	gl_FragData[5] = vec4(specularInFrame, 1.0);
+
+	// The coloured-light diagnostic. What the two views are for, and how their
+	// answers are read together, is written at the option in
+	// /environment/lighting/light_volume.glsl; this is only the drawing.
+	//
+	// An override at the very end rather than an early return: this file's
+	// attachment list is fixed, and a fragment that left after one write would
+	// leave five buffers holding whatever was drawn there last. All six are
+	// written below for that reason, not because the view uses them.
+	//
+	// The field is sampled exactly the way BlockLighting samples it: the same
+	// function, the same info texels and the same normal offset. The normal is
+	// the one the SurfaceFragment carried - the normal-mapped one where PBR is
+	// on - because that is what the consumer offsets along.
+	#if LIGHT_VOLUME_DEBUG != LIGHT_VOLUME_DEBUG_NONE
+		vec3 lightVolumeDebugColor = vec3(0.0);
+
+		#if LIGHT_VOLUME_DEBUG == LIGHT_VOLUME_DEBUG_FIELD
+			if (LightVolumeAnchorAndReady().w < 0.5) {
+				lightVolumeDebugColor = vec3(1.0, 0.0, 0.0);
+			} else {
+				vec4 volumeOffsetAndSide = LightVolumeOffsetAndSide();
+
+				#if defined(PBR_SURFACE)
+					vec3 volumeDebugNormal = pbrNormal;
+				#else
+					vec3 volumeDebugNormal = worldNormal;
+				#endif
+
+				lightVolumeDebugColor = LightVolumeSample(
+					cameraRelativePos
+						+ volumeDebugNormal * LIGHT_VOLUME_NORMAL_OFFSET,
+					volumeOffsetAndSide.xyz,
+					volumeOffsetAndSide.w > 0.5) * 4.0;
+			}
+		#else
+			vec4 volumeOffsetAndSide = LightVolumeOffsetAndSide();
+			ivec3 volumeVoxel = ivec3(floor(LightVolumeCoord(
+				cameraRelativePos,
+				volumeOffsetAndSide.xyz)));
+
+			if (all(greaterThanEqual(volumeVoxel, ivec3(0)))
+				&& all(lessThan(volumeVoxel, ivec3(LIGHT_VOLUME_SIZE)))) {
+				vec4 volumeWorld = texelFetch(
+					light_volume_world_sampler, volumeVoxel, 0);
+
+				if (volumeWorld.a > 0.75) {
+					lightVolumeDebugColor = vec3(0.10);
+				} else if (volumeWorld.a > 0.25) {
+					lightVolumeDebugColor = vec3(0.0, 0.0, 0.4);
+				} else {
+					lightVolumeDebugColor = volumeWorld.rgb * 4.0;
+				}
+			}
+		#endif
+
+		gl_FragData[0] = vec4(lightVolumeDebugColor, 1.0);
+		gl_FragData[1] = vec4(0.0);
+		gl_FragData[2] = vec4(0.0);
+		gl_FragData[3] = vec4(0.0);
+		gl_FragData[4] = vec4(0.0);
+		gl_FragData[5] = vec4(0.0);
+	#endif
 
 	/* RENDERTARGETS: 0,2,6,7,8,15 */
 }
