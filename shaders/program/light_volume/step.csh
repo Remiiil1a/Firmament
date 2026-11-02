@@ -22,11 +22,11 @@
 // to be deciding brightness.
 //
 // The program is Iris only, and every part of it that touches an image is kept
-// behind IS_IRIS: on a loader without custom images the body does nothing and the
-// ready flag the shading side reads never rises, which is what leaves block light
-// the colour it has always had. Nor does it run at all when COLORED_LIGHTS is
-// off - see program.shadowcomp.enabled in shaders.properties - because with the
-// option off nothing reads the field.
+// behind IS_IRIS: on a loader without custom images the body does nothing, the
+// images are never written, the field samples as black, and block light stays the
+// colour it has always had. Nor does it run at all when COLORED_LIGHTS is off -
+// see program.shadowcomp.enabled in shaders.properties - because with the option
+// off nothing reads the field.
 
 // The shared constants, and the one definition of where a position sits in the
 // grid. The file has no simulation-only section at this version, so this is the
@@ -34,31 +34,31 @@
 // the voxel index the shadow pass writes with all come from one place, and the
 // three ends of the feature cannot drift apart.
 //
-// The samplers it declares for the shading half are harmless here - nothing in
-// this program samples them, and the uniforms this pass owns are declared below
-// rather than there, for the reason sim.glsl gives for the same arrangement in
-// the water simulation: they exist only for the compute pass and have no business
-// in the comparison the terrain programs are checked against.
+// The consumer-side samplers and functions in that file are compiled out here,
+// because this program does not define LIGHT_VOLUME_CONSUMER; what this pass
+// needs from the shared file is the grid, the decay and frameCounter. Its own
+// images are declared below, for the reason sim.glsl gives for the same
+// arrangement in the water simulation: they exist only for the compute pass and
+// have no business in the comparison the terrain programs are checked against.
 #include "/environment/lighting/light_volume.glsl"
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-// 8 invocations per axis and as many groups per axis as the grid has eighths: the
-// whole grid in one dispatch, one invocation per voxel.
+// 8 invocations per axis and 8 groups per axis: the whole 64-cubed grid in one
+// dispatch, one invocation per voxel.
 //
 // A shader constant rather than a line in shaders.properties, which is how this
-// pack declares work groups (see program/water_interaction/step_a.csh). The count
-// follows from the algorithm - one invocation per voxel - and is derived from
-// LIGHT_VOLUME_SIZE rather than written out, because the grid is an option now
-// (COLORED_LIGHT_RANGE): 6 groups a side at 48, 8 at 64, 12 at 96 and 16 at 128.
-// It is a compile-time constant in every one of those configurations, which is
-// what the loader requires of it.
-const ivec3 workGroups = ivec3(LIGHT_VOLUME_SIZE / 8);
+// pack declares work groups (see program/water_interaction/step_a.csh). The grid
+// is a fixed 64 cubed - the images are declared at that size unconditionally in
+// shaders.properties - so the count is written out rather than derived from an
+// option: 8 groups of 8 invocations is exactly the grid, and a build-time
+// constant is what the loader requires of it.
+const ivec3 workGroups = ivec3(8, 8, 8);
 
 #ifdef IS_IRIS
 uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
-uniform int frameCounter;
+// frameCounter is declared by light_volume.glsl above, shared with the consumer.
 
 // What the shadow pass wrote this frame: the four-state table at the top of
 // environment/lighting/light_volume.glsl is what rgb and alpha mean here. It is
@@ -66,7 +66,7 @@ uniform int frameCounter;
 // geometry, and the fragment stage (program/shadow/shadow.fsh) for the tint of
 // stained glass, which only the fragment stage can read from the texture.
 //
-// This is the one image of the four that the loader clears every frame, and it
+// This is the one image of the three that the loader clears every frame, and it
 // has to be, because the shadow pass only draws what the sun can see: a voxel no
 // vertex reached this frame means nothing was drawn there, not "nothing is
 // there". A value left over from the frame before would be an occluder that has
@@ -93,25 +93,6 @@ layout(rgba16) uniform readonly image3D light_volume_world;
 // twenty-five frames a light takes to fade out.
 layout(rgba16) uniform image3D light_volume_a;
 layout(rgba16) uniform image3D light_volume_b;
-
-// Where the grid is this frame, which field is current, and what the player is
-// holding: texel (0, 0) is (floor(cameraPosition), ready), texel (1, 0) is
-// (fract(cameraPosition), currentIsB), and texel (2, 0) is (the colour of the
-// held light source, 1.0 in alpha while one is held and 0.0 when nothing is).
-//
-// The first two are written here and read by every terrain program. The third is
-// written by the hand program (program/gbuffers_hand.vsh, which runs after this
-// pass) and read here, so it is one frame late and this pass must not write it:
-// the hand program owns it, and a store here would race the only writer that
-// knows what is in the player's hand. Nothing in this file writes texel (2, 0).
-//
-// Never cleared - it is how the shading side samples the right field without
-// deciding the parity for itself, which is the rule that keeps the parity decided
-// in one place in the whole pack. rgba32 because it holds a world position: a
-// half float would round the anchor to whole blocks over a few tens of thousands
-// of blocks from the origin, which is exactly where a shader still has to be
-// right.
-layout(rgba32f) uniform image2D light_volume_info;
 
 // The previous frame's field at a voxel, or black outside the grid.
 //
@@ -145,11 +126,12 @@ void main() {
 		return;
 	}
 
-	// The ping-pong, and the only place in the pack where it is decided: the store
-	// below takes its side from this, and the terrain programs read the same
-	// answer back out of light_volume_info rather than counting frames of their
-	// own. Nothing else may ask about the frame count, or the two sides could
-	// disagree about which field is the current one for one frame.
+	// The ping-pong: even frames write the first field and read the second, odd
+	// frames the reverse. The consumer derives its side from the same number the
+	// same way (see light_volume.glsl, and Eclipse's own pair -
+	// dimensions/shadowcomp.csh:169-172 and lib/lpv_render.glsl:16). The two must
+	// agree or the field flickers between two images, a failure a still screenshot
+	// cannot show.
 	bool writeToA = (frameCounter % 2) == 0;
 
 	// The grid is snapped to whole blocks, so the camera moving within a block
@@ -159,13 +141,12 @@ void main() {
 	// that shift is the whole of the re-anchoring, and it is what keeps the fill
 	// attached to the world instead of to the screen.
 	//
-	// previousCameraPosition and not the anchor published in light_volume_info:
-	// within one dispatch, one invocation's imageStore is not ordered against
-	// another invocation's imageLoad, so a thread reading the texel the thread at
-	// voxel zero is about to write would be reading a race, not a value. The water
-	// simulation publishes its grid through an image instead because it has two
-	// dispatches to get the value across; this pass has one, and a standard
-	// uniform is the value both frames agree on.
+	// The frame before's camera position, which is a standard uniform both frames
+	// agree on. Within one dispatch, one invocation's imageStore is not ordered
+	// against another invocation's imageLoad, so a value published through an
+	// image and read back in the same dispatch would be a race; there is nothing
+	// to publish here, because the shift is derived from the two camera positions
+	// the loader supplies.
 	ivec3 shift = ivec3(floor(cameraPosition) - floor(previousCameraPosition));
 
 	// This frame's world image at this voxel: the four-state table at the top of
@@ -217,60 +198,30 @@ void main() {
 		}
 	}
 
-	// The held light source, injected at exactly one voxel: the player's own
-	// block. The grid is centred on the camera, so that block's index is
-	// LIGHT_VOLUME_RADIUS on every axis whatever the range setting is.
+	// The option's radius, and the extent mask that makes it real: a voxel further
+	// than the active radius from the centre of the fixed grid stores black. The
+	// field is a 64-cubed image whatever the option says - that is the batch-696
+	// shape - and the option only decides how much of it the fill may use. The
+	// consumer fades the colour out towards the same radius, so the edge of what
+	// is used is a fade and not a cut.
 	//
-	// It comes after the state branches rather than inside the air one because
-	// the player's own voxel is not always air as far as this image is concerned:
-	// standing inside a cobweb that the shadow map can see marks it solid, and
-	// the light in the player's hand has to leave the block the player is in
-	// regardless. The injection is a max() and not an assignment so that a field
-	// already reaching that voxel is kept, and it is not a state in the world
-	// image because that image is cleared at the start of the frame and read only
-	// by this pass, which runs before the hand is drawn: a store there would be
-	// cleared or never read.
-	//
-	// One frame late, by construction: the hand program draws after this pass, so
-	// what is read here was stored by the previous frame's hand. A source that
-	// appears in the hand therefore starts spreading on the next frame, which is
-	// the same one-frame step the recurrence already has everywhere else.
-	if (all(equal(voxel, ivec3(LIGHT_VOLUME_RADIUS)))) {
-		vec4 held = imageLoad(light_volume_info, ivec2(2, 0));
+	// Chebyshev distance and not Euclidean: the grid is a cube and the mask has to
+	// cut it to a cube, so the farthest axis decides.
+	ivec3 fromCentre = abs(voxel - ivec3(LIGHT_VOLUME_GRID_RADIUS));
 
-		if (held.a > 0.5) {
-			next = max(next, held.rgb);
-		}
+	if (max(fromCentre.x, max(fromCentre.y, fromCentre.z))
+		> LIGHT_VOLUME_ACTIVE_RADIUS) {
+		next = vec3(0.0);
 	}
 
 	// The fourth channel is stored as 1.0 because there is nothing to put in it:
-	// the colour is the whole of the state this image carries, and the flag the
-	// shading side needs - has the pass ever run - lives in light_volume_info, not
-	// here. It is written rather than left undefined so that a texel has one
-	// meaning on every driver.
+	// the colour is the whole of the state this image carries. It is written
+	// rather than left undefined so that a texel has one meaning on every driver.
 	if (writeToA) {
 		imageStore(light_volume_a, voxel, vec4(next, 1.0));
 	} else {
 		imageStore(light_volume_b, voxel, vec4(next, 1.0));
 	}
 
-	// Publish the grid and the parity for the shading side, once per dispatch.
-	// The thread at the grid's corner does it because exactly one writer is what
-	// this needs - there is nothing to combine, and every thread would store the
-	// same two texels. Texel (2, 0) is deliberately not written here: it belongs
-	// to the hand program, and this pass only reads it (see the injection above).
-	//
-	// The first texel's alpha is the ready flag: it is 1.0 from the first time this
-	// pass runs, and it is what the shading side tests before it samples a field.
-	// On a loader where the images or this program do not exist it stays zero, and
-	// every surface keeps the block light colour it had before any of this
-	// existed. The second texel's alpha is the parity in the form the shading side
-	// wants it: 1.0 means the current field is light_volume_b.
-	if (all(equal(voxel, ivec3(0)))) {
-		imageStore(light_volume_info, ivec2(0, 0),
-			vec4(floor(cameraPosition), 1.0));
-		imageStore(light_volume_info, ivec2(1, 0),
-			vec4(fract(cameraPosition), writeToA ? 0.0 : 1.0));
-	}
 #endif
 }

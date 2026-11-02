@@ -190,37 +190,6 @@ in vec4 at_tangent;
 #include "/lib/encoding/face.glsl"
 #include "/environment/materialIDs.glsl"
 
-// The flood fill's palette, for the hand program's write into light_volume_info
-// at the end of main().
-//
-// Only the hand program compiles this: PBR_HAND_ITEMS and HAS_BLOCK_ATTRIBUTES
-// are defined by root gbuffers_hand.vsh and nowhere else. The block attributes
-// are declared because of that second define, but it is expected to be a dead
-// end on the loader: mc_Entity is documented for the terrain and shadow stages
-// only, so a hand program that declares it reads zero, decodes to GENERIC and
-// leaves the palette black. What actually runs there is the held-light
-// fallback below; the palette path is kept for a loader that would supply the
-// attributes, which cannot be asked at build time. The grid module is not
-// needed here: this writes a fixed texel of the info image rather than looking
-// a voxel up, so no coordinate formula of the fill's is involved.
-//
-// The image itself is declared in root gbuffers_hand.vsh, because it belongs
-// to the one program that writes it. The held-light level is declared here,
-// under the same guard as the use below: this file is the vertex stage of
-// fifteen root programs, and a declaration that only one of them can compile
-// is still one declaration if it is written beside its use.
-#if defined(PBR_HAND_ITEMS) && defined(HAS_BLOCK_ATTRIBUTES) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
-	#include "/environment/lighting/light_colors.glsl"
-
-	// The game's light level for the item in the hand, 0 to 15, and it is an
-	// integer: Iris registers it through uniform1i and checks a program's
-	// declaration against the registered type, so a `float` here would get no
-	// location at all and read zero forever - which is what silently killed the
-	// fallback below until it was caught. Every reference pack that reads this
-	// uniform declares it int as well.
-	uniform int heldBlockLightValue;
-#endif
-
 flat out uint perFace;
 
 // The raw block ID, before FetchMaterialID has had its say.
@@ -640,39 +609,6 @@ void main() {
 			cameraRelativePos.y -= 2.0 / 16.0;
 			viewPos = gbufferModelView * cameraRelativePos;
 		}
-	#endif
-
-	// The block in the hand, published to the flood fill.
-	//
-	// Until batch 697 the held light was only the analytic falloff in
-	// diffuse.glsl, which is centred on the camera and coloured with the
-	// lightmap's own tint: it lit the world around the hand but had no colour of
-	// its own and never mixed with the fill. This publishes the hand's own
-	// colour to the propagation pass, which injects it at the player's voxel, so
-	// the fill spreads it like any other source.
-	//
-	// It is one frame late: the hand is drawn after shadowcomp has already run the
-	// propagation, so this is read by the next frame's step. That is intended -
-	// the analytic term is what lights this frame - and it is also why the slot
-	// is written every frame, the empty case included: a stale value would keep
-	// injecting an item the player is no longer holding.
-	//
-	// The alpha is the "something is being held" flag the step tests. The colour
-	// is the palette's for the block in the hand, and where that is black the
-	// game's own held-light level picks the warm family's colour, asked of the
-	// palette so that there is one copy of it. The palette path needs mc_Entity,
-	// which the loader documents for the terrain and shadow stages only - so on
-	// this loader the warm fallback is the one that runs, and it is warm because
-	// the pack has no better answer for an item it cannot name.
-	#if defined(PBR_HAND_ITEMS) && defined(HAS_BLOCK_ATTRIBUTES) && defined(COLORED_LIGHTS) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
-		vec3 heldLightColor = BlockLightColor(materialID);
-
-		if (!any(greaterThan(heldLightColor, vec3(0.0))) && float(heldBlockLightValue) > 0.25) {
-			heldLightColor = BlockLightColor(LIGHT_WARM);
-		}
-
-		float heldLightIsSet = any(greaterThan(heldLightColor, vec3(0.0))) ? 1.0 : 0.0;
-		imageStore(light_volume_info, ivec2(2, 0), vec4(heldLightColor, heldLightIsSet));
 	#endif
 
 	// Transform to clip position.

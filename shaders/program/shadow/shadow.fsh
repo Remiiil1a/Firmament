@@ -51,11 +51,11 @@ const int shadowcolor0Format = R16_SNORM;
 // only this stage has is the block's texture, which is the colour the pane
 // transmits.
 #if defined(COLORED_LIGHTS) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
-	#include "/environment/lighting/light_volume.glsl"
-
-	// The voxel shadow.vsh put this block's centre in. It is written for every
-	// terrain vertex, and only terrain can be stained glass, so the fragments
-	// below always read a meaningful value.
+	// The voxel shadow.vsh put this block's centre in, or (-1, -1, -1) where it
+	// stored nothing at all. Only terrain can be stained glass, so the fragment
+	// below always finds either a voxel the writer already bounds-checked or that
+	// sentinel, and it needs nothing else from the light volume module - not even
+	// the grid's size.
 	flat in ivec3 lightVolumeVoxel;
 
 	// The write side of the image the fill reads. writeonly, because this stage
@@ -136,8 +136,10 @@ void main() {
 			float filterPeak = max(filterTint.r, max(filterTint.g, filterTint.b));
 			filterTint /= max(filterPeak, 1.0e-4);
 
-			if (all(greaterThanEqual(lightVolumeVoxel, ivec3(0)))
-				&& all(lessThan(lightVolumeVoxel, ivec3(LIGHT_VOLUME_SIZE)))) {
+			// The writer leaves (-1, -1, -1) in the varying where it stored
+			// nothing, and every voxel it did store is inside the grid by
+			// construction, so the sentinel is the whole test.
+			if (all(greaterThanEqual(lightVolumeVoxel, ivec3(0)))) {
 				imageStore(light_volume_world, lightVolumeVoxel, vec4(filterTint, 0.5));
 			}
 		}

@@ -22,14 +22,15 @@
 // the reach of the colour.
 //
 // Iris only, for the same reason the water simulation is: custom images and
-// compute shaders. On a loader without them the field never gets written, the
-// ready flag in light_volume_info never rises, and every program that includes
-// this file draws exactly what it drew before the file existed.
+// compute shaders. On a loader without them the images are not there: the
+// samplers read zero, the field samples as black, and every program that
+// includes this file draws exactly what it drew before the file existed.
 //
 // Everything below is either compiled into the propagation pass (the simulation
-// half) or into the programs that write and sample the field (the shading half),
-// and the two halves share only the constants and the two coordinate helpers in
-// the middle of the file.
+// half) or into the programs that sample the field (the shading half, which
+// diffuse.glsl turns on by defining LIGHT_VOLUME_CONSUMER before it includes
+// this file), and the halves share only the constants and the coordinate helper
+// in the middle of the file.
 
 #ifndef INCLUDE_ENVIRONMENT_LIGHTING_LIGHT_VOLUME
 #define INCLUDE_ENVIRONMENT_LIGHTING_LIGHT_VOLUME
@@ -85,26 +86,28 @@
 // cannot tell them apart:
 //
 //  * the propagation pass is not running, or the custom images do not exist, so
-//    the field the shading side samples is black and its ready flag never rises;
+//    the field the shading side samples is black;
 //  * the writer is not filling the world image, so there is nothing for the
 //    propagation to spread even though the pass itself runs;
 //  * both of those work and the shading side still finds nothing, which is a
 //    question about the consumer rather than about the feature.
 //
 // FIELD shows exactly what BlockLighting samples: the same function, the same
-// normal offset and the same two info texels, multiplied by four so that a
-// faint field is visible. Red is reserved for the ready flag being down - that
-// single colour means the propagation pass has not run or its images are not
-// there, and no amount of looking at the writer will explain it.
+// parity, the same anchor offset and the same normal offset, multiplied by four
+// so that a faint field is visible. There is no ready flag to report, and the
+// picture does not need one: a fill that has never run and a fill that is
+// genuinely black are the same picture, and both mean "no colour here", which
+// is exactly what the consumer falls back on.
 //
 // WORLD shows what the writer put in the world image at this fragment's voxel:
 // emitters as their colour times four, a solid block as dark grey, a stained
 // glass filter as dark blue and air as black.
 //
-// Read together: red FIELD means the pass or the images are missing; a black
-// FIELD over a coloured WORLD means the writer works and the propagation is the
-// fault; a black WORLD means nothing is being written at all, and the other two
-// layers are not worth looking at first.
+// Read together: a black FIELD over a coloured WORLD means the writer works and
+// the propagation is the fault; a black WORLD means nothing is being written at
+// all, and the other two layers are not worth looking at first. The one case the
+// two cannot separate is a loader that cannot allocate the images at all: then
+// both views are black, which is the same picture as an empty volume.
 //
 // NONE is the shipped state. It compiles the view in lit.fsh out of the terrain
 // programs, so the default build is exactly the build it was.
@@ -117,20 +120,21 @@
 //   The grid
 ///////////////////////////////////////////////////////////////////////////////
 
-// The two options, declared here rather than in a settings header because this
-// is the only file the propagation pass and the terrain programs both include:
-// a declaration in either end's own files could be visible to one and not the
-// other, and then the two would disagree about the size of the grid - which is
-// the kind of disagreement that compiles everywhere.
+// The options, declared here rather than in a settings header because this is the
+// only file the propagation pass and the terrain programs both include: a
+// declaration in either end's own files could be visible to one and not the
+// other, and then the two would disagree about the grid - which is the kind of
+// disagreement that compiles everywhere.
 //
-// COLORED_LIGHT_RANGE is the grid's side in blocks, and it is one of the two
-// options in this pack that change what a feature costs in memory rather than
-// only what it looks like (the water simulation's detail option is the other:
-// it moves the size of the two wave images). The images here are declared at
-// this size in shaders.properties, and the propagation pass writes one whole
-// volume every frame; the numbers are at LIGHT_VOLUME_SIZE just below and
-// repeated where the images are declared.
-#define COLORED_LIGHT_RANGE 64 // [48 64 96 128]
+// COLORED_LIGHT_RANGE is how far the colour is allowed to reach, as the side of a
+// cube in blocks: 32, 48 or 64. It is NOT the image size. The three images are 64
+// cubed and fixed, which is exactly what batch 696 shipped - the last build the
+// author confirmed working - and batch 697 making their size follow this option
+// is one of the plumbing changes this batch reverts. What the option changes now
+// is how much of that fixed grid the fill uses: the active radius is half of it,
+// 16, 24 or 32 blocks, the compute pass stores black outside that radius, and the
+// consumer fades the colour out towards it (see LIGHT_VOLUME_ACTIVE_RADIUS below).
+#define COLORED_LIGHT_RANGE 64 // [32 48 64]
 
 // How saturated the colour the fill contributes is, applied where the field is
 // turned back into a tint in LightVolumeBlockLight below. 1.0 is the colour the
@@ -142,34 +146,31 @@
 // brightness after the mix, so the light stays as bright at every setting.
 #define COLORED_LIGHT_SATURATION 1.0 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5]
 
-// Voxels per side, chosen by COLORED_LIGHT_RANGE above, and the same number
-// halved.
+// Voxels per side of the three images, and the same number halved.
 //
-// One voxel is one block, so the grid is LIGHT_VOLUME_SIZE blocks across and
-// covers half of that in every direction from the player. The default 64 is
-// twice Minecraft's own block light range of 15, which leaves the colour's whole
-// falloff inside the grid and gives the edge fade below room to run before the
-// boundary is reached. The smallest setting still reaches 24 blocks from the
-// camera, which is outside the reach of any single block light, so no setting
-// cuts through the light of a source standing near the player.
+// One voxel is one block, so the grid covers 32 blocks in every direction from
+// the player. That is twice Minecraft's own block light range of 15, which
+// leaves the colour's whole falloff inside the grid and gives the edge fade
+// below room to run before the boundary is reached.
 //
-// The size is an option because of what it costs. The volumes are RGBA16, eight
-// bytes a voxel, so one of them is 0.84 MiB at 48, 2 MiB at 64, 7 MiB at 96 and
-// 16 MiB at 128 - and there are three (the world image and the two fields). The
-// info image is 48 bytes at every setting (RGBA32F, three texels: the grid's
-// anchor and ready flag, the sub-block offset and current field, and the hand
-// program's held-light slot). The propagation pass also writes a whole volume
-// each frame, so a larger grid costs bandwidth as well.
-#if COLORED_LIGHT_RANGE == 48
-	#define LIGHT_VOLUME_SIZE 48
-#elif COLORED_LIGHT_RANGE == 96
-	#define LIGHT_VOLUME_SIZE 96
-#elif COLORED_LIGHT_RANGE == 128
-	#define LIGHT_VOLUME_SIZE 128
-#else
-	#define LIGHT_VOLUME_SIZE 64
-#endif
-#define LIGHT_VOLUME_RADIUS (LIGHT_VOLUME_SIZE / 2)
+// It is a constant rather than an option because the option that used to move it
+// is one of the plumbing changes being reverted: the images in shaders.properties
+// are declared at this size unconditionally, as they were in batch 696. The cost
+// is fixed with it: RGBA16 is eight bytes a voxel, so one volume is 2 MiB and the
+// three are 6 MiB.
+#define LIGHT_VOLUME_SIZE 64
+
+// Half the grid, in voxels. This is the grid's centre in its own coordinates and
+// nothing else: LightVolumeCoord adds it to put the player at the middle of the
+// fixed grid, and the compute pass uses it as the centre of its extent mask.
+#define LIGHT_VOLUME_GRID_RADIUS (LIGHT_VOLUME_SIZE / 2)
+
+// How much of that fixed grid the option above actually uses, in blocks: 16 at
+// the 32 setting, 24 at 48, and the whole 32 at the default 64. The compute pass
+// stores black outside it and the consumer's edge fade is measured from it, and
+// both read this one name so the cube the fill is limited to and the cube the
+// colour fades towards cannot disagree.
+#define LIGHT_VOLUME_ACTIVE_RADIUS (COLORED_LIGHT_RANGE / 2)
 
 // How much of a voxel's value survives one step of the fill.
 //
@@ -206,14 +207,13 @@
 // the normal is in the empty voxel whatever the surface is.
 #define LIGHT_VOLUME_NORMAL_OFFSET 0.55
 
-// Where the grid fades out, as a fraction of its half-size.
+// Where the colour fades out, as a fraction of the active radius.
 //
-// The grid is a cube of light cut out of the world, and without this the cut
-// would be visible as exactly that. The fade runs from 0.70 to 0.95 of the
-// half-size, so the last five percent of the radius is spent fading: 1.2 blocks
-// at the smallest range and 3.2 blocks at the largest. It is a fraction of the
-// radius rather than a distance so that the fade keeps the same shape at every
-// setting, which is the point of the option being a size rather than a look.
+// Without this the cube the fill is limited to would be visible as exactly that
+// cut. The fade runs from 0.70 to 0.95 of the active radius, so the last quarter
+// of the radius is spent fading: 4 blocks at the smallest setting, 6 at the
+// middle one and 8 at the largest. A fraction rather than a distance keeps the
+// fade the same shape at every setting.
 #define LIGHT_VOLUME_EDGE_FADE_START 0.70
 #define LIGHT_VOLUME_EDGE_FADE_END 0.95
 
@@ -229,70 +229,84 @@
 //
 // subBlockOffset is the part of the camera's world position that is not a whole
 // block, which the caller supplies: the grid is snapped to whole blocks, so
-// moving within a block must not move the grid. It reaches here one of two ways,
-// and both are the same number - the simulation half computes it from
-// cameraPosition, and the shading half reads it back out of light_volume_info,
-// which is what keeps the two from ever disagreeing.
+// moving within a block must not move the grid. All three ends take it from
+// fract(cameraPosition) - the writer when it stores a block, the consumer when it
+// samples the field, and the compute pass is given the same value by the shift it
+// applies - so none of them can disagree about where the grid sits. This is
+// Eclipse's anchor formula with the same term, lib/lpv_common.glsl:12-19.
 vec3 LightVolumeCoord(vec3 cameraRelativePos, vec3 subBlockOffset) {
 	return cameraRelativePos + subBlockOffset
-		+ vec3(float(LIGHT_VOLUME_RADIUS));
+		+ vec3(float(LIGHT_VOLUME_GRID_RADIUS));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 //   The simulation half: compiled into the shadowcomp entries only
 ///////////////////////////////////////////////////////////////////////////////
 
-// The propagation pass declares its own images, uniforms and entry point: they
-// have no business being visible to the terrain programs, and the terrain
-// programs are the ones the pack's uniform comparison looks at. See
+// The propagation pass declares its own images and entry point: they have no
+// business being visible to the terrain programs, and the terrain programs are
+// the ones the pack's uniform comparison looks at. See
 // program/light_volume/step.csh.
+//
+// One uniform is shared instead of private: frameCounter, declared below. The
+// pass needs it to decide which field it writes this frame, and the consumer
+// needs it to decide which field it reads - and there is no third place that
+// publishes the answer. That is Eclipse's arrangement: its compute and its
+// consumer both read frameCounter and nothing else (dimensions/shadowcomp.csh:
+// 169-172, lib/lpv_render.glsl:16).
 
 ///////////////////////////////////////////////////////////////////////////////
-//   The shading half: compiled into the terrain programs
+//   The shading half: compiled into the programs that sample the field
 ///////////////////////////////////////////////////////////////////////////////
 
-// The three images the propagation pass hands over.
+// The frame the recurrence is on, read by the compute pass to pick the field it
+// writes and by the consumer half below to pick the field it samples.
 //
-// The two fields are the frame-to-frame state, and which one is current changes
-// every frame - the pass reads one and writes the other, because a step of the
-// fill needs its neighbours' values from before it started. The info image is
-// how this side knows which is which, and it is also where the ready flag comes
-// from: on a loader that cannot allocate these, the sampler is left with nothing
-// bound to it, an unbound sampler reads zero, the flag never rises, and the
-// fallback below is what every surface gets.
+// Declared here because the terrain programs do not otherwise have it: their
+// include graph has no declaration of frameCounter, and Iris provides it in
+// every stage. Eclipse declares it in the same two places - its compute pass and
+// its consumer.
+uniform int frameCounter;
+
+// The consumer half, compiled only for the programs that define
+// LIGHT_VOLUME_CONSUMER before including this file. diffuse.glsl is the only
+// place that does, and it is the only place that samples the field; the writer
+// and the compute pass include this file for its constants and its coordinate
+// helper only.
 //
-// The info image is three texels wide, not two: texel (2, 0) is a slot the hand
-// program writes the colour of whatever the player is holding into, and the
-// propagation pass injects it at the player's own voxel. This side does not read
-// it - the width is noted here only so it is not a mystery - and the two texels
-// below are fetched by index rather than by width, so adding the third moved
-// neither of them.
+// cameraPosition is deliberately not used here at all: its fractional part,
+// the grid's sub-block offset, is passed in by the two call sites instead,
+// from the declaration their own translation unit already has. This file
+// cannot declare cameraPosition itself, because the writer includes it too and
+// declares its own copy, and a second declaration in one translation unit is a
+// redefinition. Eclipse reads fract(cameraPosition) directly in its consumer
+// because its cameraPosition comes from one shared header (lib/lpv_common.glsl:
+// 12-19); the arithmetic here is the same, only the declaration is the caller's.
+#ifdef LIGHT_VOLUME_CONSUMER
+// The two fields of the recurrence.
+//
+// The compute pass writes one and reads the other, and which is which flips
+// every frame: even frames write the first and read the second, odd frames the
+// reverse (see step.csh). The consumer reads the one the pass wrote this frame,
+// so even frames sample the first and odd frames the second.
 uniform sampler3D light_volume_a_sampler;
 uniform sampler3D light_volume_b_sampler;
-uniform sampler2D light_volume_info_sampler;
-
-// What the propagation pass published this frame.
-//
-// texel 0 is (the grid's lower corner in the world, ready), and texel 1 is (the
-// sub-block part of the camera position, which field is current). The shading
-// side needs nothing else from the pass, and in particular it does not read
-// frameCounter itself: the parity of the ping-pong is decided in exactly one
-// place, by the pass that does the pong. Texel 2 is the held-light slot and is
-// not read here at all; see the note above.
-vec4 LightVolumeAnchorAndReady() {
-	return texelFetch(light_volume_info_sampler, ivec2(0, 0), 0);
-}
-
-vec4 LightVolumeOffsetAndSide() {
-	return texelFetch(light_volume_info_sampler, ivec2(1, 0), 0);
-}
 
 // The field at a position, or black outside the grid.
 //
-// Outside the grid the field is not defined, and the sampler's own behaviour
-// there is the loader's business rather than this file's - clamping would smear
-// the edge voxels outwards, which is worse than nothing.
-vec3 LightVolumeSample(vec3 cameraRelativePos, vec3 subBlockOffset, bool currentIsB) {
+// subBlockOffset is the fractional part of cameraPosition, which the caller
+// passes in for the reason above. Outside the grid the field is not defined,
+// and the sampler's own behaviour there is the loader's business rather than
+// this file's - clamping would smear the edge voxels outwards, which is worse
+// than nothing.
+//
+// The parity is derived here rather than published, and it is Eclipse's
+// SampleLpvLinear convention (lib/lpv_render.glsl:16): even frames read the
+// first field and odd frames the second. The compute pass mirrors it by
+// writing the first on even frames (dimensions/shadowcomp.csh:169-172). The
+// two must agree or the field flickers between two images, which is a failure
+// a still screenshot cannot show.
+vec3 LightVolumeSample(vec3 cameraRelativePos, vec3 subBlockOffset) {
 	vec3 uv = LightVolumeCoord(cameraRelativePos, subBlockOffset)
 		/ float(LIGHT_VOLUME_SIZE);
 
@@ -300,9 +314,9 @@ vec3 LightVolumeSample(vec3 cameraRelativePos, vec3 subBlockOffset, bool current
 		return vec3(0.0);
 	}
 
-	return currentIsB
-		? texture(light_volume_b_sampler, uv).rgb
-		: texture(light_volume_a_sampler, uv).rgb;
+	return (frameCounter % 2) == 0
+		? texture(light_volume_a_sampler, uv).rgb
+		: texture(light_volume_b_sampler, uv).rgb;
 }
 
 // The colour of block light at this position, as a mix between the fallback and
@@ -316,33 +330,27 @@ vec3 LightVolumeSample(vec3 cameraRelativePos, vec3 subBlockOffset, bool current
 // that comes out of here is exactly as bright as the one that went in. That is
 // what keeps this from changing how bright the world is - only what colour it is.
 //
-// lightHere is how much light is at this fragment at all - the larger of the
-// game's block light level and the held light level, combined by BlockLighting
-// in diffuse.glsl - and it is the third of the three weights below. The other two
-// are how strong the field is here and how close the fragment is to the edge of
-// the grid.
+// subBlockOffset is passed through to LightVolumeSample; see the note there for
+// why it is an argument rather than fract(cameraPosition) read here.
+//
+// lightHere is the game's own block light level at this fragment, and it is the
+// third of the three weights below. The other two are how strong the field is
+// here and how close the fragment is to the edge of the grid.
 vec3 LightVolumeBlockLight(
 	vec3 fallbackTint,
 	vec3 cameraRelativePos,
 	vec3 worldNormal,
+	vec3 subBlockOffset,
 	float lightHere,
 	out float strength
 ) {
 	strength = 0.0;
 
-	vec4 anchorAndReady = LightVolumeAnchorAndReady();
-	if (anchorAndReady.w < 0.5) {
-		return fallbackTint;
-	}
-
-	vec4 offsetAndSide = LightVolumeOffsetAndSide();
-
 	// Offset along the normal first, then sample - see LIGHT_VOLUME_NORMAL_OFFSET
 	// for why sampling where the fragment actually is does not work.
 	vec3 field = LightVolumeSample(
 		cameraRelativePos + worldNormal * LIGHT_VOLUME_NORMAL_OFFSET,
-		offsetAndSide.xyz,
-		offsetAndSide.w > 0.5);
+		subBlockOffset);
 
 	// The magnitude of the field is how much light is here, and the direction of
 	// it is the colour that light arrives in.
@@ -356,22 +364,21 @@ vec3 LightVolumeBlockLight(
 	// independent things, and all three of them have to agree:
 	//
 	//  - the field has to be strong enough here to mean something;
-	//  - the fragment has to be well inside the grid, or the edge of the grid
-	//    would be visible as a cube of differently coloured light;
+	//  - the fragment has to be well inside the radius the option allows, or
+	//    the edge of the coloured cube would be visible as exactly that;
 	//  - something has to be lighting this surface already. This is what bounds
 	//    the one real weakness of a voxel fill: light that leaks through a wall
 	//    can change the colour of a surface the game says is lit, but it cannot
 	//    make a dark surface visible, because the brightness is not the field's
-	//    to give. The light counted here is block light or held light, whichever
-	//    is larger - the fill's job is "is there light here at all", and a held
-	//    source is light. The smoothstep starts at zero rather than at one level
-	//    so that a surface one step out of the dark still takes the colour of the
-	//    light that reaches it.
+	//    to give. The light counted here is the game's block light level, which
+	//    is the only light the fill's colours come from. The smoothstep starts at
+	//    zero rather than at one level so that a surface one step out of the dark
+	//    still takes the colour of the light that reaches it.
 	float strengthAtField = smoothstep(
 		LIGHT_VOLUME_MINIMUM, LIGHT_VOLUME_FADE_IN, amount);
 
 	vec3 gridDistance = abs(cameraRelativePos)
-		/ float(LIGHT_VOLUME_RADIUS);
+		/ float(LIGHT_VOLUME_ACTIVE_RADIUS);
 	float strengthAtEdge = 1.0 - smoothstep(
 		LIGHT_VOLUME_EDGE_FADE_START,
 		LIGHT_VOLUME_EDGE_FADE_END,
@@ -438,5 +445,6 @@ vec3 LightVolumeBlockLight(
 	// colour. That is the property DESIGN.md section 7 is about.
 	return mix(fallbackTint, tint, strength);
 }
+#endif // LIGHT_VOLUME_CONSUMER
 
 #endif // INCLUDE_ENVIRONMENT_LIGHTING_LIGHT_VOLUME

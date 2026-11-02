@@ -310,9 +310,16 @@ vec3 BlockLightTint(vec2 lightMapCoord) {
 // BlockLightColorAt, further down - has to see the module before it can call it.
 //
 // Uniforms: the two propagation fields (light_volume_a_sampler and
-// light_volume_b_sampler) and the info image (light_volume_info_sampler).
+// light_volume_b_sampler), and frameCounter, which the module declares itself.
+//
+// LIGHT_VOLUME_CONSUMER is defined here and nowhere else: the module compiles
+// its sampling half only for a translation unit that asks for it, because the
+// writer and the compute pass include the same file for its constants and must
+// not see functions that read cameraPosition and frameCounter. See the note at
+// that half in light_volume.glsl.
 #if defined(COLORED_LIGHTS) && !defined(EXTERNALLY_DEFINED_UNIFORMS)
 	#define BLOCK_LIGHT_FLOOD_FILL
+	#define LIGHT_VOLUME_CONSUMER
 	#include "/environment/lighting/light_volume.glsl"
 #endif
 
@@ -475,11 +482,13 @@ vec3 BlockLightColorAt(
 	// the surface - see LIGHT_VOLUME_NORMAL_OFFSET in the module.
 	vec3 cameraRelativePos,
 	vec3 worldNormal,
-	// Whether there is light here at all: the larger of the game's block light
-	// level and the held light level (see BlockLighting, which is where the two
-	// are combined). The module uses it as a gate - it colours only surfaces that
-	// something is already lighting - and a held source is light.
-	float lightHere
+	// The fractional part of the camera's position, which is where the fixed grid
+	// is snapped: the module takes it as an argument because the writer includes
+	// the same file and declares cameraPosition of its own.
+	vec3 subBlockOffset,
+	// The game's own block light level here, which the module uses as a gate: it
+	// colours only surfaces the lightmap already says are lit.
+	float blockLight
 ) {
 	vec3 fallback = BlockLightTint(lightMapCoord);
 
@@ -489,7 +498,8 @@ vec3 BlockLightColorAt(
 			fallback,
 			cameraRelativePos,
 			worldNormal,
-			lightHere,
+			subBlockOffset,
+			blockLight,
 			strength);
 		return colored;
 	#else
@@ -525,20 +535,14 @@ vec3 BlockLighting(
 	float heldLightSkyLight = sqrt(max(skyLight, heldLightSuppression));
 	heldLightIntensity *= 1.0 - heldLightSkyLight * blocklightSuppression;
 
-	// The colour lookup is told whether there is light here at all, not which of
-	// the pack's two terms is providing it. A surface lit only by the block in
-	// the player's hand has a block light level of zero - the held light is a
-	// separate term, and the game's lightmap only knows about real light sources
-	// - while the flood fill can hold the held source's colour, because the hand
-	// program publishes it and the propagation pass injects it at the player's own
-	// voxel (see the held-light slot of light_volume_info in step.csh). Gating the
-	// colour on blockLight alone would therefore leave the fill's colour
-	// unreachable in exactly the case it was extended for: a held glow whose light
-	// is real but whose block light level is not. Which of the two terms brightens
-	// a surface is the brightness envelope's business just below, and that is
-	// untouched - pow(blockLight, 4.0) and pow(heldLight, 4.0) are both exactly
-	// what they were.
-	float lightHere = max(blockLight, heldLight);
+	// The colour is gated on the game's own block light level, not on the held
+	// light term. The fill's colours come from the world's light sources, and the
+	// held block's own light does not enter the volume in this batch - see the
+	// note on the hand program in lit.vsh for what comes back later - so a surface
+	// lit only by the item in the player's hand must not take a colour from a
+	// source somewhere else. Which of the two terms brightens a surface is the
+	// brightness envelope's business just below, and that is untouched: the two
+	// pow() terms are exactly what they were.
 
 	// This method of combining held light and block light avoids weird lines
 	// where the lights intersect.
@@ -555,7 +559,10 @@ vec3 BlockLighting(
 			lightMapCoord,
 			cameraRelativePos,
 			worldNormal,
-			lightHere)
+			// The grid's sub-block offset, which the consumer passes in because
+			// the module cannot read cameraPosition itself - see the note there.
+			fract(cameraPosition),
+			blockLight)
 		* (BLOCKLIGHT_STRENGTH * min(1.0, blockLightIntensity + heldLightIntensity));
 }
 

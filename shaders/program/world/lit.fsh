@@ -158,8 +158,9 @@ uniform mat4 gbufferModelView;
 
 // The world image, samplable, for the LIGHT_VOLUME_DEBUG view at the end of
 // main(). The shadow pass writes this image and the propagation pass reads it
-// with imageLoad, so nothing sampled it before and its declaration in
-// shaders.properties said `none`; the sampler is there for the diagnostic only.
+// with imageLoad; nothing sampled it until the diagnostic existed, which is why
+// its declaration in shaders.properties now carries a sampler name instead of
+// `none`.
 //
 // The guard is two tests on purpose. At NONE no sampler is declared at all, and
 // when the option's names are undefined - which happens when COLORED_LIGHTS
@@ -2331,35 +2332,27 @@ void main() {
 	// written below for that reason, not because the view uses them.
 	//
 	// The field is sampled exactly the way BlockLighting samples it: the same
-	// function, the same info texels and the same normal offset. The normal is
-	// the one the SurfaceFragment carried - the normal-mapped one where PBR is
-	// on - because that is what the consumer offsets along.
+	// function, the same parity and anchor offset, and the same normal offset.
+	// The normal is the one the SurfaceFragment carried - the normal-mapped one
+	// where PBR is on - because that is what the consumer offsets along.
 	#if LIGHT_VOLUME_DEBUG != LIGHT_VOLUME_DEBUG_NONE
 		vec3 lightVolumeDebugColor = vec3(0.0);
 
 		#if LIGHT_VOLUME_DEBUG == LIGHT_VOLUME_DEBUG_FIELD
-			if (LightVolumeAnchorAndReady().w < 0.5) {
-				lightVolumeDebugColor = vec3(1.0, 0.0, 0.0);
-			} else {
-				vec4 volumeOffsetAndSide = LightVolumeOffsetAndSide();
+			#if defined(PBR_SURFACE)
+				vec3 volumeDebugNormal = pbrNormal;
+			#else
+				vec3 volumeDebugNormal = worldNormal;
+			#endif
 
-				#if defined(PBR_SURFACE)
-					vec3 volumeDebugNormal = pbrNormal;
-				#else
-					vec3 volumeDebugNormal = worldNormal;
-				#endif
-
-				lightVolumeDebugColor = LightVolumeSample(
-					cameraRelativePos
-						+ volumeDebugNormal * LIGHT_VOLUME_NORMAL_OFFSET,
-					volumeOffsetAndSide.xyz,
-					volumeOffsetAndSide.w > 0.5) * 4.0;
-			}
+			lightVolumeDebugColor = LightVolumeSample(
+				cameraRelativePos
+					+ volumeDebugNormal * LIGHT_VOLUME_NORMAL_OFFSET,
+				fract(cameraPosition)) * 4.0;
 		#else
-			vec4 volumeOffsetAndSide = LightVolumeOffsetAndSide();
 			ivec3 volumeVoxel = ivec3(floor(LightVolumeCoord(
 				cameraRelativePos,
-				volumeOffsetAndSide.xyz)));
+				fract(cameraPosition))));
 
 			if (all(greaterThanEqual(volumeVoxel, ivec3(0)))
 				&& all(lessThan(volumeVoxel, ivec3(LIGHT_VOLUME_SIZE)))) {

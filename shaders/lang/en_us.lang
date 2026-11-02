@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 700]
+option.PBR_DEBUG=Material debug view [build 702]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -516,13 +516,12 @@ value.LIGHT_VOLUME_DEBUG.LIGHT_VOLUME_DEBUG_NONE=Off
 value.LIGHT_VOLUME_DEBUG.LIGHT_VOLUME_DEBUG_FIELD=Colour field the shading reads (x4)
 value.LIGHT_VOLUME_DEBUG.LIGHT_VOLUME_DEBUG_WORLD=World image the writer filled (x4)
 option.LIGHT_VOLUME_DEBUG.comment=Two views for finding the layer the coloured \
-	block light is lost in. Colour field shows what the shading side samples: red \
-	means the propagation pass has not run, or its images are not there. World \
-	image shows what the shadow pass wrote into the voxel grid: a colour is a \
-	light source, dark grey is a solid block, dark blue is stained glass and black \
-	is air. A black colour field over a coloured world image means the writer \
-	works and the propagation is the fault; a black world image means nothing is \
-	being written at all.
+	block light is lost in. Colour field shows what the shading side samples, \
+	which is black wherever the fill has no colour. World image shows what the \
+	shadow pass wrote into the voxel grid: a colour is a light source, dark grey \
+	is a solid block, dark blue is stained glass and black is air. A black colour \
+	field over a coloured world image means the writer works and the propagation \
+	is the fault; a black world image means nothing is being written at all.
 
 option.GLASS_REFLECTIONS=Glass reflections
 option.GLASS_REFLECTIONS.comment=Whether glass and stained glass reflect the \
@@ -716,14 +715,15 @@ option.COLORED_LIGHTS_STRENGTH.comment=How far a light source's own surface \
 	either way; lower it to keep glowing texture detail.
 
 option.COLORED_LIGHT_RANGE=Colored light range
-option.COLORED_LIGHT_RANGE.comment=How far the colour of block light is carried, \
-	in blocks: 48, 64, 96 or 128. The colour is propagated through a cube of \
-	voxels this size around you, so a longer range colours more of the scene - \
-	and costs memory, because the three volume images all grow with it: about \
-	2.5 MiB together at 48, 6 MiB at 64, 20 MiB at 96 and 48 MiB at 128. The \
-	default 64 covers twice the reach of the game's own block light, and even \
-	the smallest setting reaches 24 blocks from you, which is past the 15 blocks \
-	any single block light reaches.
+option.COLORED_LIGHT_RANGE.comment=How far the colour of block light is allowed \
+	to reach, as the width of a cube in blocks: 32, 48 or 64. The colour field is \
+	a fixed 64-block cube around you, and this only decides how much of it the \
+	fill uses - the reach is half of that width, so 16, 24 or 32 blocks. It does \
+	not change how much memory the effect costs: the three volume images are \
+	always 64 cubed and always about 6 MiB together.
+value.COLORED_LIGHT_RANGE.32=32 blocks wide - colour reaches 16 blocks
+value.COLORED_LIGHT_RANGE.48=48 blocks wide - colour reaches 24 blocks
+value.COLORED_LIGHT_RANGE.64=64 blocks wide - colour reaches 32 blocks (default)
 
 option.COLORED_LIGHT_SATURATION=Colored light saturation
 option.COLORED_LIGHT_SATURATION.comment=How saturated the colour carried by the \

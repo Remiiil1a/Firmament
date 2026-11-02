@@ -215,7 +215,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 700]
+option.PBR_DEBUG=材质调试视图 [build 702]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -280,7 +280,7 @@ option.LIGHT_VOLUME_DEBUG=彩色光照诊断
 value.LIGHT_VOLUME_DEBUG.LIGHT_VOLUME_DEBUG_NONE=关闭
 value.LIGHT_VOLUME_DEBUG.LIGHT_VOLUME_DEBUG_FIELD=着色端读到的颜色场（4 倍）
 value.LIGHT_VOLUME_DEBUG.LIGHT_VOLUME_DEBUG_WORLD=写端写入的世界图（4 倍）
-option.LIGHT_VOLUME_DEBUG.comment=用来判断彩色方块光丢在哪一层的两个视图：「颜色场」显示着色端实际采样到的值，红色表示传播 pass 没跑过、或图像不存在；「世界图」显示阴影 pass 写进体素网格的内容，彩色是光源、深灰是实心方块、深蓝是染色玻璃、黑是空气。颜色场全黑而世界图有颜色 ⇒ 写端正常、问题在传播；世界图也全黑 ⇒ 根本没有写入。
+option.LIGHT_VOLUME_DEBUG.comment=用来判断彩色方块光丢在哪一层的两个视图：「颜色场」显示着色端实际采样到的值，填充没有颜色时就是全黑；「世界图」显示阴影 pass 写进体素网格的内容，彩色是光源、深灰是实心方块、深蓝是染色玻璃、黑是空气。颜色场全黑而世界图有颜色 ⇒ 写端正常、问题在传播；世界图也全黑 ⇒ 根本没有写入。
 
 option.MOTION_BLUR=动态模糊
 option.MOTION_BLUR.comment=按相机在世界里的位移把画面沿运动方向糊开：走路、奔跑、下落、坐船、被击飞都会留下拖影。因为逐像素计算，走路时脚下地面飞快掠过、地平线几乎不动。位移和转头都会模糊，走路的摇晃不算——转头要超过几个像素/帧才计入。只模糊相机：会自己动的实体、水流、掉落物保持清晰，手持物品整块不参与。
@@ -363,7 +363,10 @@ option.COLORED_LIGHTS_STRENGTH=光源自身配色
 option.COLORED_LIGHTS_STRENGTH.comment=光源方块自身的表面在多大程度上取光的颜色而不是贴图的颜色。1.0 完全用光的颜色照亮，贴图的明暗变化始终保留；想保留发光部位的贴图细节就调低。
 
 option.COLORED_LIGHT_RANGE=彩色光传播范围
-option.COLORED_LIGHT_RANGE.comment=方块光的颜色能传多远，单位为方块：48、64、96、128。颜色在以你为中心的这么大一个体素立方体里逐格传播，范围越大，被染色的场景越多，显存也越贵——三张体积图都随之变大：48 时三张合计约 2.5 MiB，64 约 6 MiB，96 约 20 MiB，128 约 48 MiB。默认 64 是游戏自带方块光射程的两倍，最小档也离你 24 格，仍超出任何单一光源 15 格的射程。
+option.COLORED_LIGHT_RANGE.comment=方块光的颜色允许传多远，以立方体的边长计：32、48、64。颜色场是一个固定的、以你为中心的 64 格立方体，这个选项只决定其中多大一块被填充使用——实际射程是它的一半，即 16、24、32 格。它不改变显存开销：三张体积图始终是 64³，合计约 6 MiB。
+value.COLORED_LIGHT_RANGE.32=边长 32 格——颜色射程 16 格
+value.COLORED_LIGHT_RANGE.48=边长 48 格——颜色射程 24 格
+value.COLORED_LIGHT_RANGE.64=边长 64 格——颜色射程 32 格（默认）
 
 option.COLORED_LIGHT_SATURATION=彩色光饱和度
 option.COLORED_LIGHT_SATURATION.comment=泛光填充传出的颜色有多浓。1.0 取光本身的颜色；调低会把色相拉向中性，填充的染色也随之减弱，0.0 时完全不染色，方块光就是本包自己的颜色；调高则色相更夸张。它只调颜色、不调亮度：任何档位下光都一样亮。
