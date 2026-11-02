@@ -1,6 +1,6 @@
 // Colored block light: one step of the flood fill.
 //
-// Included by the three prepare3 entries - prepare3.csh at the root and the two
+// Included by the three shadowcomp entries - shadowcomp.csh at the root and the two
 // under world-1/ and world1/ - which supply the #version line and the note on where
 // this pass sits in the frame. What runs here is the shading half's other end, from
 // /environment/lighting/light_volume.glsl: every voxel of the grid takes the
@@ -25,7 +25,7 @@
 // behind IS_IRIS: on a loader without custom images the body does nothing and the
 // ready flag the shading side reads never rises, which is what leaves block light
 // the colour it has always had. Nor does it run at all when COLORED_LIGHTS is
-// off - see program.prepare3.enabled in shaders.properties - because with the
+// off - see program.shadowcomp.enabled in shaders.properties - because with the
 // option off nothing reads the field.
 
 // The shared constants, and the one definition of where a position sits in the

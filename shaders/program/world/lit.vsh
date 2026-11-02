@@ -651,7 +651,7 @@ void main() {
 	// colour to the propagation pass, which injects it at the player's voxel, so
 	// the fill spreads it like any other source.
 	//
-	// It is one frame late: the hand is drawn after prepare3 has already run the
+	// It is one frame late: the hand is drawn after shadowcomp has already run the
 	// propagation, so this is read by the next frame's step. That is intended -
 	// the analytic term is what lights this frame - and it is also why the slot
 	// is written every frame, the empty case included: a stale value would keep

@@ -4,12 +4,12 @@
 // else: every light source in the world arrives as the same warm average, so a
 // soul lantern and a torch light a wall identically. This file is the other half
 // of the fix for that - a second flood fill, over a grid of voxels around the
-// player, that carries colour. Each frame one step of it runs in the prepare3
+// player, that carries colour. Each frame one step of it runs in the shadowcomp
 // pass, light spreads one voxel per step, and the terrain programs read the field
-// back as the colour of their block light. There is one prepare3 entry point per
+// back as the colour of their block light. There is one shadowcomp entry point per
 // dimension set - the root's, world-1/'s and world1/'s - because a worldN folder
 // is a complete program set rather than a set of overrides; see
-// world-1/prepare3.csh for what that means.
+// world-1/shadowcomp.csh for what that means.
 //
 // The two references this was built from are Eclipse's LPV and Mellow's flood
 // fill. What is taken from them is the shape: a voxel grid snapped to whole
@@ -239,7 +239,7 @@ vec3 LightVolumeCoord(vec3 cameraRelativePos, vec3 subBlockOffset) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-//   The simulation half: compiled into the prepare3 entries only
+//   The simulation half: compiled into the shadowcomp entries only
 ///////////////////////////////////////////////////////////////////////////////
 
 // The propagation pass declares its own images, uniforms and entry point: they
