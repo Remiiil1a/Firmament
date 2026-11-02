@@ -215,7 +215,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 696]
+option.PBR_DEBUG=材质调试视图 [build 697]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -356,6 +356,12 @@ option.COLORED_LIGHTS.comment=光源方块发出的光是否带自己的颜色�
 option.COLORED_LIGHTS_STRENGTH=光源自身配色
 option.COLORED_LIGHTS_STRENGTH.comment=光源方块自身的表面在多大程度上取光的颜色而不是贴图的颜色。1.0 完全用光的颜色照亮，贴图的明暗变化始终保留；想保留发光部位的贴图细节就调低。
 
+option.COLORED_LIGHT_RANGE=彩色光传播范围
+option.COLORED_LIGHT_RANGE.comment=方块光的颜色能传多远，单位为方块：48、64、96、128。颜色在以你为中心的这么大一个体素立方体里逐格传播，范围越大，被染色的场景越多，显存也越贵——三张体积图都随之变大：48 时三张合计约 2.5 MiB，64 约 6 MiB，96 约 20 MiB，128 约 48 MiB。默认 64 是游戏自带方块光射程的两倍，最小档也离你 24 格，仍超出任何单一光源 15 格的射程。
+
+option.COLORED_LIGHT_SATURATION=彩色光饱和度
+option.COLORED_LIGHT_SATURATION.comment=泛光填充传出的颜色有多浓。1.0 取光本身的颜色；调低会把色相拉向中性，填充的染色也随之减弱，0.0 时完全不染色，方块光就是本包自己的颜色；调高则色相更夸张。它只调颜色、不调亮度：任何档位下光都一样亮。
+
 option.LIGHT_BLEED_STRENGTH=光色扩散强度
 option.LIGHT_BLEED_STRENGTH.comment=画面上的光源把光洒到周围表面的强度——灵魂灯笼把旁边的墙染蓝就靠它。它加光而不改色：调到颜色看得清为止，附近表面发白就调低。
 
@@ -364,12 +370,6 @@ option.LIGHT_BLEED_RADIUS.comment=颜色扩散的距离，单位为 1080p 下的
 
 option.LIGHT_BLEED_DEPTH=光色扩散深度容差
 option.LIGHT_BLEED_DEPTH.comment=两个像素的深度相差多少之内光还能扩散；没有这一项，光源会直接穿过墙壁。颜色在物体边缘断得太生硬就调高，光穿透了背后的墙就调低。
-option.INDIRECT_BOUNCE=间接光反弹
-option.INDIRECT_BOUNCE.comment=是否画出光从一个表面弹到另一个表面的那部分：被照亮的表面自己也是光源，所以阳光照亮的红墙会把红色染到旁边的白墙上。它只是近似，模糊画面上已有的光而不是创造光。默认关闭，打开看看合理，不值得默认付这份开销。
-option.INDIRECT_BOUNCE_STRENGTH=间接光反弹强度
-option.INDIRECT_BOUNCE_STRENGTH.comment=弹回来的光有多大比例被加进画面。它加的光来自画面里已经有的光，是本页唯一可能让画面更亮、更发灰的选项；看起来发灰而不是被照亮就先降它。
-option.INDIRECT_BOUNCE_FLOOR=间接光反弹起点
-option.INDIRECT_BOUNCE_FLOOR.comment=表面要多亮才算是「正在还光」，单位是白色的一个比例。环境光本来就在画面里，全算成光源会让每个表面都反弹；调高只让真正亮的东西（阳光、岩浆、点亮的灯）参与。
 
 option.END_SKY=末地天空
 value.END_SKY.END_SKY_AUTO=仅末地

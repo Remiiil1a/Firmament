@@ -39,12 +39,39 @@ const int shadowcolor0Format = R16_SNORM;
 // top of /lib/smaa.glsl.
 #include "/environment/materialIDs.glsl"
 
-// The material list above is what decides which blocks tint the light, and the
-// tint is the block's own texture, so this is only needed when the option is on.
-#ifdef COLORED_SHADOWS
-	// Sampled in the same space the world program shades in. Uniforms: none
-	#include "/lib/srgb.glsl"
+// The palette the flood fill's filter voxels are coloured from, and the option
+// that says whether the fill exists at all. Uniforms: none
+#include "/environment/lighting/light_colors.glsl"
 
+// The world image, for the filter voxel written below.
+//
+// The voxel is not computed in this stage. The vertex half of this program
+// computes it - it is the stage that has the block centre - and passes it
+// across, so LightVolumeCoord stays the one definition of the formula. What
+// only this stage has is the block's texture, which is the colour the pane
+// transmits.
+#if defined(COLORED_LIGHTS) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
+	#include "/environment/lighting/light_volume.glsl"
+
+	// The voxel shadow.vsh put this block's centre in. It is written for every
+	// terrain vertex, and only terrain can be stained glass, so the fragments
+	// below always read a meaningful value.
+	flat in ivec3 lightVolumeVoxel;
+
+	// The write side of the image the fill reads. writeonly, because this stage
+	// only stores into it, and the declaration matches the one in shadow.vsh,
+	// which is the same uniform declared in the other stage of this program.
+	layout(rgba16) uniform writeonly image3D light_volume_world;
+#endif
+
+// The sRGB decode, for the coloured-shadow tint below and for the filter
+// voxel above. Sampled in the same space the world program shades in.
+// Uniforms: none
+#if defined(COLORED_SHADOWS) || (defined(COLORED_LIGHTS) && defined(IRIS_FEATURE_CUSTOM_IMAGES))
+	#include "/lib/srgb.glsl"
+#endif
+
+#ifdef COLORED_SHADOWS
 	// The buffer the colour of the light that passed through stained glass is
 	// written into, which the world program reads back - see the note on
 	// COLORED_SHADOWS in /environment/materialIDs.glsl.
@@ -70,6 +97,51 @@ void main() {
 		discard;
 		return;
 	}
+
+	// The stained-glass filter voxel.
+	//
+	// This is the only writer a stained-glass voxel has: the vertex stage
+	// deliberately writes nothing at all for STAINED_GLASS, because the tint can
+	// only be read from the pane's texture and this stage is the one holding it.
+	// The filter state therefore has exactly one writer, and this is it.
+	//
+	// What would go wrong if a vertex store came back is worth writing down,
+	// because it would look harmless: within one draw there is no ordering
+	// between one primitive's vertex stage and another primitive's fragment
+	// stage, so an "air" store from a later primitive's vertices could land
+	// after this filter store and quietly erase it. The pane would then stop
+	// tinting the fill, per block and per frame, with nothing to see in any
+	// buffer - which is why LightVolumeWriteTerrain in shadow.vsh leaves
+	// STAINED_GLASS out.
+	//
+	// The colour is normalised to its brightest channel. The fill multiplies the
+	// light leaving this voxel by the rgb, so an unnormalised tint would dim it
+	// as well, and a pale pane - which most stained glass is - would starve the
+	// colour of the surfaces behind it while the lightmap still says they are
+	// lit. Normalising keeps the hue, which is the part being asked for. The
+	// floor under the division is what keeps a near-black pane from dividing by
+	// a rounding error: a pane whose brightest channel is under it has almost no
+	// colour to give, so the filter comes out dark and both tints and passes
+	// very little, which is the honest answer for black glass.
+	//
+	// This reaches the panes the shadow pass draws. A pane it draws no fragment
+	// for - outside the shadow map's coverage, or culled from the light's view -
+	// keeps the frame's cleared air state and does not tint the fill: a
+	// limitation of writing the filter out of the shadow map's own geometry, and
+	// the alternative would be reading every pane's texture again inside the
+	// fill itself.
+	#if defined(COLORED_LIGHTS) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
+		if (materialID == STAINED_GLASS) {
+			vec3 filterTint = SrgbToLinear(surfaceColor.rgb);
+			float filterPeak = max(filterTint.r, max(filterTint.g, filterTint.b));
+			filterTint /= max(filterPeak, 1.0e-4);
+
+			if (all(greaterThanEqual(lightVolumeVoxel, ivec3(0)))
+				&& all(lessThan(lightVolumeVoxel, ivec3(LIGHT_VOLUME_SIZE)))) {
+				imageStore(light_volume_world, lightVolumeVoxel, vec4(filterTint, 0.5));
+			}
+		}
+	#endif
 
 	#ifdef COLORED_SHADOWS
 		// Every fragment writes this buffer, not only the ones that have a colour

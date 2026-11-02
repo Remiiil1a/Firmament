@@ -21,29 +21,58 @@ report problems in this project, not in Steadfast's.
 Block light now arrives in the colour of the source it came from: a soul lantern
 lights a wall blue where a torch lights it orange, two sources that meet blend
 instead of one winning, and a light that is taken down takes its colour with it.
-How bright the world is has not changed.
+How bright the world is has not changed. The author played the first build of it,
+and the six things that build got wrong are fixed in the same release.
 
 **Coloured lights**
 * The colour of block light is carried by a flood fill over a grid of voxels
-  around the player - 64 blocks across, one voxel to a block - held in custom
-  images and advanced one voxel per frame by one compute program (`prepare3`).
-  The shape is Eclipse's LPV and Mellow's coloured lights, both already credited:
-  a grid snapped to whole blocks, written by the shadow pass, propagated one step
-  per frame, read back by the terrain. It runs in every dimension and costs one
-  64-cubed dispatch per frame, lit world or not.
+  around the player - 64 blocks across by default, one voxel to a block - held in
+  custom images and advanced one voxel per frame by one compute program
+  (`prepare3`). The shape is Eclipse's LPV and Mellow's coloured lights, both
+  already credited: a grid snapped to whole blocks, written by the shadow pass,
+  propagated one step per frame, read back by the terrain. It runs in every
+  dimension and costs one dispatch of that grid per frame, lit world or not.
 * A voxel passes on 0.85 of the value it holds and a solid voxel keeps the light
   out, so the colour fades to nothing over the same fifteen blocks the game's own
   block light reaches. A light source is full strength in the voxel it stands in,
-  so a new light takes about fifteen frames to arrive and a removed one fades out
-  in about the same time.
+  so a new light takes about fifteen frames to arrive and a removed one about
+  twenty-five to fade away.
 * Two sources that meet take the brighter of each channel, so red beside green
   reads as yellow in between rather than one light cutting the other off.
-* No new setting: `COLORED_LIGHTS` is still the switch, on by default, and the
-  grid, the decay and the one-step-per-frame rate are constants. Its menu text
-  and `BLOCKLIGHT_TEMPERATURE`'s were rewritten to match - the temperature now
-  decides the colour only where the fill has none to give.
 * The palette that colours a light source's own surface also seeds the fill, so
   a block that glows a colour is the block that puts that colour into the air.
+* Two new settings, both under the same switch. `COLORED_LIGHT_RANGE` is how far
+  the colour is carried - 48, 64, 96 or 128 blocks across, 64 by default - and it
+  is also what the effect costs: the three volume images together are about
+  2.5 MiB at 48, 6 MiB at 64, 20 MiB at 96 and 48 MiB at 128.
+  `COLORED_LIGHT_SATURATION` (0.0-1.5, 1.0 by default) is how strong the colour
+  is; at 0.0 the fill contributes no colour and block light is one colour for
+  every source again, the way it was before any of this. Neither touches
+  brightness, and the Low tier turns the whole fill off with the water
+  simulation, because it is the pack's other per-frame compute pass.
+
+**After the first play**
+* **Entities no longer turn orange.** The first build wrote every mob, dropped
+  item and armour stand into the colour field as a solid block. An entity's own
+  surfaces then read no light from the field and fell back to the lightmap's warm
+  colour - the orange patch under the player - and it also cut a lightless hole in
+  the colour around it. Entities write nothing now; only the world's blocks do,
+  and the few glowing block entities.
+* **More light sources give their colour**: all three froglights, copper torches
+  and every copper lantern in every oxidation state and waxed variant, soul
+  campfires, amethyst clusters and large buds. The nether portal counts as a light
+  source now, and so do the end portal and the end gateway.
+* **The block in the player's hand colours the light too.** The hand publishes the
+  block's colour, the fill injects it at the player's own voxel, and it arrives
+  one frame after the hand is drawn. If the loader does not tell the pack which
+  block is being held, the warm fallback colour is used and the light still
+  exists.
+* **Stained glass tints the block light that passes through it**, so a red pane
+  puts red light on the floor behind it. A pane outside the shadow map's reach
+  does not tint it, which is the known edge of the effect.
+* **The indirect-bounce experiment is gone**: `INDIRECT_BOUNCE`, its strength and
+  floor options, and the second screen-space gather that shared the light-bleed
+  pass. The light bleed itself is unchanged.
 
 **Kept as it was**
 * The glowing block's own surface colour (`COLORED_LIGHTS_STRENGTH`) and the
@@ -52,39 +81,37 @@ How bright the world is has not changed.
   sources and gathers around it on screen; it does not read the lightmap or the
   fill, so nothing in it was replaced.
 * Brightness is entirely the game's own block light level, as before: the same
-  `pow(blockLight, 4.0)` falloff scaled by `BLOCKLIGHT_STRENGTH`. The fill
-  supplies a hue and never a level, so this release cannot change how dark a cave
-  is or how bright a torch-lit room is.
+  `pow(blockLight, 4.0)` falloff scaled by `BLOCKLIGHT_STRENGTH`, plus the held
+  light term, which is also unchanged. The fill supplies a hue and never a level,
+  so this release cannot change how dark a cave is or how bright a torch-lit room
+  is.
 * Voxy terrain keeps the lightmap's colour: its shaders are given their uniforms
   from outside the pack, so the fill is not compiled into them.
 
 **Fallback**
 * With `COLORED_LIGHTS` off, block light is exactly what it was before this
-  release: `BlockLightTint` - the lightmap's hue moved by
-  `BLOCKLIGHT_TEMPERATURE`. The propagation program is not run
-  (`program.prepare3.enabled` is the option) and the flood-fill module is not
-  compiled into the terrain programs.
-* The same happens on a loader that cannot run compute shaders and custom images:
-  the two are declared as optional features, so the pack loads and draws as
-  usual, and block light keeps the lightmap's colour. macOS, which has no OpenGL
-  4.2, is the case this is for.
-* Wherever the fill has nothing to say - outside its grid, before it has run,
-  where the game says there is no block light - the fallback is returned
-  unchanged. A colour can arrive through a wall as a hue, but it cannot make a
-  dark surface visible.
+  release: `BlockLightTint`, the lightmap's hue moved by `BLOCKLIGHT_TEMPERATURE`;
+  the propagation program is not run and the flood-fill module is not compiled
+  into the terrain programs. The same happens on a loader that cannot run compute
+  shaders and custom images - the two are optional features - and wherever the
+  fill has nothing to say. A colour can arrive through a wall as a hue, but it
+  cannot make a dark surface visible.
 
-**Not verified in game**
-* Nothing in this release has been seen in Minecraft. This machine cannot run the
-  game, so all of the above is model and check-chain evidence; the numbers are
-  the design contract's, not observations.
-* What to look at first, in a world with a soul lantern and a torch: does the
-  soul lantern light a wall blue at the right distance; does a removed torch's
-  colour fade out within about a second; is any coloured light visible through a
-  wall; is the edge of the +/-32 block grid visible anywhere; and does the
-  screen-space light bleed now over-saturate near a source? The fill and the
-  bleed both colour the same surfaces, so `LIGHT_BLEED_STRENGTH` and
-  `LIGHT_TINT_STRENGTH` may want lowering - that is the author's call, and no
-  default was changed for it.
+**Seen in game, and what has not been**
+* The author's first session on the first build is the only in-game evidence this
+  release has, and all six things it found are fixed above. The fixes themselves
+  have not been seen in a game - this machine cannot run Minecraft - so what is
+  checked here is that they compile, read the values they are meant to and keep
+  the baselines.
+* What to look at next session: entities standing in coloured light (no orange
+  patch and no hole in the colour around them); a froglight, a copper torch and a
+  soul campfire each giving its own colour; a stained-glass pane colouring the
+  light that passes through it; holding a torch and seeing its colour arrive a
+  frame late; the range and saturation settings at their other values, including
+  whether 128 is worth its memory on the author's machine; and whether the
+  screen-space light bleed and the fill together are too saturated - the fill and
+  the bleed still colour the same surfaces, so `LIGHT_BLEED_STRENGTH` and
+  `LIGHT_TINT_STRENGTH` remain the controls, and no default was changed for it.
 
 ## v1.0.6 - 2026-11-01
 

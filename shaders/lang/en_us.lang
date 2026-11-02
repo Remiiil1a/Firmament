@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 696]
+option.PBR_DEBUG=Material debug view [build 697]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -702,6 +702,24 @@ option.COLORED_LIGHTS_STRENGTH.comment=How far a light source's own surface \
 	purely by the light's colour, and the texture's brightness pattern is kept \
 	either way; lower it to keep glowing texture detail.
 
+option.COLORED_LIGHT_RANGE=Colored light range
+option.COLORED_LIGHT_RANGE.comment=How far the colour of block light is carried, \
+	in blocks: 48, 64, 96 or 128. The colour is propagated through a cube of \
+	voxels this size around you, so a longer range colours more of the scene - \
+	and costs memory, because the three volume images all grow with it: about \
+	2.5 MiB together at 48, 6 MiB at 64, 20 MiB at 96 and 48 MiB at 128. The \
+	default 64 covers twice the reach of the game's own block light, and even \
+	the smallest setting reaches 24 blocks from you, which is past the 15 blocks \
+	any single block light reaches.
+
+option.COLORED_LIGHT_SATURATION=Colored light saturation
+option.COLORED_LIGHT_SATURATION.comment=How saturated the colour carried by the \
+	flood fill is. At 1.0 a surface takes the light's own colour; below that the \
+	hue is pulled towards neutral and the fill's colour counts for proportionally \
+	less, and at 0.0 it counts for nothing, so block light is the pack's own \
+	colour again. Above 1.0 exaggerates the hue. It is a colour control, not a \
+	brightness one: the light is as bright at every setting.
+
 option.LIGHT_BLEED_STRENGTH=Light bleed strength
 option.LIGHT_BLEED_STRENGTH.comment=How much light the sources on screen \
 	spread onto surfaces around them - what tints the wall beside a soul lantern \
@@ -718,22 +736,6 @@ option.LIGHT_BLEED_DEPTH.comment=How far apart in depth two pixels may be \
 	before light stops spreading between them; without it a source bleeds through \
 	walls. Raise it if the colour cuts off too abruptly at edges, lower it if \
 	light shines through a wall.
-
-option.INDIRECT_BOUNCE=Indirect bounce
-option.INDIRECT_BOUNCE.comment=Whether the light that bounces from one surface \
-	onto another is drawn. A lit surface is a source too: a sunlit red wall puts \
-	red on the white wall beside it. Being an approximation, it only blurs light \
-	already on screen. Off by default, and worth a look rather than paying for.
-option.INDIRECT_BOUNCE_STRENGTH=Indirect bounce strength
-option.INDIRECT_BOUNCE_STRENGTH.comment=How much of the bounced light is \
-	added. It takes light from what is already in the picture, so it can leave \
-	the frame brighter and hazier - if the result looks washed out rather than \
-	lit, lower it first.
-option.INDIRECT_BOUNCE_FLOOR=Indirect bounce floor
-option.INDIRECT_BOUNCE_FLOOR.comment=How bright a surface has to be to count \
-	as giving light back, as a fraction of white. Ambient light is already in the \
-	frame, so counting it all would make every surface bounce; raise this so only \
-	genuinely bright things - sunlight, lava, a lit lamp - bounce.
 
 option.END_SKY=End sky
 value.END_SKY.END_SKY_AUTO=End only

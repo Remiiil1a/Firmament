@@ -453,10 +453,9 @@ float NightDesaturation(float skyLight, float blockLight) {
 // lightmap says block light is; the flood fill is the colour the light actually
 // arrives in. The fill is asked first, and it returns the fallback itself
 // wherever it has nothing to say - outside its grid, before the propagation has
-// run a frame, where the field is too weak to be a colour, and where the game
-// does not call the surface lit by block light at all - so what comes back is
-// always a colour at the fallback's own brightness. The fill decides the hue and
-// nothing else.
+// run a frame, where the field is too weak to be a colour, and where nothing is
+// lighting the surface at all - so what comes back is always a colour at the
+// fallback's own brightness. The fill decides the hue and nothing else.
 //
 // The strength the module reports is not read: the module has already mixed its
 // colour with the fallback by the time it returns, and the out parameter is only
@@ -476,9 +475,11 @@ vec3 BlockLightColorAt(
 	// the surface - see LIGHT_VOLUME_NORMAL_OFFSET in the module.
 	vec3 cameraRelativePos,
 	vec3 worldNormal,
-	// The game's own block light level here, which the module uses as a gate: it
-	// colours only surfaces the lightmap already says are lit.
-	float blockLight
+	// Whether there is light here at all: the larger of the game's block light
+	// level and the held light level (see BlockLighting, which is where the two
+	// are combined). The module uses it as a gate - it colours only surfaces that
+	// something is already lighting - and a held source is light.
+	float lightHere
 ) {
 	vec3 fallback = BlockLightTint(lightMapCoord);
 
@@ -488,7 +489,7 @@ vec3 BlockLightColorAt(
 			fallback,
 			cameraRelativePos,
 			worldNormal,
-			blockLight,
+			lightHere,
 			strength);
 		return colored;
 	#else
@@ -524,6 +525,21 @@ vec3 BlockLighting(
 	float heldLightSkyLight = sqrt(max(skyLight, heldLightSuppression));
 	heldLightIntensity *= 1.0 - heldLightSkyLight * blocklightSuppression;
 
+	// The colour lookup is told whether there is light here at all, not which of
+	// the pack's two terms is providing it. A surface lit only by the block in
+	// the player's hand has a block light level of zero - the held light is a
+	// separate term, and the game's lightmap only knows about real light sources
+	// - while the flood fill can hold the held source's colour, because the hand
+	// program publishes it and the propagation pass injects it at the player's own
+	// voxel (see the held-light slot of light_volume_info in step.csh). Gating the
+	// colour on blockLight alone would therefore leave the fill's colour
+	// unreachable in exactly the case it was extended for: a held glow whose light
+	// is real but whose block light level is not. Which of the two terms brightens
+	// a surface is the brightness envelope's business just below, and that is
+	// untouched - pow(blockLight, 4.0) and pow(heldLight, 4.0) are both exactly
+	// what they were.
+	float lightHere = max(blockLight, heldLight);
+
 	// This method of combining held light and block light avoids weird lines
 	// where the lights intersect.
 	//
@@ -539,7 +555,7 @@ vec3 BlockLighting(
 			lightMapCoord,
 			cameraRelativePos,
 			worldNormal,
-			blockLight)
+			lightHere)
 		* (BLOCKLIGHT_STRENGTH * min(1.0, blockLightIntensity + heldLightIntensity));
 }
 

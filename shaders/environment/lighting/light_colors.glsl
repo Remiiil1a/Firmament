@@ -31,21 +31,24 @@
 // torch's texture is mostly a brown stick, and its light is not brown. They are
 // chosen to match what the block actually lights its surroundings with.
 //
-// Where the light lands on everything else is approximated by the light bleed
-// in /program/post/light_bleed.fsh, which spreads the colors written here across
-// nearby surfaces. The route is one call: LightSourceSurfaceColor is called once
-// in the pack, in /program/world/lit.fsh, in the block self-emission section, and
-// what it returns is written into the light source mask that pass reads. That
-// pass holds no palette of its own and does not include this file, so these are
-// the only colors in it.
+// Where the light lands on everything else is carried by two routes that share
+// this one palette. The main one since batch 696 is the flood fill in
+// /environment/lighting/light_volume.glsl: the shadow program looks a block's
+// color up here and writes it into a voxel grid, and the grid carries it through
+// the air. The other is the light bleed in /program/post/light_bleed.fsh, which
+// spreads the colors written here across nearby surfaces; its route is one call
+// - LightSourceSurfaceColor is called once in the pack, in /program/world/
+// lit.fsh, in the block self-emission section, and what it returns is written
+// into the light source mask that pass reads. That pass holds no palette of its
+// own and does not include this file, so these are the only colors in it.
 
 // Whether light-emitting blocks take their real color, rather than being tinted
 // by their own texture. Also what decides whether the light bleed pass is
-// switched on: program.composite2.enabled in shaders.properties is
-// COLORED_LIGHTS || INDIRECT_BOUNCE, and composite2.fsh is the pass. Note that
-// the pass's own code carries no guard of ours - with this off and
-// INDIRECT_BOUNCE on it still runs, and what changes is the mask it reads, since
-// LightSourceSurfaceColor returns the plain texture color when this is off.
+// switched on: program.composite2.enabled in shaders.properties names this
+// option, and composite2.fsh is the pass. The pass's own code carries no guard
+// of ours, so turning the option off is what stops it being compiled rather than
+// a branch inside it, and what the mask holds when the option is off is the
+// plain texture color, because that is what LightSourceSurfaceColor returns.
 #define COLORED_LIGHTS
 
 // How far the color of a light source replaces the color of its texture.
@@ -62,7 +65,16 @@
 // The range check comes first so that the overwhelming majority of surfaces -
 // everything without an ID of its own - pay two comparisons and nothing else.
 vec3 BlockLightColor(uint materialID) {
-	if (materialID < LIGHT_WARM || materialID > LIGHT_AMETHYST) {
+	// An early out rather than a range test. The light IDs used to be one band,
+	// LIGHT_WARM through LIGHT_AMETHYST; the families added in batch 697 sit at
+	// 40 to 43, above the geometry selector's field so that their numbers survive
+	// to the shadow program intact. A band test would have to span 7 to 43, and
+	// the IDs between those two sets - STAINED_GLASS, the geometry-selected
+	// campfire, the portal - would be admitted only to fall through the chain
+	// below. The early out is instead the comparison that was always there for
+	// GENERIC, which is what nearly every fragment in the frame carries, and the
+	// handful of other non-light IDs pay the chain and nothing more.
+	if (materialID < LIGHT_WARM) {
 		return vec3(0.0);
 	}
 
@@ -86,6 +98,56 @@ vec3 BlockLightColor(uint materialID) {
 		return vec3(0.35, 0.55, 0.95);
 	} else if (materialID == LIGHT_AMETHYST) {
 		return vec3(0.72, 0.42, 1.0);
+	} else if (materialID == LIGHT_FROGLIGHT_OCHRE) {
+		// The froglight colors are the blocks' own glow - their textures carry
+		// them - and the fill needs the family so that a froglight is an emitter
+		// rather than a wall. These are the colors their textures glow in.
+		return vec3(1.0, 0.78, 0.42);
+	} else if (materialID == LIGHT_FROGLIGHT_VERDANT) {
+		return vec3(0.50, 1.0, 0.52);
+	} else if (materialID == LIGHT_FROGLIGHT_PEARLESCENT) {
+		return vec3(1.0, 0.70, 0.92);
+	} else if (materialID == LIGHT_COPPER) {
+		// Copper fire burns green - that is what tells a copper torch from every
+		// other torch in the game, and it is the whole reason this family exists.
+		return vec3(0.40, 1.0, 0.78);
+	}
+
+	return vec3(0.0);
+}
+
+// The color of the light a BLOCK ENTITY gives off, by the number it arrives as.
+//
+// The palette above is written in material IDs because that is what the block
+// path has: terrain arrives through mc_Entity and is decoded into a material. A
+// block entity is drawn by its own renderer and has no mc_Entity at all - the
+// only thing the game tells the shader about it is the number block.properties
+// gave it, in the blockEntityId uniform - so the two portal surfaces, which are
+// block entities, cannot name a material and are answered here by the raw number
+// instead. This is the same question BlockLightColor answers, asked in the other
+// space, which is why it lives beside the palette rather than in the shadow
+// program that is its only caller today.
+//
+// The end portal is the void itself. What it casts is the violet of the star
+// field seen from inside it, taken cold: the blue channel is at peak, green sits
+// above red so the tint reads as violet rather than as a dimmed purple, and the
+// peak is 1.0 because every entry in this palette peaks at 1.0 - the propagation
+// reads a voxel's brightest channel as how strong the light is, so a source whose
+// color peaked lower would also be a weaker source.
+//
+// The gateway is an end rod: block.10012 gives it the end rod's own light number,
+// and that one number is both its portal surface and its light, so its color is
+// asked of that family rather than written out a second time.
+//
+// Every other block entity is not a light source and gets black, which is the
+// answer BlockLightColor gives for a number that is not in the palette.
+vec3 BlockEntityLightColor(float blockEntityId) {
+	if (blockEntityId == END_PORTAL_BLOCK_ID) {
+		return vec3(0.45, 0.55, 1.0);
+	}
+
+	if (blockEntityId == END_GATEWAY_BLOCK_ID) {
+		return BlockLightColor(LIGHT_END_ROD);
 	}
 
 	return vec3(0.0);

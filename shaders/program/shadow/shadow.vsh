@@ -56,59 +56,154 @@ uniform mat4 shadowModelViewInverse;
 	// position lands in must not move while the camera moves within one block.
 	uniform vec3 cameraPosition;
 
-	// This frame's emitters and occluders, written here and read by the
+	// What kind of geometry is being drawn.
+	//
+	// blockEntityId is the loader's number for the block entity being drawn, and
+	// block.properties is what gives the two this pack knows their numbers
+	// (10039 the end portal, 10012 the end gateway). It is a mapping the pack
+	// supplies, so it can be counted on as far as those two entries are
+	// concerned.
+	//
+	// entityId is the same shape for non-block entities, but this pack ships no
+	// entity.properties, and without one the loader has no number of ours to
+	// report - so the uniform may be 0 for every entity. The test on it below is
+	// kept as defence in depth and never as the fix; see the note at the write
+	// for which test the fix actually is.
+	uniform int blockEntityId;
+	uniform int entityId;
+
+	// This frame's emitters, filters and occluders, written here and read by the
 	// propagation pass later in the same frame. writeonly is what this stage does
-	// with it - the shadow pass is the only writer and the compute pass is the
-	// only reader - and the loader clears it every frame (see its declaration in
-	// shaders.properties), which is what makes "no vertex reached this voxel" mean
-	// "nothing was drawn there this frame" rather than "nothing was drawn since
-	// the pack loaded".
+	// with it - the shadow program is the only writer (this stage for the
+	// geometry, its fragment stage for the colour of stained glass) and the
+	// compute pass is the only reader - and the loader clears it every frame (see
+	// its declaration in shaders.properties), which is what makes "no vertex
+	// reached this voxel" mean "nothing was drawn there this frame" rather than
+	// "nothing was drawn since the pack loaded".
 	layout(rgba16) uniform writeonly image3D light_volume_world;
 
-	// What this voxel means to the fill.
+	// The voxel this vertex's block landed in, for the fragment stage.
 	//
-	// Three cases, in this order, and the order is the meaning. An emitter is
+	// Stained glass takes its tint from the pane's own texture, which only the
+	// fragment stage can sample, so the fragment stage is what stores the filter
+	// state - and it has to store it into the same cell this stage classified.
+	// Passing the voxel across rather than reconstructing it there keeps one
+	// definition of where a position sits in the grid (LightVolumeCoord), and
+	// avoids a reconstruction that would have to undo distort() and assume the
+	// shadow projection. (-1, -1, -1) means "no voxel": the vertex was not chunk
+	// terrain, or it was outside the grid, and the fragment stage must not store
+	// with it. Integer varyings must be flat on both sides; program/shadow/shadow.fsh
+	// declares it flat in behind the same guard.
+	flat out ivec3 lightVolumeVoxel;
+
+	// Where a camera-relative position sits in the grid, and whether it is inside
+	// it at all. The coordinate function is the one from light_volume.glsl; this
+	// only adds the bounds test, which is the same one the shading side uses when
+	// it samples the field.
+	bool LightVolumeVoxelAt(vec3 cameraRelativePos, out ivec3 voxel) {
+		voxel = ivec3(floor(LightVolumeCoord(
+			cameraRelativePos,
+			fract(cameraPosition))));
+
+		return !any(lessThan(voxel, ivec3(0)))
+			&& !any(greaterThanEqual(voxel, ivec3(LIGHT_VOLUME_SIZE)));
+	}
+
+	// One voxel of the world image, if the position is inside the grid, plus the
+	// bookkeeping the fragment stage needs. The caller decides the value; this
+	// only holds the bounds test and the one place the varying is written.
+	void LightVolumeStore(vec3 cameraRelativePos, vec4 value) {
+		ivec3 voxel;
+
+		if (!LightVolumeVoxelAt(cameraRelativePos, voxel)) {
+			lightVolumeVoxel = ivec3(-1);
+			return;
+		}
+
+		lightVolumeVoxel = voxel;
+		imageStore(light_volume_world, voxel, value);
+	}
+
+	// A block entity's voxel.
+	//
+	// Only the block entities whose light this pack can name have a colour to
+	// write, and which those are is BlockEntityLightColor's business rather than
+	// this file's: it answers black for everything else, and a block entity that
+	// is not a light must write nothing at all rather than writing a solid voxel.
+	// A chest that blocked light would put a black hole in the colour field in
+	// exactly the place an entity used to.
+	//
+	// A block entity supplies no at_midBlock, so the voxel comes from the vertex
+	// position. The portal models are drawn in the block they belong to, so the
+	// store lands in that block - or, for a vertex exactly on a block boundary, in
+	// the block on the far side of it. That is a few voxels of spill along the edge
+	// of an end portal, and it is the harmless side of the trade for a state that
+	// only adds light.
+	void LightVolumeWriteBlockEntity(vec3 cameraRelativePos) {
+		vec3 emitted = BlockEntityLightColor(float(blockEntityId));
+
+		if (any(greaterThan(emitted, vec3(0.0)))) {
+			LightVolumeStore(cameraRelativePos, vec4(emitted, 0.0));
+		}
+	}
+
+	// A chunk-terrain voxel.
+	//
+	// The cases, in this order, and the order is the meaning. An emitter is
 	// tested first so that a light source always gets its own colour into the
 	// fill: a source whose voxel was marked solid would light nothing, because the
 	// colour starts in this voxel and the fill spreads out of a voxel into its
-	// neighbours. The alpha is "blocks light" - 1.0 is a solid block, 0.0 is air
-	// or anything light passes through - which is not what alpha means anywhere
-	// else in this pass, and is why the convention is written down once, here.
-	void LightVolumeWriteWorld(uint material, vec3 centerCameraRelative) {
-		ivec3 voxel = ivec3(floor(LightVolumeCoord(
-			centerCameraRelative,
-			fract(cameraPosition))));
-
-		if (any(lessThan(voxel, ivec3(0)))
-			|| any(greaterThanEqual(voxel, ivec3(LIGHT_VOLUME_SIZE)))) {
-			return;
-		}
-
+	// neighbours. The nether portal is an emitter too even though the palette has
+	// no entry for it - its material deliberately has no light colour of its own,
+	// because BlockLightColor is also what colours the emitter's own face and the
+	// portal surface has its own tint - and NETHER_PORTAL_TINT from
+	// materialIDs.glsl is authored for exactly this.
+	//
+	// Then the materials light passes through, which are air to the fill.
+	//
+	// Stained glass is the exception and is handled before them: its voxel is a
+	// filter, and the fragment stage is its only writer. This stage must not store
+	// the transparent value for it first, because "fragments come after vertices"
+	// orders the two stages only within one primitive - within one draw, a vertex
+	// of a later primitive can run after the fragment of an earlier one, and that
+	// transparent store would put the filter voxel back to air. The voxel is still
+	// published through the varying, because the fragment is what needs it. The
+	// tint itself cannot be written from here at all: it comes from the pane's
+	// texture, which this stage does not read.
+	//
+	// Everything else, leaves included, blocks the fill and emits nothing. Leaves
+	// are the interesting member of that set: they are not an opaque cube to the
+	// eye, but the game's own light engine treats them as a block that dims what
+	// crosses it, and that is the question this image is answering.
+	void LightVolumeWriteTerrain(uint material, vec3 centerCameraRelative) {
 		vec3 emitted = BlockLightColor(material);
 
 		if (any(greaterThan(emitted, vec3(0.0)))) {
-			imageStore(light_volume_world, voxel, vec4(emitted, 0.0));
+			LightVolumeStore(centerCameraRelative, vec4(emitted, 0.0));
 			return;
 		}
 
-		// The materials light passes through. GLASS is on this list as well as
-		// being culled from the shadow map at the end of main, and the two are not
-		// the same statement: the cull says the map should hold no depth for a
-		// pane, this says the fill should not treat it as a wall. Stained glass is
-		// air here for the same reason - its colour belongs to the coloured
-		// shadows, which read it from shadow.fsh, while this image carries only
-		// what the flood fill should spread through.
-		if (material == WATER || material == ICE || material == GLASS
-			|| material == STAINED_GLASS || material == NETHER_PORTAL) {
-			imageStore(light_volume_world, voxel, vec4(0.0));
+		if (material == NETHER_PORTAL) {
+			LightVolumeStore(centerCameraRelative, vec4(NETHER_PORTAL_TINT, 0.0));
 			return;
 		}
 
-		// Everything else, leaves included: it blocks the fill and emits nothing.
-		// Leaves are the interesting member of that set - they do not cast a
-		// shadow in the game, but they do stop light, which is the question this
-		// image is answering.
-		imageStore(light_volume_world, voxel, vec4(0.0, 0.0, 0.0, 1.0));
+		if (material == STAINED_GLASS) {
+			// No store from this stage; see the note above. The voxel is still
+			// published for the fragment stage.
+			ivec3 voxel;
+			lightVolumeVoxel = LightVolumeVoxelAt(centerCameraRelative, voxel)
+				? voxel
+				: ivec3(-1);
+			return;
+		}
+
+		if (material == WATER || material == ICE || material == GLASS) {
+			LightVolumeStore(centerCameraRelative, vec4(0.0));
+			return;
+		}
+
+		LightVolumeStore(centerCameraRelative, vec4(0.0, 0.0, 0.0, 1.0));
 	}
 #endif
 
@@ -184,21 +279,91 @@ void main() {
 	// the transparent voxel it is - so the two paths agree instead of one silently
 	// undoing the other.
 	//
-	// One store per vertex, not one per quad. The four vertices of a terrain quad
-	// all resolve to the same voxel, because the position used below is the
-	// block's centre and not the vertex's own, so three of the four stores are
-	// repeats; but other geometry is submitted as triangles, where no vertex is the
-	// first of a run of four, and a light source that went unwritten would be a
-	// light that does not exist for the fill. A wasted store is the cheaper
-	// mistake, and a 64 cubed grid is small enough that it is not worth the risk.
+	// WHO MAY WRITE. The attribute test in case 3 is the fix for the entities
+	// that the b696 build drew as solid blocks; case 2 is defence in depth and
+	// may never fire on this pack. Read them in that order, because only the
+	// first is what a player sees change:
+	//
+	//   1. A block entity (blockEntityId != 0): only the glowing ones write, and
+	//      which those are is BlockEntityLightColor's answer. A chest or a sign
+	//      writes nothing - it is not a light, and its voxel is empty space as far
+	//      as the colour field is concerned.
+	//   2. An entity (entityId != 0): nothing at all, neither a light nor an
+	//      occluder. This is a safety net, not the fix. The loader fills entityId
+	//      in from entity.properties, and this pack ships no entity.properties,
+	//      so the uniform may be 0 for every entity and this test may never fire.
+	//      It is kept because a false positive here is expensive - an entity
+	//      written as an occluder is the b696 bug back - and the test costs one
+	//      comparison.
+	//   3. Chunk terrain, by the attribute: a vertex carrying at_midBlock writes a
+	//      voxel, and a vertex not carrying it falls to case 4 and writes nothing.
+	//      This is the branch the fix rests on. at_midBlock is the offset from the
+	//      middle of the block to the vertex, in 1/64 block units; Iris documents
+	//      it as available to this program, but only chunk geometry supplies it -
+	//      Sodium and the vanilla chunk renderer fill it from the packed chunk
+	//      vertex, while entities, block entities, hand geometry and weather are
+	//      drawn without it. A cube corner is half a block from the middle, +/-32
+	//      in those units, so for terrain the attribute is never the zero vector.
+	//      The test is therefore about the geometry that is actually being drawn,
+	//      and it is the same attribute the water height test above relies on.
+	//   4. Anything else: nothing. Read case 3 the other way round, this is where
+	//      entities land - their vertices supply no at_midBlock, so they write
+	//      nothing. That is the fix: their own surfaces then sample the light
+	//      around them instead of a black voxel their own geometry wrote, and the
+	//      field around them stays intact instead of gaining a hole. A false
+	//      occlusion is a black hole in a picture that is otherwise colour, and
+	//      that is exactly what the solid branch used to do for every entity.
+	//
+	// What the bug looked like, and why: entities have no mc_Entity, so their
+	// material was GENERIC, which the b696 writer treated as "blocks light". Every
+	// mob, item and armour stand therefore wrote a solid black voxel where it
+	// stood. Two things followed - the entity carved a hole into the colour field,
+	// and its own faces sampled the voxel they had written, found no light, fell
+	// back to the lightmap's warm colour and came out orange. That is the orange
+	// patch under the player in the report. Both halves are fixed by not writing
+	// the voxel, and the entityId test does not have to fire for that.
+	//
+	// Why renderStage was not used instead: Iris has a uniform that says which
+	// stage is being drawn, and testing it for the terrain stage would have been
+	// the direct way to write this. It is not used because it is an Iris-only
+	// symbol - OptiFine has no such uniform - and because nothing in this project
+	// can give it a value: the front end in _team_bfog assembles each program
+	// without a stage number, and the source checkers know the name only as one a
+	// loader injects. Neither side of the branch would ever be exercised by a check
+	// here, and a write path nothing tests is the class of change this batch exists
+	// to remove. The attribute test is the opposite case: at_midBlock is documented
+	// for this stage and is really present on the geometry that writes, so the
+	// compiled path the front end checks is the path the game runs.
+	//
+	// One store per terrain vertex, not one per quad. Stained glass is the one
+	// terrain material that stores nothing here and the note on the writer says
+	// why; for every other terrain material the four vertices of a quad all
+	// resolve to the same voxel, because the position used below is the block's
+	// centre and not the vertex's own, so three of the four stores are repeats;
+	// but other geometry is submitted as triangles, where no vertex is the first
+	// of a run of four, and a light source that went unwritten would be a light
+	// that does not exist for the fill. A wasted store is the cheaper mistake, and
+	// a grid this size is small enough that it is not worth the risk.
 #if defined(COLORED_LIGHTS) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
-	// Iris documents the block centre as `position + at_midBlock.xyz / 64.0`, and
-	// this file already depends on that sign further up: at_midBlock.y is negative
-	// for a vertex above the middle of its block, which is what the water height
-	// test reads. Applied to the camera-relative vertex position the shadow map
-	// works in, it gives the centre of the block this vertex belongs to, and the
-	// grid wants one point per block rather than one per vertex.
-	vec3 blockCenter = cameraRelativePos.xyz + at_midBlock.xyz / 64.0;
-	LightVolumeWriteWorld(materialID, blockCenter);
+	// No voxel unless a branch below finds one. The fragment stage reads this for
+	// stained glass, so it has to be defined on every path.
+	lightVolumeVoxel = ivec3(-1);
+
+	if (blockEntityId != 0) {
+		LightVolumeWriteBlockEntity(cameraRelativePos.xyz);
+	} else if (entityId != 0) {
+		// An entity: no voxel. This safety net may be inert on this pack - see
+		// case 2 - and when it is, cases 3 and 4 are what stop the write.
+	} else if (any(notEqual(at_midBlock, vec3(0.0)))) {
+		// Iris documents the block centre as `position + at_midBlock.xyz / 64.0`,
+		// and this file already depends on that sign further up: at_midBlock.y is
+		// negative for a vertex above the middle of its block, which is what the
+		// water height test reads. Applied to the camera-relative vertex position
+		// the shadow map works in, it gives the centre of the block this vertex
+		// belongs to, and the grid wants one point per block rather than one per
+		// vertex.
+		vec3 blockCenter = cameraRelativePos.xyz + at_midBlock.xyz / 64.0;
+		LightVolumeWriteTerrain(materialID, blockCenter);
+	}
 #endif
 }

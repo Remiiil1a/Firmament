@@ -17,6 +17,53 @@
 // Modified 2026-09-13 by Remiiil1a for Firmament - v0.1 (edit of coderbot's Steadfast).
 
 #version 150 compatibility
+
+// The block in the hand is where the held light's colour would come from, and
+// these two definitions are the two things that write needs.
+//
+// HAS_BLOCK_ATTRIBUTES makes lit.vsh declare mc_Entity and at_midBlock. On this
+// loader it is expected to be a dead end: mc_Entity is documented for the
+// terrain and shadow stages only, and a program that is given no such attribute
+// reads zero, which decodes to GENERIC and leaves BlockLightColor black. The
+// declaration is kept because a loader that did supply block attributes on held
+// geometry would give the held block its own colour, and no build-time test can
+// tell the two apart. The branch that actually runs is the fallback in lit.vsh:
+// the game's held-light level, in the warm family's colour.
+#define HAS_BLOCK_ATTRIBUTES
+
+// Pairs with gbuffers_hand.fsh, which defines this to pick the hand path for
+// the material work. The vertex stage now reads it as well, so that the
+// held-light write exists for the hand program and for none of the fourteen
+// other programs that include lit.vsh.
+#define PBR_HAND_ITEMS
+
+// The image write in lit.vsh uses `layout(rgba32f) uniform image2D` and
+// imageStore, which are 420 features, and this program declares `#version 150`.
+// Declaring the extension is what makes the two legal together, exactly as root
+// shadow.vsh does and for the same reason; the version line is not raised, so a
+// driver without the extension compiles the write out instead of refusing the
+// shader. Guarded by the feature and not by COLORED_LIGHTS because that switch
+// is a #define in environment/lighting/light_colors.glsl, which does not exist
+// yet at this point of the translation unit.
+#ifdef IRIS_FEATURE_CUSTOM_IMAGES
+#extension GL_ARB_shader_image_load_store : enable
+#endif
+
+// What the hand's write needs from outside the pack, declared here because it
+// belongs to this program alone.
+//
+// The image is the fill's info image, which the propagation pass publishes the
+// grid through. The hand writes a third texel into it - (2, 0) - carrying the
+// colour of the block in the hand and, in alpha, whether one is being held at
+// all; the step reads that texel and injects the colour at the player's voxel.
+// It is the same image and the same declaration the compute pass makes, which
+// is why the format is rgba32f and not a half float. The held-light level the
+// write falls back to is declared beside that use in lit.vsh, because the
+// fourteen other programs including that file carry the use as text.
+#ifdef IRIS_FEATURE_CUSTOM_IMAGES
+	layout(rgba32f) uniform writeonly image2D light_volume_info;
+#endif
+
 // Unconditional, so that the sprite bounds varying exists whether or not
 // PBR_HAND_ITEMS is on in gbuffers_hand.fsh. Writing a varying the fragment
 // stage does not read costs a few instructions per vertex and nothing else,

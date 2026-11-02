@@ -20,4 +20,22 @@
 // Edit the root file and regenerate (BATCH_LOG.md b510).
 #define DIMENSION_END
 
+
+// The stained-glass filter write in /program/shadow/shadow.fsh uses
+// `layout(rgba16) uniform image3D` and imageStore, which are 420 features, and
+// this program declares `#version 150`. Declaring the extension is what makes
+// the two legal together, exactly as root shadow.vsh does for the vertex-side
+// write; the version line is deliberately not raised, so a driver without the
+// extension still compiles this program with the filter compiled out instead
+// of refusing the whole shader.
+//
+// Guarded by the feature and not by COLORED_LIGHTS: that switch is a #define in
+// environment/lighting/light_colors.glsl, which is included from inside
+// /program/shadow/shadow.fsh and does not exist yet at this point of the
+// translation unit. This line only asks for a capability, so naming the
+// coarser condition costs nothing when the option is off, and it is the only
+// condition that can be tested here.
+#ifdef IRIS_FEATURE_CUSTOM_IMAGES
+#extension GL_ARB_shader_image_load_store : enable
+#endif
 #include "/program/shadow/shadow.fsh"

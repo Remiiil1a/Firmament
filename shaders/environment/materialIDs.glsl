@@ -75,11 +75,13 @@ const uint GLASS = 6u;
 // What this can and cannot do is worth being precise about. Minecraft's light
 // map records how much light reaches a position, but not which block it came
 // from or what color it was, so a surface cannot look up the color of whatever
-// is lighting it. An emitter's own faces are the one place where the source is
-// known - the block being shaded is the block that glows - so that is where
-// these are used, to give each source its own color instead of leaving it to
-// the average color of its texture. Everything further away is approximated in
-// /program/post/light_bleed.fsh.
+// is lighting it. An emitter's own faces are the one place where a block's ID is known to
+// the fragment stage, and these families used to be read only there and by the
+// light bleed in /program/post/light_bleed.fsh. Since batch 696 they are also
+// the flood fill's emitter list: /environment/lighting/light_volume.glsl
+// carries the same colors through a voxel grid, and a block that is in no
+// family is a wall to that fill rather than a source - which is why the list
+// now includes blocks whose own texture is already the color they glow.
 //
 // Note that these IDs are only about color. Whether a face actually glows is
 // still decided by the light map, so an unlit furnace that shares a family with
@@ -91,7 +93,35 @@ const uint LIGHT_LAVA = 10u;       // Lava, magma
 const uint LIGHT_SEA = 11u;        // Sea lanterns, conduits, beacons
 const uint LIGHT_END_ROD = 12u;    // End rods, end gateways
 const uint LIGHT_CRYING = 13u;     // Crying obsidian, sculk catalysts
-const uint LIGHT_AMETHYST = 14u;   // Respawn anchors, enchanting tables
+const uint LIGHT_AMETHYST = 14u;   // Respawn anchors, enchanting tables, amethyst clusters and large buds
+
+// The light families added in batch 697.
+//
+// Their block.properties numbers are 10040 to 10043, which is ID 40 to 43: the
+// high nibble is the geometry selector and 2 is a selector this pack does not
+// define, so the whole number survives to whoever reads it instead of being
+// decoded into a variant of another material. That slot is the one the nether
+// portal has always used, and a light family has to live above 31 for a reason
+// worth writing down: 16 to 31 are selector 1, the diagonal one, and lit.vsh
+// answers GLASS or GENERIC for faces of a number in that range, which is not
+// what a light source is allowed to look like in the gbuffers stage.
+//
+// Their own surfaces deliberately do not take these colors: a froglight is
+// already the color it glows and a copper torch draws a green flame of its own.
+// FetchMaterialID in lit.vsh reduces these four numbers to GENERIC before
+// EncodePerFace can keep only their low nibble and hand the fragment stage a
+// different family's color; see the note there. The observable trade of that
+// reduction is worth stating: these blocks' own faces keep the texture look
+// they have always had (which for a froglight is its glow and for a copper
+// torch is a green flame), while the shadow program decodes the raw number and
+// does see the family, so the flood fill still emits the right color from the
+// same block. The faces and the light are coloured by different answers because
+// the fragment stage cannot carry a number above 15 while the shadow program
+// reads the number raw.
+const uint LIGHT_FROGLIGHT_OCHRE = 40u;       // Ochre froglight
+const uint LIGHT_FROGLIGHT_VERDANT = 41u;     // Verdant froglight
+const uint LIGHT_FROGLIGHT_PEARLESCENT = 42u; // Pearlescent froglight
+const uint LIGHT_COPPER = 43u;                // Copper torches and copper lanterns, every oxidation state
 
 // Stained glass, in every colour, along with its panes and tinted glass.
 //
@@ -139,9 +169,20 @@ const uint STAINED_GLASS = 15u;
 // * the bits above them are the geometry selector's field, where this pack
 // defines exactly one value, 1 (the +16 the diagonal selector adds). 2 is
 // nothing at all: it is not a selector this pack defines, so a 38 is not a
-// variant of GLASS but a slot of its own. block.10038 is the only entry in
-// block.properties whose field there is 2 - being alone is what makes it safe
-// - and block.10019 and block.10022 are the only two that use selector 1.
+// variant of GLASS but a slot of its own. It is where a number has to go when
+// the whole number has to survive to the shadow program, and batch 697 put the
+// four new light families there for the same reason; block.10019 and
+// block.10022 are the only two entries that use selector 1.
+//
+// More than one entry in selector 2 is safe, and the reason is worth being
+// exact about because the low four bits are read in two places: EncodePerFace
+// keeps four bits of material and every gbuffers program goes through it (not
+// only the translucent ones), and lit_voxy.fsh drops anything above 0xFu to
+// GENERIC of its own accord. Neither ever sees these four families:
+// FetchMaterialID in lit.vsh reduces them to GENERIC first, because their own
+// faces are meant to keep their texture colors. The nether portal is the other
+// entry and its low nibble is 6 by construction, which is the GLASS the
+// fragment stage has always been handed for it.
 //
 // Nothing else is allowed to point at it: it is not a filter, it is not a
 // material the lit path branches on, and everything that is not the shadow
@@ -274,7 +315,8 @@ const float END_GATEWAY_BLOCK_ID = 10012.0;
 // Add 16 to any material ID to apply this geometry selector - the selector is
 // the ID shifted right by four (lit.vsh), so 16 is selector 1 and nothing else.
 // 10019 and 10022 in block.properties are the entries that use it; the nether
-// portal's 38 carries selector 2, which is not defined here at all.
+// portal's 38 and the four light families added in batch 697 carry selector 2,
+// which is not defined here at all.
 const uint GEOMETRY_HORIZONTAL_DIAGONAL_ONLY = 1u;
 
 // Standard Iris / OptiFine: IDs in block.properties via mc_Entity.x
