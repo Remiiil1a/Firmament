@@ -56,21 +56,47 @@ uniform mat4 shadowModelViewInverse;
 	// position lands in must not move while the camera moves within one block.
 	uniform vec3 cameraPosition;
 
-	// What kind of geometry is being drawn.
+	// What kind of geometry is being drawn, which is what decides whether this
+	// vertex may write a voxel at all.
 	//
-	// blockEntityId is the loader's number for the block entity being drawn, and
-	// block.properties is what gives the two this pack knows their numbers
-	// (10039 the end portal, 10012 the end gateway). It is a mapping the pack
-	// supplies, so it can be counted on as far as those two entries are
-	// concerned.
+	// renderStage is the loader's own number for the draw being submitted, with a
+	// constant per kind (MC_RENDER_STAGE_TERRAIN_SOLID and friends for the chunk
+	// passes, MC_RENDER_STAGE_ENTITIES for mobs and items,
+	// MC_RENDER_STAGE_BLOCK_ENTITIES for block entities). It is the test this uses,
+	// for the reason written at the write below: it is the loader's own statement
+	// about what it is drawing, it is the same one Eclipse's LPV and Mellow's
+	// coloured lights both use, and it does not depend on an attribute being
+	// present on the geometry - which is exactly what made batch 697 lose the whole
+	// effect in game.
+	uniform int renderStage;
+
+	// The two stage constants, with the loader's own definitions winning.
 	//
-	// entityId is the same shape for non-block entities, but this pack ships no
-	// entity.properties, and without one the loader has no number of ours to
-	// report - so the uniform may be 0 for every entity. The test on it below is
-	// kept as defence in depth and never as the fix; see the note at the write
-	// for which test the fix actually is.
+	// Iris supplies these names to every program it compiles; this project's front
+	// end does not, so without a fallback the branch below would be the one part of
+	// the writer no check ever compiles. The numbers are OptiFine's documented
+	// stage order, which Iris implements as well, and `#ifndef` is what keeps the
+	// loader's own definition when there is one. A wrong number here cannot break
+	// the feature either way: the test is fail-open, so an unrecognised stage is
+	// written as terrain (see case 3 at the write).
+	#ifndef MC_RENDER_STAGE_ENTITIES
+		#define MC_RENDER_STAGE_ENTITIES 3
+	#endif
+	#ifndef MC_RENDER_STAGE_BLOCK_ENTITIES
+		#define MC_RENDER_STAGE_BLOCK_ENTITIES 4
+	#endif
+
+	// blockEntityId is the loader's number for the block entity being drawn, from
+	// the pack's own block.properties (10039 the end portal, 10012 the end
+	// gateway), so it is a number this pack controls and can count on. It is used
+	// only to pick which of the two gets a colour - the decision whether this draw
+	// may write at all is renderStage's, above.
+	//
+	// entityId is deliberately not declared: the loader fills it from
+	// entity.properties, this pack ships no entity.properties, and batch 697
+	// shipped a version that tested it and lost the whole effect in game. The
+	// stage test replaces it.
 	uniform int blockEntityId;
-	uniform int entityId;
 
 	// This frame's emitters, filters and occluders, written here and read by the
 	// propagation pass later in the same frame. writeonly is what this stage does
@@ -279,89 +305,68 @@ void main() {
 	// the transparent voxel it is - so the two paths agree instead of one silently
 	// undoing the other.
 	//
-	// WHO MAY WRITE. The attribute test in case 3 is the fix for the entities
-	// that the b696 build drew as solid blocks; case 2 is defence in depth and
-	// may never fire on this pack. Read them in that order, because only the
-	// first is what a player sees change:
+	// WHO MAY WRITE, which is the whole of the fix for the entities that the b696
+	// build drew as solid blocks - and, in batch 698, the whole of the fix for the
+	// b697 build writing nothing at all.
 	//
-	//   1. A block entity (blockEntityId != 0): only the glowing ones write, and
-	//      which those are is BlockEntityLightColor's answer. A chest or a sign
-	//      writes nothing - it is not a light, and its voxel is empty space as far
-	//      as the colour field is concerned.
-	//   2. An entity (entityId != 0): nothing at all, neither a light nor an
-	//      occluder. This is a safety net, not the fix. The loader fills entityId
-	//      in from entity.properties, and this pack ships no entity.properties,
-	//      so the uniform may be 0 for every entity and this test may never fire.
-	//      It is kept because a false positive here is expensive - an entity
-	//      written as an occluder is the b696 bug back - and the test costs one
-	//      comparison.
-	//   3. Chunk terrain, by the attribute: a vertex carrying at_midBlock writes a
-	//      voxel, and a vertex not carrying it falls to case 4 and writes nothing.
-	//      This is the branch the fix rests on. at_midBlock is the offset from the
-	//      middle of the block to the vertex, in 1/64 block units; Iris documents
-	//      it as available to this program, but only chunk geometry supplies it -
-	//      Sodium and the vanilla chunk renderer fill it from the packed chunk
-	//      vertex, while entities, block entities, hand geometry and weather are
-	//      drawn without it. A cube corner is half a block from the middle, +/-32
-	//      in those units, so for terrain the attribute is never the zero vector.
-	//      The test is therefore about the geometry that is actually being drawn,
-	//      and it is the same attribute the water height test above relies on.
-	//   4. Anything else: nothing. Read case 3 the other way round, this is where
-	//      entities land - their vertices supply no at_midBlock, so they write
-	//      nothing. That is the fix: their own surfaces then sample the light
-	//      around them instead of a black voxel their own geometry wrote, and the
-	//      field around them stays intact instead of gaining a hole. A false
-	//      occlusion is a black hole in a picture that is otherwise colour, and
-	//      that is exactly what the solid branch used to do for every entity.
+	// The rule is: exclude only what can be named, and write everything else. A
+	// feature whose failure mode is "no colour anywhere" must not be gated on a
+	// signal that cannot be proved. b697 gated the write on at_midBlock (with
+	// entityId as a second test) and the effect disappeared completely in game,
+	// which says those two do not carry the values the documentation suggests in
+	// this pass - and a gate that fails closed turns a lighting feature off.
 	//
-	// What the bug looked like, and why: entities have no mc_Entity, so their
-	// material was GENERIC, which the b696 writer treated as "blocks light". Every
-	// mob, item and armour stand therefore wrote a solid black voxel where it
-	// stood. Two things followed - the entity carved a hole into the colour field,
-	// and its own faces sampled the voxel they had written, found no light, fell
-	// back to the lightmap's warm colour and came out orange. That is the orange
-	// patch under the player in the report. Both halves are fixed by not writing
-	// the voxel, and the entityId test does not have to fire for that.
+	//   1. A block-entity draw (renderStage == MC_RENDER_STAGE_BLOCK_ENTITIES):
+	//      only the glowing ones write, and which those are is
+	//      BlockEntityLightColor's answer. A chest or a sign writes nothing - it is
+	//      not a light, and its voxel is empty space as far as the colour field is
+	//      concerned.
+	//   2. An entity draw (renderStage == MC_RENDER_STAGE_ENTITIES): nothing at
+	//      all, neither a light nor an occluder. This is the fix for the orange
+	//      patch in the report. Entities have no mc_Entity, so their material was
+	//      GENERIC, which the writer treats as "blocks light"; every mob, item and
+	//      armour stand wrote a solid black voxel where it stood, carved a hole
+	//      into the colour field, and then its own faces sampled that voxel, found
+	//      no light and fell back to the lightmap's warm colour.
+	//   3. Everything else: a terrain write. Everything else in a shadow pass is
+	//      chunk terrain, and the bias is deliberate - if the stage number is one
+	//      this file has not heard of, or reads 0 because the loader did not fill
+	//      it, the write still happens. A voxel written that should not be there
+	//      costs a slightly wrong occlusion; a voxel not written costs the whole
+	//      effect, which is what b697 shipped and the author saw.
 	//
-	// Why renderStage was not used instead: Iris has a uniform that says which
-	// stage is being drawn, and testing it for the terrain stage would have been
-	// the direct way to write this. It is not used because it is an Iris-only
-	// symbol - OptiFine has no such uniform - and because nothing in this project
-	// can give it a value: the front end in _team_bfog assembles each program
-	// without a stage number, and the source checkers know the name only as one a
-	// loader injects. Neither side of the branch would ever be exercised by a check
-	// here, and a write path nothing tests is the class of change this batch exists
-	// to remove. The attribute test is the opposite case: at_midBlock is documented
-	// for this stage and is really present on the geometry that writes, so the
-	// compiled path the front end checks is the path the game runs.
+	// renderStage is the loader's own statement about what it is drawing, one
+	// constant per kind, and it is the same test Eclipse's LPV and Mellow's
+	// coloured lights both use. It is Iris-only - OptiFine has no such uniform -
+	// and this feature is Iris-only already. This project's front end cannot give
+	// it a value, so the branch below is compiled for review only; that is stated
+	// here rather than hidden, and the fail-open shape above is what keeps an
+	// unpopulated uniform harmless.
 	//
 	// One store per terrain vertex, not one per quad. Stained glass is the one
 	// terrain material that stores nothing here and the note on the writer says
 	// why; for every other terrain material the four vertices of a quad all
 	// resolve to the same voxel, because the position used below is the block's
 	// centre and not the vertex's own, so three of the four stores are repeats;
-	// but other geometry is submitted as triangles, where no vertex is the first
-	// of a run of four, and a light source that went unwritten would be a light
-	// that does not exist for the fill. A wasted store is the cheaper mistake, and
-	// a grid this size is small enough that it is not worth the risk.
+	// but geometry is also submitted as triangles, where no vertex is the first of
+	// a run of four, and a light source that went unwritten would be a light that
+	// does not exist for the fill. A wasted store is the cheaper mistake.
 #if defined(COLORED_LIGHTS) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
 	// No voxel unless a branch below finds one. The fragment stage reads this for
 	// stained glass, so it has to be defined on every path.
 	lightVolumeVoxel = ivec3(-1);
 
-	if (blockEntityId != 0) {
+	if (renderStage == MC_RENDER_STAGE_BLOCK_ENTITIES) {
 		LightVolumeWriteBlockEntity(cameraRelativePos.xyz);
-	} else if (entityId != 0) {
-		// An entity: no voxel. This safety net may be inert on this pack - see
-		// case 2 - and when it is, cases 3 and 4 are what stop the write.
-	} else if (any(notEqual(at_midBlock, vec3(0.0)))) {
-		// Iris documents the block centre as `position + at_midBlock.xyz / 64.0`,
-		// and this file already depends on that sign further up: at_midBlock.y is
-		// negative for a vertex above the middle of its block, which is what the
-		// water height test reads. Applied to the camera-relative vertex position
-		// the shadow map works in, it gives the centre of the block this vertex
-		// belongs to, and the grid wants one point per block rather than one per
-		// vertex.
+	} else if (renderStage == MC_RENDER_STAGE_ENTITIES) {
+		// An entity: no voxel, by design. See case 2 above.
+	} else {
+		// Chunk terrain, and anything else this file cannot name - see case 3.
+		// Iris documents the block centre as `position + at_midBlock.xyz / 64.0`.
+		// Where the attribute is populated this lands the voxel exactly on the
+		// block; where it is not, the vertex's own position is used, which is the
+		// approximation the b696 build shipped and which still lands in the right
+		// part of the world.
 		vec3 blockCenter = cameraRelativePos.xyz + at_midBlock.xyz / 64.0;
 		LightVolumeWriteTerrain(materialID, blockCenter);
 	}
