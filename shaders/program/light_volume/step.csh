@@ -43,18 +43,18 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-// 8 invocations per axis and 16 groups per axis: the whole 128-cubed grid in one
-// dispatch, one invocation per voxel. That is 2,097,152 invocations a frame, and it
-// is the same number at every setting of COLORED_LIGHT_RANGE - the option limits
-// how much of the grid is used, not what the dispatch costs.
+// 8 invocations per axis and one group per eight voxels of the grid: the whole
+// volume in one dispatch, one invocation per voxel. The count follows the grid,
+// which follows COLORED_LIGHT_RANGE - 4 groups per axis at 32, then 6, 8, 12 and
+// 16 at 128 - so the dispatch is 32,768 invocations a frame at the smallest
+// setting and 2,097,152 at the largest.
 //
 // A shader constant rather than a line in shaders.properties, which is how this
-// pack declares work groups (see program/water_interaction/step_a.csh). The grid
-// is a fixed 128 cubed - the images are declared at that size unconditionally in
-// shaders.properties - so the count is written out rather than derived from an
-// option: 16 groups of 8 invocations is exactly the grid, and a build-time
-// constant is what the loader requires of it.
-const ivec3 workGroups = ivec3(16, 16, 16);
+// pack declares work groups (see program/water_interaction/step_a.csh). It is
+// derived from LIGHT_VOLUME_SIZE rather than written out because the grid is an
+// option again, and it is a compile-time constant in every one of the five
+// configurations, which is what the loader requires of it.
+const ivec3 workGroups = ivec3(LIGHT_VOLUME_SIZE / 8);
 
 #ifdef IS_IRIS
 uniform vec3 cameraPosition;
@@ -218,24 +218,6 @@ void main() {
 			next = max(spread * LIGHT_VOLUME_STEP, world.rgb);
 		}
 	}
-
-	// The option's radius, and the extent mask that makes it real: a voxel further
-	// than the active radius from the centre of the fixed grid stores black. The
-	// field is a 128-cubed image whatever the option says, and the option only
-	// decides how much of it the fill may use. The consumer fades the colour out
-	// towards the same radius, so the edge of what is used is a fade and not a
-	// cut.
-	//
-	// Chebyshev distance and not Euclidean: the grid is a cube and the mask has to
-	// cut it to a cube, so the farthest axis decides.
-	ivec3 fromCentre = abs(voxel - ivec3(LIGHT_VOLUME_GRID_RADIUS));
-
-	if (max(fromCentre.x, max(fromCentre.y, fromCentre.z))
-		> LIGHT_VOLUME_ACTIVE_RADIUS) {
-		next = vec3(0.0);
-	}
-
-
 
 	// The fourth channel is stored as 1.0 because there is nothing to put in it:
 	// the colour is the whole of the state this image carries. It is written
