@@ -22,11 +22,13 @@
 // What it does is one step of the fill per frame: after the shadow pass that writes
 // the world image it reads, and before the gbuffer programs that read the field it
 // writes. What it costs, in every dimension equally, is one dispatch of
-// LIGHT_VOLUME_SIZE cubed invocations per frame - 2,097,152 at the fixed 128 - and
-// a sixteen-megabyte write into the current field, with the world image and six
+// LIGHT_VOLUME_SIZE cubed invocations per frame - 262,144 at the default 64 and
+// 2,097,152 at 128 - and a write of the whole field, with the world image and six
 // neighbours of every voxel read on top of that. It is the same cost in an empty
 // world as in a lit one: a voxel the fill has nothing to say about is stored as
-// black, not skipped.
+// black, not skipped. COLORED_LIGHT_RANGE is what both numbers follow: the grid's
+// size comes from the chain in light_volume.glsl, and the dispatch's own count is
+// the literal chain in the file this includes.
 //
 // #version 430 comes first because compute programs need it and the program this
 // includes carries no version line of its own.

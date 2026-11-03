@@ -43,18 +43,43 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-// 8 invocations per axis and 16 groups per axis: the whole 128-cubed grid in one
-// dispatch, one invocation per voxel. That is 2,097,152 invocations a frame, and it
-// is the same number at every setting of COLORED_LIGHT_RANGE - the option limits
-// how much of the grid is used, not what the dispatch costs.
+// 8 invocations per axis and one group per eight voxels of the grid: the whole
+// volume in one dispatch, one invocation per voxel. The count follows the grid,
+// which follows COLORED_LIGHT_RANGE - 4 groups per axis at 32, then 6, 8, 12 and
+// 16 at 128 - so the dispatch is 32,768 invocations a frame at the smallest
+// setting and 2,097,152 at the largest.
 //
-// A shader constant rather than a line in shaders.properties, which is how this
-// pack declares work groups (see program/water_interaction/step_a.csh). The grid
-// is a fixed 128 cubed - the images are declared at that size unconditionally in
-// shaders.properties - so the count is written out rather than derived from an
-// option: 16 groups of 8 invocations is exactly the grid, and a build-time
-// constant is what the loader requires of it.
+// The five declarations below are literal integers, one branch per setting, and
+// they have to stay literal. The loader reads the work group count out of this
+// source before the program runs, so it has to be a number it can see there; what
+// it does with an expression is not something this machine can observe. What this
+// project has observed is the outcome: batch 704 had ivec3(16, 16, 16) written out
+// and the field was shaded in game, batches 705 and 706 had ivec3(LIGHT_VOLUME_SIZE
+// / 8) and ivec3(COLORED_LIGHT_RANGE / 8) here and the field was black in game
+// twice, while every check in this project stayed green in all three batches -
+// a GLSL compiler folds either form and reports nothing. Those two batches changed
+// other things as well, so this is not a proof about the mechanism; it is the one
+// shape every build known to work in game uses. The other compute passes shipped in
+// this pack (program/water_interaction/step_a.csh and step_b.csh) select theirs per
+// branch too, and so does the reference this feature was built from (Eclipse's
+// dimensions/shadowcomp.csh picks its LPV grid, 6/7/8, the same way), which is
+// where this shape comes from.
+//
+// What a mistake costs is the whole feature, silently: this one dispatch is what
+// advances the entire grid, so a dispatch that does not run writes nothing, the
+// field samples as black, and every surface just takes the fallback tint - the same
+// picture as "coloured lights off".
+#if COLORED_LIGHT_RANGE == 32
+const ivec3 workGroups = ivec3(4, 4, 4);
+#elif COLORED_LIGHT_RANGE == 48
+const ivec3 workGroups = ivec3(6, 6, 6);
+#elif COLORED_LIGHT_RANGE == 96
+const ivec3 workGroups = ivec3(12, 12, 12);
+#elif COLORED_LIGHT_RANGE == 128
 const ivec3 workGroups = ivec3(16, 16, 16);
+#else
+const ivec3 workGroups = ivec3(8, 8, 8);
+#endif
 
 #ifdef IS_IRIS
 uniform vec3 cameraPosition;
@@ -218,24 +243,6 @@ void main() {
 			next = max(spread * LIGHT_VOLUME_STEP, world.rgb);
 		}
 	}
-
-	// The option's radius, and the extent mask that makes it real: a voxel further
-	// than the active radius from the centre of the fixed grid stores black. The
-	// field is a 128-cubed image whatever the option says, and the option only
-	// decides how much of it the fill may use. The consumer fades the colour out
-	// towards the same radius, so the edge of what is used is a fade and not a
-	// cut.
-	//
-	// Chebyshev distance and not Euclidean: the grid is a cube and the mask has to
-	// cut it to a cube, so the farthest axis decides.
-	ivec3 fromCentre = abs(voxel - ivec3(LIGHT_VOLUME_GRID_RADIUS));
-
-	if (max(fromCentre.x, max(fromCentre.y, fromCentre.z))
-		> LIGHT_VOLUME_ACTIVE_RADIUS) {
-		next = vec3(0.0);
-	}
-
-
 
 	// The fourth channel is stored as 1.0 because there is nothing to put in it:
 	// the colour is the whole of the state this image carries. It is written
