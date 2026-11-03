@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 705]
+option.PBR_DEBUG=Material debug view [build 706]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -716,16 +716,16 @@ option.COLORED_LIGHTS_STRENGTH.comment=How far a light source's own surface \
 
 option.COLORED_LIGHT_RANGE=Colored light range
 option.COLORED_LIGHT_RANGE.comment=The width, in blocks, of the cube the colour \
-	of block light lives in: 32, 48, 64, 96 or 128. The cube, the number of voxels \
-	the propagation advances every frame and the memory the effect costs all scale \
-	with it - 32,768 voxels and 0.75 MiB of images at 32, up to 2,097,152 and \
-	48 MiB at 128 - so this is the option that trades reach for GPU time and \
-	memory. The default 64 reaches past the game's own block light range of 15.
+	of block light advances through each frame: 32, 48 or 64. That cube is the \
+	per-frame cost - 4 cubed workgroups and 32,768 voxels at 32, 6 cubed and \
+	110,592 at 48, 8 cubed and 262,144 at 64 - and the colour reaches half of that \
+	width in every direction, so 16, 24 or 32 blocks. The three colour images are \
+	always 128 cubed and 48 MiB, so lowering this does not reduce the memory; it \
+	buys GPU time. The default 64 reaches past the game's own block light range \
+	of 15.
 value.COLORED_LIGHT_RANGE.32=32
 value.COLORED_LIGHT_RANGE.48=48
 value.COLORED_LIGHT_RANGE.64=64
-value.COLORED_LIGHT_RANGE.96=96
-value.COLORED_LIGHT_RANGE.128=128
 
 option.COLORED_LIGHT_SATURATION=Colored light saturation
 option.COLORED_LIGHT_SATURATION.comment=How saturated the colour carried by the \

@@ -22,12 +22,12 @@
 // What it does is one step of the fill per frame: after the shadow pass that writes
 // the world image it reads, and before the gbuffer programs that read the field it
 // writes. What it costs, in every dimension equally, is one dispatch of
-// LIGHT_VOLUME_SIZE cubed invocations per frame and a write of one volume into the
-// current field, with the world image and six neighbours of every voxel read on top
-// of that. Both follow COLORED_LIGHT_RANGE: 32,768 invocations and a quarter-megabyte
-// write at 32, 2,097,152 invocations and a sixteen-megabyte write at 128. It is the
-// same cost in an empty world as in a lit one: a voxel the fill has nothing to say
-// about is stored as black, not skipped.
+// COLORED_LIGHT_RANGE cubed invocations per frame and a write of that many voxels
+// into the current field, with the world image and six neighbours of every voxel
+// read on top of that - 32,768 invocations and a quarter-megabyte write at 32,
+// 110,592 and 0.84 MiB at 48, 262,144 and 2 MiB at 64. It is the same cost in an
+// empty world as in a lit one: a voxel the fill has nothing to say about is stored
+// as black, not skipped.
 //
 // #version 430 comes first because compute programs need it and the program this
 // includes carries no version line of its own.

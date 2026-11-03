@@ -43,18 +43,17 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-// 8 invocations per axis and one group per eight voxels of the grid: the whole
-// volume in one dispatch, one invocation per voxel. The count follows the grid,
-// which follows COLORED_LIGHT_RANGE - 4 groups per axis at 32, then 6, 8, 12 and
-// 16 at 128 - so the dispatch is 32,768 invocations a frame at the smallest
-// setting and 2,097,152 at the largest.
+// 8 invocations per axis and one group per eight voxels of the dispatch: 4 groups
+// per axis and 32,768 invocations at the 32 setting, 6 and 110,592 at 48, 8 and
+// 262,144 at 64. The grid itself is fixed at 128 cubed; the option decides how
+// much of its centre a frame advances, which is the per-frame cost the option
+// buys.
 //
 // A shader constant rather than a line in shaders.properties, which is how this
 // pack declares work groups (see program/water_interaction/step_a.csh). It is
-// derived from LIGHT_VOLUME_SIZE rather than written out because the grid is an
-// option again, and it is a compile-time constant in every one of the five
-// configurations, which is what the loader requires of it.
-const ivec3 workGroups = ivec3(LIGHT_VOLUME_SIZE / 8);
+// derived from COLORED_LIGHT_RANGE because that is the number that varies, and it
+// is a compile-time constant at every setting, which is what the loader requires.
+const ivec3 workGroups = ivec3(COLORED_LIGHT_RANGE / 8);
 
 #ifdef IS_IRIS
 uniform vec3 cameraPosition;
@@ -124,11 +123,18 @@ vec4 LightVolumePreviousField(ivec3 pos, bool fromA) {
 
 void main() {
 #ifdef IS_IRIS
-	// One invocation per voxel. The dispatch is exactly the grid, but the bound is
-	// kept because a write past the last voxel is undefined rather than ignored,
-	// and because the bound is what the formula means: outside the grid there is
-	// no voxel of the fill to advance.
-	ivec3 voxel = ivec3(gl_GlobalInvocationID);
+	// One invocation per voxel of the dispatch, and the dispatch covers the centre
+	// of the grid rather than its corner: the offset is half the grid minus half the
+	// dispatch, so the cube is centred on the player's block and the fill advances
+	// outwards from there. Voxels outside it are not touched at all this frame - the
+	// consumer's fade is measured from the same radius and keeps them out of the
+	// shading.
+	//
+	// The bound is still checked because a write past the last voxel is undefined
+	// rather than ignored, and because it states what the formula means: outside
+	// the grid there is no voxel of the fill to advance.
+	ivec3 voxel = ivec3(gl_GlobalInvocationID)
+		+ ivec3(LIGHT_VOLUME_GRID_RADIUS - LIGHT_VOLUME_DISPATCH_RADIUS);
 
 	if (any(greaterThanEqual(voxel, ivec3(LIGHT_VOLUME_SIZE)))) {
 		return;
@@ -217,6 +223,22 @@ void main() {
 		} else {
 			next = max(spread * LIGHT_VOLUME_STEP, world.rgb);
 		}
+	}
+
+	// The extent mask. In batch 704 the dispatch covered the whole grid and this
+	// was the branch that zeroed everything beyond the active radius every frame.
+	// This batch's dispatch covers only the centre cube, and every voxel it can
+	// reach is inside the active radius, so the branch is never taken at 32, 48 or
+	// 64; it is kept as the statement of the rule - nothing the step writes as a
+	// colour lies beyond LIGHT_VOLUME_ACTIVE_RADIUS - and would take effect again
+	// if a dispatch ever grew past that radius. The unwritten ring outside the
+	// dispatch is not this branch's business: the consumer fades to zero at the
+	// dispatch radius before it is read.
+	ivec3 fromCentre = abs(voxel - ivec3(LIGHT_VOLUME_GRID_RADIUS));
+
+	if (max(fromCentre.x, max(fromCentre.y, fromCentre.z))
+		> LIGHT_VOLUME_ACTIVE_RADIUS) {
+		next = vec3(0.0);
 	}
 
 	// The fourth channel is stored as 1.0 because there is nothing to put in it:
