@@ -957,10 +957,39 @@ vec3 DiffuseLightingImpl(
 		// of the screen with water until the player's eyes are actually
 		// underwater, which takes place near the end of the lit vertex shader.
 		if (isEyeInWater == 1) {
-			// TODO: Water depth calculation copied from
-			// /environment/water/absorption_refraction.glsl
-			// It should be in a common function
-			float waterDepth = (-15.0 / 16.0) * fragment.skyLight + 1.0;
+			// How much water this fragment is seen through, normalised the way
+			// ApplyWaterAbsorption takes it: 1.0 is NORMALISED_DEPTH_METERS.
+			//
+			// There are two cases because a fragment's sky light is a reading of the
+			// water above it only where the fragment belongs to the world. The light
+			// map a model is lit by - the hand, the held item, a mob, the player's own
+			// model in third person - is the light the game gives that model, and under
+			// the surface it carries no sky component at all: batch 680's diagnostic
+			// view reads those pixels as a sky light of zero while the kelp beside them
+			// reads one (batch 681, and LESSONS 68 for the class of mistake). Read as a
+			// depth, that zero is "sixteen metres down", so those models were
+			// multiplied by the deep water's colour, came out the colour of the water
+			// behind them and looked as if the water passed through them - the
+			// author's "see-through". Batches 678, 679 and 681 all failed to remove it
+			// because all three only ever edited the whole-frame absorption in
+			// copy_and_fog.fsh; this is the same reading, in the other place that takes
+			// it, and it was never touched.
+			//
+			// A model is given the water the view actually looked through instead: the
+			// distance from the eye, which is the one depth in the frame that does not
+			// have to be guessed. At a metre that is nearly nothing, at four metres it
+			// is a clear water tint, and it cannot claim more water than the camera is
+			// looking through. The world keeps its own reading, so the underwater look
+			// of the terrain is exactly what it was.
+			#if defined(PBR_ENTITIES) || defined(PBR_HAND_ITEMS)
+				float waterDepth = length(fragment.cameraRelativePos)
+					/ NORMALISED_DEPTH_METERS;
+			#else
+				// TODO: copied from /environment/water/absorption_refraction.glsl,
+				// which reaches the same depth along its own path. It should be one
+				// common function.
+				float waterDepth = (-15.0 / 16.0) * fragment.skyLight + 1.0;
+			#endif
 
 			ApplyWaterAbsorption(
 				waterDepth,
