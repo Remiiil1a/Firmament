@@ -91,27 +91,21 @@
 // the object's outline offset by the blur radius.
 #define BLOOM_THRESHOLD 0.0 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5 2.0 3.0 5.0]
 
-// Whether the specular highlight on a surface is left out of the glow.
+// The glow is built from the frame exactly as it was drawn, specular highlights
+// included.
 //
-// On by default, and this is what keeps the effect believable rather than
-// merely strong: a highlight is a picture of a light and not a light. The sun
-// that makes it is somewhere else entirely, and its reflection on a polished
-// floor does not light the room. Bloom it anyway and a shiny surface ends up
-// looking like a lamp of its own, which is what a highlight glowing in the
-// first place looks like.
+// Batch 709 removed the option that could take the highlight back out
+// (BLOOM_EXCLUDE_SPECULAR, and the full-resolution mask the terrain programs wrote
+// into colortex15 for it) at the author's request. The reasoning behind the option
+// was that a highlight is a picture of a light rather than a light; what that
+// reasoning left out is that the glow is an imitation of the lens, and the one
+// thing a camera blooms most of all is the sun on a polished floor. What went with
+// the option is its cost: one buffer fewer for every surface program to write, and
+// one fetch fewer per tap in the pass below.
 //
-// The cost is one more buffer for the terrain shaders to write - see
-// colortex15 in /program/world/lit.fsh - and one more fetch per tap in the
-// pass that keeps the bright parts. Turning this off skips those fetches and
-// nothing else: the buffer is written either way, for the reason the note on
-// the buffer gives.
-//
-// What it does not cover: water, ice and glass take their reflection from
-// TranslucentLighting rather than from the surface lighting, so a highlight on
-// those still blooms. That is a deliberate stopping point rather than an
-// oversight - it is the sun glinting off water, which is the one specular
-// highlight a camera really does bloom.
-#define BLOOM_EXCLUDE_SPECULAR
+// Note what this does not change: the bloom still cannot move a pixel that is not
+// already bright, and BLOOM_THRESHOLD still decides what "bright" means - raising
+// it is the way to keep the glow off a merely shiny surface.
 
 // How far the glow spreads, as a multiple of the blur's own width.
 //

@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 708]
+option.PBR_DEBUG=Material debug view [build 709]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -629,15 +629,6 @@ option.BLOOM_RADIUS=Bloom radius
 option.BLOOM_RADIUS.comment=How far the glow spreads, as a multiple of the \
 	blur's own width. Raising it widens the halo and costs nothing extra: the \
 	passes pay for the tap count, not the radius.
-
-option.BLOOM_EXCLUDE_SPECULAR=Bloom leaves out highlights
-option.BLOOM_EXCLUDE_SPECULAR.comment=Whether the specular highlight on a \
-	surface is taken back out of the glow. On by default: a highlight is a \
-	picture of a light and not a light, so blooming it makes a shiny surface look \
-	like a lamp of its own, and the cost is one more fetch per tap. Water, ice \
-	and glass take their reflection from TranslucentLighting, so a highlight on \
-	those still blooms - it is the sun glinting off water, which a camera really \
-	does bloom.
 
 option.PBR_EMISSION=Emission
 option.PBR_EMISSION.comment=Whether the emission stored in the specular map's \

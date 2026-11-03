@@ -46,12 +46,6 @@
 
 uniform sampler2D colortex0;
 
-// The specular highlight each pixel was given, as the surface programs left it
-// in colortex15, so that it can be taken back out before the threshold is
-// applied. See BLOOM_EXCLUDE_SPECULAR in lib/bloom.glsl for why a highlight is
-// not something the glow should be built from in the first place.
-uniform sampler2D colortex15;
-
 // Both bloom levels are held in a floating-point format with an alpha channel,
 // which is what lets a value above white survive in them. In an eight-bit
 // buffer the bright pass would be pointless: the threshold only ever keeps
@@ -73,29 +67,6 @@ layout(location = 0) out vec4 bloomTight;
 uniform float viewWidth;
 uniform float viewHeight;
 
-// The frame at one corner of the tent, less whatever of it was a highlight.
-//
-// The subtraction is done per tap rather than once at the centre because a
-// highlight can be a single pixel wide: averaged over the whole tent, the
-// smallest and brightest ones - which are exactly the ones that look worst when
-// they bloom - would leave a ring of glow around themselves rather than
-// disappearing with them.
-//
-// Clamped at zero so that a tap the highlight more than accounts for adds none
-// of the glow rather than a negative amount of it. A negative would eat into a
-// neighbour's glow in the average below, which is a worse failure than the one
-// it would be fixing: dark holes in the glow instead of glow where there should
-// be none.
-vec3 BloomSource(vec2 screenCoord) {
-	vec3 color = textureLod(colortex0, screenCoord, 0.0).rgb;
-
-	#ifdef BLOOM_EXCLUDE_SPECULAR
-		color = max(color - textureLod(colortex15, screenCoord, 0.0).rgb, vec3(0.0));
-	#endif
-
-	return color;
-}
-
 void main() {
 	vec2 halfRes = vec2(viewWidth, viewHeight) * 0.5;
 
@@ -105,10 +76,18 @@ void main() {
 	vec2 screenCoord = gl_FragCoord.xy / halfRes;
 	vec2 reach = vec2(0.5) / halfRes;
 
-	vec3 color = BloomSource(clamp(screenCoord + vec2(-reach.x, -reach.y), vec2(0.0), vec2(1.0)));
-	color += BloomSource(clamp(screenCoord + vec2(reach.x, -reach.y), vec2(0.0), vec2(1.0)));
-	color += BloomSource(clamp(screenCoord + vec2(-reach.x, reach.y), vec2(0.0), vec2(1.0)));
-	color += BloomSource(clamp(screenCoord + vec2(reach.x, reach.y), vec2(0.0), vec2(1.0)));
+	// The four corners of the tent, clamped into the frame: a fetch outside it
+	// wraps, and at the border that would drag the opposite edge into the glow.
+	vec2 lo = clamp(screenCoord - reach, vec2(0.0), vec2(1.0));
+	vec2 hi = clamp(screenCoord + reach, vec2(0.0), vec2(1.0));
+
+	// The frame as it was drawn. Batch 709 removed the highlight mask that used to
+	// be subtracted from each of these, so a specular highlight is bloomed like
+	// every other bright thing now - see lib/bloom.glsl for why.
+	vec3 color = textureLod(colortex0, vec2(lo.x, lo.y), 0.0).rgb;
+	color += textureLod(colortex0, vec2(hi.x, lo.y), 0.0).rgb;
+	color += textureLod(colortex0, vec2(lo.x, hi.y), 0.0).rgb;
+	color += textureLod(colortex0, vec2(hi.x, hi.y), 0.0).rgb;
 	color *= 0.25;
 
 	bloomTight = vec4(color * BloomContribution(color, BLOOM_THRESHOLD), 1.0);

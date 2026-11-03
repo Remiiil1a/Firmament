@@ -884,20 +884,18 @@ vec3 DiffuseLightingImpl(
 	SurfaceFragment fragment,
 	PbrSurface pbr,
 	// The direction from this fragment towards the camera, in world space.
-	vec3 viewDirection,
+	vec3 viewDirection
+) {
 	// How much of the colour this returns is a mirror rather than light the
 	// surface was given, in linear RGB. Two things make it up: the highlight of
-	// the sun or moon, and the environment term further down. Both are
-	// reflections, and a reflection is a picture of a light rather than a light
-	// - which is the whole reason the bloom leaves it out.
+	// the sun or moon, and the environment term further down.
 	//
-	// Written on every path through this function. The callers that have no use
-	// for it pass a variable nobody reads.
-	out vec3 specularColor
-) {
-	// Set before any of the early outs below, so that no caller ever reads an
-	// undefined value - the same rule the two outputs of DirectLighting follow.
-	specularColor = vec3(0.0);
+	// It is local now. Until batch 709 it was an out parameter, because the bloom
+	// subtracted it back out of the frame; the author removed that, so the one
+	// caller that wanted it out of here is gone and nothing else ever read it.
+	// Set before any of the early outs below, so that it is defined on every path
+	// - the same rule the two outputs of DirectLighting follow.
+	vec3 specularColor = vec3(0.0);
 
 	// Part of approximating subsurface scattering
 	bool subsurfaceScatter = fragment.materialID == SUBSURFACE_SCATTERING
@@ -1172,19 +1170,16 @@ vec3 DiffuseLightingImpl(
 // turned off.
 vec3 DiffuseLighting(SurfaceFragment fragment) {
 	// There is no material here, so nothing this call shades reflects anything
-	// and the specular total can only come out zero. The parameter exists so
-	// that there is one implementation rather than two.
-	vec3 specularColor;
-	return DiffuseLightingImpl(fragment, PbrNone(), vec3(0.0), specularColor);
+	// and the specular total inside the implementation can only come out zero.
+	return DiffuseLightingImpl(fragment, PbrNone(), vec3(0.0));
 }
 
 #ifdef PBR_SURFACE
 	vec3 DiffuseLighting(
 		SurfaceFragment fragment,
 		PbrSurface pbr,
-		vec3 viewDirection,
-		out vec3 specularColor
+		vec3 viewDirection
 	) {
-		return DiffuseLightingImpl(fragment, pbr, viewDirection, specularColor);
+		return DiffuseLightingImpl(fragment, pbr, viewDirection);
 	}
 #endif

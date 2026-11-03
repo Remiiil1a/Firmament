@@ -34,18 +34,6 @@
 const int R11F_G11F_B10F = 0;
 const int colortex6Format = R11F_G11F_B10F;
 
-// Where the specular highlight is recorded, so that the bloom can leave it out.
-//
-// The same format as colortex0, deliberately: this value is subtracted from
-// that buffer, and in one format the two agree digit for digit, so a pixel
-// whose whole colour is its highlight comes out at exactly zero rather than at
-// whatever a change of format rounded off. It is also an unsigned format with
-// no exponent of its own, and that is what rules out a value arriving at the
-// bloom's blur as a NaN, an infinity or a negative - a blur is the worst place
-// for one of those to appear, because it spreads it over the whole screen
-// instead of leaving it where it was. See lib/bloom.glsl.
-const int colortex15Format = R11F_G11F_B10F;
-
 // The material the environment reflection is computed from, read back by the
 // deferred pass. See the material outputs at the bottom of this file.
 //
@@ -499,11 +487,11 @@ flat in uint rawMaterialID;
 // shimmer, and every block of one portal shares it, so the pattern runs over all of
 // them. Depth is built into the pattern instead; see PortalWell.
 //
-// WHY THE TWO BRANCHES IN main() WRITE ALL SIX BUFFERS. The attachment list at the
-// bottom of this file is fixed, and a fragment that leaves after writing one buffer
-// leaves five holding whatever was drawn there last - stale sky light, a stale
-// reflection material, a stale highlight for the bloom to subtract. The same note
-// appears above the writes at the end of the file.
+// WHY THE TWO BRANCHES IN main() WRITE ALL FIVE BUFFERS. The attachment list at
+// the bottom of this file is fixed, and a fragment that leaves after writing one
+// buffer leaves four holding whatever was drawn there last - stale sky light, a
+// stale reflection material. The same note appears above the writes at the end of
+// the file.
 // The switches themselves are in /environment/materialIDs.glsl: the vertex stage
 // has to see them too, because it decides whether portalWorldPos exists.
 
@@ -830,7 +818,6 @@ void main() {
 				gl_FragData[2] = vec4(0.0);
 				gl_FragData[3] = vec4(0.0);
 				gl_FragData[4] = vec4(0.0);
-				gl_FragData[5] = vec4(0.0);
 				return;
 			}
 		#endif
@@ -913,7 +900,6 @@ void main() {
 				// environment pass to reflect, and it must not try.
 				gl_FragData[3] = vec4(worldNormal, 1.0);
 				gl_FragData[4] = vec4(0.0);
-				gl_FragData[5] = vec4(0.0);
 				return;
 			}
 		#endif
@@ -1622,25 +1608,6 @@ void main() {
 
 	vec4 fragmentColor = vec4(vec3(0.0), surfaceColor.a);
 
-	// How much of that colour is a mirror rather than light the surface was
-	// given. Filled in by DiffuseLighting below, which is the only code that
-	// knows: the same sun that lights a surface also leaves a highlight on it,
-	// and it is the second of those two that a bloom should not be counting,
-	// because a highlight is a picture of a light rather than a light.
-	//
-	// Left at zero on every path that never calls it. There are three: a program
-	// that closes this block before its end at the #if defined(SKIP_ALPHA_TEST)
-	// guard, which is what every translucent program does and what Colorwheel's
-	// does, and which is also why a translucent leaves here with no material
-	// written for the environment reflection; a program with no PBR materials at
-	// all, where the line that calls DiffuseLighting with this variable is not
-	// compiled and the non-PBR call further down passes a variable nobody reads;
-	// and a fragment whose surfaceColor.a was below 0.01.
-	//
-	// Where the bloom reads this, and what it is allowed to do with it, is
-	// BLOOM_EXCLUDE_SPECULAR in lib/bloom.glsl.
-	vec3 specularInFrame = vec3(0.0);
-
 	// Apply sRGB to linear conversion
 	//
 	// We do this after multiplying texture color with vertex color
@@ -1854,7 +1821,7 @@ void main() {
 			// view direction is simply the direction back towards the origin.
 			vec3 viewDirection = normalize(-cameraRelativePos);
 
-			fragmentColor.rgb = DiffuseLighting(surface, pbr, viewDirection, specularInFrame);
+			fragmentColor.rgb = DiffuseLighting(surface, pbr, viewDirection);
 
 			// The reflection a held item is given, which is the one the world's
 			// surfaces are given: the same direction, the same Fresnel, the same
@@ -2174,14 +2141,6 @@ void main() {
 
 		fragmentColor.rgb = mix(fragmentColor.rgb, fog.rgb, fog.a);
 
-		// And the highlight recorded for the bloom fades by the same amount.
-		// The mix above is linear, so the part of the frame the highlight
-		// contributes is exactly this much of what was recorded; leaving it
-		// unfaded would have the bloom subtract more highlight than the frame
-		// still holds wherever the fog is thick, and what that looks like is
-		// patches of missing glow in the distance rather than fog.
-		specularInFrame *= 1.0 - fog.a;
-
 		// FogV2 instead just tells us the amount of sky color to add in to the
 		// final fogged fragment color, so we can skip computing the sky color
 		// when we do not need to add in any of the sky color.
@@ -2249,11 +2208,10 @@ void main() {
 	// Overridden here, immediately before the writes, rather than returned
 	// early somewhere above - and the reason is the fixed list of attachments
 	// this file keeps. A fragment that returned after writing gl_FragData[0]
-	// alone would leave the other five buffers holding whatever was in them from
+	// alone would leave the other four buffers holding whatever was in them from
 	// the last thing drawn at that pixel: stale skylight, stale reflection
-	// material, a stale specular highlight for the bloom to subtract. Letting the
-	// shader run to the end and changing only the colour is what keeps every
-	// write paired with a value.
+	// material. Letting the shader run to the end and changing only the colour is
+	// what keeps every write paired with a value.
 	//
 	// And the colour is written several times over its own brightness, which
 	// is what the bloom turns into the glow - see SELECTION_GLOW_STRENGTH where
@@ -2311,24 +2269,13 @@ void main() {
 	// without loss - see PbrMetalF82 for what reads it back.
 	gl_FragData[4] = vec4(reflectionF0, reflectionMetalID / 255.0);
 
-	// The specular highlight, for the bloom to take back out. Written by every
-	// program that comes through here and zero wherever there was no highlight,
-	// so that the bloom is never reading a stale highlight under a surface that
-	// has stopped reflecting.
-	//
-	// Paid for whether or not the bloom option that reads it is on. That is the
-	// same bargain the two buffers above are on, and for the same reason: the
-	// list at the bottom of this file is fixed, so that the attachments can
-	// never disagree with the writes. See the note there.
-	gl_FragData[5] = vec4(specularInFrame, 1.0);
-
 	// The coloured-light diagnostic. What the two views are for, and how their
 	// answers are read together, is written at the option in
 	// /environment/lighting/light_volume.glsl; this is only the drawing.
 	//
 	// An override at the very end rather than an early return: this file's
 	// attachment list is fixed, and a fragment that left after one write would
-	// leave five buffers holding whatever was drawn there last. All six are
+	// leave four buffers holding whatever was drawn there last. All five are
 	// written below for that reason, not because the view uses them.
 	//
 	// The field is sampled exactly the way BlockLighting samples it: the same
@@ -2374,10 +2321,9 @@ void main() {
 		gl_FragData[2] = vec4(0.0);
 		gl_FragData[3] = vec4(0.0);
 		gl_FragData[4] = vec4(0.0);
-		gl_FragData[5] = vec4(0.0);
 	#endif
 
-	/* RENDERTARGETS: 0,2,6,7,8,15 */
+	/* RENDERTARGETS: 0,2,6,7,8 */
 }
 
 
