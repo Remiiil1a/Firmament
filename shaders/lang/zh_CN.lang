@@ -215,7 +215,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 706]
+option.PBR_DEBUG=材质调试视图 [build 707]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -362,8 +362,8 @@ option.COLORED_LIGHTS.comment=光源方块发出的光是否带自己的颜色�
 option.COLORED_LIGHTS_STRENGTH=光源自身配色
 option.COLORED_LIGHTS_STRENGTH.comment=光源方块自身的表面在多大程度上取光的颜色而不是贴图的颜色。1.0 完全用光的颜色照亮，贴图的明暗变化始终保留；想保留发光部位的贴图细节就调低。
 
-option.COLORED_LIGHT_RANGE=彩色光范围
-option.COLORED_LIGHT_RANGE.comment=方块光的颜色每帧推进的立方体边长，单位为方块：32、48、64。这个立方体就是每帧开销——32 时 4³ 个工作组、32,768 个体素，48 时 6³ 和 110,592，64 时 8³ 和 262,144——颜色向每边只能传到它的一半，即 16、24、32 格。三张颜色图始终是 128³、合计 48 MiB，所以调低它不会减少显存，只是省 GPU 时间。默认 64，超过游戏自带方块光 15 格的射程。
+option.COLORED_LIGHT_RANGE=彩色光射程
+option.COLORED_LIGHT_RANGE.comment=方块光的颜色允许传多远，单位是方块、向每个方向都算：32、48、64。它不改变三张颜色体积图的大小——始终是 128³，加上手持光的一个 texel 合计约 50 MiB；也不改变传播 pass 的开销——每帧始终跑 2,097,152 个体素。所以调低它不会让效果变便宜，只是用到网格里更小的一块。默认 64 格，超过游戏自带方块光 15 格的射程。
 value.COLORED_LIGHT_RANGE.32=32
 value.COLORED_LIGHT_RANGE.48=48
 value.COLORED_LIGHT_RANGE.64=64

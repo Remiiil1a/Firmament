@@ -43,17 +43,18 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-// 8 invocations per axis and one group per eight voxels of the dispatch: 4 groups
-// per axis and 32,768 invocations at the 32 setting, 6 and 110,592 at 48, 8 and
-// 262,144 at 64. The grid itself is fixed at 128 cubed; the option decides how
-// much of its centre a frame advances, which is the per-frame cost the option
-// buys.
+// 8 invocations per axis and 16 groups per axis: the whole 128-cubed grid in one
+// dispatch, one invocation per voxel. That is 2,097,152 invocations a frame, and it
+// is the same number at every setting of COLORED_LIGHT_RANGE - the option limits
+// how much of the grid is used, not what the dispatch costs.
 //
 // A shader constant rather than a line in shaders.properties, which is how this
-// pack declares work groups (see program/water_interaction/step_a.csh). It is
-// derived from COLORED_LIGHT_RANGE because that is the number that varies, and it
-// is a compile-time constant at every setting, which is what the loader requires.
-const ivec3 workGroups = ivec3(COLORED_LIGHT_RANGE / 8);
+// pack declares work groups (see program/water_interaction/step_a.csh). The grid
+// is a fixed 128 cubed - the images are declared at that size unconditionally in
+// shaders.properties - so the count is written out rather than derived from an
+// option: 16 groups of 8 invocations is exactly the grid, and a build-time
+// constant is what the loader requires of it.
+const ivec3 workGroups = ivec3(16, 16, 16);
 
 #ifdef IS_IRIS
 uniform vec3 cameraPosition;
@@ -123,18 +124,11 @@ vec4 LightVolumePreviousField(ivec3 pos, bool fromA) {
 
 void main() {
 #ifdef IS_IRIS
-	// One invocation per voxel of the dispatch, and the dispatch covers the centre
-	// of the grid rather than its corner: the offset is half the grid minus half the
-	// dispatch, so the cube is centred on the player's block and the fill advances
-	// outwards from there. Voxels outside it are not touched at all this frame - the
-	// consumer's fade is measured from the same radius and keeps them out of the
-	// shading.
-	//
-	// The bound is still checked because a write past the last voxel is undefined
-	// rather than ignored, and because it states what the formula means: outside
-	// the grid there is no voxel of the fill to advance.
-	ivec3 voxel = ivec3(gl_GlobalInvocationID)
-		+ ivec3(LIGHT_VOLUME_GRID_RADIUS - LIGHT_VOLUME_DISPATCH_RADIUS);
+	// One invocation per voxel. The dispatch is exactly the grid, but the bound is
+	// kept because a write past the last voxel is undefined rather than ignored,
+	// and because the bound is what the formula means: outside the grid there is
+	// no voxel of the fill to advance.
+	ivec3 voxel = ivec3(gl_GlobalInvocationID);
 
 	if (any(greaterThanEqual(voxel, ivec3(LIGHT_VOLUME_SIZE)))) {
 		return;
@@ -225,21 +219,23 @@ void main() {
 		}
 	}
 
-	// The extent mask. In batch 704 the dispatch covered the whole grid and this
-	// was the branch that zeroed everything beyond the active radius every frame.
-	// This batch's dispatch covers only the centre cube, and every voxel it can
-	// reach is inside the active radius, so the branch is never taken at 32, 48 or
-	// 64; it is kept as the statement of the rule - nothing the step writes as a
-	// colour lies beyond LIGHT_VOLUME_ACTIVE_RADIUS - and would take effect again
-	// if a dispatch ever grew past that radius. The unwritten ring outside the
-	// dispatch is not this branch's business: the consumer fades to zero at the
-	// dispatch radius before it is read.
+	// The option's radius, and the extent mask that makes it real: a voxel further
+	// than the active radius from the centre of the fixed grid stores black. The
+	// field is a 128-cubed image whatever the option says, and the option only
+	// decides how much of it the fill may use. The consumer fades the colour out
+	// towards the same radius, so the edge of what is used is a fade and not a
+	// cut.
+	//
+	// Chebyshev distance and not Euclidean: the grid is a cube and the mask has to
+	// cut it to a cube, so the farthest axis decides.
 	ivec3 fromCentre = abs(voxel - ivec3(LIGHT_VOLUME_GRID_RADIUS));
 
 	if (max(fromCentre.x, max(fromCentre.y, fromCentre.z))
 		> LIGHT_VOLUME_ACTIVE_RADIUS) {
 		next = vec3(0.0);
 	}
+
+
 
 	// The fourth channel is stored as 1.0 because there is nothing to put in it:
 	// the colour is the whole of the state this image carries. It is written

@@ -126,24 +126,20 @@
 // other, and then the two would disagree about the grid - which is the kind of
 // disagreement that compiles everywhere.
 //
-// COLORED_LIGHT_RANGE is the width, in blocks, of the cube the propagation pass
-// advances every frame: 32, 48 or 64. That cube is the centre of the fixed grid,
-// so half of the width is also how far the fill reaches - 16, 24 or 32 blocks -
-// and the dispatch is one invocation per voxel of it.
+// COLORED_LIGHT_RANGE is the radius the colour is allowed to reach, in blocks:
+// 16, 24, 32, 48 or 64. A radius rather than the width of a cube, because that is
+// the number a player judges reach by, and the old option's numbers were the
+// width and read as twice the reach they gave.
 //
-// What it changes is the per-frame cost, and only that. The three images are
-// fixed at 128 cubed, so the memory is 48 MiB at every setting; the dispatch is
-//
-//   32 -> 4 cubed  =  64 workgroups,   32,768 invocations (1/64 of a full grid)
-//   48 -> 6 cubed  = 216 workgroups,  110,592 invocations (about 1/19)
-//   64 -> 8 cubed  = 512 workgroups,  262,144 invocations (1/8)
-//
-// and the edge fade below is measured from the half-width, so the reach the
-// option reports and the reach the frame actually advances are the same number.
-//
-// The images are not sized from this option, deliberately: conditional
-// declarations made the field black in game twice (batches 697 and 705), so the
-// grid is fixed and the option buys dispatch time instead of memory.
+// It does not change any image size. The three volumes are 128 cubed, fixed, and
+// their size is deliberately not connected to this option: a size that depends on
+// the properties preprocessor and a shader constant agreeing is the kind of
+// plumbing that broke in batch 697 and cost four batches to find. What the option
+// changes is how much of the fixed grid the fill uses - the compute stores black
+// beyond this radius and the consumer fades the colour out towards it (see
+// LIGHT_VOLUME_ACTIVE_RADIUS below) - and nothing else. In particular it does not
+// make the effect cheaper: the images keep their size and the dispatch keeps its
+// invocation count at every setting.
 #define COLORED_LIGHT_RANGE 64 // [32 48 64]
 
 // How saturated the colour the fill contributes is, applied where the field is
@@ -158,29 +154,35 @@
 
 // Voxels per side of the three volumes, and the same number halved.
 //
-// One voxel is one block, so the grid is 128 blocks across and covers 64 blocks
-// in every direction from the player. That size is fixed: the images in
-// shaders.properties are declared at 128 cubed unconditionally, because a
-// declaration that depended on the option made the field black in game twice
-// (batches 697 and 705). The option chooses how much of this grid a frame
-// advances, not how big the grid is.
+// One voxel is one block, so the grid covers 64 blocks in every direction from
+// the player. The default 32-block radius uses half of it; the 48 and 64 settings
+// use more, which is why the grid is this large at all.
 //
-// RGBA16 is eight bytes a voxel, so one volume is 16 MiB and the three are
-// 48 MiB, at every setting. That is the memory side of the trade, and the
-// option does not touch it.
+// The size is a constant and not an option: the images in shaders.properties are
+// declared at 128 cubed unconditionally, so the shader and the properties file
+// cannot disagree about it.
+//
+// What it costs is the same at every setting. RGBA16 is eight bytes a voxel, so
+// one volume is 16 MiB and the three are 48 MiB
+// light, so about 50 MiB in total; and the compute pass writes a whole volume
+// every frame, which is 2,097,152 invocations per frame at this size. Lowering
+// COLORED_LIGHT_RANGE reduces neither of those - it only lets the fill use less of
+// the grid - and saying so here is worthwhile because it is the one thing about
+// this design a player will assume the opposite of.
 #define LIGHT_VOLUME_SIZE 128
+
+// Half the grid, in voxels. This is the grid's centre in its own coordinates and
+// nothing else: LightVolumeCoord adds it to put the player at the middle of the
+// fixed grid, and the compute pass uses it as the centre of its extent mask and as
+// voxel at the centre of the grid, which is the one the player stands in.
 #define LIGHT_VOLUME_GRID_RADIUS (LIGHT_VOLUME_SIZE / 2)
 
-// The radius of the cube a frame actually advances. The dispatch covers the
-// centre of the grid - see the voxel index in program/light_volume/step.csh - so
-// this is half of COLORED_LIGHT_RANGE, and it is where the fill's reach ends: the
-// edge fade below is measured from it.
-#define LIGHT_VOLUME_DISPATCH_RADIUS (COLORED_LIGHT_RANGE / 2)
-
-// The option's own number, as a distance from the centre of the grid. Nothing the
-// step stores as a colour lies beyond it - the extent mask there says so - and at
-// the three settings it is twice the dispatch radius, so that branch cannot be
-// reached until a dispatch covers more than this radius.
+// How much of that fixed grid the option above uses, in blocks. It is the radius
+// itself now, not half of a cube's width, so it can be 64 with a 128 grid and 16
+// with no smaller image behind it. The compute pass stores black outside it and
+// the consumer's edge fade is measured from it, and both read this one name so the
+// cube the fill is limited to and the cube the colour fades towards cannot
+// disagree.
 #define LIGHT_VOLUME_ACTIVE_RADIUS (COLORED_LIGHT_RANGE)
 
 // How much of a voxel's value survives one step of the fill.
@@ -218,17 +220,13 @@
 // the normal is in the empty voxel whatever the surface is.
 #define LIGHT_VOLUME_NORMAL_OFFSET 0.55
 
-// Where the colour fades out, as a fraction of the dispatch radius.
+// Where the colour fades out, as a fraction of the active radius.
 //
-// Without this the edge of the cube a frame advances would be visible as exactly
-// that cut, and worse: voxels outside the dispatch are never written at all, so
-// they hold whatever the image had before the option was lowered. The fade is
-// measured from the dispatch radius, so it reaches zero at that boundary and the
-// unwritten ring is never shaded.
-//
-// The fade runs from 0.70 to 0.95 of it, so the last quarter is spent fading: 4
-// blocks at the 32 setting, 6 at 48 and 8 at 64. A fraction rather than a
-// distance keeps the fade the same shape at every setting.
+// Without this the cube the fill is limited to would be visible as exactly that
+// cut. The fade runs from 0.70 to 0.95 of the active radius, so the last quarter
+// of the radius is spent fading: 4 blocks at the 16 setting, 6 at 24, 8 at 32, 12
+// at 48 and 16 at 64. A fraction rather than a distance keeps the fade the same
+// shape at every setting.
 #define LIGHT_VOLUME_EDGE_FADE_START 0.70
 #define LIGHT_VOLUME_EDGE_FADE_END 0.95
 
@@ -379,8 +377,8 @@ vec3 LightVolumeBlockLight(
 	// independent things, and all three of them have to agree:
 	//
 	//  - the field has to be strong enough here to mean something;
-	//  - the fragment has to be well inside the cube a frame advances, or the
-	//    edge of the coloured cube would be visible as exactly that;
+	//  - the fragment has to be well inside the radius the option allows, or
+	//    the edge of the coloured cube would be visible as exactly that;
 	//  - something has to be lighting this surface already. This is what bounds
 	//    the one real weakness of a voxel fill: light that leaks through a wall
 	//    can change the colour of a surface the game says is lit, but it cannot
@@ -393,7 +391,7 @@ vec3 LightVolumeBlockLight(
 		LIGHT_VOLUME_MINIMUM, LIGHT_VOLUME_FADE_IN, amount);
 
 	vec3 gridDistance = abs(cameraRelativePos)
-		/ float(LIGHT_VOLUME_DISPATCH_RADIUS);
+		/ float(LIGHT_VOLUME_ACTIVE_RADIUS);
 	float strengthAtEdge = 1.0 - smoothstep(
 		LIGHT_VOLUME_EDGE_FADE_START,
 		LIGHT_VOLUME_EDGE_FADE_END,
