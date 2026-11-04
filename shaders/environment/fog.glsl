@@ -42,6 +42,25 @@
 // The strength of fog at noon. 
 #define ATMOSPHERE_FOG_STRENGTH_NOON 0.5 // [0.0 0.25 0.33 0.5 0.66 0.75 1.0]
 
+// How thick the water's own haze is, per block, in this file's fog.
+//
+// This is the distance fog the pack puts on every surface under the water, and it
+// is the one piece of the underwater look that had no control at all: it was the
+// number 0.02 written into the branch below, next to a water colour that is hard
+// coded in shaders.properties as well. The author's report on the batch-711 build
+// was that the near field read as far too blue and too thick, with nothing to turn
+// it down - so it is an option now, and its default is thinner than the number it
+// replaces, because that is the direction the report was in.
+//
+// The other half of the underwater haze is the water medium in
+// program/post/volumetric_fog.fsh, which has its own option on the same menu page
+// (FOG_DENSITY_UNDERWATER). Two numbers rather than one because they are two
+// different laws: this one is a squared exponential over the distance from the eye,
+// the other is a thickness per block along the view ray. One slider could not be
+// honest about both, and a player turning the near haze down should not silently
+// also be thinning the medium the shafts are drawn in.
+#define UNDERWATER_FOG_DENSITY 0.012 // [0.0 0.004 0.008 0.012 0.016 0.02 0.03 0.04]
+
 vec4 FogV2(
 	out float skyFogStrength,
 	float fragDistance,
@@ -133,7 +152,11 @@ vec4 FogV2(
 		// Underwater fog is much more dense than atmospheric fog.
 		// This is relatively similar to exp2 fog from the OpenGL
 		// fixed function pipeline.
-		atmosphereFog = 1.0 - exp(-pow(fragDistance * 0.02, 2));
+		//
+		// The coefficient is the option above and not a constant any more (batch
+		// 712): it used to be 0.02 written here, which is what the near field's
+		// thickness could not be turned down from.
+		atmosphereFog = 1.0 - exp(-pow(fragDistance * UNDERWATER_FOG_DENSITY, 2));
 		fogColor = underwaterFogColor;
 		skyFogStrength = 0.0;
 	} else if (isEyeInWaterFog == 2) {

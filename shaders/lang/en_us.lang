@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 711]
+option.PBR_DEBUG=Material debug view [build 712]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -974,6 +974,11 @@ option.WATER_ABSORPTION_METHOD.comment=How light is absorbed by water that \
 	medium absorbs, at the strength the water colour setting gives it.
 
 option.DARK_UNDERWATER=Underwater darkening
+option.DARK_UNDERWATER.comment=How much darker the water makes everything seen \
+	through it. It is a plain multiplier on what reaches the eye through water, so \
+	lowering it turns the whole underwater frame down without changing the water's \
+	colour - the colour and the falloff with depth come from the water colour \
+	setting and the water absorption. 1.0 leaves the water exactly as it is.
 
 value.WATER_AA.OFF=Off
 value.WATER_AA.LOW=Low
@@ -1273,6 +1278,12 @@ option.UNDERWATER_GODRAYS.comment=Whether the light shafts are drawn when the \
 	direction, so they meet the sun actually drawn in the sky. Needs Volumetric fog \
 	on, and nothing is drawn in lava or powder snow.
 
+option.UNDERWATER_FOG_DENSITY=Underwater haze
+option.UNDERWATER_FOG_DENSITY.comment=How thick the water's own haze is, per \
+	block: the further a surface is under the surface, the more of it this \
+	swallows, which is what turns the near field blue and soft. Lower it for \
+	clearer water and raise it for murk. The medium the light shafts are drawn in \
+	has its own setting next to this one (underwater fog density).
 option.UNDERWATER_GODRAYS_STRENGTH=Underwater light shaft strength
 option.UNDERWATER_GODRAYS_STRENGTH.comment=How bright the shafts under water \
 	are, relative to the ones above the waterline at the same time of day. It \
