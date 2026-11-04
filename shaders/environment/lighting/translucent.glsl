@@ -1401,49 +1401,41 @@ vec4 TranslucentLighting(
 				);
 			#endif
 
-			// SNELL'S WINDOW (batch 712).
+			// A WATER FACE THAT STANDS UP IS THE END OF THE WATER (batch 713).
 			//
-			// Seen from under the surface, a water surface is not a window at every
-			// angle: past about 48.6 degrees from the vertical a ray cannot leave the
-			// water at all, and the surface becomes a mirror of the water itself. Inside
-			// that cone - the window - the world above is visible, and the light that
-			// reaches the eye through it has crossed the water between the eye and the
-			// surface on top of everything that happened above.
+			// The sides of water blocks are drawn wherever the neighbour is not water,
+			// and at the edge of the loaded chunks the neighbour is nothing at all. Seen
+			// from under the surface, that face is the cut edge of the water: there is no
+			// world behind it, no water continuing past it, only the far plane. It still
+			// goes through the refraction below - sideways water gets a refraction like
+			// any other face, because otherwise it has neither colour nor background and
+			// is dropped by the alpha test (see the TODO below) - so what it shows is the
+			// background at a position a hair away, which there is the sky or nothing.
+			// That is the boundary the author reported: a vertical pane of glass standing
+			// at the end of the water with the void behind it, instead of more water.
 			//
-			// Without this the surface is a window at every angle, so the bright world
-			// above is laid across it wherever the surface is seen at a glance - which,
-			// from under the water, is a strip along the horizon, because that is where
-			// the surface is in the frame. That strip is the author's "underwater
-			// boundary": the surface's own transmission of the sky, not a hole in the
-			// world.
+			// What it should be is water. Past a couple of metres every water colour in
+			// this pack is the medium's own colour, and under the surface a standing face
+			// has no reflection to show either (the reflection block above is skipped
+			// there). So the face is made opaque and given the water's colour, and the
+			// boundary reads as water continuing - the one answer that leaves nothing to
+			// see.
 			//
-			// The reference for the shape is Bliss's SNELLS_WINDOW option
-			// (lib/specular.glsl), which says outright that it emulates vanilla's
-			// Vibrant Visuals: reflectance is f0 away from the window and 1.0 at the
-			// grazing angles where total internal reflection takes over. The same curve
-			// is applied here to the background the surface transmits rather than to its
-			// reflection, because this pack skips the reflection under water entirely
-			// (see the reflection block above) and it is the transmission that was
-			// showing.
+			// ONLY where there is nothing behind it, and that test is why this is safe:
+			// a water face standing against a glass pane in an underwater base also
+			// reaches here, and there the refraction is the whole point - it is how the
+			// room behind the window is visible. The refracted sample's depth says which
+			// case this is: the far plane is a face at the end of the loaded world, and
+			// anything nearer is a surface the water is meant to show.
 			//
-			// The column used for the absorption is the surface's own height above the
-			// eye, which is the water the light crosses between the surface and the eye.
-			// The water above the surface is not available to a shader and is not
-			// pretended to be here.
-			if (isEyeInWaterFog == 1 && materialID == WATER) {
-				// How much of the window is open at this point of the surface. The normal
-				// is the wave normal, so the window's edge is the wavy edge a real
-				// surface has rather than a perfect circle.
-				float towardsSurface = max(dot(normalize(cameraRelativePos), normal), 0.0);
-				float snellsWindow = smoothstep(0.58, 0.70, towardsSurface);
-
-				// Total internal reflection hands back the water itself rather than the
-				// world above it, and the window's own light is tinted by the water it
-				// crossed on the way to the eye.
-				dstColor = mix(
-					underwaterFogColor,
-					dstColor * WaterAttenuation(max(cameraRelativePos.y, 0.0)),
-					snellsWindow);
+			// Only under water. Above the surface the same faces are the water's own edge
+			// against the air, seen with the sky behind them, and they belong to the look
+			// of the surface as it is.
+			if (isEyeInWaterFog == 1 && materialID == WATER
+				&& abs(worldNormal.y) < 0.5
+				&& refractedScreenPos.z >= 1.0) {
+				fragmentColor.rgb = underwaterFogColor;
+				srcAlpha = 0.0;
 			}
 
 			// To apply the refraction, sample the background texture at the
