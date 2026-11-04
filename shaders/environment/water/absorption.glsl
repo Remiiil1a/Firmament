@@ -47,13 +47,17 @@
 
 // What a normalised depth of 1.0 is worth in metres.
 //
-// Two callers still hand over a normalised 0..1 depth - the underwater light in
-// environment/lighting/diffuse.glsl and the water medium in
-// program/post/volumetric_fog.fsh - and both were tuned against that scale,
-// each reaching full attenuation about fifteen blocks down. One unit is
-// therefore sixteen metres, which is also what makes the old and the new
-// numbers agree exactly for TROPICAL: exp(-vec3(16, 3, 1) * depth) and
-// exp(-vec3(1.0, 0.1875, 0.0625) * 16 * depth) are the same expression.
+// One caller still hands over a normalised 0..1 depth - the water medium in
+// program/post/volumetric_fog.fsh - and it was tuned against that scale, reaching
+// full attenuation about fifteen blocks down. One unit is therefore sixteen
+// metres, which is also what makes the old and the new numbers agree exactly for
+// TROPICAL: exp(-vec3(16, 3, 1) * depth) and exp(-vec3(1.0, 0.1875, 0.0625) * 16 *
+// depth) are the same expression.
+//
+// It had a second caller until batch 711: environment/lighting/diffuse.glsl, which
+// multiplied each lit fragment's own light by this, and program/post/copy_and_fog.fsh,
+// which multiplied the whole frame. Both are gone - see the note at the bottom of
+// this file.
 #define NORMALISED_DEPTH_METERS 16.0
 
 // Additional brightness reduction of underwater...
@@ -68,13 +72,34 @@ vec3 WaterAttenuation(float meters) {
 		* (meters > 0.0 ? DARK_UNDERWATER : 1.0);
 }
 
-// The same thing for the two callers that still hand over a normalised depth.
+// The same thing for the one caller that still hands over a normalised depth.
 //
-// KEPT rather than converted on purpose: those two curves are the underwater
-// light and the water medium, both tuned by eye in this form, and they are not
-// what batch 671 set out to change. They do follow WATER_CHARACTER, through
-// the shared coefficients - which is why choosing TROPICAL restores exactly
-// what they did before.
+// KEPT rather than converted on purpose: that curve is the water medium, tuned by
+// eye in this form, and it is not what batch 671 set out to change. It does follow
+// WATER_CHARACTER, through the shared coefficients - which is why choosing TROPICAL
+// restores exactly what it did before.
 vec3 WaterAbsorption(float depth) {
 	return WaterAttenuation(depth * NORMALISED_DEPTH_METERS);
 }
+
+// WHERE WATER ABSORPTION IS APPLIED, and why there is only one place (batch 711).
+//
+// Upstream Steadfast applied it twice over: once inside each lit fragment's shading
+// (environment/lighting/diffuse.glsl, from the fragment's own sky light) and once to
+// the whole frame in program/post/copy_and_fog.fsh. Both wanted a water depth, and
+// both took it from the fragment's sky light - which is a real reading only where
+// the fragment is world geometry. An entity or the hand writes the light the game
+// gives that model, which under the surface has no sky component at all, so those
+// fragments were read as sixteen metres down and multiplied into the colour of the
+// water behind them. That is the "see-through" the author reported at b677 and that
+// b678, b679 and b681 each tried to repair in one of the two copies.
+//
+// Batch 711 deleted both instead of repairing a third. What is left is the water
+// medium in program/post/volumetric_fog.fsh: it attenuates per step of the view ray
+// (WaterAbsorption(stepLength / 16)), composite1 multiplies that transmittance into
+// the finished frame, and it is applied to everything drawn by then - models
+// included - with no light map anywhere in the path. Its cost is the tier that runs
+// without the volumetric fog: there nothing absorbs water, and the water's own colour
+// in that case comes from the fog colour and WATER_CHARACTER, which is the trade this
+// batch took rather than a second copy of the same physics.
+

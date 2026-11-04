@@ -25,7 +25,7 @@
 // the resolve is only keeping it. Of those two this is the cheap one to rule out.
 //
 // Left half: colortex0 as the surface programs left it. Right half: what this pass
-// writes, after the fog, the reflections and the water absorption.
+// writes, after the fog and the reflections.
 //
 // Which side the blot is on is the reading: the left means the geometry drew it,
 // the right means this pass made it. See BATCH_LOG.md 135.
@@ -79,12 +79,11 @@ const int colortex5Format = R8;
 // codebase.
 #include "/environment/water/absorption_settings.glsl"
 
-// The attenuation itself, for the water this pass sits inside of (batch 677).
-// It is the same function the surface programs use: the coefficients are in
-// reciprocal metres, so exp(coefficients * path) is Beer's law over the path
-// the light travelled. The file is standalone - it needs nothing but its own
-// tables - so including it here costs a few constants.
-#include "/environment/water/absorption.glsl"
+// The attenuation itself used to be included here, for the underwater term this
+// pass applied to the whole frame (batch 677). Batch 711 removed that term - the
+// reason is at the note inside ApplyFog - so this file no longer computes water
+// absorption at all. The settings include above stays: WATER_ABSORPTION_METHOD
+// still selects the surface programs' path, and this file reads it for the fog.
 
 // vec4 Fog(...)
 //
@@ -191,63 +190,22 @@ vec3 ApplyFog(
 	vec3 worldSpaceVector = normalize(cameraRelativePos);
 	vec3 sky = SkyDither(fragCoord.xy, SkyColor(worldSpaceVector));
 
-	// Under water, the light that reaches this pixel travelled through water to
-	// get here - and that is the half of the underwater look this pass did not
-	// have. Upstream 0.9.0 does exactly this in its fog function (batch 677
-	// ports it); everything else about the water was already here.
+	// There is no water absorption here any more, and that is batch 711.
 	//
-	// The depth is the light's path, in metres: how far down the water column
-	// this surface is - the sky light level is one level per vertical metre, so
-	// sixteen minus the level times fifteen is that depth - plus the distance
-	// from the camera, because everything on the way there is water as well.
+	// B677 ported upstream 0.9.0's term - the whole frame multiplied by
+	// WaterAttenuation(water column + view distance) under the surface - and b678,
+	// b679 and b681 each tried to repair it. The column came from the pixel's own
+	// sky light, which is a real reading for a world surface and no reading at all
+	// for a model: an entity or the hand writes the light the game gives it, so the
+	// hand and the player's own model were read as sixteen metres down and came out
+	// the colour of the water behind them.
 	//
-	// This is what the far edge of the water needed. The sky seen through the
-	// surface, or anything standing past the fog's own reach, was being carried
-	// to the screen as itself; multiplied by this it is the water's own colour
-	// like everything else, because at a hundred metres the factor is nothing.
-	if (isEyeInWaterFog == 1) {
-		// Which sky light this pixel is read against, and that is batch 678.
-		//
-		// colortex2 is a light map, and the two kinds of fragment write different
-		// things into it: a world surface writes the sky light the sky reaches it
-		// with, which is what this term wants, while an entity or the hand writes
-		// its own light map - the light the game gives that model where it stands,
-		// which is not a measure of how much water is above it at all. Under the
-		// surface that difference is large: the hand and the player read well below
-		// the water's own light, so they came out multiplied by a deep blue and
-		// looked as if they were being seen through the water rather than through
-		// the air in front of the camera.
-		//
-		// `eyeSkylight` is the pack's own measure of how much sky the player can
-		// see, smoothed by the game's own ten ticks each way (see
-		// shaders.properties and environment/fog.glsl). Taking the larger of the
-		// two keeps the world's own reading wherever it is the brighter one - which
-		// is every surface the sky reaches - and puts a floor under everything that
-		// is standing in the same water the camera is: nothing can be read as
-		// deeper than the eye it is being looked at from.
-		float waterLevel = max(skyLight, eyeSkylight);
-
-		// A sky light of zero is not "this is as deep as water gets" - it is the
-		// reading a fragment gives when the game has no sky light for it at all, and
-		// the entities and the hand under water are exactly that case: batch 680's
-		// diagnostic view reads their pixels as depth written, not water, and a sky
-		// light of zero, while the kelp beside them reads one. Taking the column from
-		// that zero put every one of them fifteen metres down, multiplied them by the
-		// deep-water colour, and made them the same colour as the water behind them -
-		// which is what the author saw as the model being see-through. Batch 678 had
-		// already tried to floor the reading with the eye's own sky light, and it did
-		// nothing there for the same reason: under the surface that reading is zero
-		// as well.
-		//
-		// So the column is only taken when there is a light to take it from. What is
-		// left is the distance from the eye, which is the half of the path that does
-		// not depend on a light map: a hand a metre away keeps nearly all of its own
-		// colour, and the far water stays as dark as it was, because there the
-		// distance is the whole of the term.
-		float waterColumn = waterLevel > 0.001 ? 15.0 - 15.0 * waterLevel : 0.0;
-		float waterPath = waterColumn + length(cameraRelativePos);
-		background *= WaterAttenuation(waterPath);
-	}
+	// B711 removed the term instead of repairing it, along with the per-fragment copy
+	// of the same physics in /environment/lighting/diffuse.glsl. What absorbs water
+	// now is the water medium in program/post/volumetric_fog.fsh, which attenuates
+	// per step of the view ray and is applied to the finished frame in composite1 -
+	// once, to everything, with no light map involved. See the note at the top of
+	// /environment/water/absorption.glsl.
 
 	// Compute the fog against the sky background
 	float fragDistance = max(

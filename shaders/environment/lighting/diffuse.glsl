@@ -582,65 +582,31 @@ const float	sunPathRotation	= -40.0; // [-45.0 -40.0 -35.0 -30.0 -25.0 -20.0 -15
 const float ambientOcclusionLevel = 1.0; // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
 
 #if !defined(EXTERNALLY_DEFINED_UNIFORMS)
-	#if WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED
-		uniform int isEyeInWater;
-	#endif
-
 	uniform vec3 directLightSurface;
-	uniform vec3 directLightUnderwater;
 	uniform vec3 worldLightVector;
 #endif
 
-void ApplyWaterAbsorption(
-	// Water depth, normalised rather than in blocks: 1/16 at the surface under
-	// full sky light and 1.0 at fifteen blocks down or more, which is what the
-	// block light term below reads as "maximum depth". See the derivation in
-	// /environment/water/absorption_refraction.glsl, which the caller's own
-	// calculation is copied from.
-	float wdepth,
-	out vec3 directLightColor,
-	inout vec3 lighting,
-	vec3 blocklightIndirect
-) {
-	// Determine the tint needed to simulate water absorption
-	vec3 waterAbsorption = WaterAbsorption(wdepth);
-
-	// Fade the direct light from the surface colour to the underwater one as the
-	// depth grows, so that orange sunrise light does not arrive under water
-	// unaltered.
-	//
-	// The fade towards luminance is in the underwater colour itself rather than
-	// on this line: shaders.properties builds directLightUnderwater as
-	// directLightSurface mixed halfway to its own Rec601 luma.
-	directLightColor = mix(directLightSurface, directLightUnderwater, wdepth);
-
-	// Tint lighting (direct and ambient, but not block lighting) by the water
-	// absorption
-	directLightColor *= waterAbsorption;
-
-	// Near the water surface, make water absorption apply to block light, but
-	// do not apply it fully when deep underwater. This is so that lights in
-	// underwater bases are not completely overwhelmed by the water absorption,
-	// but also so that lights placed near the surface do not appear to pass
-	// through the surface and ignore it completely.
-	//
-	// This is critical because in environments where the sky is not very
-	// bright, for example, the semi-natural profile at night, we rely on the
-	// water absorption to communicate that there is water. Without this, block
-	// light completely breaks the illusion.
-	//
-	// Even though at maximum depth we still only allow 33% of the block light
-	// to pass unaffected by water absorption, the original color of the block
-	// light is visible just darker than usual, as at maximum depth water
-	// absorption eliminates most light.
-	float blocklightNotAbsorbed = 0.33 * wdepth;
-	lighting += blocklightIndirect * (1.0 - blocklightNotAbsorbed);
-
-	// Apply water absorption and then add in the block light not affected by
-	// water absorption.
-	lighting *= waterAbsorption;
-	lighting += blocklightIndirect * blocklightNotAbsorbed;
-}
+// The water's absorption of the light reaching a surface is NOT applied here any
+// more, and that is batch 711.
+//
+// Until then this file carried ApplyWaterAbsorption: it took a water depth, turned
+// it into a tint with WaterAbsorption, multiplied the surface's ambient and direct
+// light by it, and swapped the sun's colour for the underwater one as it went.
+// All of that was upstream Steadfast's design, and it ran in two places at once -
+// here, per lit fragment, and once to the whole frame in copy_and_fog.fsh - while
+// the depth it wanted was read out of the fragment's own sky light. A world
+// surface's sky light is a real reading of how much water is above it; a model's is
+// the light the game gives that model and carries no sky component under the
+// surface at all, so the hand, an entity and the player's own model in third person
+// were read as sixteen metres down and multiplied into the colour of the water
+// behind them - the author's "see-through" (LESSONS 68, 87).
+//
+// The fix is not another reading of the same quantity. The pack already has the
+// correct implementation of this physics and it is now the only one: the water
+// medium in program/post/volumetric_fog.fsh attenuates per step of the view ray
+// (WaterAbsorption(stepLength/16)), and composite1 applies that transmittance to
+// everything drawn by then - models included - in every tier where the fog runs.
+// See the note at the top of /environment/water/absorption.glsl.
 
 struct SurfaceFragment {
 	// The fragment's position relative to the camera, in world axes.
@@ -935,73 +901,11 @@ vec3 DiffuseLightingImpl(
 
 	vec3 directLightColor = directLightSurface;
 
-	#if WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED
-		// With refraction-assisted water absorption, we need an alternate way
-		// to apply water absorption when the viewpoint is itself underwater, as
-		// in this case, we can see the underwater terrain without it being
-		// behind any refractive surface.
-		// 
-		// Minecraft helpfully puts water surfaces around glass and similar, so
-		// underwater bases in glass domes for example will work fine when
-		// applying water absorption just on refraction, but if the view is
-		// actually within water, then we can utilize the skylight based water
-		// depth to apply absorption.
-		//
-		// The only difficult part is the transition between above water and
-		// underwater. This is because we can be in a state where the bottom of
-		// the screen is underwater, even though the center of the screen is
-		// above and can see above water. In this case, it is not trivial to
-		// tell if any given piece of terrain should receive water absorption.
-		//
-		// We rectify this with a clever hack that aims to cover the bottom half
-		// of the screen with water until the player's eyes are actually
-		// underwater, which takes place near the end of the lit vertex shader.
-		if (isEyeInWater == 1) {
-			// How much water this fragment is seen through, normalised the way
-			// ApplyWaterAbsorption takes it: 1.0 is NORMALISED_DEPTH_METERS.
-			//
-			// There are two cases because a fragment's sky light is a reading of the
-			// water above it only where the fragment belongs to the world. The light
-			// map a model is lit by - the hand, the held item, a mob, the player's own
-			// model in third person - is the light the game gives that model, and under
-			// the surface it carries no sky component at all: batch 680's diagnostic
-			// view reads those pixels as a sky light of zero while the kelp beside them
-			// reads one (batch 681, and LESSONS 68 for the class of mistake). Read as a
-			// depth, that zero is "sixteen metres down", so those models were
-			// multiplied by the deep water's colour, came out the colour of the water
-			// behind them and looked as if the water passed through them - the
-			// author's "see-through". Batches 678, 679 and 681 all failed to remove it
-			// because all three only ever edited the whole-frame absorption in
-			// copy_and_fog.fsh; this is the same reading, in the other place that takes
-			// it, and it was never touched.
-			//
-			// A model is given the water the view actually looked through instead: the
-			// distance from the eye, which is the one depth in the frame that does not
-			// have to be guessed. At a metre that is nearly nothing, at four metres it
-			// is a clear water tint, and it cannot claim more water than the camera is
-			// looking through. The world keeps its own reading, so the underwater look
-			// of the terrain is exactly what it was.
-			#if defined(PBR_ENTITIES) || defined(PBR_HAND_ITEMS)
-				float waterDepth = length(fragment.cameraRelativePos)
-					/ NORMALISED_DEPTH_METERS;
-			#else
-				// TODO: copied from /environment/water/absorption_refraction.glsl,
-				// which reaches the same depth along its own path. It should be one
-				// common function.
-				float waterDepth = (-15.0 / 16.0) * fragment.skyLight + 1.0;
-			#endif
-
-			ApplyWaterAbsorption(
-				waterDepth,
-				directLightColor,
-				lighting,
-				blocklightIndirect);
-		} else {
-			lighting += blocklightIndirect;
-		}
-	#else
-		lighting += blocklightIndirect;
-	#endif
+	// Block light goes in as it is. Upstream Steadfast held it back and added it by
+	// hand here, interleaved with the water absorption of the surface's light, and
+	// batch 711 removed all of that - the reason, and where the physics lives now,
+	// is at the note where ApplyWaterAbsorption used to be, above SurfaceFragment.
+	lighting += blocklightIndirect;
 
 	#ifdef PBR_SURFACE
 		// The occlusion the resource pack baked into the material, which only

@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 710]
+option.PBR_DEBUG=Material debug view [build 711]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -965,11 +965,13 @@ option.WATER_CHARACTER.comment=How quickly water takes different colours of \
 	Balanced sits between.
 
 option.WATER_ABSORPTION_METHOD=Water absorption
-option.WATER_ABSORPTION_METHOD.comment=How light is absorbed by water. \
-	Refraction assisted applies it through the refraction pass and falls back to \
-	a sky light estimate for scenes that are entirely underwater; No absorption \
-	turns it off, which to use when the water looks wrong with a resource pack or \
-	mod that draws its own water.
+option.WATER_ABSORPTION_METHOD.comment=How light is absorbed by water that \
+	is seen through its surface. Refraction assisted applies it in the refraction \
+	pass, which is what makes the water's own colour follow the view; No \
+	absorption turns that off, which to use when the water looks wrong with a \
+	resource pack or mod that draws its own water. Being under the surface is a \
+	different path and this setting does not touch it: there the water's own \
+	medium absorbs, at the strength the water colour setting gives it.
 
 option.DARK_UNDERWATER=Underwater darkening
 

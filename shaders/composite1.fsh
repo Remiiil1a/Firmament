@@ -114,6 +114,16 @@ uniform mat4 gbufferPreviousModelView;
 uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
 
+// THE WATER THE VIEW IS LOOKING THROUGH (batch 711).
+//
+// The two settings files that define the water, and the uniform that says the eye is
+// in it. Both are needed by the absorption applied at the end of main(); the note
+// there says why it is applied here and nowhere else.
+#include "/environment/water/absorption_settings.glsl"
+#include "/environment/water/absorption.glsl"
+
+uniform int isEyeInWaterFog;
+
 // VOLUMETRIC FOG BEGIN
 //
 // The fog's upscale, which this pass now owns. It used to live in the final pass,
@@ -1315,6 +1325,50 @@ void main() {
 		if (texelFetch(depthtex0, debugTexel, 0).r
 			< texelFetch(depthtex2, debugTexel, 0).r) {
 			shown = vec3(1.0, 0.0, 0.0);
+		}
+	#endif
+
+	// THE WATER BETWEEN THE EYE AND WHAT IT SEES (batch 711).
+	//
+	// One line of physics, applied once, to the finished frame: light travelling
+	// through water is attenuated by exp(coefficients * distance), and the distance
+	// is the one the depth buffer already holds for this pixel. Nothing in it needs
+	// to know what drew the pixel, and that is the whole point - the two copies this
+	// replaces each asked the fragment's own light map how deep it was, and a model's
+	// light map is not a reading of the water above it (LESSONS 68 and 87). A world
+	// surface's sky light is a real reading and was the right answer there, but the
+	// hand, an entity and the player's own body in third person carry no sky
+	// component under the surface at all, so they were read as sixteen metres down
+	// and multiplied into the colour of the water behind them. That was the author's
+	// "see-through", and b678, b679 and b681 each patched one of the two copies.
+	//
+	// Why HERE. This pass sees everything the frame has: the opaque scene, the
+	// translucents, and the models drawn after the deferred pass - the player's own
+	// body in third person, the held item, armour - which is exactly the set the
+	// per-fragment term got wrong. It is also after the resolve, like the fog below it,
+	// so the absorption is not accumulated into the history.
+	//
+	// What is deliberately NOT here: the water column above the surface. Upstream
+	// estimated it from the sky light, and that estimate is what broke; a pixel on its
+	// own cannot read it honestly. What the column was standing in for - a surface deep
+	// under water being darker - the game's own light map already provides, because a
+	// surface that deep is lit by the little sky light that reaches it. The strength
+	// knobs are WATER_CHARACTER and DARK_UNDERWATER, both read by WaterAttenuation.
+	//
+	// The sky is left alone: under the surface it is already the water's own colour
+	// (the deferred pass puts it there, batch 677), and a pixel with no geometry in it
+	// has no distance to attenuate by.
+	#if WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED
+		if (isEyeInWaterFog == 1) {
+			float waterPixelDepth = texelFetch(depthtex0, pixel, 0).r;
+
+			if (waterPixelDepth < 1.0) {
+				vec2 waterNdc = vec2(pixel) * 2.0 / vec2(viewWidth, viewHeight) - 1.0;
+				vec4 waterViewH = gbufferProjectionInverse
+					* vec4(waterNdc, waterPixelDepth * 2.0 - 1.0, 1.0);
+
+				shown *= WaterAttenuation(length(waterViewH.xyz / waterViewH.w));
+			}
 		}
 	#endif
 
