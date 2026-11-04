@@ -1468,5 +1468,34 @@ vec4 TranslucentLighting(
 		}
 	#endif
 
+	// THE WATER SURFACE FOGS LIKE THE WORLD BEHIND IT (batch 714).
+	//
+	// The water surface is drawn after the deferred pass, so the pack's atmospheric
+	// fog - applied per fragment in program/post/copy_and_fog.fsh - never touches it.
+	// Above the surface that does not show, because there is nothing at the surface
+	// that needs fogging. Under it, it does: the place where the loaded chunks end is
+	// water, and what stood there was the cut face of the water with its own colour
+	// and no fog at all, against everything behind it that was fogged.
+	//
+	// So the surface is given the same fog the world behind it is given: the same
+	// curve, the same distance, the same water colour, all three from
+	// /environment/fog.glsl (UNDERWATER_FOG_DENSITY and underwaterFogColor). Two
+	// things that fade by one law are the only guarantee that the edge where they meet
+	// stops being visible - the mechanism here is that agreement, not another special
+	// case for the boundary.
+	//
+	// The shape is the pack's own underwater fog curve rather than a new one. The
+	// reference packs reach the same place each in its own way - Mellow's
+	// get_border_fog (global/atmosphere/fog.glsl:16) hands a surface over to the
+	// medium's colour by distance, and Bliss's underWaterAbsorbance_insidePOV does the
+	// same along linearDistance - and what they share is that the surface and the
+	// medium are fogged by one law instead of two.
+	if (isEyeInWaterFog == 1 && materialID == WATER) {
+		float waterSurfaceFog =
+			1.0 - exp(-pow(length(cameraRelativePos) * UNDERWATER_FOG_DENSITY, 2));
+
+		fragmentColor.rgb = mix(fragmentColor.rgb, underwaterFogColor, waterSurfaceFog);
+	}
+
 	return vec4(fragmentColor.rgb, 1.0 - srcAlpha);
 }
