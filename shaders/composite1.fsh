@@ -124,6 +124,25 @@ uniform vec3 previousCameraPosition;
 
 uniform int isEyeInWaterFog;
 
+// The water's own colour, for the boundary fog below. Declared here rather than taken
+// from environment/fog.glsl, which this pass does not include: the same pack uniform,
+// named in shaders.properties.
+uniform vec3 underwaterFogColor;
+
+// How the boundary fog below turns UNDERWATER_FOG_DENSITY (a per-block haze, whose
+// default is 0.012) into the distance it covers. At the gain below the water is
+// 0.012 * 2.0 = 0.024 per block, which is 6% at ten blocks, 21% at twenty, 63% at
+// forty and 90% at sixty-four: the near field is left alone and the far end of the
+// frame is the water's colour. It is a constant and not a second option on purpose -
+// two knobs for one haze is how an underwater look ends up with two looks, and the
+// rational way to want more of it is the density itself, which now reaches every pixel
+// of the frame, so raising it does what it says.
+const float UNDERWATER_BOUNDARY_GAIN = 2.0;
+
+// The distance the far plane is treated as. It only has to be far enough that the fog
+// is saturated there; nothing measures it against anything else.
+const float UNDERWATER_BOUNDARY_FULL = 128.0;
+
 // VOLUMETRIC FOG BEGIN
 //
 // The fog's upscale, which this pass now owns. It used to live in the final pass,
@@ -1355,20 +1374,56 @@ void main() {
 	// surface that deep is lit by the little sky light that reaches it. The strength
 	// knobs are WATER_CHARACTER and DARK_UNDERWATER, both read by WaterAttenuation.
 	//
-	// The sky is left alone: under the surface it is already the water's own colour
-	// (the deferred pass puts it there, batch 677), and a pixel with no geometry in it
-	// has no distance to attenuate by.
+	// AND THE BOUNDARY FOG (batch 715).
+	//
+	// The absorption above only multiplies what is already there; it cannot hide an
+	// edge between two things, because it treats both sides the same. What the author
+	// kept seeing at the edge of the loaded chunks is exactly that kind of edge, and it
+	// survived every attempt to fix it at the source: the cut face of the water, the
+	// water surface, the sky past the render distance and the level-of-detail water are
+	// drawn by four different programs, and a fog applied per fragment can only ever
+	// reach the ones that come through the surface shaders. Mellow and Bliss both end up
+	// fogging the FINISHED FRAME instead (Mellow's get_border_fog, Bliss's
+	// underWaterAbsorbance_insidePOV), which is the one place where what drew a pixel no
+	// longer matters.
+	//
+	// So this is a distance fog toward the water's own colour, applied here on the
+	// finished frame: everything the pass has, whichever program drew it, including the
+	// far plane, which is the "nothing behind the water" case.
+	//
+	// The distance is the same one the absorption uses. A pixel with no geometry in it
+	// has no distance, so it takes the full one - the far plane is the one direction
+	// that is entirely water, and the deferred pass already paints it the water's colour
+	// (batch 677); this makes sure of it for a pixel that reaches here with anything else
+	// in it.
+	//
+	// The strength is UNDERWATER_FOG_DENSITY, the pack's existing underwater haze
+	// setting, scaled by the constant below. One setting for the water's haze, now
+	// reaching every pixel of the frame rather than only the ones the surface programs
+	// drew, which is what made turning it up look like it did nothing.
 	#if WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED
 		if (isEyeInWaterFog == 1) {
 			float waterPixelDepth = texelFetch(depthtex0, pixel, 0).r;
 
-			if (waterPixelDepth < 1.0) {
-				vec2 waterNdc = vec2(pixel) * 2.0 / vec2(viewWidth, viewHeight) - 1.0;
-				vec4 waterViewH = gbufferProjectionInverse
-					* vec4(waterNdc, waterPixelDepth * 2.0 - 1.0, 1.0);
+			vec2 waterNdc = vec2(pixel) * 2.0 / vec2(viewWidth, viewHeight) - 1.0;
+			vec4 waterViewH = gbufferProjectionInverse
+				* vec4(waterNdc, waterPixelDepth * 2.0 - 1.0, 1.0);
 
-				shown *= WaterAttenuation(length(waterViewH.xyz / waterViewH.w));
+			// The far plane divides by a zero, so it is not a place with a distance; it
+			// is the case this fog exists for, and it takes the full range.
+			float waterDistance = waterPixelDepth < 1.0
+				? length(waterViewH.xyz / waterViewH.w)
+				: UNDERWATER_BOUNDARY_FULL;
+
+			if (waterPixelDepth < 1.0) {
+				shown *= WaterAttenuation(waterDistance);
 			}
+
+			float waterBoundaryFog = 1.0 - exp(-pow(
+				waterDistance * UNDERWATER_FOG_DENSITY
+					* UNDERWATER_BOUNDARY_GAIN, 2.0));
+
+			shown = mix(shown, underwaterFogColor, waterBoundaryFog);
 		}
 	#endif
 
