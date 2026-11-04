@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 715]
+option.PBR_DEBUG=Material debug view [build 716]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -484,6 +484,7 @@ screen.WATER_STYLE_SETTINGS=Surface
 screen.WATER_SHAPE_SETTINGS=Surface shape
 screen.WATER_OPTICS_SETTINGS=Reflections and refraction
 screen.WATER_COLOUR_SETTINGS=Colour and absorption
+screen.WATER_CUSTOM_SETTINGS=Custom water colour
 screen.LIGHTING_SKY_SETTINGS=Sky light
 screen.LIGHTING_BLOCK_SETTINGS=Block light and bleed
 screen.SHADOWS=Shadows
@@ -962,7 +963,8 @@ option.WATER_CHARACTER.comment=How quickly water takes different colours of \
 	light away with depth, which decides whether it reads as tropical, cold or \
 	neither. Cold takes the red out first, leaving deep northern blue-green; \
 	Tropical keeps nearly only blue, which makes shallow warm water glow; \
-	Balanced sits between.
+	Balanced sits between. Custom takes the three numbers from the page below \
+	instead of from a preset.
 
 option.WATER_ABSORPTION_METHOD=Water absorption
 option.WATER_ABSORPTION_METHOD.comment=How light is absorbed by water that \
@@ -980,6 +982,53 @@ option.DARK_UNDERWATER.comment=How much darker the water makes everything seen \
 	colour - the colour and the falloff with depth come from the water colour \
 	setting and the water absorption. 1.0 leaves the water exactly as it is.
 
+option.CUSTOM_WATER_ABSORPTION_R=Red
+option.CUSTOM_WATER_ABSORPTION_R.comment=How quickly red light leaves the water \
+	on the Custom water colour, before the red scale below it is applied. 0 \
+	leaves that colour alone and 1 takes it away fastest. The four presets are \
+	made of the same kind of numbers: Balanced, the default, is 0.35 red, 0.18 \
+	green and 0.10 blue at a scale of 1.
+option.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE=Red scale
+option.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.comment=The power of ten the red \
+	number is multiplied by, which is what lets one slider cover both a clear \
+	pool and heavy silt. Each channel has one because blue has to be able to sit \
+	two orders below red; at a scale of 1, Balanced is 0.35, 0.18 and 0.10 per \
+	metre.
+value.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.0.0001=0.0001/m
+value.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.0.001=0.001/m
+value.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.0.01=0.01/m
+value.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.0.1=0.1/m
+value.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.1.0=1/m
+value.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.10.0=10/m
+value.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.100.0=100/m
+value.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.1000.0=1000/m
+option.CUSTOM_WATER_ABSORPTION_G=Green
+option.CUSTOM_WATER_ABSORPTION_G.comment=The green channel, before the green \
+	scale below it. It moves with red as the water gets murkier, and keeping it \
+	well under red is what leaves the water blue-green rather than grey.
+option.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE=Green scale
+value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.0.0001=0.0001/m
+value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.0.001=0.001/m
+value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.0.01=0.01/m
+value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.0.1=0.1/m
+value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.1.0=1/m
+value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.10.0=10/m
+value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.100.0=100/m
+value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.1000.0=1000/m
+option.CUSTOM_WATER_ABSORPTION_B=Blue
+option.CUSTOM_WATER_ABSORPTION_B.comment=The blue channel, before the blue \
+	scale below it. It is the one to raise last: at the presets' values blue \
+	survives longest, which is the whole reason deep water is blue.
+option.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE=Blue scale
+value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.0.0001=0.0001/m
+value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.0.001=0.001/m
+value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.0.01=0.01/m
+value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.0.1=0.1/m
+value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.1.0=1/m
+value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.10.0=10/m
+value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.100.0=100/m
+value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.1000.0=1000/m
+
 value.WATER_AA.OFF=Off
 value.WATER_AA.LOW=Low
 value.WATER_AA.BALANCED=Balanced
@@ -991,6 +1040,7 @@ value.WATER_SURFACE.NOISE=Noise
 value.WATER_CHARACTER.COLD=Cold
 value.WATER_CHARACTER.BALANCED=Balanced
 value.WATER_CHARACTER.TROPICAL=Tropical
+value.WATER_CHARACTER.CUSTOM=Custom
 
 value.WATER_ABSORPTION_METHOD.NO_ABSORPTION=No absorption
 value.WATER_ABSORPTION_METHOD.REFRACTION_ASSISTED=Refraction assisted
@@ -1278,12 +1328,6 @@ option.UNDERWATER_GODRAYS.comment=Whether the light shafts are drawn when the \
 	direction, so they meet the sun actually drawn in the sky. Needs Volumetric fog \
 	on, and nothing is drawn in lava or powder snow.
 
-option.UNDERWATER_FOG_DENSITY=Underwater haze
-option.UNDERWATER_FOG_DENSITY.comment=How thick the water's own haze is, per \
-	block: the further a surface is under the surface, the more of it this \
-	swallows, which is what turns the near field blue and soft. Lower it for \
-	clearer water and raise it for murk. The medium the light shafts are drawn in \
-	has its own setting next to this one (underwater fog density).
 option.UNDERWATER_GODRAYS_STRENGTH=Underwater light shaft strength
 option.UNDERWATER_GODRAYS_STRENGTH.comment=How bright the shafts under water \
 	are, relative to the ones above the waterline at the same time of day. It \

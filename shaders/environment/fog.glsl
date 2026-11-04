@@ -18,7 +18,8 @@
 
 // The underwater haze's thickness, which this file's water branch reads
 // (batch 715 moved it out of this file and into the water settings, so that
-// the composite pass can read the same number).
+// the composite pass can read the same number; batch 716 turned it into a
+// constant, so the two cannot drift apart through the menu).
 #include "/environment/water/absorption_settings.glsl"
 
 #if !defined (EXTERNALLY_DEFINED_UNIFORMS)
@@ -139,10 +140,10 @@ vec4 FogV2(
 		// This is relatively similar to exp2 fog from the OpenGL
 		// fixed function pipeline.
 		//
-		// The coefficient is the option above and not a constant any more (batch
-		// 712): it used to be 0.02 written here, which is what the near field's
-		// thickness could not be turned down from.
-		atmosphereFog = 1.0 - exp(-pow(fragDistance * UNDERWATER_FOG_DENSITY, 2));
+		// The coefficient is the constant shared with the frame-wide boundary fog in
+		// composite1.fsh, not a number written here (batch 716): the two have to fall
+		// off at the same rate for the seam between them to stay invisible.
+		atmosphereFog = 1.0 - exp(-pow(fragDistance * UNDERWATER_HAZE_PER_METRE, 2));
 		fogColor = underwaterFogColor;
 		skyFogStrength = 0.0;
 	} else if (isEyeInWaterFog == 2) {
