@@ -50,6 +50,13 @@ const int shadowcolor0Format = R16_SNORM;
 // across, so LightVolumeCoord stays the one definition of the formula. What
 // only this stage has is the block's texture, which is the colour the pane
 // transmits.
+//
+// Which fragments this stage sees is narrower than which draws reach the pass.
+// Block entities are submitted to it since batch 719 so that the vertex stage can
+// write the portals' light into the fill, but that stage then puts every
+// block-entity vertex outside the clip volume unless REAL_TIME_BLOCK_ENTITY_SHADOWS
+// is on, so none of them is rasterised: the fragments here belong to chunk terrain
+// and to entities, and only terrain can be stained glass.
 #if defined(COLORED_LIGHTS) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
 	// The voxel shadow.vsh put this block's centre in, or (-1, -1, -1) where it
 	// stored nothing at all. Only terrain can be stained glass, so the fragment
@@ -130,6 +137,14 @@ void main() {
 	// limitation of writing the filter out of the shadow map's own geometry, and
 	// the alternative would be reading every pane's texture again inside the
 	// fill itself.
+	//
+	// No fragment of a block entity ever reaches this stage. Batch 719 submits
+	// them to this pass so that their vertices can write the fill, and the vertex
+	// stage puts every one of those vertices outside the clip volume once it has:
+	// the fragments that run here are still only the ones the map would have had
+	// without that batch. It is also why the discard at the top of main cannot
+	// cost a block entity its voxel - the voxel was written before any alpha test
+	// or depth test could have run, and clipping happens after both.
 	#if defined(COLORED_LIGHTS) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
 		if (materialID == STAINED_GLASS) {
 			vec3 filterTint = SrgbToLinear(surfaceColor.rgb);

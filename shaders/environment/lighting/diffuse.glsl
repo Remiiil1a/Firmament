@@ -91,10 +91,13 @@
 
 // Whether real-time shadows using shadow mapping are enabled for block entities
 // (chests, beds, etc).
-// #define REAL_TIME_BLOCK_ENTITY_SHADOWS
-#ifdef REAL_TIME_BLOCK_ENTITY_SHADOWS
-	// Actual effect is in shaders.properties
-#endif
+//
+// Declared in /environment/materialIDs.glsl since batch 719, not here: the program
+// that reads it now is the shadow program, which includes that file and not this
+// one, and a second declaration of one option is one option that can be answered
+// two ways. The note there is the one that explains what it also decides - whether
+// the coloured light fill can see the only two block entity light sources whose
+// colour this pack can name.
 
 #if !defined(EXTERNALLY_DEFINED_UNIFORMS)
 	uniform vec3 minAmbient;

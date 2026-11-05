@@ -253,6 +253,34 @@ const float PORTAL_STAR_GAIN = 3.00;
 const float END_PORTAL_BLOCK_ID = 10039.0;
 const float END_GATEWAY_BLOCK_ID = 10012.0;
 
+// Whether block entities draw into the shadow map, and - since batch 719 - also
+// how much of the coloured light fill they are allowed to feed.
+//
+// Two things read it, in two places. shaders.properties asks the loader to submit
+// block entity geometry to the shadow pass whenever this is on, or whenever
+// COLORED_LIGHTS is (see shadowBlockEntities there, and the note on why). The
+// shadow program then reads it in its vertex stage: with this off - and with
+// COLORED_LIGHTS on, which is the only state that submits them without it - it puts
+// every block-entity vertex outside the clip volume once the fill write has run, so
+// the map gains no new shape; with it on the geometry draws as it always did.
+//
+// Batch 719 is where those two questions came apart. The fill's world image is
+// written by the shadow program and by nothing else - see the write in
+// /program/shadow/shadow.vsh and the b700 note in /shadowcomp.csh - so a block
+// entity light source cannot reach the fill without its vertices being drawn there.
+// The only two this palette can name are the end portal and the gateway. Until this
+// batch they were not drawn, the end portal's authored cold colour never arrived, and
+// the light around it fell back to the pack's warm block light tint. That was the
+// author's report: an end portal that lit the room yellow.
+//
+// Declared here rather than in /environment/lighting/diffuse.glsl, where it sat
+// until batch 719, because the program that now reads it is the shadow program and
+// the shadow program's two stages include this file and not that one. A define a
+// program does not include is a define that program does not have, and a branch on
+// it then silently takes the false side - which is exactly how the block-entity
+// write of batch 697 shipped without ever running.
+// #define REAL_TIME_BLOCK_ENTITY_SHADOWS
+
 // Whether the light that has passed through stained glass arrives coloured, so
 // that a red pane puts a red patch of sunlight on the floor rather than a
 // shadow with a hole in it. Also the switch for the nether portal's own glow -

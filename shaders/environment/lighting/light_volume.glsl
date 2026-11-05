@@ -45,6 +45,14 @@
 // apart. They are written down here because this file is what both ends include,
 // so this is the only place the two can be held to the same table.
 //
+// Because the shadow pass is the only writer, what it draws bounds what the fill
+// can ever know. Chunk terrain is always drawn there; block entities are not, and
+// a block entity that emits light therefore reaches this file only when the pack
+// asks for its geometry to be submitted (shaders.properties, shadowBlockEntities,
+// batch 719). The end portal and the end gateway are the two that do, and they are
+// drawn for this write alone - program/shadow/shadow.vsh culls their depth away
+// again so that the shadow map keeps the shape it has always had.
+//
 //   air      rgb 0               a 0.0   nothing here; light crosses freely
 //   emitter  rgb light colour    a 0.0   a light source stands here
 //   filter   rgb pane tint       a 0.5   stained glass; light that crosses takes

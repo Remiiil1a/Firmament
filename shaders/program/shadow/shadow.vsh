@@ -14,6 +14,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+// The shadow pass: the depth map, and the coloured light fill's world image.
+//
+// The map itself is the upstream program - water heights for the caustics, the
+// glass cull, and the material ID the fragment stage reads. Since batch 696 this
+// stage also writes light_volume_world, and since batch 719 the loader submits
+// block entities to this pass whenever COLORED_LIGHTS is on (see shadowBlockEntities
+// in shaders.properties). That is not for their shadows: the world image has no
+// other writer, and the two block-entity portals are light sources, so their
+// geometry has to be drawn here for the fill to learn their colour. Once the write
+// has run, main() puts every block-entity vertex outside the clip volume, so the
+// map keeps exactly the shape it had and they feed the fill only.
+// REAL_TIME_BLOCK_ENTITY_SHADOWS is what turns the cull off and the shadows on.
 #include "/lib/distort.glsl"
 
 in vec4 mc_Entity;
@@ -73,12 +85,19 @@ uniform mat4 shadowModelViewInverse;
 	// The two stage constants, with the loader's own definitions winning.
 	//
 	// Iris supplies these names to every program it compiles; this project's front
-	// end does not, so without a fallback the branch below would be the one part of
-	// the writer no check ever compiles. The numbers are OptiFine's documented
-	// stage order, which Iris implements as well, and `#ifndef` is what keeps the
-	// loader's own definition when there is one. A wrong number here cannot break
-	// the feature either way: the test is fail-open, so an unrecognised stage is
-	// written as terrain (see case 3 at the write).
+	// end does not, so without a fallback the block-entity branch below - and the
+	// cull that ends main() - would be the parts of this program no check ever
+	// compiles. `#ifndef` keeps the loader's own definition whenever there is one,
+	// and in game there always is.
+	//
+	// The two numbers are the ones this file carried before batch 719. They could
+	// not be confirmed here: no Iris or OptiFine source or documentation is on this
+	// machine, and the claims about the table disagree with each other, so replacing
+	// them would be a second guess rather than a correction. In the only case that
+	// reaches the game - the loader defines the names - none of this matters. A
+	// wrong fallback costs the local model only: a block-entity draw would be
+	// written as terrain (see case 3 at the write) and the cull below would not
+	// fire for it. Both are noted in BATCH_LOG.md b719.
 	#ifndef MC_RENDER_STAGE_ENTITIES
 		#define MC_RENDER_STAGE_ENTITIES 3
 	#endif
@@ -338,10 +357,20 @@ void main() {
 	// renderStage is the loader's own statement about what it is drawing, one
 	// constant per kind, and it is the same test Eclipse's LPV and Mellow's
 	// coloured lights both use. It is Iris-only - OptiFine has no such uniform -
-	// and this feature is Iris-only already. This project's front end cannot give
-	// it a value, so the branch below is compiled for review only; that is stated
-	// here rather than hidden, and the fail-open shape above is what keeps an
-	// unpopulated uniform harmless.
+	// and this feature is Iris-only already.
+	//
+	// None of this is compiled by this project's front end, and that is a fact
+	// rather than a convenience: the block needs both COLORED_LIGHTS and
+	// IRIS_FEATURE_CUSTOM_IMAGES, and the second one is a loader feature flag that
+	// nothing in the pack or in the local tooling defines. The write, the cull at
+	// the end of main() and the fail-open rule above are therefore checked by
+	// reading them and by an explicit expand-and-glslang run, never by the standing
+	// chain: b719 closed that gap for itself by expanding this program with
+	// `--define IRIS_FEATURE_CUSTOM_IMAGES=1` (818 -> 1357 lines) and compiling the
+	// result, which is green. Every later change inside this guard needs the same
+	// run, because "frontend 0 errors" says nothing at all about it.
+	// The fail-open shape is what keeps an unpopulated uniform harmless when the
+	// loader does compile it.
 	//
 	// One store per terrain vertex, not one per quad. Stained glass is the one
 	// terrain material that stores nothing here and the note on the writer says
@@ -357,6 +386,9 @@ void main() {
 	lightVolumeVoxel = ivec3(-1);
 
 	if (renderStage == MC_RENDER_STAGE_BLOCK_ENTITIES) {
+		// Only reachable because shaders.properties submits block entity geometry
+		// to this pass - see shadowBlockEntities there, and the cull at the end of
+		// this function for what is done with the shape it would otherwise add.
 		LightVolumeWriteBlockEntity(cameraRelativePos.xyz);
 	} else if (renderStage == MC_RENDER_STAGE_ENTITIES) {
 		// An entity: no voxel, by design. See case 2 above.
@@ -370,5 +402,33 @@ void main() {
 		vec3 blockCenter = cameraRelativePos.xyz + at_midBlock.xyz / 64.0;
 		LightVolumeWriteTerrain(materialID, blockCenter);
 	}
+
+	// Block entities leave the map as soon as their voxel is written.
+	//
+	// Batch 719 submits them to this pass for that voxel and for nothing else. The
+	// fill's world image has no other writer, so the end portal's light can only be
+	// coloured cold if its geometry is drawn here - and the map itself must not
+	// gain a shape it never had, or a chest, a sign and the portal's own plane
+	// would all start casting shadows the pack has never drawn.
+	//
+	// The cull is the shape of the glass one from the top of this function, applied
+	// later and for the opposite reason: every vertex of the draw goes to the same
+	// point, that point is outside the clip volume on all three axes at once, and
+	// a triangle whose every vertex is out of the volume never reaches the fragment
+	// stage. No fragment, no depth, so the map keeps what it had. The write above
+	// has already run by then, and it does not care where the vertex ends up.
+	//
+	// Not while the option is on, and then the geometry is there for the shadows
+	// rather than for the fill. This sits inside the fill's own guard because that
+	// is where renderStage is declared; when COLORED_LIGHTS is off,
+	// shaders.properties submits block entities only if REAL_TIME_BLOCK_ENTITY_SHADOWS
+	// is on, and then no cull is wanted. A loader that had COLORED_LIGHTS without
+	// custom images would submit them for a fill that does not exist; the write
+	// above needs the same images, so that state is not one this pack has ever met.
+	#if !defined(REAL_TIME_BLOCK_ENTITY_SHADOWS)
+		if (renderStage == MC_RENDER_STAGE_BLOCK_ENTITIES) {
+			gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+		}
+	#endif
 #endif
 }

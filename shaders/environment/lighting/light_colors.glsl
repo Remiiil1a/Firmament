@@ -128,6 +128,16 @@ vec3 BlockLightColor(uint materialID) {
 // space, which is why it lives beside the palette rather than in the shadow
 // program that is its only caller today.
 //
+// The other half of their arrival is not in this file. A colour answer is worth
+// nothing unless the geometry carrying it is drawn in the pass that writes the
+// fill, and block entities are drawn there only because shaders.properties submits
+// them (batch 719; the note on REAL_TIME_BLOCK_ENTITY_SHADOWS in
+// /environment/materialIDs.glsl explains why that submission is tied to the fill
+// rather than to their shadows). Between batch 697, which wrote the two answers
+// below, and batch 719, they were answered and never asked: the shadow pass never
+// drew a block entity, so the end portal's cold violet never entered the fill and
+// the room it stands in was lit by the pack's warm block light tint instead.
+//
 // The end portal is the void itself. What it casts is the violet of the star
 // field seen from inside it, taken cold: the blue channel is at peak, green sits
 // above red so the tint reads as violet rather than as a dimmed purple, and the
