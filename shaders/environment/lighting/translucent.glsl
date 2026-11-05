@@ -1434,7 +1434,9 @@ vec4 TranslucentLighting(
 			if (isEyeInWaterFog == 1 && materialID == WATER
 				&& abs(worldNormal.y) < 0.5
 				&& refractedScreenPos.z >= 1.0) {
-				fragmentColor.rgb = underwaterFogColor;
+				// The water's own hue, the same one the fog uses (batch 717), so the cut
+				// face reads as the same water rather than as a different, bluer one.
+				fragmentColor.rgb = underwaterFogIntensity * WaterFogHue();
 				srcAlpha = 0.0;
 			}
 

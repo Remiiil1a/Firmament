@@ -299,7 +299,7 @@ void main() {
 		// while the eye is under the surface, which is where its fix for the
 		// horizon underwater came from.
 		if (isEyeInWaterFog == 1) {
-			background = underwaterFogColor;
+			background = underwaterFogIntensity * WaterFogHue();
 		} else if (worldDir.y < 0.0) {
 			// Below the horizon only. Above it the sky quads do cover the view, and a
 			// pixel up there that is black is black sky and not a hole.
@@ -437,7 +437,7 @@ void main() {
 			// depth is the far plane and its colour is the sky. That difference is all
 			// this branch has to go on, this early in the frame, and it is enough.
 			if (!unwrittenPixel) {
-				scene = underwaterFogColor;
+				scene = underwaterFogIntensity * WaterFogHue();
 			}
 		}
 

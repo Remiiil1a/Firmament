@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 716]
+option.PBR_DEBUG=Material debug view [build 717]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -975,22 +975,15 @@ option.WATER_ABSORPTION_METHOD.comment=How light is absorbed by water that \
 	different path and this setting does not touch it: there the water's own \
 	medium absorbs, at the strength the water colour setting gives it.
 
-option.DARK_UNDERWATER=Underwater darkening
-option.DARK_UNDERWATER.comment=How much darker the water makes everything seen \
-	through it. It is a plain multiplier on what reaches the eye through water, so \
-	lowering it turns the whole underwater frame down without changing the water's \
-	colour - the colour and the falloff with depth come from the water colour \
-	setting and the water absorption. 1.0 leaves the water exactly as it is.
-
-option.CUSTOM_WATER_ABSORPTION_R=Red
+option.CUSTOM_WATER_ABSORPTION_R=Red absorption
 option.CUSTOM_WATER_ABSORPTION_R.comment=How quickly red light leaves the water \
-	on the Custom water colour, before the red scale below it is applied. 0 \
-	leaves that colour alone and 1 takes it away fastest. The four presets are \
-	made of the same kind of numbers: Balanced, the default, is 0.35 red, 0.18 \
-	green and 0.10 blue at a scale of 1.
-option.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE=Red scale
-option.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.comment=The power of ten the red \
-	number is multiplied by, which is what lets one slider cover both a clear \
+	on the Custom water colour, before the red absorption multiplier below it is \
+	applied. 0 leaves that colour alone and 1 takes it away fastest. The four \
+	presets are made of the same kind of numbers: Balanced, the default, is 0.35 \
+	red, 0.18 green and 0.10 blue at a scale of 1.
+option.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE=Red absorption multiplier
+option.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.comment=The power of ten the red absorption \
+	is multiplied by, which is what lets one slider cover both a clear \
 	pool and heavy silt. Each channel has one because blue has to be able to sit \
 	two orders below red; at a scale of 1, Balanced is 0.35, 0.18 and 0.10 per \
 	metre.
@@ -1002,11 +995,12 @@ value.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.1.0=1/m
 value.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.10.0=10/m
 value.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.100.0=100/m
 value.CUSTOM_WATER_ABSORPTION_R_MAGNITUDE.1000.0=1000/m
-option.CUSTOM_WATER_ABSORPTION_G=Green
+option.CUSTOM_WATER_ABSORPTION_G=Green absorption
 option.CUSTOM_WATER_ABSORPTION_G.comment=The green channel, before the green \
-	scale below it. It moves with red as the water gets murkier, and keeping it \
-	well under red is what leaves the water blue-green rather than grey.
-option.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE=Green scale
+	absorption multiplier below it. It moves with red as the water gets murkier, \
+	and keeping it well under red is what leaves the water blue-green rather than \
+	grey.
+option.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE=Green absorption multiplier
 value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.0.0001=0.0001/m
 value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.0.001=0.001/m
 value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.0.01=0.01/m
@@ -1015,11 +1009,11 @@ value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.1.0=1/m
 value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.10.0=10/m
 value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.100.0=100/m
 value.CUSTOM_WATER_ABSORPTION_G_MAGNITUDE.1000.0=1000/m
-option.CUSTOM_WATER_ABSORPTION_B=Blue
+option.CUSTOM_WATER_ABSORPTION_B=Blue absorption
 option.CUSTOM_WATER_ABSORPTION_B.comment=The blue channel, before the blue \
-	scale below it. It is the one to raise last: at the presets' values blue \
-	survives longest, which is the whole reason deep water is blue.
-option.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE=Blue scale
+	absorption multiplier below it. It is the one to raise last: at the presets' \
+	values blue survives longest, which is the whole reason deep water is blue.
+option.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE=Blue absorption multiplier
 value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.0.0001=0.0001/m
 value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.0.001=0.001/m
 value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.0.01=0.01/m

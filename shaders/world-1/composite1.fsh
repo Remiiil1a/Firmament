@@ -129,10 +129,11 @@ uniform vec3 previousCameraPosition;
 
 uniform int isEyeInWaterFog;
 
-// The water's own colour, for the boundary fog below. Declared here rather than taken
-// from environment/fog.glsl, which this pass does not include: the same pack uniform,
-// named in shaders.properties.
-uniform vec3 underwaterFogColor;
+// The water's own colour, for the boundary fog below: its hue from the attenuation
+// coefficients above (WaterFogHue), its brightness from the pack uniform in
+// shaders.properties. Declared here rather than taken from environment/fog.glsl, which
+// this pass does not include.
+uniform float underwaterFogIntensity;
 
 // How the boundary fog below turns UNDERWATER_HAZE_PER_METRE (0.012 per block, from
 // environment/water/absorption_settings.glsl) into the distance it covers. At the gain
@@ -1376,7 +1377,7 @@ void main() {
 	// own cannot read it honestly. What the column was standing in for - a surface deep
 	// under water being darker - the game's own light map already provides, because a
 	// surface that deep is lit by the little sky light that reaches it. The strength
-	// knobs are WATER_CHARACTER and DARK_UNDERWATER, both read by WaterAttenuation.
+	// knob is WATER_CHARACTER, read by WaterAttenuation.
 	//
 	// AND THE BOUNDARY FOG (batch 715).
 	//
@@ -1427,7 +1428,7 @@ void main() {
 				waterDistance * UNDERWATER_HAZE_PER_METRE
 					* UNDERWATER_BOUNDARY_GAIN, 2.0));
 
-			shown = mix(shown, underwaterFogColor, waterBoundaryFog);
+			shown = mix(shown, underwaterFogIntensity * WaterFogHue(), waterBoundaryFog);
 		}
 	#endif
 

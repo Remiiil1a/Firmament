@@ -14,6 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+// One definition per translation unit, however many files include this one: the fog
+// takes its hue from the coefficients below, so environment/fog.glsl includes this file
+// as well, and lit.fsh already includes it on its own (batch 717).
+#ifndef INCLUDE_ENVIRONMENT_WATER_ABSORPTION
+#define INCLUDE_ENVIRONMENT_WATER_ABSORPTION
+
 // The attenuation coefficients are in reciprocal metres: the factor for a path
 // through water is exp(coefficients * metres), which is Beer's law. Batch 671
 // moved them out of the function below and into these units, which is what
@@ -84,16 +90,39 @@
 // this file.
 #define NORMALISED_DEPTH_METERS 16.0
 
-// Additional brightness reduction of underwater...
-// 1.0 = no reduction, 0.0 = full reduction.
-// This is a plain scale factor on the exponential, reached only when there is
-// water in the path at all, so at the surface it does nothing.
-#define DARK_UNDERWATER 1.0 // [0.33 0.5 0.66 0.75 0.8 1.0]
-
 // Beer's law over a path length in metres.
+//
+// The "underwater darkening" multiplier that used to sit on this line is gone (batch
+// 717). It was a second scale on top of the coefficients, with no explanation of what
+// it meant, and the coefficients already say how fast the water takes light away. It
+// shipped at 1.0 in every profile, so removing it leaves the look exactly as it was;
+// the strength knob is WATER_CHARACTER alone.
 vec3 WaterAttenuation(float meters) {
-	return exp(meters * WATER_ATTENUATION_COEFFICIENTS)
-		* (meters > 0.0 ? DARK_UNDERWATER : 1.0);
+	return exp(meters * WATER_ATTENUATION_COEFFICIENTS);
+}
+
+// The hue of the water's own haze (batch 717).
+//
+// The underwater fog colour used to be a fixed blue built in shaders.properties -
+// underwaterFogIntensity times vec3(0.03, 0.25, 1.00) - so choosing a different
+// WATER_CHARACTER, or CUSTOM, changed how fast the light was absorbed but not what
+// colour the water was. The haze is the water seen from inside, so its colour is this
+// file's own coefficients: take them at one normalised depth and divide out the
+// brightest channel, and what is left is the hue alone. The brightness deliberately
+// stays with underwaterFogIntensity in shaders.properties, which is where the day/night
+// fade and the sky light term live.
+//
+// The brightest channel is divided out INSIDE the exponential, by subtracting its
+// coefficient, rather than after it. Same ratios, but exp() can no longer overflow to
+// infinity when CUSTOM's magnitudes are pushed up to 1000/m - which would have turned
+// the hue itself into a NaN.
+//
+// At BALANCED this returns (0.018, 0.28, 1.0), within a few percent of the constants it
+// replaces, so the shipped water does not change colour.
+vec3 WaterFogHue() {
+	vec3 coefficients = WATER_ATTENUATION_COEFFICIENTS;
+	return exp(NORMALISED_DEPTH_METERS
+		* (coefficients - max(max(coefficients.r, coefficients.g), coefficients.b)));
 }
 
 // The same thing for the one caller that still hands over a normalised depth.
@@ -127,3 +156,4 @@ vec3 WaterAbsorption(float depth) {
 // in that case comes from the fog colour and WATER_CHARACTER, which is the trade this
 // batch took rather than a second copy of the same physics.
 
+#endif // INCLUDE_ENVIRONMENT_WATER_ABSORPTION

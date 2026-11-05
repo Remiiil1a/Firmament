@@ -44,7 +44,7 @@
 		"isEyeInWater",
 		"isEyeInWaterFog",
 		"borderFogDistance",
-		"underwaterFogColor",
+		"underwaterFogIntensity",
 		"atmosphereFogCoefficient",
 		"rainFogAmount",
 		"blindness",

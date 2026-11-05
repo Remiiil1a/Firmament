@@ -209,10 +209,10 @@ uniform vec3 previousCameraPosition;
 // The pack's own function rather than a second set of coefficients, and that is the
 // whole point: this is the same function that darkens the water's surface and the
 // terrain seen through it, so the fog inside water attenuates exactly as the water
-// around it does. Its curve is a user option - WATER_CHARACTER picks cold, balanced or
-// tropical, DARK_UNDERWATER scales the whole thing - so the two cannot drift apart the
-// first time either is tuned, and the sliders the player already has for the water
-// govern the fog as well.
+// around it does. Its curve is a user option - WATER_CHARACTER picks a preset, or the
+// six numbers on the custom page - so the two cannot drift apart the first time either
+// is tuned, and the sliders the player already has for the water govern the fog as
+// well.
 //
 // Its argument is a normalised depth: 1.0 is "as deep as water gets", which this
 // file's callers reach at 15 to 16 blocks. See the note at the use for why the march
@@ -237,8 +237,11 @@ uniform vec3 previousCameraPosition;
 // declared above as well.
 #include "/lib/reproject.glsl"
 
-// The colour the pack fades what is under water towards, for the medium to take
-// its own colour from down there. A custom uniform, so this stage has it.
+// How bright the colour the pack fades what is under water towards is, for the medium
+// to take its own colour from down there. A custom uniform, so this stage has it. The
+// colour itself is the water's own attenuation (WaterFogHue, batch 717), which is what
+// makes the medium follow the water colour setting; only its brightness comes from
+// here, as it does for the fog.
 //
 // volumetricFogRainFactor is deliberately NOT declared here. It belongs to the
 // medium's own file below, which is where the density that reads it lives, and an
@@ -250,7 +253,7 @@ uniform vec3 previousCameraPosition;
 // 590: the fog's share of the day is now four settings blended by the medium's own
 // file rather than one number built in shaders.properties, so there is no such
 // uniform left either to declare or to avoid declaring.
-uniform vec3 underwaterFogColor;
+uniform float underwaterFogIntensity;
 
 // The scattered light in rgb, and in a the fraction of what is behind it that
 // reaches the eye - 1.0 everywhere except the Nether, where the plumes fade.
@@ -627,7 +630,7 @@ void main() {
 	// tinting the air inside the water as well would have the pack contradicting
 	// its own underwater lighting. Added in batch 340; see BATCH_LOG.md 197.
 	vec3 mediumColor = isEyeInWaterFog == 1
-		? underwaterFogColor
+		? underwaterFogIntensity * WaterFogHue()
 		: fogSunColor * VolumetricFogTint();
 
 	// HOW THE MEDIUM SCATTERS, BY THE ANGLE BETWEEN THE RAY AND THE SUN (batch 582).

@@ -22,12 +22,19 @@
 // constant, so the two cannot drift apart through the menu).
 #include "/environment/water/absorption_settings.glsl"
 
+// The water's own colour, for the underwater branch below (batch 717). Its hue now
+// comes from the attenuation coefficients rather than from a fixed blue in
+// shaders.properties, so the file that owns those coefficients is part of this one's
+// include graph. That file is guarded, so the programs which already include it
+// (lit.fsh, lit_voxy.fsh) are unaffected by the second path.
+#include "/environment/water/absorption.glsl"
+
 #if !defined (EXTERNALLY_DEFINED_UNIFORMS)
 	uniform vec3 caveFogColor;
 	uniform float eyeSkylight;
 	uniform int isEyeInWaterFog;
 
-	uniform vec3 underwaterFogColor;
+	uniform float underwaterFogIntensity;
 	uniform float atmosphereFogCoefficient;
 	uniform float blindness;
 	uniform float borderFogDistance;
@@ -143,8 +150,11 @@ vec4 FogV2(
 		// The coefficient is the constant shared with the frame-wide boundary fog in
 		// composite1.fsh, not a number written here (batch 716): the two have to fall
 		// off at the same rate for the seam between them to stay invisible.
+		//
+		// The colour is the water's own attenuation (batch 717), so the haze follows the
+		// water colour setting instead of a fixed blue; only its brightness is a uniform.
 		atmosphereFog = 1.0 - exp(-pow(fragDistance * UNDERWATER_HAZE_PER_METRE, 2));
-		fogColor = underwaterFogColor;
+		fogColor = underwaterFogIntensity * WaterFogHue();
 		skyFogStrength = 0.0;
 	} else if (isEyeInWaterFog == 2) {
 		// Lava fog, also uses exponential fog but with a very high minimum
