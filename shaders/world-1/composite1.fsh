@@ -135,13 +135,14 @@ uniform int isEyeInWaterFog;
 // this pass does not include.
 uniform float underwaterFogIntensity;
 
-// How the boundary fog below turns UNDERWATER_HAZE_PER_METRE (0.012 per block, from
-// environment/water/absorption_settings.glsl) into the distance it covers. At the gain
-// below the water is 0.012 * 2.0 = 0.024 per block, which is 6% at ten blocks, 21% at
-// twenty, 63% at forty and 90% at sixty-four: the near field is left alone and the far
-// end of the frame is the water's colour. The gain is a constant and not a second
-// option on purpose - two knobs for one haze is how an underwater look ends up with
-// two looks.
+// How the boundary fog below turns the water's haze (UnderwaterHazePerMetre, from
+// environment/water/absorption.glsl) into the distance it covers. At the gain below the
+// water is twice the haze per block - 0.024 at BALANCED - which is 5.6% at ten blocks,
+// 21% at twenty, 60% at forty and 91% at sixty-four: the near field is left alone and
+// the far end of the frame is the water's colour. A denser preset brings that reach in
+// by the same factor as the haze, because both sides read one number. The gain is a
+// constant and not a second option on purpose - two knobs for one haze is how an
+// underwater look ends up with two looks.
 const float UNDERWATER_BOUNDARY_GAIN = 2.0;
 
 // The distance the far plane is treated as. It only has to be far enough that the fog
@@ -1402,10 +1403,11 @@ void main() {
 	// (batch 677); this makes sure of it for a pixel that reaches here with anything else
 	// in it.
 	//
-	// The strength is UNDERWATER_HAZE_PER_METRE, the pack's one underwater haze
-	// constant, scaled by the gain defined near the top of this file. One number for
-	// the water's haze, now reaching every pixel of the frame rather than only the ones
-	// the surface programs drew.
+	// The strength is UnderwaterHazePerMetre() - derived from the water's own attenuation
+	// coefficients, so the haze thins and thickens with WATER_CHARACTER (batch 718) -
+	// scaled by the gain defined near the top of this file. One number for the water's
+	// haze, now reaching every pixel of the frame rather than only the ones the surface
+	// programs drew.
 	#if WATER_ABSORPTION_METHOD == REFRACTION_ASSISTED
 		if (isEyeInWaterFog == 1) {
 			float waterPixelDepth = texelFetch(depthtex0, pixel, 0).r;
@@ -1425,7 +1427,7 @@ void main() {
 			}
 
 			float waterBoundaryFog = 1.0 - exp(-pow(
-				waterDistance * UNDERWATER_HAZE_PER_METRE
+				waterDistance * UnderwaterHazePerMetre()
 					* UNDERWATER_BOUNDARY_GAIN, 2.0));
 
 			shown = mix(shown, underwaterFogIntensity * WaterFogHue(), waterBoundaryFog);

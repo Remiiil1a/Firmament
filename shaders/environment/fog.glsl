@@ -16,17 +16,13 @@
 
 // Modified 2026-09-13 by Remiiil1a for Firmament - v0.1 (edit of coderbot's Steadfast).
 
-// The underwater haze's thickness, which this file's water branch reads
-// (batch 715 moved it out of this file and into the water settings, so that
-// the composite pass can read the same number; batch 716 turned it into a
-// constant, so the two cannot drift apart through the menu).
-#include "/environment/water/absorption_settings.glsl"
-
-// The water's own colour, for the underwater branch below (batch 717). Its hue now
-// comes from the attenuation coefficients rather than from a fixed blue in
-// shaders.properties, so the file that owns those coefficients is part of this one's
-// include graph. That file is guarded, so the programs which already include it
-// (lit.fsh, lit_voxy.fsh) are unaffected by the second path.
+// The water's own colour and the thickness of its haze, for the underwater branch
+// below (batch 717, batch 718). Both come from the attenuation coefficients rather
+// than from a fixed blue and a fixed number in shaders.properties, so the file that
+// owns those coefficients is part of this one's include graph. It is guarded, so the
+// programs which already include it (lit.fsh, lit_voxy.fsh) are unaffected by the
+// second path. The water settings file is no longer included here: the haze was its
+// only reader in this file, and the haze is now derived from the coefficients.
 #include "/environment/water/absorption.glsl"
 
 #if !defined (EXTERNALLY_DEFINED_UNIFORMS)
@@ -147,13 +143,16 @@ vec4 FogV2(
 		// This is relatively similar to exp2 fog from the OpenGL
 		// fixed function pipeline.
 		//
-		// The coefficient is the constant shared with the frame-wide boundary fog in
-		// composite1.fsh, not a number written here (batch 716): the two have to fall
-		// off at the same rate for the seam between them to stay invisible.
+		// The coefficient comes from the water's own attenuation coefficients, and is
+		// shared with the frame-wide boundary fog in composite1.fsh (batch 718): the two
+		// have to fall off at the same rate for the seam between them to stay invisible,
+		// and both have to move with WATER_CHARACTER - otherwise changing the water's
+		// colour would leave its haze at the old thickness, which is what the author
+		// reported.
 		//
 		// The colour is the water's own attenuation (batch 717), so the haze follows the
 		// water colour setting instead of a fixed blue; only its brightness is a uniform.
-		atmosphereFog = 1.0 - exp(-pow(fragDistance * UNDERWATER_HAZE_PER_METRE, 2));
+		atmosphereFog = 1.0 - exp(-pow(fragDistance * UnderwaterHazePerMetre(), 2));
 		fogColor = underwaterFogIntensity * WaterFogHue();
 		skyFogStrength = 0.0;
 	} else if (isEyeInWaterFog == 2) {

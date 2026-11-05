@@ -15,8 +15,9 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // One definition per translation unit, however many files include this one: the fog
-// takes its hue from the coefficients below, so environment/fog.glsl includes this file
-// as well, and lit.fsh already includes it on its own (batch 717).
+// takes both its hue and the thickness of its haze from the coefficients below, so
+// environment/fog.glsl includes this file as well, and lit.fsh already includes it on
+// its own (batch 717, batch 718).
 #ifndef INCLUDE_ENVIRONMENT_WATER_ABSORPTION
 #define INCLUDE_ENVIRONMENT_WATER_ABSORPTION
 
@@ -123,6 +124,47 @@ vec3 WaterFogHue() {
 	vec3 coefficients = WATER_ATTENUATION_COEFFICIENTS;
 	return exp(NORMALISED_DEPTH_METERS
 		* (coefficients - max(max(coefficients.r, coefficients.g), coefficients.b)));
+}
+
+// How thick the water's haze is, per metre, from the same coefficients (batch 718).
+//
+// The haze used to be one fixed number - 0.012 per block, defined in
+// environment/water/absorption_settings.glsl - so choosing a different WATER_CHARACTER
+// changed how fast the water took light away but not how far one could see through it.
+// Those are two readings of one fact about one medium: water that absorbs more light is
+// water you see less far through. So the haze is derived from the coefficients instead
+// of being given a value of its own, and the four presets now differ in visibility as
+// well as in hue - CLEAR the clearest water this pack has, COLD the murkiest.
+//
+// The measure is the mean of the three coefficients in reciprocal metres, not one
+// channel: the presets differ in which channel dominates (CLEAR's red is 78 times its
+// blue, BALANCED's 3.5), so a single channel would make the haze follow that channel's
+// hue rather than the water's overall opacity. If it ever should follow one channel -
+// green, say, the one the eye is most sensitive to - this line is the only line to
+// change.
+//
+// The ratio is chosen so that BALANCED comes out at exactly the 0.012 per block the
+// fixed constant held: mean(0.35, 0.18, 0.10) is 0.21, and the factor below is
+// 0.012 / 0.21. The four presets are therefore
+//
+//     CLEAR     0.010054 per block   (mean 0.175950)
+//     BALANCED  0.012000 per block   (mean 0.210000)  - the value that was here
+//     TROPICAL  0.023810 per block   (mean 0.416667)
+//     COLD      0.026190 per block   (mean 0.458333)
+//
+// and CUSTOM follows its six options, including the case where a custom water absorbs
+// nothing: no absorption, no haze. In exact arithmetic 0.21 * (0.012 / 0.21) is 0.012;
+// in single precision the product is one ULP above the literal 0.012 (7.8e-8 relative,
+// which moves the fog factor by less than 1e-6), so the shipped look is unchanged to
+// the last bit that anything can see.
+//
+// It is derived, not an option, on purpose: a haze slider would be a second knob saying
+// how thick the water is, next to the coefficients that already say it.
+#define UNDERWATER_HAZE_PER_ATTENUATION (0.012 / 0.21)
+
+float UnderwaterHazePerMetre() {
+	return -dot(WATER_ATTENUATION_COEFFICIENTS, vec3(1.0 / 3.0))
+		* UNDERWATER_HAZE_PER_ATTENUATION;
 }
 
 // The same thing for the one caller that still hands over a normalised depth.
