@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 719]
+option.PBR_DEBUG=Material debug view [build 720]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -1095,6 +1095,7 @@ option.REAL_TIME_SHADOWS.comment=Whether terrain, entities and block entities \
 
 option.REAL_TIME_ENTITY_SHADOWS=Real-time entity shadows
 option.REAL_TIME_BLOCK_ENTITY_SHADOWS=Real-time block entity shadows
+option.REAL_TIME_BLOCK_ENTITY_SHADOWS.comment=Whether chests, signs, beds and the end portal cast real shadows from the sun and the moon. With it off their geometry is still sent to the shadow pass - the coloured block light needs it there to learn what the two portals give off - but their depth is thrown away, so nothing behind them goes dark. With it on they occlude like any other block. Block entities do not seem to respect the reduced entity render distance, so this costs more the more of them are around. It does not decide the portals' own light, which arrives either way.
 
 option.COLORED_SHADOWS=Coloured shadows
 option.COLORED_SHADOWS.comment=Whether light through stained glass arrives \

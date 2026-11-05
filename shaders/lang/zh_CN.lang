@@ -215,7 +215,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 719]
+option.PBR_DEBUG=材质调试视图 [build 720]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -745,6 +745,7 @@ option.WATER_ABSORPTION_METHOD.comment=从水面之上看进水里的光如何�
 option.PREFER_FDM_GRADIENT= 优先梯度雾效
 option.PREFER_FDM_GRADIENT.comment=用一种更粗、更省的方法计算水面之前有多少雾。除非准确的那一路本身出了问题，否则保持关闭。
 option.REAL_TIME_BLOCK_ENTITY_SHADOWS= 方块实体实时阴影
+option.REAL_TIME_BLOCK_ENTITY_SHADOWS.comment=箱子、告示牌、床和末地传送门是否在日月下投出真正的影子。关着时它们的几何照样会送进阴影贴图那一趟——彩色方块光需要在那里读到两扇门发的是什么颜色——但它们的深度会被丢掉，所以它们背后的东西不会变黑。开着时它们和其它方块一样挡光。方块实体似乎不受实体渲染距离的限缩，所以身边的方块实体越多，这一项越贵。它不决定两扇门自己的光，那份光两种情况都有。
 option.MINISHITA_LIGHTING= 物理光照模型
 option.WATER_CAUSTICS_DISTANCE= 水体焦散渲染距离
 option.SKY_DITHER= 天空色彩抖动（消除色带）

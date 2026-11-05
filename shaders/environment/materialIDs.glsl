@@ -279,7 +279,16 @@ const float END_GATEWAY_BLOCK_ID = 10012.0;
 // program does not include is a define that program does not have, and a branch on
 // it then silently takes the false side - which is exactly how the block-entity
 // write of batch 697 shipped without ever running.
-// #define REAL_TIME_BLOCK_ENTITY_SHADOWS
+//
+// The line below has to stay in this exact shape: `//#define`, with no space
+// between the slashes and the hash. That is how the loader recognises an option
+// that exists and is off - it is the form every other default-off option in this
+// pack uses - and it is also the line the loader edits when the author ticks the
+// box. Batch 719 moved this declaration here and kept the space upstream's copy
+// had (`// #define`), and the option disappeared from the shadows page entirely:
+// a line the loader cannot read as a declaration is a line it cannot show, and it
+// says nothing about that when it happens. Batch 720 puts the shape right.
+//#define REAL_TIME_BLOCK_ENTITY_SHADOWS
 
 // Whether the light that has passed through stained glass arrives coloured, so
 // that a red pane puts a red patch of sunlight on the floor rather than a
