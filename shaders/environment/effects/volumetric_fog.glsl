@@ -251,6 +251,19 @@ vec3 VolumetricFogTint() {
 // switches to the underwater light and multiplies UNDERWATER_GODRAYS_STRENGTH
 // in. What this switches is the medium itself, which is much denser down there.
 #define UNDERWATER_GODRAYS
+// The test that makes this an option rather than a bare #define.
+//
+// The loader only treats a macro as a user option if some shader file tests it with
+// `#ifdef` or `#ifndef` - the rule is written out under "Boolean Options" in the
+// shaders.properties reference, and it is the rule the block entity shadow switch
+// was missing until batch 721. Until this batch the only tests of this name were
+// `#ifdef UNDERWATER_GODRAYS` blocks in shaders.properties, which are not shader
+// code and therefore do not count, so the option was declared, listed on a page,
+// given two lang strings and never shown.
+#ifdef UNDERWATER_GODRAYS
+	// Nothing to do: recognition is the whole of this block's job. The option is
+	// read where the underwater medium is built, further down this file.
+#endif
 
 // How bright the shafts are under water, as a fraction of the same shafts above
 // it. The medium is thicker under water, so this is usually set below 1.0 to

@@ -425,7 +425,12 @@ void main() {
 	// is on, and then no cull is wanted. A loader that had COLORED_LIGHTS without
 	// custom images would submit them for a fill that does not exist; the write
 	// above needs the same images, so that state is not one this pack has ever met.
-	#if !defined(REAL_TIME_BLOCK_ENTITY_SHADOWS)
+	// `#ifndef`, not `#if !defined(...)`: a boolean option is only recognized by the
+	// loader if some shader file tests it with `#ifdef` or `#ifndef` (shaders.properties
+	// reference, "Boolean Options"). This test and the one beside the declaration in
+	// /environment/materialIDs.glsl are what make the shadows page list the option at
+	// all; the meaning is unchanged.
+	#ifndef REAL_TIME_BLOCK_ENTITY_SHADOWS
 		if (renderStage == MC_RENDER_STAGE_BLOCK_ENTITIES) {
 			gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
 		}

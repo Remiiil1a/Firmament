@@ -280,15 +280,28 @@ const float END_GATEWAY_BLOCK_ID = 10012.0;
 // it then silently takes the false side - which is exactly how the block-entity
 // write of batch 697 shipped without ever running.
 //
-// The line below has to stay in this exact shape: `//#define`, with no space
-// between the slashes and the hash. That is how the loader recognises an option
-// that exists and is off - it is the form every other default-off option in this
-// pack uses - and it is also the line the loader edits when the author ticks the
-// box. Batch 719 moved this declaration here and kept the space upstream's copy
-// had (`// #define`), and the option disappeared from the shadows page entirely:
-// a line the loader cannot read as a declaration is a line it cannot show, and it
-// says nothing about that when it happens. Batch 720 puts the shape right.
+// A boolean option is not an option until a shader file TESTS it, and only
+// `#ifdef`/`#ifndef` count. The documented rule, from "Boolean Options" in the
+// shaders.properties reference: `#if defined` may test several options on one line,
+// "however for Iris/OptiFine to recognize a boolean option, it must be checked at
+// least once using `#ifdef` or `#ifndef`". This is where it is checked, in the file
+// that also declares it, which is what the same page asks for ("the option macro
+// must be defined in all files which it is used in").
+//
+// Do not delete the block below as if it were empty: empty it is, and that is the
+// point. Batch 719 moved this declaration out of /environment/lighting/diffuse.glsl
+// and dropped the `#ifdef` that had lived beside it, leaving only an
+// `#if !defined(...)` test in /program/shadow/shadow.vsh and a `#if` in
+// shaders.properties - neither of which the loader counts. The macro was then not an
+// option at all, so the shadows page had nothing to show and the row disappeared
+// silently. Batch 720 changed the declaration's spacing, which was never the
+// problem. Batch 721 is the test.
 //#define REAL_TIME_BLOCK_ENTITY_SHADOWS
+#ifndef REAL_TIME_BLOCK_ENTITY_SHADOWS
+	// Nothing to do here. Recognizing the option is the whole of this block's job;
+	// what the value decides is the cull near the end of main() in
+	// /program/shadow/shadow.vsh.
+#endif
 
 // Whether the light that has passed through stained glass arrives coloured, so
 // that a red pane puts a red patch of sunlight on the floor rather than a
