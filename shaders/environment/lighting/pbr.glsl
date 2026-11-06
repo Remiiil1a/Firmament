@@ -2521,7 +2521,30 @@ vec3 PbrDebugColor(
 			// show. Underground and indoors the sky light is zero, so this is
 			// untouched either way - which is what keeps a material reading as a
 			// material in a cave.
-			smoothness *= 1.0 - skyLight * (1.0 - pbr.roughness);
+			//
+			// A metal keeps it, and that is batch 724. This term is the only
+			// environment a metal has in the deferred image - its diffuse response
+			// is taken away entirely, see the note in diffuse.glsl - and the
+			// reflection that was meant to replace it is not applied in two places
+			// the author sees. Behind a translucent the pane has already
+			// overwritten the material buffers with its own neutral values, so the
+			// pass that adds the reflection finds nothing to reflect there; and a
+			// surface inside another surface's reflection is sampled from the
+			// deferred copy, which is written before the reflection exists. In both
+			// the metal keeps only what this function returns, and stepping it back
+			// to nothing leaves black - the same failure a held metal had in batch
+			// 621, where the exclusion is the hand.
+			//
+			// A dielectric is unchanged: a metalness of zero makes the last factor
+			// exactly one, so the expression is the one it always was.
+			//
+			// What it costs is that a metal seen normally keeps the fraction of
+			// this term the reflection does not replace, so it reads slightly
+			// brighter. That factor below is the dial if it is too bright: half of
+			// it halves the difference and still leaves the two cases above with an
+			// environment to show.
+			smoothness *= 1.0 - skyLight * (1.0 - pbr.roughness)
+				* (1.0 - clamp(pbr.metalness, 0.0, 1.0));
 		#endif
 
 		return PBR_SPECULAR_STRENGTH * smoothness * fresnel * indirectLighting;
