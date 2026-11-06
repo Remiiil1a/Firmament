@@ -338,6 +338,24 @@ bool Raytrace(
 // for cost is the option above.
 #define SCREEN_REFINEMENT_STEPS 5
 
+// How far behind the ray the silhouette fallback at the end of the function may
+// take a surface, in metres.
+//
+// The fallback answers the one case the ladder has no answer for: the pixel at a
+// silhouette, where the reflected ray leaves the fragment and is immediately
+// behind whatever stands at its edge. What it takes there is out of place by
+// about the thickness of the thing being filled - one block in this world - and
+// that is what this is.
+//
+// Wider than that and it stops being a silhouette fill. A ray leaving a surface
+// at a grazing angle sweeps across the screen behind everything nearer than
+// itself, and how far it is behind them is the whole difference in their
+// distances: batch 723 measured 32 to 57 m on a mirror 21 to 40 m deep, where
+// the fallback painted the nearest object over every mirror pixel it was asked
+// about. `_team_bfog/ssr_behind_fallback_723.py` counts that case and what this
+// bound does to a reflection that is real.
+#define SCREEN_BEHIND_THICKNESS 1.0
+
 // Where a projected coordinate leaves the [-1, 1] box, along a ray.
 //
 // The coordinate is (a + t * da) / (w + t * dw) - the projection's own
@@ -442,7 +460,12 @@ float ScreenLadderParameter(
 // - A hit is bisected onto the surface before it is sampled, so the colour
 //   that comes back is the surface's own rather than the far side of the step
 //   that went over it. Without this, a coarse ladder trades holes for stretched
-//   reflections instead of closing them.
+//   reflections instead of closing them. The one exception is a hit whose
+//   previous sample was already behind the surface: there is no front end to
+//   bisect towards, so the coarse sample stands. That is at most one ladder cell
+//   out of place, and batch 723 measured it at about a pixel on a reflection
+//   that is really there; the stretched picture that batch fixed came from the
+//   fallback at the end of the function, not from this.
 // - The ray stops at the edge of the window. There is nothing behind the window
 //   to read, and a sample fetched there is whatever the texture's edge happens
 //   to hold, which reads as a reflection of a place that does not exist.
@@ -564,8 +587,9 @@ bool ScreenSpaceRaytrace(
 	// are and centimetres where they are not.
 	float previousZ = -startClip.w;
 
-	// The first sample the ray went behind anything at, for the fallback at the
-	// end of the function.
+	// The first sample the ray went behind anything CLOSE at, for the fallback
+	// at the end of the function. "Close" is SCREEN_BEHIND_THICKNESS: a surface
+	// it merely passes behind from the eye's side is not one it went behind.
 	bool hasBehind = false;
 	float behindU = 0.0;
 
@@ -670,7 +694,14 @@ bool ScreenSpaceRaytrace(
 
 		// A surface the ray has gone behind, remembered in case nothing better
 		// turns up. See the note where it is used, at the end of the function.
-		if (!hasBehind && penetration > 0.0) {
+		//
+		// Only one close behind. This is not a second hit test - the accept
+		// below already takes anything within one ladder cell - it is the
+		// silhouette case that the cell cannot reach, and a surface far enough
+		// in front of the ray to be a different thing altogether is an occlusion
+		// the ray's screen path crosses rather than a crossing of its own.
+		if (!hasBehind && penetration > 0.0
+			&& penetration <= SCREEN_BEHIND_THICKNESS) {
 			hasBehind = true;
 			behindU = u;
 		}
@@ -737,19 +768,29 @@ bool ScreenSpaceRaytrace(
 		previousZ = rayZ;
 	}
 
-	// Nothing was crossed cleanly, but the ray did go behind something. Take
-	// that.
+	// Nothing was crossed cleanly, but the ray did go just behind something.
+	// Take that.
 	//
-	// This is the author's decision of 2026-10-22, and it is a trade rather than
-	// a fix. The pixels it serves are the ones at a silhouette: the reflected
-	// ray leaves the surface, immediately leaves what is on screen with it, and
-	// finds nothing at all - so the caller's sky fallback fills them, and every
-	// edge of every block picks up a rim of sky. A surface the ray has gone
-	// behind is at least the thing standing there, so it is a better answer than
-	// the sky even when it is not exactly on the ray. The three packs this was
-	// compared against all make the same trade - Bliss accepts a surface up to
-	// 0.19 to 0.90 of the distance behind the ray, uncapped, which is why its
-	// reflections fill the silhouette and why it stretches.
+	// This is the author's decision of 2026-10-22: the pixels it serves are the
+	// ones at a silhouette, where the reflected ray leaves the surface and finds
+	// nothing on screen, so the caller's sky fallback fills them and every edge
+	// of every block picks up a rim of sky. A surface the ray has gone behind is
+	// at least the thing standing there, so it is a better answer than the sky
+	// even when it is not exactly on the ray.
+	//
+	// What makes that defensible is the bound in SCREEN_BEHIND_THICKNESS, added
+	// in batch 723: a surface within one block of the ray is the edge being
+	// filled. Unbounded, the fallback answers with whatever the ray's screen
+	// path happens to pass behind, and how far it is behind is the whole
+	// difference in their distances - 32 to 57 m on the mirror measured in
+	// _team_bfog/ssr_behind_fallback_723.py, where it painted the nearest object
+	// over all 60 of the fragments it was asked about. The reference packs do
+	// less here, not more: Sundial has no fallback at all and returns the sky on
+	// a miss; Bliss and Eclipse return a miss sentinel that their callers answer
+	// with the background; Mellow does accept a surface behind the ray, but
+	// stops once it is more than half its ray's own depth span behind. This pack
+	// was the only unbounded one - the note that used to stand here said all
+	// three made the same trade, and that was wrong.
 	//
 	// Deliberately not bisected. A bisected version of a wrong answer is still a
 	// wrong answer, and the five fetches would buy an edge that is straighter
