@@ -109,6 +109,12 @@ const float refinementDecelerationFactor = (REFINEMENT_DISTANCE
 // distance during raytracing, effectively the tolerance of determinining
 // whether we are going to accept a hit or not.
 //
+// The tolerance is on the side of the ray that has NOT been reached yet: how
+// far past the sample a surface may stand and still be the one the ray is going
+// to meet. A surface on the near side is one the ray has already passed, and
+// nothing on the near side is accepted at all since batch 722 - see the window
+// in the loop for why that side used to be open and what it cost.
+//
 // At this point in the file the two components are what the caller passes: X is
 // the thickness the first step starts with, in meters, and Y is the factor the
 // thickness is multiplied by on every step, on top of the ACCELERATION_FACTOR
@@ -171,8 +177,12 @@ bool Raytrace(
 		// But varying it means that we can use a very restrictive thickness
 		// when doing small steps and then widen it when doing large strides.
 		//
-		// Starting small and then increasing prevents tree fragments above you
-		// from being reflected in water in front of you.
+		// A small step is a step whose far side is a metre away, so a tolerance
+		// of a metre is already a whole step's worth of slack; a step that
+		// covers a hundred metres can be wrong by a fraction of itself and
+		// still land on what it was aimed at. A tolerance that did not follow
+		// the step would either accept far too much up close or miss
+		// everything far away.
 		velocityAndThickness *= vec4(
 			vec3(ACCELERATION_FACTOR),
 			ACCELERATION_FACTOR * thicknessControl.y);
@@ -180,7 +190,7 @@ bool Raytrace(
 		// Prevent thickness from getting too large as that will mean far
 		// distances have undesirable stretching.
 		//
-		// 鈿狅笍 This line is where this pack used to differ from Steadfast, and that
+		// This line is where this pack used to differ from Steadfast, and that
 		// difference is the whole of why water lost its reflection in a band under the
 		// horizon when the surface is viewed level. Upstream divides by the refinement
 		// count outright. Before the first hit that count is zero, so upstream's divisor
@@ -193,11 +203,17 @@ bool Raytrace(
 		//
 		// The guard had a reason, kept here so that dropping it is a decision rather
 		// than an accident: an unrefined hit then carries a tolerance as long as the
-		// step that made it, so it can accept a surface it merely passed near, and the
-		// reflection is drawn from a screen position away from the point actually being
-		// reflected. That is the stretched, banded reflection. Water is where the trade
-		// is made the other way, because a missing reflection is the more visible of
-		// the two and because the user confirmed in game which one this was.
+		// step that made it, so it can accept a surface the step went past without
+		// landing on it, and the reflection is drawn from a screen position away from
+		// the point actually being reflected. That is the stretched, banded
+		// reflection. Water is where the trade is made the other way, because a
+		// missing reflection is the more visible of the two and because the user
+		// confirmed in game which one this was.
+		//
+		// That trade is about the far side of the ray - a surface ahead of the sample
+		// that the ray is about to step over. It is not a licence to widen the near
+		// side, which reaches a surface the ray has already passed; batch 722 closed
+		// that side. See the window below.
 		//
 		// Written as a test rather than as a division by zero: min(w, infinity) is w,
 		// so saying that costs one comparison and does not depend on how the driver
@@ -206,13 +222,38 @@ bool Raytrace(
 			? velocityAndThickness.w
 			: min(velocityAndThickness.w, MAX_THICKNESS / float(refinementRounds));
 
-		// The range of Z values we will permit lies between where we started
-		// and where we are advancing to.
+		// The range of Z values we will permit lies between the depth the ray
+		// is at and the depth it is advancing to, widened on the far side only.
 		//
-		// Note that these view-space Z values are negative, so the thickness
-		// +/- is widening the range, not narrowing it. See below for a more
-		// detailed explanation on how this works.
-		float minZ = viewPos.z + thicknessM;
+		// Both of these view-space Z values are negative, so maxZ is where the
+		// ray arrives minus the thickness, and the window is the interval
+		// [maxZ, minZ] with minZ the nearer end of it.
+		//
+		// minZ carries no thickness, and that is batch 722. A surface in front
+		// of it is one the ray has already passed, and a reflected ray cannot
+		// reach what it has already passed - accepting one puts the surface's
+		// own colour, fetched from the surface's own pixels, into the
+		// reflection, which is a reflection of the foreground. The closed near
+		// end is what the four packs compared here do: Bliss and Eclipse slide
+		// a minZ/maxZ pair across the step (minZ = maxZ - biasAmount / linZ,
+		// with a fixed bias of 0.000075 to 0.00035), Sundial tests
+		// `sampleCoord.z > sampleDepth`, Mellow tests
+		// `ExpectedPos.z > RealDepth` - in every one of them the sampled
+		// surface has to be one the ray has gone behind.
+		//
+		// The window used to be widened on the near side by the same
+		// thicknessM, and that side is what cost: thicknessM follows the ray
+		// velocity and, before the first hit, is uncapped - 0.5 m at the start
+		// and then 1, 2, 4, 8, 16 and 32 metres over the first six steps for
+		// the (0.5, 1.0) a pane passes - so the window reached that many metres
+		// in front of the ray as well, and geometry standing between the eye
+		// and the pane was accepted as part of what the pane reflects. A pane
+		// needs no guard of its own against this, because the trace should
+		// never have offered it. `_team_bfog/ssr_near_tolerance_722.py`
+		// measures the class: 10.3% of the glass rays and 20.6% of the water
+		// ones land on a surface nearer than the ray, and none of them does
+		// once the near end is closed.
+		float minZ = viewPos.z;
 		viewPos += velocityAndThickness.xyz;
 		float maxZ = viewPos.z - thicknessM;
 
@@ -241,19 +282,12 @@ bool Raytrace(
 
 		// Intersections are odd because the Z values are all negative. What we
 		// want is:
-		// abs(minZ) - thickness < abs(sampledViewZ) < abs(maxZ) + thickness
+		// minZ > sampledViewZ > maxZ
 		//
-		// But what that really means is:
-		// -minZ - thickness < -sampledViewZ < -maxZ + thickness
-		//
-		// This can be expanded as:
-		// -(minZ + thickness) < -sampledViewZ
-		// AND -sampledViewZ < -(maxZ - thickness)
-		//
-		// Using the rules of inequalities, we can rewrite this as:
-		// minZ + thickness > sampledViewZ AND sampledViewZ > maxZ - thickness
-		//
-		// And we can pull the thickness calculations to above.
+		// in other words the sampled surface lies between the depth the ray was
+		// at before this step and the depth it reached, plus the thickness on
+		// the far side. Both bounds are built above, which is why neither of
+		// them is widened again here.
 		//
 		// The screen position is checked along with the depth, and it fails the
 		// same way: the depth this reads can be a level-of-detail renderer's own
