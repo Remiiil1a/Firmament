@@ -283,9 +283,34 @@ vec3 EnvironmentReflection(
 		// Faded out by how much of the sky this fragment can actually see, so
 		// that a cave floor or an interior does not reflect a sky that is not
 		// visible from it.
+		//
+		// The quantity that answers that is the sky light level, and it answers
+		// it in the Overworld: a cave has none, an open field has all of it.
+		//
+		// It does not answer it in the End, and that is batch 726. The End has
+		// no sky light level at all - it is lit by its own ambient, see
+		// EndAmbientLighting in end_lighting.glsl, and the pack says the same
+		// thing about the fog in environment/fog.glsl - so skyLight is zero
+		// everywhere there and this factor was zero everywhere too. The End's
+		// sky is not an atmosphere: it is a star field and a nebula, and it is
+		// there in every direction whatever the light level says. Multiplying it
+		// away left a polished block in the End reflecting nothing but its own
+		// colour, which is the same "the reflection is not there" the author
+		// reported after batch 725.
+		//
+		// EndSkyDimension() is the pack's own answer to "is the sky this
+		// dimension's own", and it is the same predicate SkyColor above used to
+		// choose the sky in the first place - so the gate and the sky agree by
+		// construction, including the END_SKY option that can force the End's
+		// sky on in every dimension. It is false in the Overworld and in the
+		// Nether, which is what keeps the cave and interior protection exactly
+		// as it was; the Nether is deliberately left alone, because this pack
+		// has no Nether sky of its own for a reflection to show.
+		bool skyIsAlwaysThere = EndSkyDimension();
+
 		vec3 environment = SkyDither(
 			gl_FragCoord.xy,
-			skyReflection) * PbrSkyExposure(skyLight);
+			skyReflection) * (skyIsAlwaysThere ? 1.0 : PbrSkyExposure(skyLight));
 
 		#if defined(PBR_SSR)
 			// Everything that got this far reflects something, so everything
@@ -515,10 +540,19 @@ vec3 EnvironmentReflection(
 		// The miss case keeps the floor exactly as it was: there the environment
 		// really is the sky term, and "no sky in sight" is the case it was
 		// written for.
+		//
+		// Batch 726: a dimension whose sky is not an atmosphere is the second
+		// case where the floor is the wrong question. The End's sky is a star
+		// field with a floor of about 0.0035, which is below this floor by
+		// construction - so even with the exposure gate above opened, the floor
+		// would scale the weight down to a fortieth and the reflection would
+		// still be missing. Where the sky is always there, it is there however
+		// dark it is, and the same predicate that opened the exposure gate
+		// answers it.
 		float environmentLuminance = dot(
 			environment,
 			vec3(0.2126, 0.7152, 0.0722));
-		float environmentPresent = reflectionHitOut
+		float environmentPresent = (reflectionHitOut || skyIsAlwaysThere)
 			? 1.0
 			: smoothstep(0.0, 0.02, environmentLuminance);
 
