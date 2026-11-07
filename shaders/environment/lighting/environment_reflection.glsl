@@ -100,14 +100,16 @@ uniform vec2 windowToNdc;
 // under PBR_ENERGY_CONSERVATION, so that the reflection replaces the light it
 // stands for instead of being added on top of it. See the note on it where it
 // is filled in.
-// reflectionHitOut: whether the trace found the world at all. Read by the
-// reflection debug view, which paints the pixels that fell back to the sky:
-// that is how a boundary in the reflection is told apart from a boundary in
-// the material without guessing, which took several rounds to learn.
+// reflectionHitOut: whether the trace found the world at all. Written on every
+// path through this function, because two readers depend on it: the body's own
+// presence test below (batch 725 - a hit is a real sample however dark, and the
+// weight may not be built from the sample's brightness) and the reflection debug
+// view, which paints the pixels that fell back to the sky: that is how a
+// boundary in the reflection is told apart from a boundary in the material
+// without guessing, which took several rounds to learn.
 // reflectionHitDistanceOut: how far from the fragment the hit was, in blocks, and
 // zero where there was no hit. Used by the same debug view to mark the hits
-// that are near enough to be this block's own geometry, and by the body to
-// refuse them.
+// that are near enough to be this block's own geometry.
 vec3 EnvironmentReflection(
 	vec3 viewPos,
 	float skyLight,
@@ -300,6 +302,15 @@ vec3 EnvironmentReflection(
 				vec2 hitPos;
 				vec3 hitViewPos;
 
+				// Written before the trace rather than by the branch that finds
+				// something, and that is not tidiness: an out parameter is
+				// undefined until it is written, and the miss path returns without
+				// writing it. The guard further down reads this flag, so a value
+				// that only one branch produced would be a flag from a branch that
+				// did not run - the same class of mistake the guard itself had.
+				reflectionHitOut = false;
+				reflectionHitDistanceOut = 0.0;
+
 				// The trace itself is ScreenSpaceRaytrace, in lib/raytrace.glsl,
 				// and the note at its head is where the reason it is not the
 				// world-space Raytrace lives. In one line: what has to be found
@@ -484,13 +495,32 @@ vec3 EnvironmentReflection(
 		// multiplied towards black and given nothing in its place. That is what
 		// happened to metals: their Fresnel is high at every angle, so they lost
 		// most of their own light to a reflection that had no light in it.
+		// (Batch 621 section 20, which is where the floor comes from.)
 		//
 		// The floor is a luminance of a fiftieth, which is the point where a
 		// reflection stops being able to stand in for a surface's own colour.
+		//
+		// Batch 725: it is a test of PRESENCE, and only the miss case needs it.
+		// The trace already answers whether anything was sampled at all, and a
+		// hit is a sample of the world however dark it is - the reflection of a
+		// black block is black. Growing the floor out of the sampled colour
+		// instead made the weight smaller exactly where the hit was darker, so a
+		// hit below the floor kept the reflective surface's own colour instead of
+		// replacing it: on a pale polished block the darkest content came out the
+		// brightest, with the shape and the hue intact and at every viewing
+		// angle. `_team_bfog/reflection_value_chain_725.py` sweeps the chain:
+		// d(out)/d(hit luminance) was negative, down to -20.8 at a hit luminance
+		// of 0.01, and is +0.73 everywhere once the flag below is used.
+		//
+		// The miss case keeps the floor exactly as it was: there the environment
+		// really is the sky term, and "no sky in sight" is the case it was
+		// written for.
 		float environmentLuminance = dot(
 			environment,
 			vec3(0.2126, 0.7152, 0.0722));
-		float environmentPresent = smoothstep(0.0, 0.02, environmentLuminance);
+		float environmentPresent = reflectionHitOut
+			? 1.0
+			: smoothstep(0.0, 0.02, environmentLuminance);
 
 		// How much of the environment this surface takes, as a colour, before the
 		// environment itself is multiplied in.
