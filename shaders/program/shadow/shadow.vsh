@@ -90,19 +90,28 @@ uniform mat4 shadowModelViewInverse;
 	// compiles. `#ifndef` keeps the loader's own definition whenever there is one,
 	// and in game there always is.
 	//
-	// The two numbers are the ones this file carried before batch 719. They could
-	// not be confirmed here: no Iris or OptiFine source or documentation is on this
-	// machine, and the claims about the table disagree with each other, so replacing
-	// them would be a second guess rather than a correction. In the only case that
-	// reaches the game - the loader defines the names - none of this matters. A
-	// wrong fallback costs the local model only: a block-entity draw would be
-	// written as terrain (see case 3 at the write) and the cull below would not
-	// fire for it. Both are noted in BATCH_LOG.md b719.
+	// The numbers are the loader's, confirmed against its source in batch 727:
+	// `MC_RENDER_STAGE_*` is the ordinal of its own rendering-phase enumeration,
+	// which runs NONE, SKY, SUNSET, CUSTOM_SKY, SUN, MOON, STARS, VOID,
+	// TERRAIN_SOLID, TERRAIN_CUTOUT_MIPPED, TERRAIN_CUTOUT, ENTITIES,
+	// BLOCK_ENTITIES, ... and on to HAND_TRANSLUCENT - so ENTITIES is 11 and
+	// BLOCK_ENTITIES is 12. The 3 and 4 this file carried from batch 719 to batch
+	// 726 were CUSTOM_SKY and SUN, and the note that defended them had never seen
+	// the table it was unsure about.
+	//
+	// WHAT THIS DOES AND DOES NOT DO. The loader defines all twenty-four of these
+	// names in every program it compiles: it builds the list from that same
+	// enumeration and hands it to the preprocessor ahead of each program source, so
+	// `#ifndef` is false in game and these lines are dead there. The numbers below
+	// were therefore already the ones being compared in game, before this batch as
+	// well as after it. Correcting them changes what this project's own front end
+	// compiles, which is the only build that ever read them - it is not, and never
+	// was, the picture.
 	#ifndef MC_RENDER_STAGE_ENTITIES
-		#define MC_RENDER_STAGE_ENTITIES 3
+		#define MC_RENDER_STAGE_ENTITIES 11
 	#endif
 	#ifndef MC_RENDER_STAGE_BLOCK_ENTITIES
-		#define MC_RENDER_STAGE_BLOCK_ENTITIES 4
+		#define MC_RENDER_STAGE_BLOCK_ENTITIES 12
 	#endif
 
 	// blockEntityId is the loader's number for the block entity being drawn, from
@@ -169,6 +178,37 @@ uniform mat4 shadowModelViewInverse;
 		imageStore(light_volume_world, voxel, value);
 	}
 
+	// The centre of the voxel a block-entity vertex lands in, in the camera-relative
+	// space the store takes.
+	//
+	// A block entity supplies no at_midBlock, so its voxel comes from the vertex
+	// position - and a portal's vertices sit exactly on block boundaries, which
+	// makes the coordinate an exact integer and leaves floor() to be decided by the
+	// round-trip error of shadowModelViewInverse * viewPos. That error changes as
+	// the camera moves, so the emitter could land in either of two neighbouring
+	// voxels from one frame to the next, and the light it casts jumped a block and
+	// back. That is the author's report of a portal whose colour strobes while the
+	// camera moves.
+	//
+	// Two things fix it and both are needed. The bias resolves the tie the same way
+	// every frame; it is a thousandth of a voxel, so it moves nothing that was not
+	// already sitting on a boundary. Storing at the voxel's centre then leaves the
+	// coordinate half a block from every boundary, so no later rounding can carry
+	// it across one either.
+	//
+	// The grid anchor is not part of this. LightVolumeCoord adds fract(cameraPosition)
+	// to a position that is already camera-relative, and those two cancel exactly
+	// (cameraRelativePos + fract(cameraPosition) is worldPos - floor(cameraPosition)),
+	// so moving within a block does not re-anchor the grid at all.
+	vec3 LightVolumeBlockCentre(vec3 cameraRelativePos) {
+		vec3 gridPos = LightVolumeCoord(cameraRelativePos, fract(cameraPosition));
+		vec3 voxel = floor(gridPos + 1.0e-3);
+
+		return voxel + 0.5
+			- fract(cameraPosition)
+			- vec3(float(LIGHT_VOLUME_GRID_RADIUS));
+	}
+
 	// A block entity's voxel.
 	//
 	// Only the block entities whose light this pack can name have a colour to
@@ -178,17 +218,18 @@ uniform mat4 shadowModelViewInverse;
 	// A chest that blocked light would put a black hole in the colour field in
 	// exactly the place an entity used to.
 	//
-	// A block entity supplies no at_midBlock, so the voxel comes from the vertex
-	// position. The portal models are drawn in the block they belong to, so the
+	// The position is snapped to the centre of its voxel first; see
+	// LightVolumeBlockCentre for why a raw vertex position is not stable enough to
+	// store with. The portal models are drawn in the block they belong to, so the
 	// store lands in that block - or, for a vertex exactly on a block boundary, in
-	// the block on the far side of it. That is a few voxels of spill along the edge
-	// of an end portal, and it is the harmless side of the trade for a state that
-	// only adds light.
+	// the block the bias picks. That is a few voxels of spill along the edge of an
+	// end portal, and it is the harmless side of the trade for a state that only
+	// adds light.
 	void LightVolumeWriteBlockEntity(vec3 cameraRelativePos) {
 		vec3 emitted = BlockEntityLightColor(float(blockEntityId));
 
 		if (any(greaterThan(emitted, vec3(0.0)))) {
-			LightVolumeStore(cameraRelativePos, vec4(emitted, 0.0));
+			LightVolumeStore(LightVolumeBlockCentre(cameraRelativePos), vec4(emitted, 0.0));
 		}
 	}
 
