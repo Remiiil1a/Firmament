@@ -195,30 +195,45 @@ uniform mat4 shadowModelViewInverse;
 		imageStore(light_volume_world, voxel, value);
 	}
 
-	// The centre of the voxel a block-entity vertex lands in, in the camera-relative
-	// space the store takes.
+	// The voxel a block entity belongs to, in the camera-relative space the store
+	// takes.
 	//
-	// A block entity supplies no at_midBlock, so its voxel comes from the vertex
-	// position - and a portal's vertices sit exactly on block boundaries, which
-	// makes the coordinate an exact integer and leaves floor() to be decided by the
-	// round-trip error of shadowModelViewInverse * viewPos. That error changes as
-	// the camera moves, so the emitter could land in either of two neighbouring
-	// voxels from one frame to the next, and the light it casts jumped a block and
-	// back. That is the author's report of a portal whose colour strobes while the
-	// camera moves.
+	// A block entity supplies no at_midBlock, so the obvious source is the vertex
+	// position - and that is what this used to do, with a bias to break the tie when
+	// a vertex sat exactly on a block boundary. Both halves of that were wrong, and
+	// batch 729 is where the probe showed it.
 	//
-	// Two things fix it and both are needed. The bias resolves the tie the same way
-	// every frame; it is a thousandth of a voxel, so it moves nothing that was not
-	// already sitting on a boundary. Storing at the voxel's centre then leaves the
-	// coordinate half a block from every boundary, so no later rounding can carry
-	// it across one either.
+	// A portal's model is the six faces of its own block, with corners at exactly
+	// 0.0 and 1.0 in the block's local space. Its vertices therefore sit on BOTH the
+	// minimum and the maximum faces of the block at once, so no single bias can put
+	// them all in the block they belong to: a positive bias sends the +X/+Z vertices
+	// into the neighbouring block (which is the one-block spill the author saw, east
+	// and south), and a negative bias sends the -X/-Z vertices into the block on the
+	// other side. The probe counts it: 21 of the 24 vertices land in the wrong voxel
+	// under either sign.
+	//
+	// What is stable is the model's ORIGIN. The loader draws a block entity by
+	// translating to its block position and then drawing the model in block-local
+	// space, so the model matrix's translation column is exactly the block entity's
+	// block position, and it is the same for every vertex of the draw. Gridding that
+	// gives one voxel per block entity, identical frame to frame and independent of
+	// which face a vertex happens to lie on. `gl_ModelViewMatrix * vec4(0, 0, 0, 1)`
+	// is that translation in view space, which is the same space the vertex path
+	// already works in.
+	//
+	// This is also the rule the game itself uses: a block entity's identity is its
+	// block position, not the extent of its model. A chest lid or a beacon beam that
+	// reaches outside its block still writes the block the game would name.
 	//
 	// The grid anchor is not part of this. LightVolumeCoord adds fract(cameraPosition)
 	// to a position that is already camera-relative, and those two cancel exactly
 	// (cameraRelativePos + fract(cameraPosition) is worldPos - floor(cameraPosition)),
 	// so moving within a block does not re-anchor the grid at all.
-	vec3 LightVolumeBlockCentre(vec3 cameraRelativePos) {
-		vec3 gridPos = LightVolumeCoord(cameraRelativePos, fract(cameraPosition));
+	vec3 LightVolumeBlockCentre() {
+		vec3 originView = (gl_ModelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+		vec3 originCameraRelative = (shadowModelViewInverse * vec4(originView, 1.0)).xyz;
+
+		vec3 gridPos = LightVolumeCoord(originCameraRelative, fract(cameraPosition));
 		vec3 voxel = floor(gridPos + 1.0e-3);
 
 		return voxel + 0.5
@@ -235,18 +250,16 @@ uniform mat4 shadowModelViewInverse;
 	// A chest that blocked light would put a black hole in the colour field in
 	// exactly the place an entity used to.
 	//
-	// The position is snapped to the centre of its voxel first; see
-	// LightVolumeBlockCentre for why a raw vertex position is not stable enough to
-	// store with. The portal models are drawn in the block they belong to, so the
-	// store lands in that block - or, for a vertex exactly on a block boundary, in
-	// the block the bias picks. That is a few voxels of spill along the edge of an
-	// end portal, and it is the harmless side of the trade for a state that only
-	// adds light.
+	// The voxel comes from the model's origin, not from the vertex; see
+	// LightVolumeBlockCentre for why a vertex position cannot answer this question
+	// for a model that spans its whole block. The argument is kept so that the call
+	// site reads the same as the terrain writer's, and because a future block entity
+	// whose model is drawn away from its block position would need it.
 	void LightVolumeWriteBlockEntity(vec3 cameraRelativePos) {
 		vec3 emitted = BlockEntityLightColor(float(blockEntityId));
 
 		if (any(greaterThan(emitted, vec3(0.0)))) {
-			LightVolumeStore(LightVolumeBlockCentre(cameraRelativePos), vec4(emitted, 0.0));
+			LightVolumeStore(LightVolumeBlockCentre(), vec4(emitted, 0.0));
 		}
 	}
 
