@@ -82,22 +82,21 @@ uniform mat4 shadowModelViewInverse;
 	// effect in game.
 	uniform int renderStage;
 
-	// The two stage constants, with the loader's own definitions winning.
+	// The stage constants, with the loader's own definitions winning.
 	//
 	// Iris supplies these names to every program it compiles; this project's front
-	// end does not, so without a fallback the block-entity branch below - and the
-	// cull that ends main() - would be the parts of this program no check ever
-	// compiles. `#ifndef` keeps the loader's own definition whenever there is one,
-	// and in game there always is.
+	// end does not, so without a fallback the branches below - and the cull that
+	// ends main() - would be the parts of this program no check ever compiles.
+	// `#ifndef` keeps the loader's own definition whenever there is one, and in
+	// game there always is.
 	//
-	// The numbers are the loader's, confirmed against its source in batch 727:
-	// `MC_RENDER_STAGE_*` is the ordinal of its own rendering-phase enumeration,
-	// which runs NONE, SKY, SUNSET, CUSTOM_SKY, SUN, MOON, STARS, VOID,
-	// TERRAIN_SOLID, TERRAIN_CUTOUT_MIPPED, TERRAIN_CUTOUT, ENTITIES,
-	// BLOCK_ENTITIES, ... and on to HAND_TRANSLUCENT - so ENTITIES is 11 and
-	// BLOCK_ENTITIES is 12. The 3 and 4 this file carried from batch 719 to batch
-	// 726 were CUSTOM_SKY and SUN, and the note that defended them had never seen
-	// the table it was unsure about.
+	// The numbers are the loader's, read off its own rendering-phase enumeration in
+	// batch 728: NONE 0, SKY 1, SUNSET 2, CUSTOM_SKY 3, SUN 4, MOON 5, STARS 6,
+	// VOID 7, TERRAIN_SOLID 8, TERRAIN_CUTOUT_MIPPED 9, TERRAIN_CUTOUT 10,
+	// ENTITIES 11, BLOCK_ENTITIES 12, DESTROY 13, OUTLINE 14, DEBUG 15,
+	// HAND_SOLID 16, TERRAIN_TRANSLUCENT 17, TRIPWIRE 18, PARTICLES 19, CLOUDS 20,
+	// RAIN_SNOW 21, WORLD_BORDER 22, HAND_TRANSLUCENT 23. Note the order of the two
+	// cutout stages: MIPPED is 9 and CUTOUT is 10, not the other way round.
 	//
 	// WHAT THIS DOES AND DOES NOT DO. The loader defines all twenty-four of these
 	// names in every program it compiles: it builds the list from that same
@@ -107,11 +106,29 @@ uniform mat4 shadowModelViewInverse;
 	// well as after it. Correcting them changes what this project's own front end
 	// compiles, which is the only build that ever read them - it is not, and never
 	// was, the picture.
+	//
+	// WHICH IS WHY THE BRANCHES BELOW COMPARE NAMES, NEVER NUMBERS. The literals
+	// live here and nowhere else. If a future loader renumbers its enumeration, the
+	// game keeps working and only this project's own front end is stale, which is
+	// the failure mode that costs a compile error here instead of a wrong picture
+	// there.
+	#ifndef MC_RENDER_STAGE_TERRAIN_SOLID
+		#define MC_RENDER_STAGE_TERRAIN_SOLID 8
+	#endif
+	#ifndef MC_RENDER_STAGE_TERRAIN_CUTOUT_MIPPED
+		#define MC_RENDER_STAGE_TERRAIN_CUTOUT_MIPPED 9
+	#endif
+	#ifndef MC_RENDER_STAGE_TERRAIN_CUTOUT
+		#define MC_RENDER_STAGE_TERRAIN_CUTOUT 10
+	#endif
 	#ifndef MC_RENDER_STAGE_ENTITIES
 		#define MC_RENDER_STAGE_ENTITIES 11
 	#endif
 	#ifndef MC_RENDER_STAGE_BLOCK_ENTITIES
 		#define MC_RENDER_STAGE_BLOCK_ENTITIES 12
+	#endif
+	#ifndef MC_RENDER_STAGE_TERRAIN_TRANSLUCENT
+		#define MC_RENDER_STAGE_TERRAIN_TRANSLUCENT 17
 	#endif
 
 	// blockEntityId is the loader's number for the block entity being drawn, from
@@ -365,16 +382,26 @@ void main() {
 	// the transparent voxel it is - so the two paths agree instead of one silently
 	// undoing the other.
 	//
-	// WHO MAY WRITE, which is the whole of the fix for the entities that the b696
-	// build drew as solid blocks - and, in batch 698, the whole of the fix for the
-	// b697 build writing nothing at all.
+	// WHO MAY WRITE. This is the whole of the fix for the entities that the b696
+	// build drew as solid blocks, and - since batch 728 - the whole of the fix for
+	// the hole they still left beside a block entity.
 	//
-	// The rule is: exclude only what can be named, and write everything else. A
-	// feature whose failure mode is "no colour anywhere" must not be gated on a
-	// signal that cannot be proved. b697 gated the write on at_midBlock (with
-	// entityId as a second test) and the effect disappeared completely in game,
-	// which says those two do not carry the values the documentation suggests in
-	// this pass - and a gate that fails closed turns a lighting feature off.
+	// The rule is now: write only on a positive terrain signal. A voxel is written
+	// when the phase is one of the four terrain phases, or when mc_Entity.x says
+	// this vertex belongs to a block. Everything else writes nothing.
+	//
+	// WHY IT USED TO BE THE OTHER WAY ROUND, AND WHY THAT WAS THE BUG. Batch 698
+	// wrote the rule as "exclude only what can be named, and write everything
+	// else", on the argument that a feature whose failure mode is "no colour
+	// anywhere" must not be gated on a signal that cannot be proved: b697 had gated
+	// the write on at_midBlock and the effect disappeared completely in game. That
+	// argument was right about the danger and wrong about the cure. It made the
+	// unknown case write a solid voxel, and an unknown case is exactly what an
+	// entity turned out to be - so the fail-open did not protect the feature, it
+	// manufactured the hole the feature was accused of. The evidence that the
+	// terrain signal is trustworthy is that terrain is drawn under a phase the
+	// loader sets by name (see the note on the branch below); the evidence that the
+	// fail-open was not is a snow golem standing next to an end portal.
 	//
 	//   1. A block-entity draw (renderStage == MC_RENDER_STAGE_BLOCK_ENTITIES):
 	//      only the glowing ones write, and which those are is
@@ -383,17 +410,48 @@ void main() {
 	//      concerned.
 	//   2. An entity draw (renderStage == MC_RENDER_STAGE_ENTITIES): nothing at
 	//      all, neither a light nor an occluder. This is the fix for the orange
-	//      patch in the report. Entities have no mc_Entity, so their material was
-	//      GENERIC, which the writer treats as "blocks light"; every mob, item and
-	//      armour stand wrote a solid black voxel where it stood, carved a hole
+	//      patch in the b696 report. Entities have no mc_Entity, so their material
+	//      was GENERIC, which the writer treats as "blocks light"; every mob, item
+	//      and armour stand wrote a solid black voxel where it stood, carved a hole
 	//      into the colour field, and then its own faces sampled that voxel, found
 	//      no light and fell back to the lightmap's warm colour.
-	//   3. Everything else: a terrain write. Everything else in a shadow pass is
-	//      chunk terrain, and the bias is deliberate - if the stage number is one
-	//      this file has not heard of, or reads 0 because the loader did not fill
-	//      it, the write still happens. A voxel written that should not be there
-	//      costs a slightly wrong occlusion; a voxel not written costs the whole
-	//      effect, which is what b697 shipped and the author saw.
+	//   3. A terrain phase (TERRAIN_SOLID, TERRAIN_CUTOUT_MIPPED, TERRAIN_CUTOUT,
+	//      TERRAIN_TRANSLUCENT), or mc_Entity.x > 0.0: a terrain write.
+	//   4. Anything else - NONE, particles, text, a stage this file has not heard
+	//      of - writes nothing.
+	//
+	// WHY CASE 4 IS SAFE, WHICH IS THE ONE THING THIS RULE RESTS ON. In the shadow
+	// pass the loader draws opaque terrain immediately, under TERRAIN_SOLID, before
+	// it sets the entity phase; entities and block entities are only submitted
+	// there and are flushed together afterwards, and translucent terrain is drawn
+	// after that flush. So during the flush the only draws are entity batches and
+	// block-entity batches, and a NONE seen there can only be an entity. That is
+	// the case this rule exists to catch, and it is the only case it catches.
+	//
+	// The phase is per batch, but a clear is not: setting the phase to NONE only
+	// marks it for removal, and it becomes NONE on the next read - which is the
+	// next shader bind. A block-entity batch therefore leaves NONE behind it, and
+	// an entity batch drawn after one inherits it. That is why the hole appeared
+	// beside a block entity and not on its own: with no block entity in the pass
+	// the entity batch still sees ENTITIES and case 2 catches it, and only a block
+	// entity's clear can hand it a NONE.
+	//
+	// mc_Entity.x is the second signal and the weaker of the two. It is kept
+	// because it is what still writes an unmapped block when the phase is not what
+	// this file expects, and it is trustworthy here for a reason at_midBlock is
+	// not: it is baked into the terrain vertex format itself, and materialID -
+	// which every coloured light in this pack already depends on - is decoded from
+	// the same attribute. at_midBlock is the one b697 proved empty in this pass.
+	// Entities carry no mc_Entity at all; their format has iris_Entity instead, so
+	// this signal cannot fire for one.
+	//
+	// THE RISK THIS ACCEPTS, WRITTEN DOWN SO IT IS NOT A SURPRISE. If a future
+	// loader stops naming a terrain phase in the shadow pass, the fill goes dark
+	// instead of wrong. That is the trade: a dark fill is a feature that visibly
+	// does not work, and a wrong fill is a hole in the world that looks like a
+	// rendering bug in something else. The detector is LIGHT_VOLUME_DEBUG_WORLD,
+	// which paints a solid block dark grey and air black - a world that reads as
+	// uniformly solid is this rule firing on nothing.
 	//
 	// renderStage is the loader's own statement about what it is drawing, one
 	// constant per kind, and it is the same test Eclipse's LPV and Mellow's
@@ -404,14 +462,12 @@ void main() {
 	// rather than a convenience: the block needs both COLORED_LIGHTS and
 	// IRIS_FEATURE_CUSTOM_IMAGES, and the second one is a loader feature flag that
 	// nothing in the pack or in the local tooling defines. The write, the cull at
-	// the end of main() and the fail-open rule above are therefore checked by
-	// reading them and by an explicit expand-and-glslang run, never by the standing
-	// chain: b719 closed that gap for itself by expanding this program with
+	// the end of main() and the rule above are therefore checked by reading them
+	// and by an explicit expand-and-glslang run, never by the standing chain: b719
+	// closed that gap for itself by expanding this program with
 	// `--define IRIS_FEATURE_CUSTOM_IMAGES=1` (818 -> 1357 lines) and compiling the
 	// result, which is green. Every later change inside this guard needs the same
 	// run, because "frontend 0 errors" says nothing at all about it.
-	// The fail-open shape is what keeps an unpopulated uniform harmless when the
-	// loader does compile it.
 	//
 	// One store per terrain vertex, not one per quad. Stained glass is the one
 	// terrain material that stores nothing here and the note on the writer says
@@ -433,8 +489,15 @@ void main() {
 		LightVolumeWriteBlockEntity(cameraRelativePos.xyz);
 	} else if (renderStage == MC_RENDER_STAGE_ENTITIES) {
 		// An entity: no voxel, by design. See case 2 above.
-	} else {
-		// Chunk terrain, and anything else this file cannot name - see case 3.
+	} else if (renderStage == MC_RENDER_STAGE_TERRAIN_SOLID
+		|| renderStage == MC_RENDER_STAGE_TERRAIN_CUTOUT_MIPPED
+		|| renderStage == MC_RENDER_STAGE_TERRAIN_CUTOUT
+		|| renderStage == MC_RENDER_STAGE_TERRAIN_TRANSLUCENT
+		|| mc_Entity.x > 0.0) {
+		// Chunk terrain. The phase is the primary signal; mc_Entity.x is the
+		// fallback for a block the phase did not name. See cases 3 and 4 above for
+		// why everything outside this test writes nothing.
+		//
 		// Iris documents the block centre as `position + at_midBlock.xyz / 64.0`.
 		// Where the attribute is populated this lands the voxel exactly on the
 		// block; where it is not, the vertex's own position is used, which is the
@@ -443,6 +506,8 @@ void main() {
 		vec3 blockCenter = cameraRelativePos.xyz + at_midBlock.xyz / 64.0;
 		LightVolumeWriteTerrain(materialID, blockCenter);
 	}
+	// Everything else writes nothing: NONE, particles, text, and any stage this
+	// file has not heard of. See case 4 above for why that is the safe direction.
 
 	// Block entities leave the map as soon as their voxel is written.
 	//
