@@ -44,7 +44,7 @@ profile.comment=\
 	§b🔥 High§r / §a» Medium§r / §e↓ Low§r - The performance tiers. \
 	They cover this edit's default configuration only.\n\n\
 	High: full-resolution volumetric fog and PBR parallax. Medium: the factory \
-	default. Low: no volumetric fog, no PBR reflection trace, softer metal diffuse, \
+	default. Low: no volumetric fog, no PBR reflection trace, \
 	and the water simulation off.\n\n\
 	There is no tier below Low. This edit no longer carries one: a machine that \
 	needs it is better served by upstream Steadfast, which is built for that range \
@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 731]
+option.PBR_DEBUG=Material debug view [build 732]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
