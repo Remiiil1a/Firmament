@@ -235,13 +235,21 @@ uniform mat4 shadowModelViewInverse;
 	// A chest that blocked light would put a black hole in the colour field in
 	// exactly the place an entity used to.
 	//
+	// Batch 730 took the end portal out of that list; the gateway is the one block
+	// entity that still answers with a colour. See the long note on
+	// BlockEntityLightColor for why, and note that the portal's own look is
+	// unaffected - it is drawn by PORTAL_END in /program/world/lit.fsh, which is a
+	// surface effect and needs nothing from this pass.
+	//
 	// The position is snapped to the centre of its voxel first; see
 	// LightVolumeBlockCentre for why a raw vertex position is not stable enough to
-	// store with. The portal models are drawn in the block they belong to, so the
-	// store lands in that block - or, for a vertex exactly on a block boundary, in
-	// the block the bias picks. That is a few voxels of spill along the edge of an
-	// end portal, and it is the harmless side of the trade for a state that only
-	// adds light.
+	// store with. A gateway model is drawn in the block it belongs to, so the store
+	// lands there - or, for a vertex exactly on a block boundary, in the block the
+	// bias picks. That is a voxel of spill along the edge of a gateway, and it is
+	// the harmless side of the trade for a state that only adds light. It used to
+	// be the end portal's problem, and the end portal is where the spill was
+	// reported; with the portal out of the list only the gateway can reach this
+	// line, and a gateway is one block with no neighbours to speak of.
 	void LightVolumeWriteBlockEntity(vec3 cameraRelativePos) {
 		vec3 emitted = BlockEntityLightColor(float(blockEntityId));
 
@@ -512,10 +520,16 @@ void main() {
 	// Block entities leave the map as soon as their voxel is written.
 	//
 	// Batch 719 submits them to this pass for that voxel and for nothing else. The
-	// fill's world image has no other writer, so the end portal's light can only be
-	// coloured cold if its geometry is drawn here - and the map itself must not
-	// gain a shape it never had, or a chest, a sign and the portal's own plane
+	// fill's world image has no other writer, so a block entity light source can
+	// only reach it if its geometry is drawn here - and the map itself must not
+	// gain a shape it never had, or a chest, a sign and a gateway's own plane
 	// would all start casting shadows the pack has never drawn.
+	//
+	// The end portal used to be the reason this paragraph existed. It is not any
+	// more: batch 730 stopped treating it as a light source, so the only block
+	// entity that still writes a voxel here is the gateway. The cull stays because
+	// the gateway needs it, and because a block entity that answers black writes
+	// nothing and must still not cast a shadow it never cast.
 	//
 	// The cull is the shape of the glass one from the top of this function, applied
 	// later and for the opposite reason: every vertex of the draw goes to the same

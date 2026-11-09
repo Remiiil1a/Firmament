@@ -138,24 +138,42 @@ vec3 BlockLightColor(uint materialID) {
 // drew a block entity, so the end portal's cold violet never entered the fill and
 // the room it stands in was lit by the pack's warm block light tint instead.
 //
-// The end portal is the void itself. What it casts is the violet of the star
-// field seen from inside it, taken cold: the blue channel is at peak, green sits
-// above red so the tint reads as violet rather than as a dimmed purple, and the
-// peak is 1.0 because every entry in this palette peaks at 1.0 - the propagation
-// reads a voxel's brightest channel as how strong the light is, so a source whose
-// color peaked lower would also be a weaker source.
+// THE END PORTAL IS NOT A LIGHT SOURCE, AND THAT IS THE WHOLE OF BATCH 730.
 //
-// The gateway is an end rod: block.10012 gives it the end rod's own light number,
-// and that one number is both its portal surface and its light, so its color is
-// asked of that family rather than written out a second time.
+// Batches 697 to 729 treated it as one: it was given a cold violet here, the
+// shadow pass was made to draw block entities so that the colour could reach the
+// fill (719), and the voxel it landed in was argued over for three batches (727,
+// 729). Every one of those batches was fixing a symptom of the same wrong
+// premise, and the author's own screenshots are what settled it: the light
+// strobed as the camera moved, it spilled a block east and south, and it
+// disappeared whenever the portal left the view.
+//
+// Eclipse-Shader-Unstable, which the author pointed at, does not have any of
+// those problems because it does not do this at all. Its voxel mask admits a
+// block entity only when `blockEntityId > 0 && blockEntityId < 500`
+// (lib/voxel_write.glsl:134), and its own BLOCK_END_PORTAL is 500
+// (lib/blocks.glsl:331) - so the portal is excluded by construction. What the
+// portal gets instead is an emissive surface: endPortalEmission, written to
+// OutSpecular.a in dimensions/all_solid.fsh. It glows; it does not light the
+// room.
+//
+// That is the trade this pack now makes too, on the author's instruction. The
+// portal's own surface is still drawn by PORTAL_END in /program/world/lit.fsh,
+// which is where its look actually comes from and which this file does not
+// touch. What is gone is the coloured light it used to cast on the ground.
+//
+// The gateway is kept, and the difference is not arbitrary: it is an end rod.
+// block.10012 gives it the end rod's own light number, so its colour is asked of
+// that family rather than written out a second time, and a gateway really is a
+// light source in the game. Eclipse keeps it for the same reason - its
+// BLOCK_END_GATEWAY is 187, comfortably inside the same `< 500` gate that
+// excludes the portal.
 //
 // Every other block entity is not a light source and gets black, which is the
-// answer BlockLightColor gives for a number that is not in the palette.
+// answer BlockLightColor gives for a number that is not in the palette. A block
+// entity that answers black writes no voxel at all rather than a solid one; see
+// LightVolumeWriteBlockEntity in /program/shadow/shadow.vsh.
 vec3 BlockEntityLightColor(float blockEntityId) {
-	if (blockEntityId == END_PORTAL_BLOCK_ID) {
-		return vec3(0.45, 0.55, 1.0);
-	}
-
 	if (blockEntityId == END_GATEWAY_BLOCK_ID) {
 		return BlockLightColor(LIGHT_END_ROD);
 	}

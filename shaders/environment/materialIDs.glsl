@@ -268,10 +268,20 @@ const float END_GATEWAY_BLOCK_ID = 10012.0;
 // written by the shadow program and by nothing else - see the write in
 // /program/shadow/shadow.vsh and the b700 note in /shadowcomp.csh - so a block
 // entity light source cannot reach the fill without its vertices being drawn there.
-// The only two this palette can name are the end portal and the gateway. Until this
-// batch they were not drawn, the end portal's authored cold colour never arrived, and
-// the light around it fell back to the pack's warm block light tint. That was the
-// author's report: an end portal that lit the room yellow.
+// The only one this palette can name is the gateway. Until batch 719 it was not
+// drawn, so its light never arrived.
+//
+// The end portal was the second one until batch 730, and it is worth saying why it
+// is not any more, because the machinery above still exists for the gateway and
+// looks like it is waiting for the portal to come back. It is not. Treating the
+// portal as a light source produced three separate reports - a colour that strobed
+// as the camera moved, a voxel that spilled a block east and south, and a light
+// that vanished whenever the portal left the view - and Eclipse-Shader-Unstable,
+// which the author pointed at, has none of them because it never treats the portal
+// as a source at all: its voxel mask admits a block entity only below 500 and its
+// BLOCK_END_PORTAL is 500. The portal is drawn as an emissive surface instead, by
+// PORTAL_END in /program/world/lit.fsh, and that is unchanged. See the long note on
+// BlockEntityLightColor in /environment/lighting/light_colors.glsl.
 //
 // Declared here rather than in /environment/lighting/diffuse.glsl, where it sat
 // until batch 719, because the program that now reads it is the shadow program and
