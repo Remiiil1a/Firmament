@@ -45,8 +45,8 @@ Public License version 3 or later, with the additional terms above. There is
 
 ## 2. Other shaders this pack references
 
-Besides Steadfast, three projects are referenced or quoted from in the code. All
-three are credited in the pack's own menu, on a **Special thanks** page under
+Besides Steadfast, four projects are referenced or quoted from in the code. All
+four are credited in the pack's own menu, on a **Special thanks** page under
 `Credits & licence` (the `SPECIAL_THANKS` page in `shaders/lang/*.lang`, one
 entry per project). That credit is deliberately
 **not split up by feature**: it states plainly that this pack references or
@@ -73,18 +73,39 @@ quotes code from the projects named in it.
   verbatim copy is included as `LICENSE-MELLOW-MIT.txt`, and
   `LICENSE-MELLOW-APACHE.txt` from that pack is included as well, because its
   own files ask for the whole licence set to be kept together.
-* **Sundial Lite, by geforcelegend** - the screen-space shadows used past the
-  shadow map's reach follow that pack's implementation: the ray is walked in
-  **screen space**, projected from its start and its end and stepped evenly
-  between those two positions rather than a fixed number of blocks in view
-  space, its first sample is dithered both per pixel and per frame, and an
-  occlusion only counts when it falls within a thickness window of the ray -
-  which is itself measured as a fraction of the distance, in the depth buffer's
-  own units, as Sundial measures it. Sundial Lite is licensed under the **GNU
-  General Public License, version 3** - the same licence as this pack, whose copy
-  is `LICENSE.md` - so no separate licence file is included for it.
-* **No assets are reused from either.** No textures, no logos, no screenshots,
-  and neither project's name is part of this pack's name or branding.
+* **Sundial Lite, by geforcelegend** - the metal response follows that pack: its
+  table of reflectance values at 82 degrees is copied verbatim, including which
+  byte means which metal, and the reflectance curve comes from its Composite0,
+  with the threshold generalised into `PBR_REFLECTION_SMOOTHNESS_MIN` so that at
+  that option's default the two are the same expression. The PBR diffuse weight
+  curve is Sundial's as well, and so are several smaller things named where they
+  are used: the thickness window the reflection march accepts an occlusion
+  within, its ray-tracing bias, the way a beacon beam's translucent half is
+  dropped, the rain fog, and the closest-to-camera tap pattern. **This entry used
+  to credit Sundial for the screen-space shadows past the shadow map's reach, and
+  that effect was removed in an earlier release** - what is listed here is what is
+  actually still in the tree. Sundial Lite is licensed under the **GNU General
+  Public License, version 3** - the same licence as this pack, whose copy is
+  `LICENSE.md` - so no separate licence file is included for it.
+* **Eclipse Shader, by Merlin1809** - an edit of **Bliss Shader**, which is
+  itself an edit of **Chocapic13's** shaders, and credited with both for the same
+  reason Bliss is: its own `LICENSE.md` is the single line `© 2020 Chocapic13.
+  All rights reserved.`, inherited from the base it edits, so naming the edit
+  alone would leave the holder of that notice unnamed. The water interaction -
+  the waves a player or a boat leaves behind - is ported from it, both the wave
+  simulation and the arrangement of the two compute steps that integrate it
+  (`shaders/environment/water/`, `shaders/program/water_interaction/`). The shape
+  of the coloured-light volume is Eclipse's LPV as well: a voxel grid snapped to
+  whole blocks around the player, written by the shadow pass, propagated one step
+  per frame by a compute program, and read back with a filter. What is
+  deliberately not taken is its treatment of brightness - Eclipse lets the voxel
+  field decide how bright a surface is, and this pack keeps that on the lightmap.
+  The pack uses none of its assets, logos or screenshots. Whether that use is
+  permitted by the base's terms is its author's to say: if you are Chocapic13,
+  X0nk or Merlin1809 and would like it handled differently, it will be rewritten
+  or removed.
+* **No assets are reused from any of them.** No textures, no logos, no
+  screenshots, and no project's name is part of this pack's name or branding.
 
 ## 3. What this means in practice
 
