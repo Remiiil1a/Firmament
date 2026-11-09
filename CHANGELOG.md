@@ -61,7 +61,8 @@ and the six things that build got wrong are fixed in the same release.
 * **More light sources give their colour**: all three froglights, copper torches
   and every copper lantern in every oxidation state and waxed variant, soul
   campfires, amethyst clusters and large buds. The nether portal counts as a light
-  source now, and so do the end portal and the end gateway.
+  source now, and so does the end gateway. The end portal does not - see "Later in
+  this release"; it is drawn as an emissive surface instead.
 * **The block in the player's hand colours the light too.** The hand publishes the
   block's colour, the fill injects it at the player's own voxel, and it arrives
   one frame after the hand is drawn. If the loader does not tell the pack which
@@ -112,6 +113,34 @@ and the six things that build got wrong are fixed in the same release.
   screen-space light bleed and the fill together are too saturated - the fill and
   the bleed still colour the same surfaces, so `LIGHT_BLEED_STRENGTH` and
   `LIGHT_TINT_STRENGTH` remain the controls, and no default was changed for it.
+
+**Later in this release**
+
+Everything below landed after v1.0.7 was first written, and the version number is
+not moved for it: this release is still v1.0.7. What identifies a build is the
+`[build N]` marker in the language files, not the version.
+
+* **The end portal no longer lights the room.** It was made a coloured light
+  source in the first build, and the three reports that followed were all the same
+  fault seen from three sides: the colour strobed while the camera moved, it spilled
+  a block east and south of the portal, and it vanished whenever the portal left the
+  view. The cause was the premise, not any of the four repairs tried against it - a
+  portal is a block entity, so its geometry reaches the light grid only when the game
+  chooses to draw it, and the grid can only colour what it was given. The portal is
+  now an emissive surface instead: it looks exactly as it did, and it no longer
+  throws light on the ground. The room is still lit, by the portal's own block light
+  in the ordinary warm tint. Eclipse - the reference this pack's fill is modelled on
+  - never treated the portal as a source either, and excludes it by construction.
+* **The end gateway keeps its light.** It is an end rod, it really is a light source
+  in the game, and it is drawn unconditionally enough to arrive every frame.
+* **Reflections are stronger by default.** `PBR_REFLECTIONS_STRENGTH` moves from
+  0.25 to 0.5 and `PBR_METAL_REFLECTION_STRENGTH` from 1.0 to 0.75. Both stay on the
+  same ladder, so either can be put back; the Medium profile carries the new values.
+* **The Low tier no longer dulls metals.** It used to halve `PBR_METAL_DIFFUSE`,
+  which was a partial refund for switching the reflection trace off. With the trace
+  off, the diffuse response is the whole of what a metal gets, so halving it made
+  the tier look worse without saving anything. It is 1.0 there now, the same as
+  Medium, and the tier's description says so.
 
 ## v1.0.6 - 2026-11-01
 

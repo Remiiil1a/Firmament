@@ -722,8 +722,14 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // well. PBR_REFLECTIONS_STRENGTH is still the dielectric strength and
 // PBR_REFLECTION_SKY_MIN still sets how much open sky a surface needs before it
 // reflects any of it, both now for that one feature.
-// How strong that reflection is. 1.0 is the value it was tuned at.
-#define PBR_REFLECTIONS_STRENGTH 0.25 // [0.25 0.5 0.75 1.0 1.5 2.0]
+// How strong that reflection is.
+//
+// 0.5 since batch 731, and the number is the author's. It was 0.25, then 1.0 at
+// the point the feature was tuned, and the author set the shipping default to 0.5
+// on playing it: 0.25 was too little to read as a reflection and 1.0 was more than
+// the scene wanted. The rest of the ladder is unchanged, so this is a default and
+// not a re-tune - anyone who liked 1.0 can still select it.
+#define PBR_REFLECTIONS_STRENGTH 0.5 // [0.25 0.5 0.75 1.0 1.5 2.0]
 
 // The same, for a metal.
 //
@@ -732,11 +738,16 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // surface in the scene, and a metal is the case where the reflection is the
 // material rather than a sheen over it - a held-back metal does not read as a
 // restrained one, it reads as a dull one. The reference packs give metals no
-// such factor, so 1.0 is the value that matches them.
+// such factor, which is why this sat at 1.0 while the dielectric strength was
+// held back.
 //
-// Turn it down if metals come out too bright in a scene, which is a judgement
-// about the scene rather than about the physics.
-#define PBR_METAL_REFLECTION_STRENGTH 1.0 // [0.25 0.5 0.75 1.0 1.5 2.0]
+// 0.75 since batch 731, the author's value on playing it: a metal that reflects
+// everything reads hotter than the rest of the scene once the sky is modelled,
+// and three quarters keeps it metal without making it a light source.
+//
+// Turn it down further if metals come out too bright in a scene, which is a
+// judgement about the scene rather than about the physics.
+#define PBR_METAL_REFLECTION_STRENGTH 0.75 // [0.25 0.5 0.75 1.0 1.5 2.0]
 
 
 // Whether a reflection may include the world and not only the sky, by tracing
