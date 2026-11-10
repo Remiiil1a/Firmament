@@ -26,11 +26,24 @@ uniform vec3 previousCameraPosition;
 uniform float frameTime;
 uniform int isEyeInWater;
 
+// relativeEyePosition is NOT one of the 1.10.4 uniforms, and batch 734 is where
+// that was found out the hard way. It has been in Iris since long before the
+// version macro could be relied on - it is present in the 1.20.1, 1.21.1, 1.21.4
+// and 1.21.11 branches alike - and the fallback path below needs it on every
+// loader that has IS_IRIS at all. It used to sit inside the version test with the
+// five uniforms that really are new, so on Iris 1.8.14 the declaration was
+// preprocessed away while the `#elif` branch still used it, and the whole pack
+// failed to load with "undefined variable relativeEyePosition". Declaring it
+// unconditionally is what makes the older path compile.
+uniform vec3 relativeEyePosition;
+
 #if defined IS_IRIS && defined IRIS_VERSION && IRIS_VERSION >= 11004
-	// Iris 1.10.4 and later. Everything they add is kept behind this test: on an
-	// older Iris these names do not exist and declaring them is a compile error,
-	// which is the one hard blocker this port has (see porting_kit/GUIDE.md 7).
-	uniform vec3 relativeEyePosition;
+	// Iris 1.10.4 and later, and these five really are new there: none of them
+	// exists in the 1.21.1 or 1.21.4 branches. Everything that uses them is kept
+	// behind the same test - not just the declarations - because GLSL compiles a
+	// runtime branch whether or not it is taken, which is the trap porting_kit's
+	// GUIDE.md section 7 opens with. On an older Iris the effect degrades to the
+	// ripple under a swimming player instead of failing to load.
 	uniform bool isRiding;
 	uniform bool vehicleInWater;
 	uniform bool feetInWater;
