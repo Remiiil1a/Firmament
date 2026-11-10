@@ -6,8 +6,12 @@
 // /environment/lighting/light_volume.glsl: every voxel of the grid blends the
 // neighbours that carry colour in the previous frame's field, one step down, and
 // then adds whatever state its own voxel of the world image is in - air, an
-// emitter, stained glass, or an opaque block. The four states and their encoding
-// are the table at the top of that file; this is the only place they are read.
+// emitter, water, stained glass, or an opaque block. The five states and their
+// encoding are the table at the top of that file; this is the only place they
+// are read. Water is the one state that deliberately has no branch here: its
+// alpha (0.125) is below the filter threshold, so it takes the air/emitter arm,
+// and its rgb is zero, so the value that arm computes is the same one the 0.0 it
+// replaced produced. That is what keeps coloured light unchanged by batch 736.
 //
 // One step per frame, not a loop that converges inside one dispatch. The field is
 // a recurrence, not something solved: it arrives at the frame as an image,
@@ -86,7 +90,7 @@ uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
 // frameCounter is declared by light_volume.glsl above, shared with the consumer.
 
-// What the shadow pass wrote this frame: the four-state table at the top of
+// What the shadow pass wrote this frame: the five-state table at the top of
 // environment/lighting/light_volume.glsl is what rgb and alpha mean here. It is
 // written by two programs - the vertex stage (program/shadow/shadow.vsh) for the
 // geometry, and the fragment stage (program/shadow/shadow.fsh) for the tint of
@@ -182,7 +186,7 @@ void main() {
 	// the loader supplies.
 	ivec3 shift = ivec3(floor(cameraPosition) - floor(previousCameraPosition));
 
-	// This frame's world image at this voxel: the four-state table at the top of
+	// This frame's world image at this voxel: the five-state table at the top of
 	// light_volume.glsl is what rgb and alpha mean here. alpha is the state, and
 	// it is tested in the order the table gives - solid first, then filter,
 	// because a solid is the one state that must not even read its neighbours.

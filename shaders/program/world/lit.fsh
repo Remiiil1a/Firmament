@@ -2310,6 +2310,13 @@ void main() {
 					lightVolumeDebugColor = vec3(0.10);
 				} else if (volumeWorld.a > 0.25) {
 					lightVolumeDebugColor = vec3(0.0, 0.0, 0.4);
+				} else if (abs(volumeWorld.a - LIGHT_VOLUME_WATER_STATE)
+					< LIGHT_VOLUME_WATER_TOLERANCE) {
+					// Water, and the reason this view exists in batch 736: the
+					// water test reads this tag, so a player standing in water
+					// whose feet voxel is black here is a water test that cannot
+					// fire. See light_volume.glsl's state table.
+					lightVolumeDebugColor = vec3(0.0, 0.35, 0.45);
 				} else {
 					lightVolumeDebugColor = volumeWorld.rgb * 4.0;
 				}

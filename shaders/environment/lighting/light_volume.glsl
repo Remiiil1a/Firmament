@@ -41,40 +41,55 @@
 
 // The world image is the propagation pass's whole input: one voxel per block,
 // written by the shadow pass this frame and read by program/light_volume/step.csh
-// afterwards. It has exactly four states, and alpha is the tag that tells them
+// afterwards. It has exactly five states, and alpha is the tag that tells them
 // apart. They are written down here because this file is what both ends include,
 // so this is the only place the two can be held to the same table.
 //
 // Because the shadow pass is the only writer, what it draws bounds what the fill
 // can ever know. Chunk terrain is always drawn there; block entities are not, and
-// a block entity that emits light therefore reaches this file only when the pack
-// asks for its geometry to be submitted (shaders.properties, shadowBlockEntities,
-// batch 719). The end portal and the end gateway are the two that do, and they are
-// drawn for this write alone - program/shadow/shadow.vsh culls their depth away
-// again so that the shadow map keeps the shape it has always had.
+// they reach this file only when the pack asks for their geometry to be submitted
+// (shaders.properties, shadowBlockEntities, batch 719). The end gateway is the one
+// block entity that still answers with a colour - the end portal did until batch
+// 730 stopped treating it as a source - and its depth is culled away again
+// (program/shadow/shadow.vsh) so that the shadow map keeps the shape it has
+// always had.
 //
 //   air      rgb 0               a 0.0   nothing here; light crosses freely
 //   emitter  rgb light colour    a 0.0   a light source stands here
+//   water    rgb 0               a 0.125 a water block; the fill reads it as air
 //   filter   rgb pane tint       a 0.5   stained glass; light that crosses takes
 //                                        the pane's colour
 //   solid    rgb 0               a 1.0   an opaque block; light neither enters
 //                                        nor leaves
 //
 // The propagation reads the thresholds as `a > 0.75` solid, `a > 0.25` filter,
-// and anything else as air or emitter. Air and emitter share an alpha because an
-// emitter is air that happens to carry a colour, and the difference between them
-// is only what the step does below itself: an emitter adds its own rgb, which is
-// how a source is at full strength in the frame it appears.
+// and anything else as air, emitter or water. Air and emitter share an alpha
+// because an emitter is air that happens to carry a colour, and the difference
+// between them is only what the step does below itself: an emitter adds its own
+// rgb, which is how a source is at full strength in the frame it appears.
 //
-// A filter is the third state and the only one that changes light on the way
-// through: its rgb is multiplied into the value crossing it, so a red pane puts
-// red light on the floor. It is a state of its own rather than a colour packed
-// into an emitter's slot because a pane is not a source - it must not inject
-// light of its own - and because a pane with no colour (black stained glass)
-// would otherwise be indistinguishable from air. Alpha 0.5 is the middle of the
-// range and far from both thresholds, so no rounding in the writer can move a
-// filter into the solid or the air state; the image is RGBA16 unsigned, so 0.5
-// is exactly representable.
+// A filter is the state that changes light on the way through: its rgb is
+// multiplied into the value crossing it, so a red pane puts red light on the
+// floor. It is a state of its own rather than a colour packed into an emitter's
+// slot because a pane is not a source - it must not inject light of its own - and
+// because a pane with no colour (black stained glass) would otherwise be
+// indistinguishable from air. Alpha 0.5 is the middle of the range and far from
+// both thresholds, so no rounding in the writer can move a filter into the solid
+// or the air state; the image is RGBA16 unsigned, so 0.5 is exactly
+// representable.
+//
+// Water is the fifth state and the only one the fill does not act on. It exists
+// for one reader: the water interaction's source test (program/water_interaction/
+// sim.glsl) asks this image where the water is, because the loader's own
+// isEyeInWater says nothing about a player standing in a shallow pool with their
+// head above the surface - and the uniforms that would say it (vehicleInWater,
+// feetInWater) exist only on recent Iris versions, which is the branch batch 736
+// removed. 0.125 is deliberately below the filter threshold, so the step takes
+// the air/emitter branch for it; its rgb is zero, so the value that branch
+// computes is exactly the one the 0.0 this state replaced would have produced.
+// That is the property that keeps coloured light unchanged, and
+// _team_bfog/water_three_height_736.py asserts it rather than trusting the
+// reading.
 //
 // Why alpha rather than a convention on rgb: the writer and the reader are
 // separate programs and the image is the only thing they share. A convention
@@ -82,6 +97,14 @@
 // picture, and the failure would show up as a colour that is wrong rather than
 // as anything that fails. The two thresholds and the writer's branches are the
 // whole of the encoding, and both are in this batch's contract.
+//
+// The water tag, and how far a read-back alpha may sit from it and still mean
+// water. The image is RGBA16 unsigned, so the writer's 1/8 is stored as 8192/65535
+// rather than exactly 0.125 and reads back about 2e-6 high; the band is wide
+// enough for that and narrow enough that neither the filter at 0.5 nor solid at
+// 1.0 can ever fall inside it.
+#define LIGHT_VOLUME_WATER_STATE 0.125
+#define LIGHT_VOLUME_WATER_TOLERANCE 0.01
 
 ///////////////////////////////////////////////////////////////////////////////
 //   The diagnostic
@@ -109,7 +132,11 @@
 //
 // WORLD shows what the writer put in the world image at this fragment's voxel:
 // emitters as their colour times four, a solid block as dark grey, a stained
-// glass filter as dark blue and air as black.
+// glass filter as dark blue, a water block as dark cyan and air as black. The
+// water colour is what makes the batch-736 test visible: stand in shallow water
+// and the voxel at your feet must read dark cyan, not black. Black there means
+// the shadow pass did not draw the water, and then the source test cannot find
+// it either.
 //
 // Read together: a black FIELD over a coloured WORLD means the writer works and
 // the propagation is the fault; a black WORLD means nothing is being written at

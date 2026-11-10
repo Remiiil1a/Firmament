@@ -270,7 +270,9 @@ uniform mat4 shadowModelViewInverse;
 	// portal surface has its own tint - and NETHER_PORTAL_TINT from
 	// materialIDs.glsl is authored for exactly this.
 	//
-	// Then the materials light passes through, which are air to the fill.
+	// Then the materials light passes through, which are air to the fill. Water is
+	// the one that gets a tag of its own - see the state table in light_volume.glsl
+	// and the write below - and the tag is chosen so that it stays air to the fill.
 	//
 	// Stained glass is the exception and is handled before them: its voxel is a
 	// filter, and the fragment stage is its only writer. This stage must not store
@@ -309,7 +311,19 @@ uniform mat4 shadowModelViewInverse;
 			return;
 		}
 
-		if (material == WATER || material == ICE || material == GLASS) {
+		if (material == WATER) {
+			// Water has a tag of its own since batch 736, and the reader is the
+			// water interaction's source test: it asks this image whether the voxel
+			// at the player's feet is water (program/water_interaction/sim.glsl).
+			// The fill reads 0.125 as air and rgb stays zero, so the value it
+			// computes here is the one the 0.0 this branch stored before produced.
+			LightVolumeStore(
+				centerCameraRelative,
+				vec4(0.0, 0.0, 0.0, LIGHT_VOLUME_WATER_STATE));
+			return;
+		}
+
+		if (material == ICE || material == GLASS) {
 			LightVolumeStore(centerCameraRelative, vec4(0.0));
 			return;
 		}
