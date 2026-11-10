@@ -206,7 +206,24 @@ float SmaaRedmean(vec3 a, vec3 b) {
 // implementation's addressing is written for a table with a one-texel border.
 // The last two lines divide by the true 64 by 16, so the value that reaches the
 // sampler is still a coordinate in the image that is actually bound.
-float SmaaSearchLength(vec2 sample, float offset) {
+//
+// ⚠️ THE PARAMETER IS CALLED edgeCoord AND NOT sample (batch 735). `sample` became a
+// GLSL keyword in 4.00, as the interpolation qualifier for per-sample shading. Under
+// this file's `#version 150 compatibility` it is not a keyword and glslang accepts it,
+// which is why the standing frontend never had anything to say about it - but at least
+// one driver reserves it whatever the #version says, and the whole pack failed to load
+// with eight errors, seven of them cascade:
+//
+//     0(91) : error C7537: OpenGL does not allow 'sample' after a type specifier
+//     0(91) : error C0000: syntax error, unexpected identifier, expecting ')' at token "offset"
+//     0(94) : error C1503: undefined variable "offset"
+//     0(1110) : function "SmaaSearchLength" has no return statement
+//     ... plus four "too many parameters in function call"
+//
+// Only the first line is the fault; the rest are the parse collapsing. A name that is
+// legal at one version and reserved at another is not portable, and a comment saying so
+// would not have helped - so the name is changed.
+float SmaaSearchLength(vec2 edgeCoord, float offset) {
 	const vec2 SEARCH_TEX_SIZE = vec2(66.0, 33.0);
 
 	vec2 scale = SEARCH_TEX_SIZE * vec2(0.5, -1.0) + vec2(-1.0, 1.0);
@@ -215,7 +232,7 @@ float SmaaSearchLength(vec2 sample, float offset) {
 	scale /= vec2(64.0, 16.0);
 	bias /= vec2(64.0, 16.0);
 
-	return texture(smaaSearch, sample * scale + bias).r;
+	return texture(smaaSearch, edgeCoord * scale + bias).r;
 }
 
 // Walk left along the edge until it stops, and return where that was.
