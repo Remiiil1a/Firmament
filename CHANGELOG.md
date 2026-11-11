@@ -141,23 +141,25 @@ not moved for it: this release is still v1.0.7. What identifies a build is the
   off, the diffuse response is the whole of what a metal gets, so halving it made
   the tier look worse without saving anything. It is 1.0 there now, the same as
   Medium, and the tier's description says so.
-* **Waves start where the water is, not where the camera is.** The simulation used to
-  ask the loader whether the player was in water, with `feetInWater` and
-  `vehicleInWater` - uniforms only recent Iris versions have, so older ones fell back
-  to the camera's own answer, and a player standing chest-deep with their head above
-  the surface made no waves there at all. It now reads the water out of the
-  coloured-light voxel grid: the shadow pass tags a water block in the same image the
-  flood fill reads (`0.125`, a value the fill treats as air, so coloured light does
-  not change), and the simulation measures the player from the eye down - eye, waist,
-  feet - the same test Eclipse uses. One answer on every Iris version, and the
-  version branch is gone. The camera's own answer is still checked first, so swimming
-  keeps the ripple it had. Two configurations fall back to that answer alone - with
-  `COLORED_LIGHTS` off the voxel image does not exist, and with the shadow distance at
-  0 the shadow pass fills nothing - and in those a player standing in shallow water
-  reads as dry, exactly as before this batch. **Not verified in game:** the test
-  depends on the shadow pass actually drawing the water at the player's feet. Turn on
-  `LIGHT_VOLUME_DEBUG_WORLD` and stand in shallow water - the voxel at your feet must
-  read dark cyan; black there means the test cannot fire.
+* **Waves start where the water is, not where the camera is - on every Iris version.**
+  The simulation used to ask the loader whether the player was in water with
+  `feetInWater` and `vehicleInWater`, which only Iris 1.10.4 and later have; older
+  ones fell back to the eye's own answer, so a player standing chest-deep with their
+  head above the surface made no waves there. Older Iris now reads the water out of
+  the coloured-light voxel grid instead - the shadow pass tags a water block in the
+  same image the flood fill reads (`0.125`, a value the fill treats as air, so
+  coloured light does not change), and the simulation measures the player from the
+  eye down: eye, waist, feet, the same test Eclipse uses on those versions. The newer
+  loaders keep the answer they always had, so nothing changes where the effect was
+  already right. The eye's own answer is no longer used by either path: it says
+  whether the eye's block is water, and one build of this that trusted it made waves
+  on a surface the player was not in. Two configurations leave older loaders with no
+  source, and the water stays calm: `COLORED_LIGHTS` off (the voxel image does not
+  exist) and the shadow distance at 0 (the shadow pass fills nothing).
+  **The older path is not verified in game:** it depends on the shadow pass actually
+  drawing the water at the player's feet. Turn on `LIGHT_VOLUME_DEBUG_WORLD` on an
+  older loader and stand in shallow water - the voxel at your feet must read dark
+  cyan; black there means the test cannot fire.
 
 ## v1.0.6 - 2026-11-01
 

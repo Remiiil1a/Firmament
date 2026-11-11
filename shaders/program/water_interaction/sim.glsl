@@ -30,9 +30,11 @@
 // by the program source provider). A `#if defined(COLORED_LIGHTS)` in a program
 // whose include graph never reaches light_colors.glsl is therefore FALSE whatever
 // the player chose - not "false because the option is off", but false because this
-// translation unit never saw the declaration. The test below has to know whether
-// the world image exists, so it needs that declaration, and light_colors.glsl
-// needs materialIDs.glsl's IDs for the functions it defines.
+// WHO needs that declaration: the older-Iris branch of the source test below, which
+// is the only thing here that reads the world image. The newer loaders answer the
+// question with uniforms and never touch the image, but the file-level guard around
+// the image still has to be evaluated, so the declaration is still what decides it.
+// light_colors.glsl needs materialIDs.glsl's IDs for the functions it defines.
 //
 // This was found while writing batch 736, before the pack was run: the first
 // version of this file tested COLORED_LIGHTS without the include. The compute
@@ -52,7 +54,6 @@
 uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
 uniform float frameTime;
-uniform int isEyeInWater;
 
 // Whether the player is sneaking, which moves the feet up. It is one of the
 // loader's per-frame uniforms and exists on every Iris this pack supports; the
@@ -72,20 +73,22 @@ uniform bool is_sneaking;
 uniform vec3 relativeEyePosition;
 
 #if defined IS_IRIS && defined IRIS_VERSION && IRIS_VERSION >= 11004
-	// Iris 1.10.4 and later, and these three really are new there: none of them
+	// Iris 1.10.4 and later, and these five really are new there: none of them
 	// exists in the 1.21.1 or 1.21.4 branches. Everything that uses them is kept
 	// behind the same test - not just the declarations - because GLSL compiles a
 	// runtime branch whether or not it is taken, which is the trap porting_kit's
 	// GUIDE.md section 7 opens with. On an older Iris the effect degrades to the
 	// ripple under a swimming player instead of failing to load.
 	//
-	// vehicleInWater and feetInWater used to be here too, and batch 736 removed
-	// them from this list along with their declarations: the water test no longer
-	// asks the loader whether the player is in water, it reads the water out of
-	// the light volume's world image (see WaterInteractionSourceActive below).
-	// They are deliberately not kept as extra signals - the test is the same one
-	// Eclipse uses on every loader, so there is one answer and not two.
+	// vehicleInWater and feetInWater are the pair that answers "is the player in
+	// water"; see WaterInteractionSourceActive below, where they are the whole
+	// test on these loaders. Batch 736 dropped them in favour of reading the
+	// light volume on every loader, and batch 737 brought them back: the author's
+	// game test showed the loader's answer is the right one where it exists, and
+	// the light volume is only the stand-in for the loaders that have none.
 	uniform bool isRiding;
+	uniform bool vehicleInWater;
+	uniform bool feetInWater;
 	uniform vec3 vehicleLookVector;
 	uniform vec3 relativeVehiclePosition;
 #endif
@@ -111,8 +114,8 @@ vec2 WaterInteractionCameraOffset() {
 // The declaration sits inside the same test the writer uses to decide whether the
 // image exists at all. With COLORED_LIGHTS off, shaders.properties does not
 // declare the image, so a program that named it would be reading a name the
-// loader never bound; the fallback in the function below is what runs then, and
-// it needs no image.
+// loader never bound; the older-Iris branch of the test below then answers false
+// instead, and the newer loaders do not read the image at all.
 #if defined(COLORED_LIGHTS)
 	layout(rgba16) uniform readonly image3D light_volume_world;
 
@@ -139,31 +142,36 @@ vec2 WaterInteractionCameraOffset() {
 
 // Whether the player is in the water at all.
 //
-// Batch 736 replaced the loader's answer with Eclipse's, which is the same test
-// on every Iris version: measure the player from the eye down - eye, waist,
-// feet - and call it water when any of the three voxels is water. It is the test
-// in Eclipse-Shader-Unstable/shaders/dimensions/prepare.csh, the branch it takes
-// before Iris 1.10.4 - the one that needs no 1.10.4 uniforms, and therefore the
-// one that can be the only test here.
+// Two implementations, chosen by the same version test that decides which uniforms
+// exist, and the split is deliberate rather than a preference:
 //
-// Why the eye's own answer is not enough: isEyeInWater is about the camera, so a
-// player standing chest-deep in a pool reads as dry, and the waves their legs
-// make are exactly what the simulation is for. The uniforms that fixed that on
-// recent Iris (feetInWater, vehicleInWater) do not exist on the versions this
-// pack still loads, so using them meant two different tests and a version
-// branch. The image exists on all of them.
+//  * Iris 1.10.4 and later answer it directly - vehicleInWater || feetInWater.
+//    That is what this effect was tested with in game, and it is the answer the
+//    loader computes from the player's body rather than from the eye.
+//  * Every older Iris has neither uniform, so those loaders read the light
+//    volume's world image instead. It is Eclipse's own test for the same versions
+//    (Eclipse-Shader-Unstable/shaders/dimensions/prepare.csh, its pre-1.10.4
+//    branch): measure the player from the eye down - eye, waist, feet - and call
+//    it water when any of the three voxels is water.
 //
-// The eye's answer is kept, and it is tested first. It is a subsystem that cannot
-// be wrong, it costs one comparison, and it is the only answer there is when the
-// light volume is switched off. The three heights are therefore an addition
-// rather than a replacement: nothing that used to ripple stops rippling because
-// the image did not happen to say water this frame.
+// isEyeInWater is NOT part of either test. It answers "is the eye's own block
+// water", which is a different question from "is the player's body in water": a
+// player standing chest-deep with their head above the surface reads as dry, and
+// an eye that dips under the surface reads as wet wherever the player is standing.
+// Batch 736 had it as an extra OR for one build and the author saw exactly that
+// second failure in game - waves on a surface the player was not in - so this file
+// no longer declares it.
+//
+// What the older path costs: the world image exists only while COLORED_LIGHTS is
+// on, so on an older loader with coloured lights off the simulation has no source
+// and the water stays calm. That is the documented degradation, and the option's
+// own note (environment/water/water_interaction.glsl) says the same thing.
 bool WaterInteractionSourceActive() {
-	if (isEyeInWater == 1) {
-		return true;
-	}
-
-#if defined(COLORED_LIGHTS)
+#if defined IS_IRIS && defined IRIS_VERSION && IRIS_VERSION >= 11004
+	return vehicleInWater || feetInWater;
+#elif !defined IS_IRIS || !defined(COLORED_LIGHTS)
+	return false;
+#else
 	// Eclipse's three heights, and its two tallness values. The eye is the one
 	// position the loader gives in every stage; the waist and the feet are
 	// offsets from it, so the test follows the player and not the camera, which
@@ -177,8 +185,6 @@ bool WaterInteractionSourceActive() {
 			ivec3(floor(eye - vec3(0.0, 0.5 * tallness, 0.0))))
 		|| WaterInteractionVoxelIsWater(
 			ivec3(floor(eye - vec3(0.0, tallness, 0.0))));
-#else
-	return false;
 #endif
 }
 

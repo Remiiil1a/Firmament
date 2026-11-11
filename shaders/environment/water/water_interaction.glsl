@@ -28,6 +28,21 @@
 	// plain define; the real use is in translucent.glsl.
 #endif
 
+// How the simulation knows the player is in water differs by loader, because the
+// uniforms that answer that question are new:
+//
+//  * Iris 1.10.4 and later use `vehicleInWater || feetInWater` - the loader's own
+//    answer, and the one this effect was tested with.
+//  * Older Iris has neither, so it measures the player against the coloured-light
+//    voxel grid instead (Eclipse's method for those versions): eye, waist and feet
+//    are looked up in the light volume's world image, where the shadow pass tags a
+//    water block. That image only exists while COLORED_LIGHTS is on, so on an
+//    older loader with coloured lights off there is no source and the water stays
+//    calm.
+//
+// The eye's own answer (`isEyeInWater`) is not used by either: it says whether the
+// block the eye is in is water, which is not the same question.
+
 // What the simulation does in the End, which has no weather and no tide to speak
 // of: nothing, the same waves as the overworld, or waves under a lighter pull.
 //
