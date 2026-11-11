@@ -16,6 +16,30 @@ report problems in this project, not in Steadfast's.
 
 ---
 
+## v1.0.8 - 2026-11-11
+
+Two fixes: the pack loads again on older Iris and with SMAA on, and the water
+interaction asks the right question about where the player is.
+
+### Fixed
+
+* **The pack loads on Iris 1.8.14 again, and with SMAA on.** `relativeEyePosition`
+  was declared inside the version guard that holds the uniforms Iris 1.10.4 added,
+  while the fallback path below it still used it, so an older loader preprocessed
+  the declaration away and refused the pack. And a parameter in `lib/smaa.glsl` was
+  called `sample`, a GLSL 4.00 keyword some drivers reject whatever `#version`
+  says. Both fixed: the declaration is outside the guard now, the parameter is
+  renamed, a check stage compiles the pack as Iris 1.8.14, and a gate that reads
+  the source catches the keyword class.
+* **The water interaction's source test is split by loader version.** Iris 1.10.4
+  and later keep `vehicleInWater || feetInWater`. Older Iris - which has neither -
+  now measures the player from the eye down against the coloured-light voxel grid:
+  eye, waist, feet, the same test Eclipse uses on those versions. `isEyeInWater` is
+  gone from both paths: it says whether the eye's block is water, not whether the
+  player is in water, and one build that trusted it made waves wherever the camera
+  went under. Older loaders need `COLORED_LIGHTS` for this, because that is what
+  creates the image; with it off their water stays calm.
+
 ## v1.0.7 - 2026-11-02
 
 Block light now arrives in the colour of the source it came from: a soul lantern
@@ -24,195 +48,151 @@ instead of one winning, and a light that is taken down takes its colour with it.
 How bright the world is has not changed. The author played the first build of it,
 and the six things that build got wrong are fixed in the same release.
 
-**Coloured lights**
-* The colour of block light is carried by a flood fill over a grid of voxels
-  around the player - 64 blocks across by default, one voxel to a block - held in
-  custom images and advanced one voxel per frame by one compute program
-  (`prepare3`). The shape is Eclipse's LPV and Mellow's coloured lights, both
-  already credited: a grid snapped to whole blocks, written by the shadow pass,
-  propagated one step per frame, read back by the terrain. It runs in every
+### Added
+
+* **Coloured block light, by flood fill.** The colour of block light is carried by
+  a grid of voxels around the player - 64 blocks across by default, one voxel to a
+  block - held in custom images and advanced one voxel per frame by one compute
+  program (`prepare3`). The shape is Eclipse's LPV and Mellow's coloured lights,
+  both already credited: a grid snapped to whole blocks, written by the shadow
+  pass, propagated one step per frame, read back by the terrain. It runs in every
   dimension and costs one dispatch of that grid per frame, lit world or not.
-* A voxel passes on 0.85 of the value it holds and a solid voxel keeps the light
+  A voxel passes on 0.85 of the value it holds and a solid voxel keeps the light
   out, so the colour fades to nothing over the same fifteen blocks the game's own
-  block light reaches. A light source is full strength in the voxel it stands in,
-  so a new light takes about fifteen frames to arrive and a removed one about
-  twenty-five to fade away.
-* Two sources that meet take the brighter of each channel, so red beside green
-  reads as yellow in between rather than one light cutting the other off.
-* The palette that colours a light source's own surface also seeds the fill, so
-  a block that glows a colour is the block that puts that colour into the air.
-* Two new settings, both under the same switch. `COLORED_LIGHT_RANGE` is how far
+  block light reaches; a source is full strength in the voxel it stands in, so a
+  new light takes about fifteen frames to arrive and a removed one about
+  twenty-five to fade away. Two sources that meet take the brighter of each
+  channel, so red beside green reads as yellow in between rather than one light
+  cutting the other off, and the palette that colours a light source's own surface
+  also seeds the fill.
+* **Two settings, both under the same switch.** `COLORED_LIGHT_RANGE` is how far
   the colour is carried - 48, 64, 96 or 128 blocks across, 64 by default - and it
   is also what the effect costs: the three volume images together are about
   2.5 MiB at 48, 6 MiB at 64, 20 MiB at 96 and 48 MiB at 128.
   `COLORED_LIGHT_SATURATION` (0.0-1.5, 1.0 by default) is how strong the colour
   is; at 0.0 the fill contributes no colour and block light is one colour for
-  every source again, the way it was before any of this. Neither touches
-  brightness, and the Low tier turns the whole fill off with the water
-  simulation, because it is the pack's other per-frame compute pass.
-
-**After the first play**
-* **Entities no longer turn orange.** The first build wrote every mob, dropped
-  item and armour stand into the colour field as a solid block. An entity's own
-  surfaces then read no light from the field and fell back to the lightmap's warm
-  colour - the orange patch under the player - and it also cut a lightless hole in
-  the colour around it. Entities write nothing now; only the world's blocks do,
-  and the few glowing block entities.
+  every source again. Neither touches brightness, and the Low tier turns the whole
+  fill off with the water simulation, because it is the pack's other per-frame
+  compute pass.
 * **More light sources give their colour**: all three froglights, copper torches
   and every copper lantern in every oxidation state and waxed variant, soul
   campfires, amethyst clusters and large buds. The nether portal counts as a light
-  source now, and so does the end gateway. The end portal does not - see "Later in
-  this release"; it is drawn as an emissive surface instead.
+  source now, and so does the end gateway.
 * **The block in the player's hand colours the light too.** The hand publishes the
-  block's colour, the fill injects it at the player's own voxel, and it arrives
-  one frame after the hand is drawn. If the loader does not tell the pack which
-  block is being held, the warm fallback colour is used and the light still
-  exists.
+  block's colour, the fill injects it at the player's own voxel, and it arrives one
+  frame after the hand is drawn. If the loader does not say which block is held,
+  the warm fallback colour is used and the light still exists.
 * **Stained glass tints the block light that passes through it**, so a red pane
-  puts red light on the floor behind it. A pane outside the shadow map's reach
-  does not tint it, which is the known edge of the effect.
-* **The indirect-bounce experiment is gone**: `INDIRECT_BOUNCE`, its strength and
-  floor options, and the second screen-space gather that shared the light-bleed
-  pass. The light bleed itself is unchanged.
+  puts red light on the floor behind it. A pane outside the shadow map's reach does
+  not tint it, which is the known edge of the effect.
 
-**Kept as it was**
-* The glowing block's own surface colour (`COLORED_LIGHTS_STRENGTH`) and the
-  screen-space light bleed (`composite2`, `light_bleed.fsh`, `LIGHT_BLEED_*`,
-  `LIGHT_TINT_STRENGTH`) are unchanged. The bleed reads a surface mask of light
-  sources and gathers around it on screen; it does not read the lightmap or the
-  fill, so nothing in it was replaced.
-* Brightness is entirely the game's own block light level, as before: the same
-  `pow(blockLight, 4.0)` falloff scaled by `BLOCKLIGHT_STRENGTH`, plus the held
-  light term, which is also unchanged. The fill supplies a hue and never a level,
-  so this release cannot change how dark a cave is or how bright a torch-lit room
-  is.
-* Voxy terrain keeps the lightmap's colour: its shaders are given their uniforms
-  from outside the pack, so the fill is not compiled into them.
+### Changed
 
-**Fallback**
-* With `COLORED_LIGHTS` off, block light is exactly what it was before this
-  release: `BlockLightTint`, the lightmap's hue moved by `BLOCKLIGHT_TEMPERATURE`;
-  the propagation program is not run and the flood-fill module is not compiled
-  into the terrain programs. The same happens on a loader that cannot run compute
-  shaders and custom images - the two are optional features - and wherever the
-  fill has nothing to say. A colour can arrive through a wall as a hue, but it
-  cannot make a dark surface visible.
-
-**Seen in game, and what has not been**
-* The author's first session on the first build is the only in-game evidence this
-  release has, and all six things it found are fixed above. The fixes themselves
-  have not been seen in a game - this machine cannot run Minecraft - so what is
-  checked here is that they compile, read the values they are meant to and keep
-  the baselines.
-* What to look at next session: entities standing in coloured light (no orange
-  patch and no hole in the colour around them); a froglight, a copper torch and a
-  soul campfire each giving its own colour; a stained-glass pane colouring the
-  light that passes through it; holding a torch and seeing its colour arrive a
-  frame late; the range and saturation settings at their other values, including
-  whether 128 is worth its memory on the author's machine; and whether the
-  screen-space light bleed and the fill together are too saturated - the fill and
-  the bleed still colour the same surfaces, so `LIGHT_BLEED_STRENGTH` and
-  `LIGHT_TINT_STRENGTH` remain the controls, and no default was changed for it.
-
-**Later in this release**
-
-Everything below landed after v1.0.7 was first written, and the version number is
-not moved for it: this release is still v1.0.7. What identifies a build is the
-`[build N]` marker in the language files, not the version.
-
-* **The end portal no longer lights the room.** It was made a coloured light
-  source in the first build, and the three reports that followed were all the same
-  fault seen from three sides: the colour strobed while the camera moved, it spilled
-  a block east and south of the portal, and it vanished whenever the portal left the
-  view. The cause was the premise, not any of the four repairs tried against it - a
-  portal is a block entity, so its geometry reaches the light grid only when the game
-  chooses to draw it, and the grid can only colour what it was given. The portal is
-  now an emissive surface instead: it looks exactly as it did, and it no longer
-  throws light on the ground. The room is still lit, by the portal's own block light
-  in the ordinary warm tint. Eclipse - the reference this pack's fill is modelled on
-  - never treated the portal as a source either, and excludes it by construction.
-* **The end gateway keeps its light.** It is an end rod, it really is a light source
-  in the game, and it is drawn unconditionally enough to arrive every frame.
+* **The end portal is an emissive surface, not a light source.** It was made a
+  coloured source in the first build, and the three reports that followed were one
+  fault seen from three sides: the colour strobed while the camera moved, it
+  spilled a block east and south, and it vanished whenever the portal left the
+  view. The cause was the premise - a portal is a block entity, so its geometry
+  reaches the grid only when the game chooses to draw it. It looks exactly as it
+  did and no longer throws light on the ground; the room is still lit, by the
+  portal's own block light in the ordinary warm tint.
+* **The end gateway keeps its light.** It is an end rod, it really is a light
+  source in the game, and it is drawn unconditionally enough to arrive every frame.
 * **Reflections are stronger by default.** `PBR_REFLECTIONS_STRENGTH` moves from
-  0.25 to 0.5 and `PBR_METAL_REFLECTION_STRENGTH` from 1.0 to 0.75. Both stay on the
-  same ladder, so either can be put back; the Medium profile carries the new values.
+  0.25 to 0.5 and `PBR_METAL_REFLECTION_STRENGTH` from 1.0 to 0.75. Both stay on
+  the same ladder, so either can be put back; the Medium profile carries them.
 * **The Low tier no longer dulls metals.** It used to halve `PBR_METAL_DIFFUSE`,
-  which was a partial refund for switching the reflection trace off. With the trace
-  off, the diffuse response is the whole of what a metal gets, so halving it made
-  the tier look worse without saving anything. It is 1.0 there now, the same as
-  Medium, and the tier's description says so.
-* **Waves start where the water is, not where the camera is - on every Iris version.**
-  The simulation used to ask the loader whether the player was in water with
-  `feetInWater` and `vehicleInWater`, which only Iris 1.10.4 and later have; older
-  ones fell back to the eye's own answer, so a player standing chest-deep with their
-  head above the surface made no waves there. Older Iris now reads the water out of
-  the coloured-light voxel grid instead - the shadow pass tags a water block in the
-  same image the flood fill reads (`0.125`, a value the fill treats as air, so
-  coloured light does not change), and the simulation measures the player from the
-  eye down: eye, waist, feet, the same test Eclipse uses on those versions. The newer
-  loaders keep the answer they always had, so nothing changes where the effect was
-  already right. The eye's own answer is no longer used by either path: it says
-  whether the eye's block is water, and one build of this that trusted it made waves
-  on a surface the player was not in. Two configurations leave older loaders with no
-  source, and the water stays calm: `COLORED_LIGHTS` off (the voxel image does not
-  exist) and the shadow distance at 0 (the shadow pass fills nothing).
-  **The older path is not verified in game:** it depends on the shadow pass actually
-  drawing the water at the player's feet. Turn on `LIGHT_VOLUME_DEBUG_WORLD` on an
-  older loader and stand in shallow water - the voxel at your feet must read dark
-  cyan; black there means the test cannot fire.
+  a partial refund for switching the trace off - but with the trace off the
+  diffuse response is the whole of what a metal gets, so halving it made the tier
+  look worse without saving anything. It is 1.0 there now, the same as Medium.
+
+### Fixed
+
+* **Entities no longer turn orange.** The first build wrote every mob, dropped item
+  and armour stand into the colour field as a solid block. An entity's own surfaces
+  then read no light from the field and fell back to the lightmap's warm colour -
+  the orange patch under the player - and it also cut a lightless hole in the
+  colour around it. Entities write nothing now; only the world's blocks do, and the
+  few glowing block entities.
+
+### Removed
+
+* **The indirect-bounce experiment**: `INDIRECT_BOUNCE`, its strength and floor
+  options, and the second screen-space gather that shared the light-bleed pass. The
+  light bleed itself is unchanged.
+
+Brightness is entirely the game's own block light level, as before: the same
+`pow(blockLight, 4.0)` falloff scaled by `BLOCKLIGHT_STRENGTH`, plus the held light
+term. The fill supplies a hue and never a level, so this release cannot make a cave
+darker or a torch-lit room brighter. The glowing block's own surface colour
+(`COLORED_LIGHTS_STRENGTH`) and the screen-space light bleed (`composite2`,
+`LIGHT_BLEED_*`, `LIGHT_TINT_STRENGTH`) are unchanged, and Voxy terrain keeps the
+lightmap's colour because its shaders are given their uniforms from outside the
+pack. With `COLORED_LIGHTS` off, block light is exactly what it was before this
+release, and the propagation program is not run.
+
+The author's first session on the first build is the only in-game evidence this
+release has, and all six things it found are fixed above. The fixes themselves have
+not been seen in a game - this machine cannot run Minecraft - so what is checked
+here is that they compile, read the values they are meant to and keep the
+baselines.
 
 ## v1.0.6 - 2026-11-01
 
 The water, end to end, and the settings that go with it. Water now reacts to being
-moved through - swimming or rowing leaves waves behind, and they fade as the surface
-calms - and it is drawn from how light travels through it rather than from a colour
-of its own. The user-facing settings were rebuilt around three tiers.
+moved through - swimming or rowing leaves waves behind, and they fade as the
+surface calms - and it is drawn from how light travels through it rather than from
+a colour of its own. The user-facing settings were rebuilt around three tiers.
 
-**Water**
-* The surface no longer carries a colour of its own: what is seen is the reflection,
-  the refraction behind it and the absorption over the distance travelled. Shallow
-  water is clearer, and the blue film that used to sit on the sides of water in the
-  dark is gone.
-* Absorption is measured in metres along the path the light actually travelled, with
-  `WATER_CHARACTER` choosing the coefficients and `WATER_F0` the reflectance.
-* The light that travels to a pixel is now taken into account under water as well:
-  the whole frame is attenuated by the water it looked through, and the sky seen
-  from below the surface takes the water's colour instead of its own.
-* A face that stands up reflects the zenith rather than the horizon, so the sides of
-  water stop glowing in caves and at night.
-* Rough refraction for the water surface, `ROUGH_REFRACTION` with a strength slider.
-* The material reflection is now actually averaged by the temporal resolve. It had
-  been in that pass since v1.0.5, but the clamp's workaround passed it through
+### Added
+
+* **Waves from movement.** A two-step simulation in compute programs, its field
+  carried in three custom images, tilts the water's normal - and reaches the
+  reflection, the Fresnel term, the refraction and the absorption at once. Iris
+  only.
+* **`WATER_INTERACTION_STRENGTH` and `WATER_SIM_QUALITY`.** The quality option also
+  changes the look: low reads as a close-knit texture of small swells, high as
+  finer water - and low is the default, because the Low tier turns the effect off.
+* **The End has its own physics.** `WATER_SIM_END` chooses off, the overworld's
+  waves, or waves under low gravity, which travel and settle more slowly. Low
+  gravity is the default - the End is not the overworld.
+* **Rough refraction** for the water surface: `ROUGH_REFRACTION`, with a strength
+  slider.
+
+### Changed
+
+* **The surface no longer carries a colour of its own.** What is seen is the
+  reflection, the refraction behind it and the absorption over the distance
+  travelled. Shallow water is clearer, and the blue film that used to sit on the
+  sides of water in the dark is gone. Absorption is measured in metres along the
+  path the light actually travelled, with `WATER_CHARACTER` choosing the
+  coefficients and `WATER_F0` the reflectance.
+* **The light that travels to a pixel is taken into account under water too.** The
+  whole frame is attenuated by the water it looked through, and the sky seen from
+  below the surface takes the water's colour instead of its own.
+* **The profile list is this edit's own three tiers: High, Medium, Low.** The
+  styles inherited from Steadfast are removed. Low turns the volumetric fog and the
+  water simulation off and drops the PBR reflection trace.
+* **Shipped defaults changed**, following the author's own settings: block light
+  temperature 2700 K, day and night sky lighting and night atmosphere
+  `SEMI_NATURAL`, and the morning/evening/night fog densities at 0.006 / 0.003 /
+  0.004. **Existing pictures will look different.**
+
+### Fixed
+
+* **The sides of water no longer glow in caves and at night.** A face that stands
+  up reflects the zenith rather than the horizon.
+* **The material reflection is actually averaged by the temporal resolve now.** It
+  had been in that pass since v1.0.5, but the clamp's workaround passed it through
   untouched, so its noise was never averaged. Reflections trail a little longer now
   and the grain is gone.
 
-**Water interaction**
-* Waves from movement: a two-step simulation in compute programs, its field carried
-  in three custom images, tilting the water's normal. It reaches the reflection, the
-  Fresnel term, the refraction and the absorption at once, and it is Iris only.
-* `WATER_INTERACTION_STRENGTH` and `WATER_SIM_QUALITY`. The quality option also
-  changes the look: low reads as a close-knit texture of small swells, high as finer
-  water - and low is the default, because the low tier turns the effect off.
-* The End has its own physics: `WATER_SIM_END` chooses off, the overworld's waves, or
-  waves under low gravity, which travel and settle more slowly. Low gravity is the
-  default - the End is not the overworld.
-* Credits: the water interaction's idea and code come from **Eclipse** by
-  Merlin1809, credited in the settings menu and in the README.
+Known issue: the player's own model, held item and hand can still be seen through
+under water when the camera is submerged. It is recorded, and its cause is not the
+water simulation.
 
-**Profiles and defaults**
-* The profile list is now this edit's own three tiers: **High, Medium, Low**. The
-  styles inherited from Steadfast are removed.
-* Low turns the volumetric fog and the water simulation off and drops the PBR
-  reflection trace.
-* Shipped defaults changed, following the author's own settings: block light
-  temperature 2700 K, day and night sky lighting and night atmosphere
-  `SEMI_NATURAL`, and the morning/evening/night fog densities at 0.006 / 0.003 /
-  0.004. Existing pictures will look different.
-
-**Known issues**
-* The player's own model, held item and hand can still be seen through under water
-  when the camera is submerged. It is recorded, and its cause is not the water
-  simulation.
+Credits: the water interaction's idea and code come from **Eclipse** by Merlin1809,
+credited in the settings menu and in the README.
 
 ## v1.0.5 - 2026-10-30
 
