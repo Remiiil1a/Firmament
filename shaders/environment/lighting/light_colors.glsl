@@ -98,6 +98,26 @@ vec3 BlockLightColor(uint materialID) {
 		return vec3(0.35, 0.55, 0.95);
 	} else if (materialID == LIGHT_AMETHYST) {
 		return vec3(0.72, 0.42, 1.0);
+	} else if (materialID == NETHER_PORTAL) {
+		// The nether portal, which is a light source and was one before batch 739
+		// as well - see the note on NETHER_PORTAL_TINT in
+		// /environment/materialIDs.glsl for why its colour is authored rather than
+		// sampled from its texture.
+		//
+		// BATCH 740 PUT IT BACK. Batch 738 stored NETHER_PORTAL_TINT directly in
+		// shadow.vsh's LightVolumeWriteTerrain, as a special case beside the
+		// palette. Batch 739 replaced that function with one that writes the block's
+		// ID and lets this file answer for it - and never added the portal to the
+		// palette, so the ID fell through the whole chain to the black below and the
+		// portal emitted nothing at all. The author's report is exactly that: the
+		// portal stopped lighting the ground under it.
+		//
+		// This does NOT colour the portal's own face, which is the thing the old
+		// special case was avoiding. The fragment stage never sees 38: FetchMaterialID
+		// in lit.vsh answers GLASS for it in the translucent path, and EncodePerFace
+		// keeps four bits, so 38 arrives as 6 - GLASS - on every path. The surface is
+		// drawn by PORTAL_NETHER in /program/world/lit.fsh and keeps its own tint.
+		return NETHER_PORTAL_TINT;
 	} else if (materialID == LIGHT_FROGLIGHT_OCHRE) {
 		// The froglight colors are the blocks' own glow - their textures carry
 		// them - and the fill needs the family so that a froglight is an emitter
@@ -176,6 +196,18 @@ float BlockLightRange(uint materialID) {
 		// Respawn anchor, enchanting table, large amethyst bud. The anchor is 15
 		// and has its own family below; this one is the table's 7.
 		return 7.0;
+	} else if (materialID == NETHER_PORTAL) {
+		// Eleven, which is Eclipse's number for the same block
+		// (dimensions/setup.csh:957-962, BLOCK_NETHER_PORTAL). The game itself does
+		// not give the portal a light level - it is not a light source in vanilla at
+		// all - so there is no "the game's own number" to take here, and the
+		// reference implementation is the only defensible source. Eleven is also
+		// what makes the portal read as a source rather than as a lamp: it lights
+		// the floor under it and stops well short of a glowstone.
+		//
+		// This branch is what makes the portal emit at all. See the note on the
+		// matching branch in BlockLightColor above for what batch 739 dropped.
+		return 11.0;
 	} else if (materialID == LIGHT_FROGLIGHT_OCHRE
 		|| materialID == LIGHT_FROGLIGHT_VERDANT
 		|| materialID == LIGHT_FROGLIGHT_PEARLESCENT) {

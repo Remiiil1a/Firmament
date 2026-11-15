@@ -303,11 +303,13 @@ uniform mat4 shadowModelViewInverse;
 	// tested first so that a light source always gets its own colour into the
 	// fill: a source whose voxel was marked solid would light nothing, because the
 	// colour starts in this voxel and the fill spreads out of a voxel into its
-	// neighbours. The nether portal is an emitter too even though the palette has
-	// no entry for it - its material deliberately has no light colour of its own,
-	// because BlockLightColor is also what colours the emitter's own face and the
-	// portal surface has its own tint - and NETHER_PORTAL_TINT from
-	// materialIDs.glsl is authored for exactly this.
+	// neighbours. The nether portal is an emitter too, and since batch 740 it is
+	// answered by the palette like every other source: BlockLightColor returns
+	// NETHER_PORTAL_TINT for it and BlockLightRange returns 11.0. Batch 739 wrote
+	// the block's ID here and left the portal out of the palette, so it emitted
+	// nothing; the note on that branch in /environment/lighting/light_colors.glsl
+	// records what was dropped and why restoring it does not colour the portal's
+	// own face.
 	//
 	// Then the materials light passes through, which are air to the fill. Water is
 	// the one that gets a tag of its own - see the state table in light_volume.glsl

@@ -562,7 +562,26 @@ vec3 BlockLighting(
 			blockLight,
 			fillLevel);
 
-	float combinedLight = min(blockLight + fillLevel, 15.0) / 15.0;
+	// THE TWO TERMS ARE IN DIFFERENT UNITS, AND BATCH 740 IS THE FIX FOR IT.
+	//
+	// blockLight is the lightmap's own reading, normalised to 0..1: it arrives from
+	// LightMapToLight (lib/encoding/lightmap.glsl), which returns the light level
+	// over fifteen - level 15 is exactly 1.0 and level 0 is the floor. fillLevel is
+	// a light level in blocks, 0..15, because that is what the fill's alpha channel
+	// encodes and what LightVolumeBlockLight reports.
+	//
+	// Batch 739 added the two without converting, then divided the sum by fifteen.
+	// That divided the lightmap's term by fifteen twice: a level-15 block arrived as
+	// 1.0, became 1.0 / 15.0 = 0.0667, and the fourth power below turned it into
+	// 2e-5 - effectively zero. The visible consequence was that the lightmap stopped
+	// lighting anything and the voxel field became the only light in the frame,
+	// which is why the fill read as a hard-edged bright map over everything, why
+	// emitters barely glowed once the coloured lights were off, and why block
+	// corners had dark seams where the field is empty and nothing could compensate.
+	//
+	// Scaling the lightmap term up to blocks first is the whole of the fix. This is
+	// the same class of error as LESSONS 109: one quantity, two units.
+	float combinedLight = min(blockLight * 15.0 + fillLevel, 15.0) / 15.0;
 
 	float blockLightIntensity = pow(combinedLight, 4.0);
 	float heldLightIntensity = pow(heldLight, 4.0);
