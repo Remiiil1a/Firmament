@@ -111,9 +111,86 @@ vec3 BlockLightColor(uint materialID) {
 		// Copper fire burns green - that is what tells a copper torch from every
 		// other torch in the game, and it is the whole reason this family exists.
 		return vec3(0.40, 1.0, 0.78);
+	} else if (materialID == LIGHT_REDSTONE_LAMP) {
+		// A lit redstone lamp is a full-strength source and shares nothing with a
+		// redstone torch but its hue. See LIGHT_REDSTONE_LAMP in
+		// /environment/materialIDs.glsl for why it is a family of its own.
+		return vec3(1.0, 0.13, 0.08);
+	} else if (materialID == LIGHT_MAGMA) {
+		return vec3(1.0, 0.32, 0.06);
+	} else if (materialID == LIGHT_AMETHYST_CLUSTER) {
+		return vec3(0.72, 0.42, 1.0);
 	}
 
 	return vec3(0.0);
+}
+
+// How far the light a block gives off reaches, in blocks.
+//
+// This is the other half of the palette, and since batch 739 it is what sets a
+// source's reach in the flood fill. Before this batch the fill emitted one fixed
+// value and a single decay constant decided every source's reach, so a magma
+// block lit as far as a glowstone and the only thing that differed between them
+// was the colour. Eclipse carries a range per block
+// (dimensions/setup.csh:103-121, `lightRange`), and the author asked for that
+// shape.
+//
+// The numbers are the game's own light levels, which is the only defensible
+// source for them: a torch is 14, glowstone 15, a soul torch 10, a magma block 3.
+// Where a family lumps blocks with different levels the family is split instead of
+// averaged - see LIGHT_REDSTONE_LAMP, LIGHT_MAGMA and LIGHT_AMETHYST_CLUSTER in
+// /environment/materialIDs.glsl - because a lamp that reaches seven blocks is a
+// lamp that looks broken.
+//
+// A block that is not a source answers zero, which is the same answer
+// BlockLightColor gives, and the two are read together by the propagation: a
+// voxel with a colour and no range emits nothing, and a voxel with a range and no
+// colour emits black.
+float BlockLightRange(uint materialID) {
+	if (materialID < LIGHT_WARM) {
+		return 0.0;
+	}
+
+	if (materialID == LIGHT_WARM) {
+		// Torch, lantern, glowstone, jack o'lantern, shroomlight, furnace. The
+		// torch is 14 and the glowstone 15; the family takes the torch's number
+		// because a torch is what the player places most of, and one level of
+		// reach is not visible at this scale.
+		return 14.0;
+	} else if (materialID == LIGHT_SOUL) {
+		return 10.0;
+	} else if (materialID == LIGHT_REDSTONE) {
+		// Redstone torches. The lamp is 15 and has its own family below.
+		return 7.0;
+	} else if (materialID == LIGHT_LAVA) {
+		return 15.0;
+	} else if (materialID == LIGHT_SEA) {
+		return 15.0;
+	} else if (materialID == LIGHT_END_ROD) {
+		return 14.0;
+	} else if (materialID == LIGHT_CRYING) {
+		// Crying obsidian is 10 and a sculk catalyst 6. The obsidian is the one
+		// that is placed on purpose.
+		return 10.0;
+	} else if (materialID == LIGHT_AMETHYST) {
+		// Respawn anchor, enchanting table, large amethyst bud. The anchor is 15
+		// and has its own family below; this one is the table's 7.
+		return 7.0;
+	} else if (materialID == LIGHT_FROGLIGHT_OCHRE
+		|| materialID == LIGHT_FROGLIGHT_VERDANT
+		|| materialID == LIGHT_FROGLIGHT_PEARLESCENT) {
+		return 15.0;
+	} else if (materialID == LIGHT_COPPER) {
+		return 14.0;
+	} else if (materialID == LIGHT_REDSTONE_LAMP) {
+		return 15.0;
+	} else if (materialID == LIGHT_MAGMA) {
+		return 3.0;
+	} else if (materialID == LIGHT_AMETHYST_CLUSTER) {
+		return 5.0;
+	}
+
+	return 0.0;
 }
 
 // The color of the light a BLOCK ENTITY gives off, by the number it arrives as.

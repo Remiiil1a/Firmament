@@ -2292,10 +2292,16 @@ void main() {
 				vec3 volumeDebugNormal = worldNormal;
 			#endif
 
+			// BATCH 739: LightVolumeSample returns the colour in rgb and the light
+			// level in alpha, so the view shows the colour the field carries. The
+			// level is what the consumer adds to the lightmap's own, and it is
+			// visible in the FIELD view as brightness only through the colour -
+			// which is the right reading, because a field with a level and no
+			// colour is a field that lights nothing.
 			lightVolumeDebugColor = LightVolumeSample(
 				cameraRelativePos
 					+ volumeDebugNormal * LIGHT_VOLUME_NORMAL_OFFSET,
-				fract(cameraPosition)) * 4.0;
+				fract(cameraPosition)).rgb * 4.0;
 		#else
 			ivec3 volumeVoxel = ivec3(floor(LightVolumeCoord(
 				cameraRelativePos,
@@ -2306,19 +2312,29 @@ void main() {
 				vec4 volumeWorld = texelFetch(
 					light_volume_world_sampler, volumeVoxel, 0);
 
-				if (volumeWorld.a > 0.75) {
-					lightVolumeDebugColor = vec3(0.10);
-				} else if (volumeWorld.a > 0.25) {
-					lightVolumeDebugColor = vec3(0.0, 0.0, 0.4);
-				} else if (abs(volumeWorld.a - LIGHT_VOLUME_WATER_STATE)
-					< LIGHT_VOLUME_WATER_TOLERANCE) {
-					// Water, and the reason this view exists in batch 736: the
-					// water test reads this tag, so a player standing in water
-					// whose feet voxel is black here is a water test that cannot
-					// fire. See light_volume.glsl's state table.
+				// BATCH 739: the image holds the block's material ID in red and
+				// the tint it passes light with in green, blue and alpha. The
+				// states the old encoding tagged in alpha are gone, so this view
+				// paints the ID as a grey level and calls out the three blocks
+				// whose identity is worth seeing at a glance: water (the water
+				// interaction's source test reads it), stained glass (a filter)
+				// and the nether portal (an emitter with no palette entry).
+				uint volumeId = uint(volumeWorld.r * 255.0 + 0.5);
+
+				if (volumeId == WATER) {
 					lightVolumeDebugColor = vec3(0.0, 0.35, 0.45);
+				} else if (volumeId == STAINED_GLASS) {
+					lightVolumeDebugColor = vec3(0.0, 0.0, 0.4);
+				} else if (volumeId == NETHER_PORTAL) {
+					lightVolumeDebugColor = vec3(0.4, 0.0, 0.4);
+				} else if (volumeId == 0u) {
+					// Air: the cleared state, and the one a voxel the shadow pass
+					// did not draw also reads as.
+					lightVolumeDebugColor = vec3(0.0);
 				} else {
-					lightVolumeDebugColor = volumeWorld.rgb * 4.0;
+					// Everything else as a grey level, so that "the writer is
+					// filling the volume" is visible without a table.
+					lightVolumeDebugColor = vec3(float(volumeId) / 64.0);
 				}
 			}
 		#endif

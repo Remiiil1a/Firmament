@@ -143,14 +143,28 @@ uniform mat4 shadowModelViewInverse;
 	// stage test replaces it.
 	uniform int blockEntityId;
 
-	// This frame's emitters, filters and occluders, written here and read by the
-	// propagation pass later in the same frame. writeonly is what this stage does
-	// with it - the shadow program is the only writer (this stage for the
-	// geometry, its fragment stage for the colour of stained glass) and the
-	// compute pass is the only reader - and the loader clears it every frame (see
-	// its declaration in shaders.properties), which is what makes "no vertex
-	// reached this voxel" mean "nothing was drawn there this frame" rather than
-	// "nothing was drawn since the pack loaded".
+	// This frame's blocks, written here and read by the propagation pass later in
+	// the same frame. writeonly is what this stage does with it - the shadow
+	// program is the only writer (this stage for the block's ID, its fragment stage
+	// for the colour of stained glass) and the compute pass is the only reader -
+	// and the loader clears it every frame (see its declaration in
+	// shaders.properties), which is what makes "no vertex reached this voxel" mean
+	// "nothing was drawn there this frame" rather than "nothing was drawn since the
+	// pack loaded".
+	//
+	// BATCH 739 CHANGED WHAT A VOXEL HOLDS. It used to be a five-state tag in alpha
+	// with a colour in rgb: air, an emitter, water, a filter or solid. It is now
+	// the block's material ID in red, and - for a stained pane - the colour it
+	// tints light with in green, blue and alpha. The five states are gone because
+	// they could not express what the fill needs: a source's own reach, a slab that
+	// passes light in five directions rather than six, a pane that tints. Those are
+	// properties of a block, so the image carries the block and the table in
+	// program/light_volume/setup.csh says what it means.
+	//
+	// The ID is stored as id / 255.0 in the red channel. The image is RGBA16, so
+	// the channel has far more resolution than the 47 IDs this pack assigns need;
+	// the division and the reader's `uint(r * 255.0 + 0.5)` are exact for every
+	// integer from 0 to 255, and the extra bits are simply unused.
 	layout(rgba16) uniform writeonly image3D light_volume_world;
 
 	// The voxel this vertex's block landed in, for the fragment stage.
@@ -193,6 +207,24 @@ uniform mat4 shadowModelViewInverse;
 
 		lightVolumeVoxel = voxel;
 		imageStore(light_volume_world, voxel, value);
+	}
+
+	// A block's ID as the world image stores it, and the tint that goes with it.
+	//
+	// The ID is the whole of what the fill needs to know about a block: the table
+	// built by program/light_volume/setup.csh turns it into a light colour, a
+	// reach, a tint and a mix mask. That is the difference between this batch and
+	// the five-state encoding it replaced - the writer no longer decides what a
+	// block means, it only says which block it is.
+	//
+	// The tint is white for everything that is not a stained pane, which is the
+	// value that leaves light unchanged when the propagation multiplies it in. A
+	// pane's tint cannot be written from this stage at all: it comes from the
+	// pane's texture, which only the fragment stage reads, so this stage writes the
+	// ID with a white tint and the fragment stage overwrites the tint - see
+	// program/shadow/shadow.fsh.
+	vec4 LightVolumeBlockValue(uint material) {
+		return vec4(float(material) / 255.0, 1.0, 1.0, 1.0);
 	}
 
 	// The centre of the voxel a block-entity vertex lands in, in the camera-relative
@@ -254,7 +286,14 @@ uniform mat4 shadowModelViewInverse;
 		vec3 emitted = BlockEntityLightColor(float(blockEntityId));
 
 		if (any(greaterThan(emitted, vec3(0.0)))) {
-			LightVolumeStore(LightVolumeBlockCentre(cameraRelativePos), vec4(emitted, 0.0));
+			// A block entity has no material ID of its own - it is not chunk
+			// terrain and carries no mc_Entity - so the number block.properties
+			// gave it is what goes into the image. The gateway shares the end
+			// rod's 10012, which decodes to LIGHT_END_ROD, so the table answers
+			// it the same way it answers the rod.
+			LightVolumeStore(
+				LightVolumeBlockCentre(cameraRelativePos),
+				LightVolumeBlockValue(DecodeMaterialID(blockEntityId)));
 		}
 	}
 
@@ -289,46 +328,19 @@ uniform mat4 shadowModelViewInverse;
 	// eye, but the game's own light engine treats them as a block that dims what
 	// crosses it, and that is the question this image is answering.
 	void LightVolumeWriteTerrain(uint material, vec3 centerCameraRelative) {
-		vec3 emitted = BlockLightColor(material);
-
-		if (any(greaterThan(emitted, vec3(0.0)))) {
-			LightVolumeStore(centerCameraRelative, vec4(emitted, 0.0));
-			return;
-		}
-
-		if (material == NETHER_PORTAL) {
-			LightVolumeStore(centerCameraRelative, vec4(NETHER_PORTAL_TINT, 0.0));
-			return;
-		}
-
-		if (material == STAINED_GLASS) {
-			// No store from this stage; see the note above. The voxel is still
-			// published for the fragment stage.
-			ivec3 voxel;
-			lightVolumeVoxel = LightVolumeVoxelAt(centerCameraRelative, voxel)
-				? voxel
-				: ivec3(-1);
-			return;
-		}
-
-		if (material == WATER) {
-			// Water has a tag of its own since batch 736, and the reader is the
-			// water interaction's source test: it asks this image whether the voxel
-			// at the player's feet is water (program/water_interaction/sim.glsl).
-			// The fill reads 0.125 as air and rgb stays zero, so the value it
-			// computes here is the one the 0.0 this branch stored before produced.
-			LightVolumeStore(
-				centerCameraRelative,
-				vec4(0.0, 0.0, 0.0, LIGHT_VOLUME_WATER_STATE));
-			return;
-		}
-
-		if (material == ICE || material == GLASS) {
-			LightVolumeStore(centerCameraRelative, vec4(0.0));
-			return;
-		}
-
-		LightVolumeStore(centerCameraRelative, vec4(0.0, 0.0, 0.0, 1.0));
+		// Stained glass is the one material whose tint the fragment stage has to
+		// write, because the tint is the pane's own texture and this stage does not
+		// read it. This stage writes the ID with a white tint; the fragment stage
+		// overwrites the tint and leaves the ID alone. See
+		// program/shadow/shadow.fsh.
+		//
+		// The ID is written here rather than left to the fragment stage for the
+		// reason the old encoding wrote nothing at all: within one draw there is no
+		// ordering between one primitive's vertex stage and another primitive's
+		// fragment stage, so a later primitive's vertex store could land after an
+		// earlier one's fragment store. Writing the ID from both stages means the
+		// two agree about it and only the tint is at stake.
+		LightVolumeStore(centerCameraRelative, LightVolumeBlockValue(material));
 	}
 #endif
 

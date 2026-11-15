@@ -456,25 +456,29 @@ float NightDesaturation(float skyLight, float blockLight) {
 	}
 #endif
 
-// The colour of block light at a fragment, before the falloff turns it into
-// brightness.
+// The colour of block light at a fragment, and the light level the fill carries
+// there.
 //
 // This is where the pack's two answers meet. BlockLightTint is the colour the
 // lightmap says block light is; the flood fill is the colour the light actually
-// arrives in. The fill is asked first, and it returns the fallback itself
-// wherever it has nothing to say - outside its grid, before the propagation has
-// run a frame, where the field is too weak to be a colour, and where nothing is
-// lighting the surface at all - so what comes back is always a colour at the
-// fallback's own brightness. The fill decides the hue and nothing else.
+// arrives in and how far it reaches. The fill is asked first, and it returns the
+// fallback itself wherever it has nothing to say - outside its grid, before the
+// propagation has run a frame, where the field is too weak to be a colour - so
+// what comes back is always a colour at the fallback's own brightness.
 //
-// The strength the module reports is not read: the module has already mixed its
-// colour with the fallback by the time it returns, and the out parameter is only
-// there for a caller that wants to know how much of the result was the fill's.
+// BATCH 739 CHANGED WHAT THE SECOND OUTPUT IS. Until this batch the fill decided
+// hue and the lightmap decided brightness: the out parameter was a strength in
+// [0, 1] that scaled a lightmap-derived envelope, and the field's own magnitude
+// was a distance weight that was thrown away. That is why the effect read as a
+// tint rather than as light. Now the fill carries a light level - the number of
+// blocks of reach - and the caller adds it to the lightmap's own level. A surface
+// the lightmap calls dark but a torch reaches is lit by that torch, which is what
+// Eclipse does and what the author asked for.
 //
 // Wherever the include above is not taken - COLORED_LIGHTS off, or the Voxy
 // build, whose samplers are not the pack's - this compiles to one call that
-// returns exactly what BlockLighting multiplied before, which is the property
-// the option is required to have.
+// returns exactly what BlockLighting multiplied before, and reports a level of
+// zero, which is the property the option is required to have.
 vec3 BlockLightColorAt(
 	// Where this fragment sits in the lightmap, which is where its fallback
 	// colour comes from.
@@ -489,23 +493,27 @@ vec3 BlockLightColorAt(
 	// is snapped: the module takes it as an argument because the writer includes
 	// the same file and declares cameraPosition of its own.
 	vec3 subBlockOffset,
-	// The game's own block light level here, which the module uses as a gate: it
-	// colours only surfaces the lightmap already says are lit.
-	float blockLight
+	// The game's own block light level here, which is the floor the fill's level
+	// is added to.
+	float blockLight,
+	// The light level the fill carries here, in blocks of reach. Zero wherever the
+	// fill has nothing to say, which is what makes the caller's addition a no-op
+	// on those fragments.
+	out float fillLevel
 ) {
 	vec3 fallback = BlockLightTint(lightMapCoord);
 
 	#ifdef BLOCK_LIGHT_FLOOD_FILL
-		float strength;
 		vec3 colored = LightVolumeBlockLight(
 			fallback,
 			cameraRelativePos,
 			worldNormal,
 			subBlockOffset,
 			blockLight,
-			strength);
+			fillLevel);
 		return colored;
 	#else
+		fillLevel = 0.0;
 		return fallback;
 	#endif
 }
@@ -522,8 +530,41 @@ vec3 BlockLighting(
 	float blockLight,
 	float heldLight
 ) {
-	// Give block lighting a strong but visually appealing falloff.
-	float blockLightIntensity = pow(blockLight, 4.0);
+	// The brightness envelope, and what batch 739 changed about it.
+	//
+	// Until this batch the envelope was the whole of block light's brightness: the
+	// game's own block light level, raised to the fourth power, times
+	// BLOCKLIGHT_STRENGTH, and the flood fill only chose the colour that went
+	// through it. That is why the fill read as a tint - a torch's colour could
+	// reach a wall but could not make it brighter than the lightmap said.
+	//
+	// Now the fill carries a light level of its own, and the two are added before
+	// the envelope is applied. The addition is what keeps the effect safe in both
+	// directions: where the fill has nothing to say its level is zero and this is
+	// exactly the multiplication it was, and where it does have something to say
+	// the surface is lit by the light that actually reaches it. The lightmap's own
+	// level is still the floor, so a surface the game says is lit never goes dark
+	// because the fill could not see its source - which is the failure mode a
+	// replacement rather than an addition would have.
+	//
+	// The two are clamped to the game's own maximum before the power, because the
+	// sum can exceed it: a level-14 torch that the lightmap also calls 14 would
+	// otherwise be raised to the fourth power at 28 and blow out. Fifteen is the
+	// game's own ceiling and the one the fill's encoding is scaled to.
+	float fillLevel;
+	vec3 blockLightColor = BlockLightColorAt(
+			lightMapCoord,
+			cameraRelativePos,
+			worldNormal,
+			// The grid's sub-block offset, which the consumer passes in because
+			// the module cannot read cameraPosition itself - see the note there.
+			fract(cameraPosition),
+			blockLight,
+			fillLevel);
+
+	float combinedLight = min(blockLight + fillLevel, 15.0) / 15.0;
+
+	float blockLightIntensity = pow(combinedLight, 4.0);
 	float heldLightIntensity = pow(heldLight, 4.0);
 
 	// Apply block light suppression (see details in shaders.properties).
@@ -538,34 +579,9 @@ vec3 BlockLighting(
 	float heldLightSkyLight = sqrt(max(skyLight, heldLightSuppression));
 	heldLightIntensity *= 1.0 - heldLightSkyLight * blocklightSuppression;
 
-	// The colour is gated on the game's own block light level, not on the held
-	// light term. The fill's colours come from the world's light sources, and the
-	// held block's own light does not enter the volume in this batch - see the
-	// note on the hand program in lit.vsh for what comes back later - so a surface
-	// lit only by the item in the player's hand must not take a colour from a
-	// source somewhere else. Which of the two terms brightens a surface is the
-	// brightness envelope's business just below, and that is untouched: the two
-	// pow() terms are exactly what they were.
-
 	// This method of combining held light and block light avoids weird lines
 	// where the lights intersect.
-	//
-	// The brightness envelope is the one built above out of the game's own block
-	// light level; the colour that goes through it is whatever BlockLightColorAt
-	// returns. The flood fill supplies a hue and never a brightness - the module
-	// builds its colour at the fallback's own brightness and mixes the two - so
-	// this is the same multiplication, on the same scale of colour, that was here
-	// before the fill existed. That is the whole safety property of the option:
-	// COLORED_LIGHTS can change what colour a surface is, not how bright its
-	// block light is.
-	return BlockLightColorAt(
-			lightMapCoord,
-			cameraRelativePos,
-			worldNormal,
-			// The grid's sub-block offset, which the consumer passes in because
-			// the module cannot read cameraPosition itself - see the note there.
-			fract(cameraPosition),
-			blockLight)
+	return blockLightColor
 		* (BLOCKLIGHT_STRENGTH * min(1.0, blockLightIntensity + heldLightIntensity));
 }
 

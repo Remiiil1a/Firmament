@@ -1,28 +1,52 @@
-// Colored block light: one step of the flood fill.
+// Coloured block light: one step of the flood fill.
 //
 // Included by the three shadowcomp entries - shadowcomp.csh at the root and the two
 // under world-1/ and world1/ - which supply the #version line and the note on where
 // this pass sits in the frame. What runs here is the shading half's other end, from
-// /environment/lighting/light_volume.glsl: every voxel of the grid blends the
-// neighbours that carry colour in the previous frame's field, one step down, and
-// then adds whatever state its own voxel of the world image is in - air, an
-// emitter, water, stained glass, or an opaque block. The five states and their
-// encoding are the table at the top of that file; this is the only place they
-// are read. Water is the one state that deliberately has no branch here: its
-// alpha (0.125) is below the filter threshold, so it takes the air/emitter arm,
-// and its rgb is zero, so the value that arm computes is the same one the 0.0 it
-// replaced produced. That is what keeps coloured light unchanged by batch 736.
+// /environment/lighting/light_volume.glsl: every voxel of the grid takes the
+// strongest neighbour that carries light in the previous frame's field, one step
+// down, and then adds whatever its own voxel of the world image is - a light
+// source, a pane that tints, or a block that stops it.
+//
+// BATCH 739 REWROTE THIS PASS. What changed, and why each change is not a patch:
+//
+//  * The field is stored logarithmically. A voxel is a normalised colour in rgb
+//    and log2(level + 1) / LIGHT_VOLUME_LEVEL_RANGE in alpha, so the level decays
+//    by a constant per voxel in the stored space and the quantisation error does
+//    not compound. The old field was linear and carried a colour with no level at
+//    all. See the encoding section of light_volume.glsl - including why the
+//    channels stayed sixteen bits rather than dropping to eight.
+//
+//  * A source's reach is its own light level, not one constant for the whole
+//    game. BlockLightRange in /environment/lighting/light_colors.glsl answers how
+//    far a family reaches - a torch 14, a magma block 3, an amethyst bud 5 - and
+//    that number is what the voxel emits. The old fill emitted a fixed value and
+//    let one decay constant decide every source's reach, which is why a magma
+//    block lit as far as a glowstone.
+//
+//  * The world image holds a block's ID rather than a five-state tag. The table
+//    below turns an ID into a colour and a range; the old encoding had five
+//    states and a palette compiled into the shader, and could not express "this
+//    block reaches three blocks" at all.
+//
+// What is deliberately kept from the old fill, against Eclipse's own choice: the
+// level is the MAXIMUM over the neighbours, not their average. Eclipse averages
+// (dimensions/shadowcomp.csh:90-103), which is a diffusion field and is the right
+// shape for the global-illumination approximation it feeds. This pack's field is
+// block light, and batch 703 already tested the average here: the author reported
+// that the falloff flattened out and a lit area read as one broad wash instead of
+// a cone around its source. The maximum is the shape that was confirmed in game,
+// so it stays; what the average was wanted for - two colours meeting head-on
+// coming out as the brighter of each channel - is solved below by weighting the
+// colour by the level that carried it, which mixes the colours without touching
+// the falloff.
 //
 // One step per frame, not a loop that converges inside one dispatch. The field is
 // a recurrence, not something solved: it arrives at the frame as an image,
 // advances by one voxel, and is stored again. Spreading and fading are not
 // symmetric: a source is full strength in its own voxel in the frame it appears and
 // takes fifteen frames to reach fifteen blocks, while a removed one decays by the
-// step every frame and is only gone once it is below LIGHT_VOLUME_MINIMUM - 0.85^15
-// is still 0.087, so that is twenty-five frames rather than fifteen. See
-// LIGHT_VOLUME_STEP for why fifteen blocks is the distance it has to reach at all;
-// advance it faster and the colour would run ahead of the lightmap that is supposed
-// to be deciding brightness.
+// step every frame and is only gone once it is below LIGHT_VOLUME_MINIMUM.
 //
 // The program is Iris only, and every part of it that touches an image is kept
 // behind IS_IRIS: on a loader without custom images the body does nothing, the
@@ -31,15 +55,33 @@
 // see program.shadowcomp.enabled in shaders.properties - because with the option
 // off nothing reads the field.
 
-// The shared constants, and the one definition of where a position sits in the
-// grid. The file has no simulation-only section at this version, so this is the
-// same source the terrain programs include: the grid's geometry, the decay and
-// the voxel index the shadow pass writes with all come from one place, and the
-// three ends of the feature cannot drift apart.
+// The material IDs first, then the palette and the per-family range.
+//
+// The order is not cosmetic and it is LESSONS 107: light_colors.glsl is written as
+// branches over the material IDs, so it needs materialIDs.glsl in the same
+// translation unit before it. Until batch 739 this pass did not include the
+// palette at all - the world image carried the colour and the propagation only
+// spread it - so the palette's own dependency was never this file's problem. It is
+// now, and the compute check caught it: the three shadowcomp entries failed with
+// `'LIGHT_WARM' : undeclared identifier` while the front end stayed green, because
+// the front end does not compile compute programs.
+//
+// light_colors.glsl is the one place a light's colour is written down, and since
+// batch 739 it is also the one place its reach is: BlockLightRange sits beside
+// BlockLightColor so that a family cannot have a colour and no range, or the other
+// way round.
+#include "/environment/materialIDs.glsl"
+#include "/environment/lighting/light_colors.glsl"
+
+// The shared constants, the encoding and the one definition of where a position
+// sits in the grid. The file has no simulation-only section at this version, so
+// this is the same source the terrain programs include: the grid's geometry, the
+// encoding and the voxel index the shadow pass writes with all come from one
+// place, and the three ends of the feature cannot drift apart.
 //
 // The consumer-side samplers and functions in that file are compiled out here,
 // because this program does not define LIGHT_VOLUME_CONSUMER; what this pass
-// needs from the shared file is the grid, the decay and frameCounter. Its own
+// needs from the shared file is the grid, the encoding and frameCounter. Its own
 // images are declared below, for the reason sim.glsl gives for the same
 // arrangement in the water simulation: they exist only for the compute pass and
 // have no business in the comparison the terrain programs are checked against.
@@ -90,11 +132,15 @@ uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
 // frameCounter is declared by light_volume.glsl above, shared with the consumer.
 
-// What the shadow pass wrote this frame: the five-state table at the top of
-// environment/lighting/light_volume.glsl is what rgb and alpha mean here. It is
-// written by two programs - the vertex stage (program/shadow/shadow.vsh) for the
-// geometry, and the fragment stage (program/shadow/shadow.fsh) for the tint of
-// stained glass, which only the fragment stage can read from the texture.
+// What the shadow pass wrote this frame: one voxel per block, holding the block's
+// material ID in red and, for a stained pane, the colour it tints light with in
+// green, blue and alpha.
+//
+// The ID is stored as id / 255.0 in the red channel. The image is RGBA16, so the
+// channel has far more resolution than the 47 IDs this pack assigns need - the
+// division and the reader's `uint(r * 255.0 + 0.5)` are exact for every integer
+// from 0 to 255, and the extra bits are simply unused. The format is the one the
+// field images use, which keeps the three declarations identical.
 //
 // This is the one image of the three that the loader clears every frame, and it
 // has to be, because the shadow pass only draws what the sun can see: a voxel no
@@ -119,11 +165,39 @@ layout(rgba16) uniform readonly image3D light_volume_world;
 // this pass carries between frames, and clearing it would reset the fill to black
 // every frame - a light would never get past the voxel next to its source. What
 // the first frame reads out of them is whatever the loader's allocation holds,
-// which decays by the step above below LIGHT_VOLUME_MINIMUM within the same
-// twenty-five frames a light takes to fade out.
+// which decays below LIGHT_VOLUME_MINIMUM within the same frames a light takes to
+// fade out.
 layout(rgba16) uniform image3D light_volume_a;
 layout(rgba16) uniform image3D light_volume_b;
 
+// A stored voxel, decoded into the colour it carries and the level it carries.
+//
+// The two are separate here and were one in the old field: rgb is the colour
+// normalised so that its brightest channel is one, and the level is the number of
+// blocks of reach. Keeping them apart is what lets the level be combined by
+// maximum while the colour is combined by a level-weighted average - see the note
+// at the top of the file for why those are different questions.
+vec4 LightVolumeDecode(vec4 stored) {
+	float level = exp2(stored.a * LIGHT_VOLUME_LEVEL_RANGE) - 1.0;
+	return vec4(stored.rgb, level);
+}
+
+// The inverse: a colour and a level, stored as the encoding section of
+// light_volume.glsl defines them.
+//
+// The colour is normalised to its brightest channel before it is stored, so that
+// the eight bits of each channel are spent on the hue rather than on a magnitude
+// that the alpha channel already carries. A colour that is black - which is what a
+// voxel with no light holds - normalises to black, and its level is zero, so the
+// decode gives back zero rather than a division by a rounding error.
+vec4 LightVolumeEncode(vec3 colour, float level) {
+	float peak = max(colour.r, max(colour.g, colour.b));
+	vec3 hue = peak > 1.0e-4 ? colour / peak : vec3(0.0);
+
+	float encoded = log2(max(level, 0.0) + 1.0) / LIGHT_VOLUME_LEVEL_RANGE;
+
+	return vec4(hue, clamp(encoded, 0.0, 1.0));
+}
 
 // The previous frame's field at a voxel, or black outside the grid.
 //
@@ -133,21 +207,32 @@ layout(rgba16) uniform image3D light_volume_b;
 // would make the edge of the cube a wall of light that the fill then carries
 // inwards. Which image to read is fromA, passed in, so that the parity is still
 // decided in one place.
-//
-// rgb is the field's colour and a is 1.0 when this neighbour carries any colour at
-// all, 0.0 when it is black. The blend below divides by that count, so it has to
-// come from the same read as the colour.
 vec4 LightVolumePreviousField(ivec3 pos, bool fromA) {
 	if (any(lessThan(pos, ivec3(0)))
 		|| any(greaterThanEqual(pos, ivec3(LIGHT_VOLUME_SIZE)))) {
 		return vec4(0.0);
 	}
 
-	vec3 colour = fromA
-		? imageLoad(light_volume_a, pos).rgb
-		: imageLoad(light_volume_b, pos).rgb;
+	return LightVolumeDecode(fromA
+		? imageLoad(light_volume_a, pos)
+		: imageLoad(light_volume_b, pos));
+}
 
-	return vec4(colour, max(colour.r, max(colour.g, colour.b)) > 0.0 ? 1.0 : 0.0);
+// What the world image says about a voxel: the material ID and the tint.
+//
+// The tint is white for everything that is not a stained pane, which is the value
+// that leaves light unchanged when it is multiplied in. A pane stores its own
+// texture colour, normalised to its brightest channel by the fragment stage that
+// writes it, so a red pane puts red light on the floor and a black one puts
+// almost none.
+vec4 LightVolumeWorldAt(ivec3 voxel) {
+	vec4 stored = imageLoad(light_volume_world, voxel);
+
+	// The ID back out of the eight-bit channel. The round trip is exact for every
+	// integer the writer can store, so this is a decode and not an estimate.
+	uint id = uint(stored.r * 255.0 + 0.5);
+
+	return vec4(stored.gba, float(id));
 }
 #endif
 
@@ -186,75 +271,138 @@ void main() {
 	// the loader supplies.
 	ivec3 shift = ivec3(floor(cameraPosition) - floor(previousCameraPosition));
 
-	// This frame's world image at this voxel: the five-state table at the top of
-	// light_volume.glsl is what rgb and alpha mean here. alpha is the state, and
-	// it is tested in the order the table gives - solid first, then filter,
-	// because a solid is the one state that must not even read its neighbours.
-	vec4 world = imageLoad(light_volume_world, voxel);
+	// This frame's world image at this voxel: the block's ID and its tint.
+	vec4 world = LightVolumeWorldAt(voxel);
+	uint blockId = uint(world.a + 0.5);
+	vec3 tint = world.rgb;
 
-	// A solid voxel is black and stays black: light does not enter a block and
-	// does not come out of one. Everything else blends the six neighbours from
-	// the frame before, one step down, and then adds what its own state does.
-	vec3 next = vec3(0.0);
+	// The block's own light, from the palette. A block that is not a source
+	// answers black and a range of zero, and then the two branches below are the
+	// air branch and nothing else.
+	vec3 emitted = BlockLightColor(blockId);
+	float emittedRange = BlockLightRange(blockId);
 
-	if (world.a > 0.75) {
-		// Solid. `next` stays black - not even a read of the neighbours, which
-		// would be six image loads to compute a value that is then thrown away.
-		next = vec3(0.0);
-	} else {
-		ivec3 previous = voxel + shift;
-		bool readFromA = !writeToA;
+	// What the block does to light crossing it. A wall stops it, a filter tints
+	// it, and everything else leaves it alone - see LightVolumeOpaque and
+	// LightVolumeFilters in light_volume.glsl for why those are questions about
+	// the block rather than states of the image.
+	bool opaque = LightVolumeOpaque(blockId);
 
-		vec3 spread = LightVolumePreviousField(
-			previous + ivec3(1, 0, 0), readFromA).rgb;
-		spread = max(spread, LightVolumePreviousField(
-			previous + ivec3(-1, 0, 0), readFromA).rgb);
-		spread = max(spread, LightVolumePreviousField(
-			previous + ivec3(0, 1, 0), readFromA).rgb);
-		spread = max(spread, LightVolumePreviousField(
-			previous + ivec3(0, -1, 0), readFromA).rgb);
-		spread = max(spread, LightVolumePreviousField(
-			previous + ivec3(0, 0, 1), readFromA).rgb);
-		spread = max(spread, LightVolumePreviousField(
-			previous + ivec3(0, 0, -1), readFromA).rgb);
-
-		// Per-channel maximum, which is what this batch went back to. Batch
-		// 703 replaced it with the mean of the contributing neighbours to make
-		// two colours mix; the author tested it and reported that it broke the
-		// effect - the falloff flattened out and a lit area read as one broad
-		// wash instead of a cone around its source. The reasoning that made the
-		// mean look safe was wrong somewhere, and rather than keep tuning it
-		// blind, the maximum is back: it is the shape the pack shipped in 702
-		// and the one the author confirmed.
-		//
-		// What that costs is mixing: two colours meeting head-on come out as
-		// the brighter of each channel rather than an average. Where that
-		// matters it is a real limitation, and the place to solve it is a
-		// proper energy-preserving blend, not the denominator.
-		//
-		// A filter is stained glass, and it is the one state that changes the
-		// light rather than adding to it: what crosses a pane takes the pane's
-		// colour, so the value from the neighbours is multiplied by the tint
-		// before it is stored. There is deliberately no self-injection here - a
-		// pane is not a source, and adding its own rgb would make the pane
-		// itself glow. Air and emitters are everything else, and they differ
-		// only in whether the voxel adds its own colour: an emitter is at full
-		// strength in the frame it is drawn, not one step away from where it is.
-
-		if (world.a > 0.25) {
-			next = spread * world.rgb * LIGHT_VOLUME_STEP;
-		} else {
-			next = max(spread * LIGHT_VOLUME_STEP, world.rgb);
-		}
+	if (!LightVolumeFilters(blockId)) {
+		// The tint in the image is only meaningful for a filter. Everything else
+		// leaves light unchanged, whatever the image happens to hold - which is
+		// what keeps a stale tint from a pane that has since been broken from
+		// colouring the air it used to stand in.
+		tint = vec3(1.0);
 	}
 
-	// The fourth channel is stored as 1.0 because there is nothing to put in it:
-	// the colour is the whole of the state this image carries. It is written
-	// rather than left undefined so that a texel has one meaning on every driver.
-	if (writeToA) {
-		imageStore(light_volume_a, voxel, vec4(next, 1.0));
+	// The neighbours, one step down, and the two ways they are combined.
+	//
+	// The level is the maximum: light travels in straight lines and the strongest
+	// neighbour is the one it came from, which is the shape batch 702 shipped and
+	// the author confirmed. The colour is a level-weighted average of the same
+	// neighbours, which is the part the old fill got wrong - it took a per-channel
+	// maximum, so two colours meeting head-on came out as the brighter of each
+	// channel rather than as a blend. Weighting by the level means the blend is
+	// dominated by whichever light is actually stronger there, which is what the
+	// eye expects and what a plain average would lose.
+	//
+	// A solid block is not a special case here: it is a block whose tint is black,
+	// so the light that crosses it is multiplied to nothing. That is Eclipse's
+	// arrangement (dimensions/setup.csh:1214, where mixWeight becomes the tint) and
+	// it is why this pass has no state table to keep in step with the writer.
+	ivec3 previous = voxel + shift;
+	bool readFromA = !writeToA;
+
+	float level = 0.0;
+	vec3 colourSum = vec3(0.0);
+	float weightSum = 0.0;
+
+	// The six neighbours, in the order LIGHT_VOLUME_FACE_* names them. Written out
+	// rather than looped because the offsets are constants and a loop over an
+	// array of ivec3 is the kind of thing a driver may or may not unroll.
+	vec4 n;
+
+	n = LightVolumePreviousField(previous + ivec3(1, 0, 0), readFromA);
+	level = max(level, n.a);
+	colourSum += n.rgb * n.a;
+	weightSum += n.a;
+
+	n = LightVolumePreviousField(previous + ivec3(-1, 0, 0), readFromA);
+	level = max(level, n.a);
+	colourSum += n.rgb * n.a;
+	weightSum += n.a;
+
+	n = LightVolumePreviousField(previous + ivec3(0, 1, 0), readFromA);
+	level = max(level, n.a);
+	colourSum += n.rgb * n.a;
+	weightSum += n.a;
+
+	n = LightVolumePreviousField(previous + ivec3(0, -1, 0), readFromA);
+	level = max(level, n.a);
+	colourSum += n.rgb * n.a;
+	weightSum += n.a;
+
+	n = LightVolumePreviousField(previous + ivec3(0, 0, 1), readFromA);
+	level = max(level, n.a);
+	colourSum += n.rgb * n.a;
+	weightSum += n.a;
+
+	n = LightVolumePreviousField(previous + ivec3(0, 0, -1), readFromA);
+	level = max(level, n.a);
+	colourSum += n.rgb * n.a;
+	weightSum += n.a;
+
+	// The spread: one step of the falloff, and the tint of the block the light is
+	// crossing. The tint is normalised by the writer, so it moves the hue and not
+	// the level - a pale pane must not starve the surfaces behind it while the
+	// lightmap still says they are lit.
+	//
+	// The falloff is additive - one level per voxel - for the reason written out
+	// at LIGHT_VOLUME_STEP: this pack's consumer compares the field against the
+	// game's own block light level, which drops by one per block, so a
+	// multiplicative decay would give a torch thirty-three blocks of reach where
+	// the game says fourteen.
+	vec3 spreadColour = weightSum > 1.0e-4 ? colourSum / weightSum : vec3(0.0);
+	float spreadLevel = max(level - LIGHT_VOLUME_STEP, 0.0);
+
+	spreadColour *= tint;
+
+	// The voxel's own light, if it is a source. A source is at full strength in
+	// the frame it is drawn rather than one step away from where it is, which is
+	// what makes a torch's own block read as its brightest point.
+	//
+	// The two are combined by maximum rather than by addition: the level is a
+	// number of blocks of reach, and adding two of them would let a source and its
+	// own spread sum to a level neither of them has. The colour follows whichever
+	// of the two carries the level, so a source's own colour wins in its own voxel
+	// and the incoming light's colour wins just outside it.
+	vec3 nextColour;
+	float nextLevel;
+
+	if (emittedRange > spreadLevel) {
+		nextColour = emitted;
+		nextLevel = emittedRange;
 	} else {
-		imageStore(light_volume_b, voxel, vec4(next, 1.0));
+		nextColour = spreadColour;
+		nextLevel = spreadLevel;
+	}
+
+	// A block whose tint is black stops the light: nothing crosses it and nothing
+	// leaves it. This is the "solid" state of the old encoding, expressed as a
+	// question about the block rather than as a tag in the image - see
+	// LightVolumeOpaque in light_volume.glsl.
+	if (opaque) {
+		nextColour = vec3(0.0);
+		nextLevel = 0.0;
+	}
+
+	vec4 stored = LightVolumeEncode(nextColour, nextLevel);
+
+	if (writeToA) {
+		imageStore(light_volume_a, voxel, stored);
+	} else {
+		imageStore(light_volume_b, voxel, stored);
 	}
 
 #endif

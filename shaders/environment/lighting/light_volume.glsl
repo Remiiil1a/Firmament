@@ -1,110 +1,56 @@
-// Colored block light, by flood fill.
+// Coloured block light, by flood fill, in Eclipse's shape.
 //
-// Minecraft's light engine is a flood fill that carries a brightness and nothing
-// else: every light source in the world arrives as the same warm average, so a
-// soul lantern and a torch light a wall identically. This file is the other half
-// of the fix for that - a second flood fill, over a grid of voxels around the
-// player, that carries colour. Each frame one step of it runs in the shadowcomp
-// pass, light spreads one voxel per step, and the terrain programs read the field
-// back as the colour of their block light. There is one shadowcomp entry point per
-// dimension set - the root's, world-1/'s and world1/'s - because a worldN folder
-// is a complete program set rather than a set of overrides; see
-// world-1/shadowcomp.csh for what that means.
+// Minecraft's light engine carries a brightness and nothing else: every light
+// source in the world arrives as the same warm average, so a soul lantern and a
+// torch light a wall identically. This file is the other half of the fix - a
+// second flood fill over a grid of voxels around the player that carries colour
+// and a range of its own. Each frame one step of it runs in the shadowcomp pass,
+// light spreads one voxel per step, and the terrain programs read the field back
+// as the block light itself.
 //
-// The two references this was built from are Eclipse's LPV and Mellow's flood
-// fill. What is taken from them is the shape: a voxel grid snapped to whole
-// blocks around the player, written by the shadow pass, propagated one step per
-// frame by a compute program, read back with a filter. What is deliberately not
-// taken is their treatment of brightness - both let the voxel field decide how
-// bright a surface is, and this pack keeps that on the lightmap (see BlockLighting
-// in diffuse.glsl), because the lightmap's falloff is what every other option in
-// this pack is tuned against. See LIGHT_VOLUME_STEP below for what that means for
-// the reach of the colour.
+// BATCH 739 REWROTE THIS FROM ECLIPSE'S LPV, AND THE REWRITE IS THE POINT.
+// Batches 696 to 738 built a fill that carried a colour and nothing else: the
+// field's magnitude was a distance weight, the colour was normalised and then
+// multiplied back up to whatever brightness the lightmap had already decided, and
+// the lightmap's own pow(blockLight, 4) stayed the only thing that set how bright
+// a surface was. That is not what the reference does, and it is why the effect
+// read as a tint rather than as light. Eclipse's LPV carries a light level: a
+// source enters the field at its own range, the field decays by a fixed factor
+// per voxel, and the shading side uses the field's own magnitude as the block
+// light. The author asked for that shape, not for a patch on the old one.
+//
+// What is taken from Eclipse (Eclipse-Shader-Unstable/shaders):
+//
+//  * the encoding. The field is stored logarithmically - hue and saturation in
+//    rgb, log2(level + 1) / range in alpha - so that eight bits per channel cover
+//    a range of fifteen with usable resolution near the source. See the encoding
+//    section below; this is the "our field is not logarithmic" the author named.
+//  * the propagation. Six neighbours, each masked by the block it stands in, each
+//    weighted by a per-block mix weight, averaged and multiplied by one falloff
+//    constant. Not a per-channel maximum, which is what the old fill did and what
+//    made two colours meeting head-on come out as the brighter of each channel.
+//  * the per-source range. A source's reach is its own light level, not one
+//    constant for every block in the game, and the range is carried in the same
+//    logarithmic channel as the field so that a fifteen-block source and a
+//    three-block one can be stored side by side.
+//  * the world image. One voxel per block holding the block's own ID, written by
+//    the shadow pass, and a per-ID table of light colour, range, tint and mix mask
+//    built once per frame by a setup pass. The old fill had five states and a
+//    hardcoded palette; this one has a table, which is what lets a stained pane
+//    tint the light and a slab pass it in five directions instead of six.
+//
+// What is deliberately NOT taken: Eclipse's photonics stage, its voxel
+// reflections, its handheld light and its sky light channel. Those are separate
+// features that happen to share the grid; this pack has its own answers for the
+// first two and does not want the third. The field here carries block light only.
 //
 // Iris only, for the same reason the water simulation is: custom images and
-// compute shaders. On a loader without them the images are not there: the
-// samplers read zero, the field samples as black, and every program that
-// includes this file draws exactly what it drew before the file existed.
-//
-// Everything below is either compiled into the propagation pass (the simulation
-// half) or into the programs that sample the field (the shading half, which
-// diffuse.glsl turns on by defining LIGHT_VOLUME_CONSUMER before it includes
-// this file), and the halves share only the constants and the coordinate helper
-// in the middle of the file.
+// compute shaders. On a loader without them the images are not there, the
+// samplers read zero, the field samples as black, and every program that includes
+// this file draws exactly what it drew before the file existed.
 
 #ifndef INCLUDE_ENVIRONMENT_LIGHTING_LIGHT_VOLUME
 #define INCLUDE_ENVIRONMENT_LIGHTING_LIGHT_VOLUME
-
-///////////////////////////////////////////////////////////////////////////////
-//   What a voxel of the world image means
-///////////////////////////////////////////////////////////////////////////////
-
-// The world image is the propagation pass's whole input: one voxel per block,
-// written by the shadow pass this frame and read by program/light_volume/step.csh
-// afterwards. It has exactly five states, and alpha is the tag that tells them
-// apart. They are written down here because this file is what both ends include,
-// so this is the only place the two can be held to the same table.
-//
-// Because the shadow pass is the only writer, what it draws bounds what the fill
-// can ever know. Chunk terrain is always drawn there; block entities are not, and
-// they reach this file only when the pack asks for their geometry to be submitted
-// (shaders.properties, shadowBlockEntities, batch 719). The end gateway is the one
-// block entity that still answers with a colour - the end portal did until batch
-// 730 stopped treating it as a source - and its depth is culled away again
-// (program/shadow/shadow.vsh) so that the shadow map keeps the shape it has
-// always had.
-//
-//   air      rgb 0               a 0.0   nothing here; light crosses freely
-//   emitter  rgb light colour    a 0.0   a light source stands here
-//   water    rgb 0               a 0.125 a water block; the fill reads it as air
-//   filter   rgb pane tint       a 0.5   stained glass; light that crosses takes
-//                                        the pane's colour
-//   solid    rgb 0               a 1.0   an opaque block; light neither enters
-//                                        nor leaves
-//
-// The propagation reads the thresholds as `a > 0.75` solid, `a > 0.25` filter,
-// and anything else as air, emitter or water. Air and emitter share an alpha
-// because an emitter is air that happens to carry a colour, and the difference
-// between them is only what the step does below itself: an emitter adds its own
-// rgb, which is how a source is at full strength in the frame it appears.
-//
-// A filter is the state that changes light on the way through: its rgb is
-// multiplied into the value crossing it, so a red pane puts red light on the
-// floor. It is a state of its own rather than a colour packed into an emitter's
-// slot because a pane is not a source - it must not inject light of its own - and
-// because a pane with no colour (black stained glass) would otherwise be
-// indistinguishable from air. Alpha 0.5 is the middle of the range and far from
-// both thresholds, so no rounding in the writer can move a filter into the solid
-// or the air state; the image is RGBA16 unsigned, so 0.5 is exactly
-// representable.
-//
-// Water is the fifth state and the only one the fill does not act on. It exists
-// for one reader: the water interaction's source test (program/water_interaction/
-// sim.glsl) asks this image where the water is, because the loader's own
-// isEyeInWater says nothing about a player standing in a shallow pool with their
-// head above the surface - and the uniforms that would say it (vehicleInWater,
-// feetInWater) exist only on recent Iris versions, which is the branch batch 736
-// removed. 0.125 is deliberately below the filter threshold, so the step takes
-// the air/emitter branch for it; its rgb is zero, so the value that branch
-// computes is exactly the one the 0.0 this state replaced would have produced.
-// That is the property that keeps coloured light unchanged, and
-// _team_bfog/water_three_height_736.py asserts it rather than trusting the
-// reading.
-//
-// Why alpha rather than a convention on rgb: the writer and the reader are
-// separate programs and the image is the only thing they share. A convention
-// that could be read two ways would compile on both ends and produce a different
-// picture, and the failure would show up as a colour that is wrong rather than
-// as anything that fails. The two thresholds and the writer's branches are the
-// whole of the encoding, and both are in this batch's contract.
-//
-// The water tag, and how far a read-back alpha may sit from it and still mean
-// water. The image is RGBA16 unsigned, so the writer's 1/8 is stored as 8192/65535
-// rather than exactly 0.125 and reads back about 2e-6 high; the band is wide
-// enough for that and narrow enough that neither the filter at 0.5 nor solid at
-// 1.0 can ever fall inside it.
-#define LIGHT_VOLUME_WATER_STATE 0.125
-#define LIGHT_VOLUME_WATER_TOLERANCE 0.01
 
 ///////////////////////////////////////////////////////////////////////////////
 //   The diagnostic
@@ -127,22 +73,17 @@
 // parity, the same anchor offset and the same normal offset, multiplied by four
 // so that a faint field is visible. There is no ready flag to report, and the
 // picture does not need one: a fill that has never run and a fill that is
-// genuinely black are the same picture, and both mean "no colour here", which
-// is exactly what the consumer falls back on.
+// genuinely black are the same picture, and both mean "no colour here", which is
+// exactly what the consumer falls back on.
 //
 // WORLD shows what the writer put in the world image at this fragment's voxel:
-// emitters as their colour times four, a solid block as dark grey, a stained
-// glass filter as dark blue, a water block as dark cyan and air as black. The
-// water colour is what makes the batch-736 test visible: stand in shallow water
-// and the voxel at your feet must read dark cyan, not black. Black there means
-// the shadow pass did not draw the water, and then the source test cannot find
-// it either.
-//
-// Read together: a black FIELD over a coloured WORLD means the writer works and
-// the propagation is the fault; a black WORLD means nothing is being written at
-// all, and the other two layers are not worth looking at first. The one case the
-// two cannot separate is a loader that cannot allocate the images at all: then
-// both views are black, which is the same picture as an empty volume.
+// the block's ID as a grey level, with the states this pack tags called out in
+// their own colours. Read together: a black FIELD over a non-black WORLD means
+// the writer works and the propagation is the fault; a black WORLD means nothing
+// is being written at all, and the other two layers are not worth looking at
+// first. The one case the two cannot separate is a loader that cannot allocate
+// the images at all: then both views are black, which is the same picture as an
+// empty volume.
 //
 // NONE is the shipped state. It compiles the view in lit.fsh out of the terrain
 // programs, so the default build is exactly the build it was.
@@ -156,10 +97,10 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 // The options, declared here rather than in a settings header because this is the
-// only file the propagation pass and the terrain programs both include: a
-// declaration in either end's own files could be visible to one and not the
-// other, and then the two would disagree about the grid - which is the kind of
-// disagreement that compiles everywhere.
+// only file the propagation pass, the setup pass and the terrain programs all
+// include: a declaration in either end's own files could be visible to one and
+// not the other, and then the two would disagree about the grid - which is the
+// kind of disagreement that compiles everywhere.
 //
 // COLORED_LIGHT_RANGE is the side, in blocks, of the cube the colour lives in:
 // 32, 48, 64, 96 or 128. It sizes the grid itself - the three images, the number
@@ -169,8 +110,10 @@
 // dispatch are counted in, and because the memory is the cube of it; half of this
 // value is how far from the player the colour can actually reach.
 //
-// The cost of each setting, for the whole feature: one voxel is one invocation a
-// frame, one volume is eight bytes a voxel (RGBA16), and there are three volumes.
+// The cost of each setting, for the whole feature. One voxel is one invocation a
+// frame, and the three images are RGBA16 - the logarithmic encoding is what the
+// field carries, but it did not make eight bits enough; see the encoding section
+// below for the measurement that settled it.
 //
 //   32 ->      32,768 invocations a frame, 0.75 MiB of images
 //   48 ->     110,592 invocations a frame, 2.5 MiB
@@ -186,7 +129,7 @@
 #define COLORED_LIGHT_RANGE 64 // [32 48 64 96 128]
 
 // How saturated the colour the fill contributes is, applied where the field is
-// turned back into a tint in LightVolumeBlockLight below. 1.0 is the colour the
+// turned back into light in LightVolumeBlockLight below. 1.0 is the colour the
 // light arrives in. Below 1.0 the hue is pulled towards its own luminance and the
 // fill's colour counts for proportionally less, and at 0.0 it counts for nothing:
 // the block light is then the pack's own colour again (BlockLightTint, the same
@@ -230,21 +173,86 @@
 // uses and there is no smaller "active" radius inside it.
 #define LIGHT_VOLUME_GRID_RADIUS (LIGHT_VOLUME_SIZE / 2)
 
-// How much of a voxel's value survives one step of the fill.
+///////////////////////////////////////////////////////////////////////////////
+//   The encoding
+///////////////////////////////////////////////////////////////////////////////
+
+// The field is stored logarithmically, and this is the section the author's
+// "our field is not logarithmic" is about.
 //
-// The field carries a light level, not a colour, so this is what sets its reach:
-// a source enters the grid at full value and is 0.85^distance after that, which
-// is 0.44 at five blocks, 0.20 at ten and 0.087 at fifteen - the same fifteen
-// blocks the game's own block light spans.
+// A voxel of the field is four channels. rgb is the light's colour as hue and
+// saturation - the value is normalised so that its brightest channel is one
+// before it is stored, so rgb carries the direction of the colour and nothing
+// about its strength. Alpha carries the strength, as
 //
-// Both references are much shorter than this on purpose, and the reason is
-// written out at the top of the file: they let the field decide brightness, so a
-// long reach would mean a long falloff competing with their own light model.
-// Here the brightness stays on the lightmap, and the colour has to reach exactly
-// as far as the light it is colouring - otherwise a wall fifteen blocks from the
-// only torch in a room would take the average warm tint for the whole room while
-// the lightmap says it is lit by that torch.
-#define LIGHT_VOLUME_STEP 0.85
+//     a = log2(level + 1) / LIGHT_VOLUME_LEVEL_RANGE
+//
+// where level is the light level in blocks of reach. The inverse is
+//
+//     level = exp2(a * LIGHT_VOLUME_LEVEL_RANGE) - 1
+//
+// and both live in this file so that the writer, the propagation and the shading
+// side cannot disagree about them.
+//
+// WHY LOGARITHMIC, AND WHY SIXTEEN BITS RATHER THAN EIGHT. The logarithm is the
+// author's requirement and it is the right shape: the propagation subtracts one
+// level per voxel, and in the stored space that becomes a subtraction of a
+// constant, so the quantisation error does not compound the way it does when a
+// linear value is multiplied by a falloff every frame. It also puts the same
+// number of steps between every doubling of the level, so the resolution is
+// finest where the light is brightest.
+//
+// What the logarithm does NOT do is make eight bits enough, and this is worth
+// recording because it is the opposite of what the reference implies. Eclipse
+// stores its field in RGBA8 (shaders.properties:1038) and gets away with it
+// because its consumer treats the field as a brightness and mixes it in directly;
+// a step of 1/255 in the stored value is a step of about 1/255 in the output.
+// This pack's consumer treats the field as a LIGHT LEVEL and raises it to the
+// fourth power (pow(level / 15, 4), the envelope BlockLighting has always used),
+// which multiplies every error near the top of the range by four and then by the
+// level itself. Measured over levels 0 to 15 against that envelope, the worst
+// error in the final brightness is:
+//
+//     logarithmic,  8 bits   0.0776   <- visible banding in a lit room
+//     logarithmic, 16 bits   0.0003
+//     linear,       8 bits   0.0071
+//     linear,      16 bits   0.00003  <- what this pack shipped before batch 739
+//
+// So eight bits is worse than the linear encoding it would replace, and the
+// logarithmic form only pays off at sixteen. The field stays RGBA16, the encoding
+// becomes logarithmic, and the memory does not change. The probe
+// _team_bfog/light_field_739.py asserts these numbers rather than trusting this
+// comment.
+//
+// The range is fifteen because that is the game's own block light span: a torch
+// is level 14, glowstone 15, and nothing in the game reaches further. A source
+// with a shorter reach - a magma block at 3, an amethyst bud at 5 - stores a
+// smaller level in the same channel and simply runs out sooner.
+#define LIGHT_VOLUME_LEVEL_RANGE 15.0
+
+// How much of a voxel's level survives one step of the fill.
+//
+// ADDITIVE, one level per voxel, and that is a deliberate departure from Eclipse.
+// Eclipse multiplies by 0.96 per step (dimensions/shadowcomp.csh:17), which is the
+// right shape for its own consumer: it treats the field as a brightness and mixes
+// it straight into the light, so a geometric falloff is what it wants.
+//
+// This pack's consumer treats the field as a LIGHT LEVEL - it is compared against,
+// and mixed with, the game's own block light level, which is an integer that drops
+// by one per block. A multiplicative falloff does not produce that number. Measured
+// against this pack's own envelope (pow(level / 15, 4), the one BlockLighting has
+// always used), 0.96 per step gives a torch 33 blocks of visible reach where the
+// game says 14, and a magma block 0 blocks where the game says 3 - the curve is
+// wrong at both ends at once. One level per voxel gives 15, 14, 10, 7 and 3 for
+// glowstone, torch, soul torch, redstone torch and magma block, which is exactly
+// what the game's own light engine says, because it is the same rule.
+//
+// The consequence worth stating: where the fill sees the same world the lightmap
+// sees, the two agree, and the mix in the consumer is a no-op in brightness and
+// only changes colour. That is the safe direction - the fill cannot make a room
+// brighter than the game says it is, only a different colour - and it is what
+// makes "a source reaches as far as its own level" true rather than approximate.
+#define LIGHT_VOLUME_STEP 1.0
 
 // The value a voxel has to carry before the colour it holds is worth using.
 //
@@ -275,6 +283,102 @@
 // a distance keeps the fade the same shape at every setting.
 #define LIGHT_VOLUME_EDGE_FADE_START 0.70
 #define LIGHT_VOLUME_EDGE_FADE_END 0.95
+
+// How far inside the grid the fade starts, in blocks, for the consumer's own
+// edge test. Eclipse measures this in metres from the boundary rather than as a
+// fraction of the radius (lib/diffuse_lighting.glsl:131), and the reason is worth
+// keeping: the fade is about the boundary, so its width should not change when
+// the grid does. Ten metres is Eclipse's value and it is a tenth of the largest
+// grid, which is the proportion that keeps the fade invisible at every setting.
+#define LIGHT_VOLUME_EDGE_FADE_LENGTH 10.0
+
+///////////////////////////////////////////////////////////////////////////////
+//   What a block does to light
+///////////////////////////////////////////////////////////////////////////////
+
+// The world image holds a block's material ID, and these two functions say what
+// an ID means to the fill.
+//
+// WHY FUNCTIONS AND NOT A TABLE IMAGE. Eclipse builds a 2048-entry table in a
+// setup pass and reads it from the propagation (dimensions/setup.csh, and
+// lib/lpv_blocks.glsl for the image). That is the right shape for Eclipse, which
+// has to answer for several hundred block IDs and needs the mix mask that lets a
+// slab pass light in five directions rather than six. This pack does not: its
+// material list is 47 IDs long, it has no partial-shape materials at all - no
+// slab, stair, wall, trapdoor or carpet is given an ID in block.properties - so a
+// six-bit face mask would have nothing to act on, and a table image would cost a
+// program, an image and a dispatch to answer a question a switch answers for free.
+//
+// What is taken from Eclipse's table is the part that matters: the answer is a
+// property of the block rather than a state of the image. The old encoding had
+// five states in the world image's alpha channel and a palette compiled into the
+// shader; a block could be air, an emitter, water, a filter or solid, and that was
+// the whole vocabulary. Here the image carries the block and these functions say
+// what it does - which is what lets a source have its own reach, and what removed
+// the special case that stained glass needed in the propagation.
+//
+// The two questions, and the reason they are separate:
+//
+//  * LightVolumeTint answers what the block does to light crossing it. White
+//    leaves it alone, black stops it, and a stained pane's own colour tints it.
+//    The pane's colour is not known here - it comes from the pane's texture, which
+//    only the shadow program's fragment stage can read - so the image carries it
+//    and this function only says whether the block is a filter at all.
+//  * LightVolumeEmits answers whether the block is a source. Its colour and reach
+//    are BlockLightColor and BlockLightRange in light_colors.glsl, which is the
+//    one place a family is written down.
+//
+// Both are compiled into the propagation and into the writer, and neither is
+// compiled into the terrain programs: the consumer half below reads the field,
+// which already has the answers baked into it.
+
+// Whether a block stops light. Everything the pack gives a material to is opaque
+// unless it is named here, and GENERIC - which is what an unlisted block decodes
+// to - is deliberately not opaque: the pack's material list is short, so leaves,
+// planks and stone all arrive as GENERIC, and treating GENERIC as a wall would
+// make most of the world a wall to the fill.
+bool LightVolumeOpaque(uint materialID) {
+	if (materialID == GENERIC) {
+		return false;
+	}
+
+	if (materialID == WATER || materialID == ICE || materialID == GLASS) {
+		// Transparent. Water is here rather than being opaque because the game's
+		// own light engine lets block light through water, and a pool that stopped
+		// a torch's light would be a visible disagreement with the lightmap.
+		return false;
+	}
+
+	if (materialID == STAINED_GLASS) {
+		// A filter, not a wall: light crosses it and takes its colour.
+		return false;
+	}
+
+	if (materialID == NETHER_PORTAL) {
+		// A source, and light crosses its surface.
+		return false;
+	}
+
+	if (BlockLightRange(materialID) > 0.0) {
+		// A light source is not a wall. A source whose voxel was marked solid
+		// would light nothing, because the colour starts in this voxel and the
+		// fill spreads out of a voxel into its neighbours.
+		return false;
+	}
+
+	return true;
+}
+
+// Whether a block tints the light that crosses it, and with what.
+//
+// The tint itself is not returned: for a stained pane it is the pane's own
+// texture, which the shadow program's fragment stage writes into the world image,
+// and for everything else it is white. This function answers the question the
+// propagation needs - "is the tint in the image meaningful here" - so that a
+// block which is not a filter cannot accidentally tint by holding a stale colour.
+bool LightVolumeFilters(uint materialID) {
+	return materialID == STAINED_GLASS;
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 //   Where a position sits in the grid
@@ -351,7 +455,8 @@ uniform int frameCounter;
 uniform sampler3D light_volume_a_sampler;
 uniform sampler3D light_volume_b_sampler;
 
-// The field at a position, or black outside the grid.
+// The field at a position, as the light level it carries and the colour it
+// arrives in.
 //
 // subBlockOffset is the fractional part of cameraPosition, which the caller
 // passes in for the reason above. Outside the grid the field is not defined,
@@ -365,87 +470,105 @@ uniform sampler3D light_volume_b_sampler;
 // writing the first on even frames (dimensions/shadowcomp.csh:169-172). The
 // two must agree or the field flickers between two images, which is a failure
 // a still screenshot cannot show.
-vec3 LightVolumeSample(vec3 cameraRelativePos, vec3 subBlockOffset) {
+//
+// The decode is the inverse of the encoding section above: the stored alpha is
+// turned back into a light level, and the stored rgb - which is a normalised
+// colour - is scaled by it. That is Eclipse's SampleLpvLinear
+// (lib/lpv_render.glsl:20-24) with the same two steps in the same order.
+vec4 LightVolumeSample(vec3 cameraRelativePos, vec3 subBlockOffset) {
 	vec3 uv = LightVolumeCoord(cameraRelativePos, subBlockOffset)
 		/ float(LIGHT_VOLUME_SIZE);
 
 	if (any(lessThan(uv, vec3(0.0))) || any(greaterThan(uv, vec3(1.0)))) {
-		return vec3(0.0);
+		return vec4(0.0);
 	}
 
-	return (frameCounter % 2) == 0
-		? texture(light_volume_a_sampler, uv).rgb
-		: texture(light_volume_b_sampler, uv).rgb;
+	vec4 stored = (frameCounter % 2) == 0
+		? texture(light_volume_a_sampler, uv)
+		: texture(light_volume_b_sampler, uv);
+
+	// The level the alpha channel encodes, and the colour scaled by it. A stored
+	// alpha of zero decodes to a level of zero, so a voxel the fill has nothing
+	// to say about comes back black rather than as a colour at zero strength.
+	float level = exp2(stored.a * LIGHT_VOLUME_LEVEL_RANGE) - 1.0;
+
+	return vec4(stored.rgb * level, level);
 }
 
 // The colour of block light at this position, as a mix between the fallback and
-// the colour the flood fill put there.
+// the light the flood fill put there.
 //
 // fallbackTint is the colour this pack would light the surface with if there were
 // no flood fill at all - the lightmap's hue moved by BLOCKLIGHT_TEMPERATURE (see
-// BlockLightTint in diffuse.glsl). It is both the value returned where the fill
-// has nothing to say and the brightness donor for the colour it does have: the
-// field's own magnitude is a distance weight, not a light level, so the colour
-// that comes out of here is exactly as bright as the one that went in. That is
-// what keeps this from changing how bright the world is - only what colour it is.
+// BlockLightTint in diffuse.glsl). It is the value returned where the fill has
+// nothing to say, and it is the colour the fill's own colour is mixed with at the
+// edge of the grid.
+//
+// BATCH 739 CHANGED WHAT THE SECOND RETURN VALUE MEANS. It used to be a strength
+// in [0, 1] that the caller multiplied a lightmap-derived brightness by; the
+// fill decided hue and the lightmap decided brightness. Now the fill decides
+// both, and the out parameter is the light level itself - the number of blocks of
+// reach the field carries here, already faded at the grid's edge. The caller adds
+// it to the lightmap's own level rather than replacing it, which is what keeps a
+// surface lit by a source the fill cannot see (outside the grid, or behind
+// geometry the shadow pass did not draw) from going dark.
 //
 // subBlockOffset is passed through to LightVolumeSample; see the note there for
 // why it is an argument rather than fract(cameraPosition) read here.
 //
-// lightHere is the game's own block light level at this fragment, and it is the
-// third of the three weights below. The other two are how strong the field is
-// here and how close the fragment is to the edge of the grid.
+// lightHere is the game's own block light level at this fragment. It is no longer
+// a gate - the fill's light is real light and does not need the lightmap's
+// permission to exist - but it is still the floor: a surface the game says is lit
+// stays lit even where the field is empty.
 vec3 LightVolumeBlockLight(
 	vec3 fallbackTint,
 	vec3 cameraRelativePos,
 	vec3 worldNormal,
 	vec3 subBlockOffset,
 	float lightHere,
-	out float strength
+	out float levelOut
 ) {
-	strength = 0.0;
+	levelOut = 0.0;
 
 	// Offset along the normal first, then sample - see LIGHT_VOLUME_NORMAL_OFFSET
 	// for why sampling where the fragment actually is does not work.
-	vec3 field = LightVolumeSample(
+	vec4 field = LightVolumeSample(
 		cameraRelativePos + worldNormal * LIGHT_VOLUME_NORMAL_OFFSET,
 		subBlockOffset);
 
-	// The magnitude of the field is how much light is here, and the direction of
-	// it is the colour that light arrives in.
-	float amount = max(field.r, max(field.g, field.b));
+	float level = field.a;
 
-	if (amount < LIGHT_VOLUME_MINIMUM) {
+	if (level < LIGHT_VOLUME_MINIMUM) {
 		return fallbackTint;
 	}
 
-	// How much of the flood fill's colour this fragment takes, from three
-	// independent things, and all three of them have to agree:
+	// How much of the fill's colour this fragment takes, from two independent
+	// things, and both of them have to agree:
 	//
 	//  - the field has to be strong enough here to mean something;
 	//  - the fragment has to be well inside the grid, or the edge of the
-	//    coloured cube would be visible as exactly that;
-	//  - something has to be lighting this surface already. This is what bounds
-	//    the one real weakness of a voxel fill: light that leaks through a wall
-	//    can change the colour of a surface the game says is lit, but it cannot
-	//    make a dark surface visible, because the brightness is not the field's
-	//    to give. The light counted here is the game's block light level, which
-	//    is the only light the fill's colours come from. The smoothstep starts at
-	//    zero rather than at one level so that a surface one step out of the dark
-	//    still takes the colour of the light that reaches it.
+	//    coloured cube would be visible as exactly that.
+	//
+	// The third weight the old version had - "something has to be lighting this
+	// surface already" - is gone, and its removal is the point of the rewrite:
+	// the fill's light is now light in its own right, so a surface the lightmap
+	// calls dark but a torch reaches is lit by that torch. That is what Eclipse
+	// does and what the author asked for.
 	float strengthAtField = smoothstep(
-		LIGHT_VOLUME_MINIMUM, LIGHT_VOLUME_FADE_IN, amount);
+		LIGHT_VOLUME_MINIMUM, LIGHT_VOLUME_FADE_IN, level);
 
-	vec3 gridDistance = abs(cameraRelativePos)
-		/ float(LIGHT_VOLUME_GRID_RADIUS);
-	float strengthAtEdge = 1.0 - smoothstep(
-		LIGHT_VOLUME_EDGE_FADE_START,
-		LIGHT_VOLUME_EDGE_FADE_END,
-		max(gridDistance.x, max(gridDistance.y, gridDistance.z)));
+	// The edge fade, measured in blocks from the boundary rather than as a
+	// fraction of the radius: the fade is about the boundary, so its width should
+	// not change when the grid does. Eclipse's shape
+	// (lib/diffuse_lighting.glsl:131-134), with the same ten metres.
+	vec3 gridPos = LightVolumeCoord(cameraRelativePos, subBlockOffset);
+	vec3 cubicRadius = clamp(min(
+		(vec3(float(LIGHT_VOLUME_SIZE)) - gridPos) / LIGHT_VOLUME_EDGE_FADE_LENGTH,
+		gridPos / LIGHT_VOLUME_EDGE_FADE_LENGTH), 0.0, 1.0);
+	float strengthAtEdge = cubicRadius.x * cubicRadius.y * cubicRadius.z;
+	strengthAtEdge = 1.0 - pow(1.0 - pow(strengthAtEdge, 1.5), 3.0);
 
-	float strengthAtLight = smoothstep(0.0, 0.05, lightHere);
-
-	strength = strengthAtField * strengthAtEdge * strengthAtLight;
+	float strength = strengthAtField * strengthAtEdge;
 
 	// The option's lower half also scales how much of the fill's colour is mixed
 	// in, and zero means not at all. The fill's only contribution is a colour, so
@@ -460,11 +583,16 @@ vec3 LightVolumeBlockLight(
 		return fallbackTint;
 	}
 
+	// The level the caller adds to the lightmap's own, faded at the edge. It is
+	// reported before the colour is normalised, because the level is what the
+	// caller needs and the colour is what this function returns.
+	levelOut = level * strengthAtEdge;
+
 	// Hue only, at the fallback's own brightness. The field is normalised and then
 	// scaled by the fallback's brightest channel rather than its luminance, which
 	// is the same rule BlockLightTint uses: the brightest channel is what the
 	// lightmap's own hue was normalised against, so the two agree.
-	vec3 hue = field / amount;
+	vec3 hue = field.rgb / max(level, 1.0e-4);
 
 	// The saturation option, applied to the hue and before the brightness is
 	// restored, so that it moves the colour of the light and not the amount of

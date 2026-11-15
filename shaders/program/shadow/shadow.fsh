@@ -68,6 +68,10 @@ const int shadowcolor0Format = R16_SNORM;
 	// The write side of the image the fill reads. writeonly, because this stage
 	// only stores into it, and the declaration matches the one in shadow.vsh,
 	// which is the same uniform declared in the other stage of this program.
+	//
+	// BATCH 739: the image holds the block's material ID in red and the tint it
+	// passes light with in green, blue and alpha. This stage writes the tint and
+	// leaves the ID alone - see the note on the store below.
 	layout(rgba16) uniform writeonly image3D light_volume_world;
 #endif
 
@@ -154,8 +158,20 @@ void main() {
 			// The writer leaves (-1, -1, -1) in the varying where it stored
 			// nothing, and every voxel it did store is inside the grid by
 			// construction, so the sentinel is the whole test.
+			//
+			// BATCH 739: the ID is written again from this stage's own material,
+			// because the image is writeonly and cannot be read back to preserve
+			// what the vertex stage put there. The two stages decode the ID from
+			// the same attribute - materialID is DecodeMaterialID(mc_Entity.x) in
+			// shadow.vsh and the same value arrives here as a flat varying - so
+			// they cannot disagree about which block this is. The block-entity
+			// path is the one case where they could, and a block entity is never
+			// stained glass, so it never reaches this branch.
 			if (all(greaterThanEqual(lightVolumeVoxel, ivec3(0)))) {
-				imageStore(light_volume_world, lightVolumeVoxel, vec4(filterTint, 0.5));
+				imageStore(
+					light_volume_world,
+					lightVolumeVoxel,
+					vec4(float(materialID) / 255.0, filterTint));
 			}
 		}
 	#endif

@@ -107,9 +107,16 @@ vec2 WaterInteractionCameraOffset() {
 }
 
 // This frame's water, as the shadow pass stored it: the same image the coloured
-// light's propagation reads, with the same state table - water is
-// LIGHT_VOLUME_WATER_STATE there. It is read voxel by voxel rather than sampled,
-// because the test wants one voxel's tag and no filtering across a boundary.
+// light's propagation reads, holding the block's material ID in red.
+//
+// BATCH 739 CHANGED HOW WATER IS RECOGNISED HERE. Until this batch the image
+// carried a five-state tag in alpha and water was the value 0.125. The image now
+// carries the block's ID, so water is the ID - which is both simpler and more
+// honest: the tag existed only because the old encoding had no room for a block's
+// identity, and the identity is exactly what this test wants.
+//
+// It is read voxel by voxel rather than sampled, because the test wants one
+// voxel's ID and no filtering across a boundary.
 //
 // The declaration sits inside the same test the writer uses to decide whether the
 // image exists at all. With COLORED_LIGHTS off, shaders.properties does not
@@ -135,8 +142,13 @@ vec2 WaterInteractionCameraOffset() {
 			return false;
 		}
 
-		return abs(imageLoad(light_volume_world, voxel).a
-			- LIGHT_VOLUME_WATER_STATE) < LIGHT_VOLUME_WATER_TOLERANCE;
+		// The ID back out of the eight-bit channel. The round trip is exact for
+		// every integer the writer can store, so this is a decode rather than an
+		// estimate - see the note on the writer in program/shadow/shadow.vsh.
+		uint blockId = uint(
+			imageLoad(light_volume_world, voxel).r * 255.0 + 0.5);
+
+		return blockId == WATER;
 	}
 #endif
 

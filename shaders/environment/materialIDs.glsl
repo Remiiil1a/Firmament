@@ -123,6 +123,31 @@ const uint LIGHT_FROGLIGHT_VERDANT = 41u;     // Verdant froglight
 const uint LIGHT_FROGLIGHT_PEARLESCENT = 42u; // Pearlescent froglight
 const uint LIGHT_COPPER = 43u;                // Copper torches and copper lanterns, every oxidation state
 
+// The three families split out in batch 739, when the fill started carrying a
+// light LEVEL rather than only a colour.
+//
+// Until then a family was a colour and nothing else, so lumping a redstone torch
+// with a redstone lamp cost nothing: both are red, and the reach was one constant
+// for the whole game. The moment a source's reach became its own light level, the
+// lumping became a defect - a lit redstone lamp is level 15 and a redstone torch
+// is 7, so a lamp in the LIGHT_REDSTONE family would have reached half as far as
+// the game says it does. The same argument splits the amethyst family (an
+// enchanting table is 7, a large amethyst bud 5, a respawn anchor 15) and the lava
+// family (lava is 15, a magma block 3).
+//
+// The numbers continue the 40-43 block, which is selector 2: the whole number
+// survives to the shadow program, which is the only reader that needs it. See the
+// note above on why a light family has to live above 31.
+//
+// What is NOT split, and why: LIGHT_WARM lumps a torch (14) with a glowstone (15),
+// LIGHT_SEA lumps a sea lantern with a beacon (both 15), and LIGHT_END_ROD takes
+// the end rod and the gateway (both 14). One level of reach is not visible at this
+// scale, and every family that is split costs an entry in block.properties, a
+// branch in the palette and a branch in the range table.
+const uint LIGHT_REDSTONE_LAMP = 44u;         // A lit redstone lamp, level 15
+const uint LIGHT_MAGMA = 45u;                 // Magma blocks, level 3
+const uint LIGHT_AMETHYST_CLUSTER = 46u;      // Amethyst clusters and large buds, level 5
+
 // Stained glass, in every colour, along with its panes and tinted glass.
 //
 // Deliberately a material of its own rather than another entry in GLASS: the

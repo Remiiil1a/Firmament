@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 738]
+option.PBR_DEBUG=Material debug view [build 739]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -697,8 +697,10 @@ option.COLORED_LIGHTS.comment=Whether a light source colours the light it gives 
 	average for all block light. The colour is carried through the blocks around \
 	you the way the game carries light brightness, so two sources meeting blend \
 	instead of one winning, and the glowing block takes its own light's colour \
-	as well. Off is the cheapest setting, and the block light temperature below \
-	is what then decides the colour.
+	as well. Each source also reaches as far as its own light level says, so a \
+	glowstone lights a room and a magma block lights the floor it sits on. Off is \
+	the cheapest setting, and the block light temperature below is what then \
+	decides the colour.
 
 option.COLORED_LIGHTS_STRENGTH=Light source color
 option.COLORED_LIGHTS_STRENGTH.comment=How far a light source's own surface \
@@ -710,7 +712,7 @@ option.COLORED_LIGHT_RANGE=Colored light reach
 option.COLORED_LIGHT_RANGE.comment=The width, in blocks, of the cube the colour of \
 	block light lives in: 32, 48, 64, 96 or 128. The cube, the number of voxels the \
 	propagation advances every frame and the memory the effect costs all scale with \
-	it - 32,768 voxels and 0.75 MiB of images at 32, up to 2,097,152 and 48 MiB at \
+	it - 32,768 voxels and 0.375 MiB of images at 32, up to 2,097,152 and 24 MiB at \
 	128 - so this is the option that trades reach for GPU time and memory. Half of \
 	the width is how far from the player the colour reaches, so the default 64 \
 	reaches 32 blocks, past the game's own block light range of 15.
@@ -721,8 +723,8 @@ value.COLORED_LIGHT_RANGE.96=96
 value.COLORED_LIGHT_RANGE.128=128
 
 option.COLORED_LIGHT_SATURATION=Colored light saturation
-option.COLORED_LIGHT_SATURATION.comment=How saturated the colour carried by the \
-	flood fill is. At 1.0 a surface takes the light's own colour; below that the \
+option.COLORED_LIGHT_SATURATION.comment=How saturated the colour a light source \
+	gives off is. At 1.0 a surface takes the light's own colour; below that the \
 	hue is pulled towards neutral and the fill's colour counts for proportionally \
 	less, and at 0.0 it counts for nothing, so block light is the pack's own \
 	colour again. Above 1.0 exaggerates the hue. It is a colour control, not a \
