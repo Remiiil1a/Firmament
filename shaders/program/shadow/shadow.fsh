@@ -151,29 +151,32 @@ void main() {
 	// or depth test could have run, and clipping happens after both.
 	#if defined(COLORED_LIGHTS) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
 		if (materialID == STAINED_GLASS) {
-			// BATCH 745: THE TINT IS STORED RAW, NOT NORMALISED.
+			// BATCH 746 PUT THE NORMALISATION BACK, AND THE REASON IS REPORT B.
 			//
-			// Until this batch this divided by the pane's brightest channel before
-			// storing, on the argument that a pale pane must not dim the light. The
-			// argument is right about pale panes and wrong about dark ones, and the
-			// normalisation cannot tell them apart: it maps EVERY pane's brightest
-			// channel to one. Measured on the vanilla textures, black stained glass
-			// (linear 0.0097) and grey (0.0723) both normalise to (1, 1, 1) - pure
-			// white - so a black pane tinted the light not at all and passed it at
-			// full strength. That is the author's second report.
+			// Batch 745 stored this colour raw and had the fill split it into a hue
+			// (which tinted the colour) and a peak (which shortened the reach). The
+			// split was wrong, and the author saw exactly what it does: the coloured
+			// light came out as TWO PATCHES.
 			//
-			// The field stores a colour normalised to its brightest channel with the
-			// level in alpha, so a magnitude written into the colour is discarded by
-			// the encode anyway. What carries "how much light got through" is the
-			// level, and the level is only reachable if the peak survives to the
-			// fill. So the peak is stored here, in the colour, and the fill splits it
-			// back out: the hue tints, the peak shortens the reach. See
-			// LightVolumeWorldAt and the spread in program/light_volume/step.csh.
+			// A pane is one voxel thick, so the peak multiplied the level once - but
+			// once is a step. Light arrives at the pane at level L and leaves it at
+			// L * peak, so there is a discontinuity at the pane's own voxel: a bright
+			// patch on the near side and a dimmer one beyond it, with a visible edge
+			// between them. Eclipse never does this - it multiplies the tint into the
+			// COLOUR and leaves the level alone (dimensions/shadowcomp.csh:150-154:
+			// `lightMixed.rgb *= tintColor`), so its falloff stays continuous.
 			//
-			// A white pane has a peak of 1.0 and is unchanged, which is the property
-			// the old comment was protecting. A black pane has a peak near zero and
-			// now stops the light, which is what black glass does.
+			// So the tint is colour-only again, and the colour is normalised here as
+			// it was before batch 745. What that costs is written down rather than
+			// hidden: a pane whose brightest channel is low - black and grey glass -
+			// normalises towards white and therefore tints very little. That is a
+			// real limitation of carrying the tint in a normalised colour, and the
+			// alternative that was tried made the picture worse. A pane's darkness
+			// is not carried by the fill at all; the game's own light engine does not
+			// attenuate through a pane either, so the two agree about the level.
 			vec3 filterTint = SrgbToLinear(surfaceColor.rgb);
+			float filterPeak = max(filterTint.r, max(filterTint.g, filterTint.b));
+			filterTint /= max(filterPeak, 1.0e-4);
 
 			// The writer leaves (-1, -1, -1) in the varying where it stored
 			// nothing, and every voxel it did store is inside the grid by

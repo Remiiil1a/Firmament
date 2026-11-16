@@ -353,7 +353,32 @@ uint FetchMaterialID(vec3 worldNormal) {
 		// already draws green. The shadow program does not come through here - it
 		// decodes the raw number - so it still sees the family, and it is the only
 		// consumer that needs to.
-		if (materialID >= LIGHT_FROGLIGHT_OCHRE && materialID <= LIGHT_COPPER) {
+		// BATCH 746 EXTENDED THIS RANGE TO LIGHT_AMETHYST_CLUSTER, and the gap it
+		// closes is report A.
+		//
+		// Batches 697 and 739 added the light families at 40-46, but only 40-43 were
+		// demoted here. The three added later were left out, so they arrived in the
+		// fragment stage as their own low four bits:
+		//
+		//     LIGHT_REDSTONE_LAMP (44) -> 12 = LIGHT_END_ROD       vec3(0.88, 0.82, 1.0)
+		//     LIGHT_MAGMA         (45) -> 13 = LIGHT_CRYING        vec3(0.35, 0.55, 0.95)
+		//     LIGHT_AMETHYST_CLUSTER (46) -> 14 = LIGHT_AMETHYST   vec3(0.72, 0.42, 1.0)
+		//
+		// The third is a coincidence and harmless. The first two are not: a lit
+		// redstone lamp's own face was being painted pale lavender, and a magma
+		// block's own face BLUE, wherever the lightmap said the block was emitting.
+		// That is the surface half of the author's magma report - the block's faces
+		// are not the colour of the light it gives off, because the palette was
+		// answering for a different block.
+		//
+		// It does not show on a lone magma block, and that is why it survived: a
+		// magma block is level 3, and `emissive` in lit.fsh is a smoothstep that only
+		// opens above level 14.5, so the surface path is shut for it. Put a magma
+		// block beside a torch and the lightmap reads the torch's level, the path
+		// opens, and the block turns blue. A lit redstone lamp is level 15, so its
+		// path is open always.
+		if (materialID >= LIGHT_FROGLIGHT_OCHRE
+			&& materialID <= LIGHT_AMETHYST_CLUSTER) {
 			return GENERIC;
 		}
 

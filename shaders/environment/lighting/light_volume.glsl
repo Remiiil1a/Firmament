@@ -725,19 +725,49 @@ vec4 LightVolumeSample(vec3 cameraRelativePos, vec3 subBlockOffset) {
 // subBlockOffset is passed through to LightVolumeSample; see the note there for
 // why it is an argument rather than fract(cameraPosition) read here.
 //
-// lightHere is the game's own block light level at this fragment. It is no longer
-// a gate - the fill's light is real light and does not need the lightmap's
-// permission to exist - but it is still the floor: a surface the game says is lit
-// stays lit even where the field is empty.
+// lightHere is the game's own block light level at this fragment. BATCH 746 made
+// it unused: the caller now blends the field's level against the lightmap's by
+// edgeOut, so the "the lightmap is the floor" rule this argument existed for is
+// gone - inside the grid the field is the whole answer, and outside it the caller
+// keeps the lightmap without asking this function. The argument is kept rather
+// than removed so that the call sites and this signature stay in step; it is
+// noted here rather than silently left, because an unused parameter that once
+// meant something is exactly the kind of thing a later reader trusts.
 vec3 LightVolumeBlockLight(
 	vec3 fallbackTint,
 	vec3 cameraRelativePos,
 	vec3 worldNormal,
 	vec3 subBlockOffset,
 	float lightHere,
-	out float levelOut
+	out float levelOut,
+	// How much of this fragment's block light the field owns, in [0, 1]: one well
+	// inside the grid, zero outside it. BATCH 746 added this so that the caller can
+	// REPLACE the lightmap's level with the field's rather than adding the two.
+	// See the note on the replace in diffuse.glsl.
+	out float edgeOut
 ) {
 	levelOut = 0.0;
+	edgeOut = 0.0;
+
+	// The edge fade, measured in blocks from the boundary rather than as a
+	// fraction of the radius: the fade is about the boundary, so its width should
+	// not change when the grid does. Eclipse's shape
+	// (lib/diffuse_lighting.glsl:131-134), with the same ten metres.
+	//
+	// BATCH 746 COMPUTES THIS BEFORE THE EARLY OUT BELOW, and that is the whole of
+	// report C. It used to be computed after the "is the field strong enough"
+	// test, so a fragment inside the grid with an empty field returned before the
+	// edge was known and the caller had no way to tell "inside, and the field says
+	// nothing here" from "outside the grid". Those are different answers: the first
+	// must go dark, the second must keep the lightmap.
+	vec3 gridPos = LightVolumeCoord(cameraRelativePos, subBlockOffset);
+	vec3 cubicRadius = clamp(min(
+		(vec3(float(LIGHT_VOLUME_SIZE)) - gridPos) / LIGHT_VOLUME_EDGE_FADE_LENGTH,
+		gridPos / LIGHT_VOLUME_EDGE_FADE_LENGTH), 0.0, 1.0);
+	float strengthAtEdge = cubicRadius.x * cubicRadius.y * cubicRadius.z;
+	strengthAtEdge = 1.0 - pow(1.0 - pow(strengthAtEdge, 1.5), 3.0);
+
+	edgeOut = strengthAtEdge;
 
 	// Offset along the normal first, then sample - see LIGHT_VOLUME_NORMAL_OFFSET
 	// for why sampling where the fragment actually is does not work.
@@ -746,6 +776,10 @@ vec3 LightVolumeBlockLight(
 		subBlockOffset);
 
 	float level = field.a;
+
+	// The raw level, not faded: the caller blends the whole level against the
+	// lightmap by edgeOut, so fading it here as well would apply the edge twice.
+	levelOut = level;
 
 	if (level < LIGHT_VOLUME_MINIMUM) {
 		return fallbackTint;
@@ -766,17 +800,6 @@ vec3 LightVolumeBlockLight(
 	float strengthAtField = smoothstep(
 		LIGHT_VOLUME_MINIMUM, LIGHT_VOLUME_FADE_IN, level);
 
-	// The edge fade, measured in blocks from the boundary rather than as a
-	// fraction of the radius: the fade is about the boundary, so its width should
-	// not change when the grid does. Eclipse's shape
-	// (lib/diffuse_lighting.glsl:131-134), with the same ten metres.
-	vec3 gridPos = LightVolumeCoord(cameraRelativePos, subBlockOffset);
-	vec3 cubicRadius = clamp(min(
-		(vec3(float(LIGHT_VOLUME_SIZE)) - gridPos) / LIGHT_VOLUME_EDGE_FADE_LENGTH,
-		gridPos / LIGHT_VOLUME_EDGE_FADE_LENGTH), 0.0, 1.0);
-	float strengthAtEdge = cubicRadius.x * cubicRadius.y * cubicRadius.z;
-	strengthAtEdge = 1.0 - pow(1.0 - pow(strengthAtEdge, 1.5), 3.0);
-
 	float strength = strengthAtField * strengthAtEdge;
 
 	// The option's lower half also scales how much of the fill's colour is mixed
@@ -792,10 +815,11 @@ vec3 LightVolumeBlockLight(
 		return fallbackTint;
 	}
 
-	// The level the caller adds to the lightmap's own, faded at the edge. It is
-	// reported before the colour is normalised, because the level is what the
-	// caller needs and the colour is what this function returns.
-	levelOut = level * strengthAtEdge;
+	// The level is reported above, before the colour is normalised, because the
+	// level is what the caller needs and the colour is what this function returns.
+	// It is NOT faded by strengthAtEdge here: the caller blends the whole level
+	// against the lightmap by edgeOut, and fading it in both places would apply
+	// the edge twice.
 
 	// Hue only, at the fallback's own brightness. The field is normalised and then
 	// scaled by the fallback's brightest channel rather than its luminance, which

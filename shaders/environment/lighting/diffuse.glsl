@@ -507,9 +507,12 @@ vec3 BlockLightColorAt(
 	// is added to.
 	float blockLight,
 	// The light level the fill carries here, in blocks of reach. Zero wherever the
-	// fill has nothing to say, which is what makes the caller's addition a no-op
-	// on those fragments.
-	out float fillLevel
+	// fill has nothing to say.
+	out float fillLevel,
+	// How much of this fragment's block light the field owns, in [0, 1]. One well
+	// inside the grid, zero outside it. BATCH 746: the caller REPLACES the
+	// lightmap's level with the field's by this weight rather than adding them.
+	out float fieldWeight
 ) {
 	vec3 fallback = BlockLightTint(lightMapCoord);
 
@@ -520,10 +523,12 @@ vec3 BlockLightColorAt(
 			geometricNormal,
 			subBlockOffset,
 			blockLight,
-			fillLevel);
+			fillLevel,
+			fieldWeight);
 		return colored;
 	#else
 		fillLevel = 0.0;
+		fieldWeight = 0.0;
 		return fallback;
 	#endif
 }
@@ -568,6 +573,7 @@ vec3 BlockLighting(
 	// otherwise be raised to the fourth power at 28 and blow out. Fifteen is the
 	// game's own ceiling and the one the fill's encoding is scaled to.
 	float fillLevel;
+	float fieldWeight;
 	vec3 blockLightColor = BlockLightColorAt(
 			lightMapCoord,
 			fieldWorldPos,
@@ -576,7 +582,8 @@ vec3 BlockLighting(
 			// the module cannot read cameraPosition itself - see the note there.
 			fract(cameraPosition),
 			blockLight,
-			fillLevel);
+			fillLevel,
+			fieldWeight);
 
 	// THE TWO TERMS ARE IN DIFFERENT UNITS, AND BATCH 740 IS THE FIX FOR IT.
 	//
@@ -597,7 +604,45 @@ vec3 BlockLighting(
 	//
 	// Scaling the lightmap term up to blocks first is the whole of the fix. This is
 	// the same class of error as LESSONS 109: one quantity, two units.
-	float combinedLight = min(blockLight * 15.0 + fillLevel, 15.0) / 15.0;
+	// BATCH 746: INSIDE THE GRID THE FIELD REPLACES THE LIGHTMAP, IT DOES NOT ADD
+	// TO IT. This is reports C and D, which are one root cause.
+	//
+	// Until this batch this was
+	//
+	//     float combinedLight = min(blockLight * 15.0 + fillLevel, 15.0) / 15.0;
+	//
+	// which ADDS the game's own block light level to the field's. Two things
+	// follow, and the author reported both:
+	//
+	//  * where the field has nothing to say, the sum is the lightmap's own level,
+	//    so a surface inside the grid that no coloured light reaches is lit by the
+	//    ordinary block light colour - "a different light colour showing through"
+	//    (report C). It should be dark, because inside the grid the field is the
+	//    whole answer.
+	//  * where the field does have something to say, the surface gets the field's
+	//    level AND the lightmap's, so coloured light inside the grid is brighter
+	//    than ordinary light outside it (report D).
+	//
+	// Eclipse replaces: lib/diffuse_lighting.glsl:137 is
+	//
+	//     blockLight = mix(blockLight, lpvSample.rgb + lightColor * 2.5 * ..., voxelRangeFalloff);
+	//
+	// and inside the volume voxelRangeFalloff is 1, so its blockLight IS the
+	// field's value. Outside it the lightmap is used. That is the shape here, with
+	// fieldWeight - the edge fade - as the blend factor.
+	//
+	// WHY THE BLEND IS ON THE LEVEL AND NOT ON THE COLOUR. The two quantities are
+	// both "how much block light is here", in the same unit: the field's level is a
+	// number of blocks of reach, and blockLight * 15.0 is the game's own level in
+	// the same unit. So they can be mixed directly, and the result is a level the
+	// fourth power below turns into brightness. Mixing the colours instead would
+	// leave the brightness wrong on both sides of the boundary.
+	//
+	// The clamp to 15 is kept: the field's level can exceed the game's ceiling near
+	// a strong source, and the envelope is scaled to fifteen.
+	float lightmapLevel = blockLight * 15.0;
+	float combinedLevel = mix(lightmapLevel, fillLevel, fieldWeight);
+	float combinedLight = min(combinedLevel, 15.0) / 15.0;
 
 	float blockLightIntensity = pow(combinedLight, 4.0);
 	float heldLightIntensity = pow(heldLight, 4.0);

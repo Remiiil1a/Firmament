@@ -300,13 +300,26 @@ void main() {
 		// colouring the air it used to stand in.
 		tint = vec3(1.0);
 	} else if (blockId == STAINED_GLASS) {
-		// A pane's colour is stored raw by the fragment stage, so its brightest
-		// channel is the fraction of the light that got through. The hue tints and
-		// the peak shortens the reach - see the split at the spread below, and the
-		// note on the write in program/shadow/shadow.fsh.
-		float panePeak = max(tint.r, max(tint.g, tint.b));
-		tintLevel = clamp(panePeak, 0.0, 1.0);
-		tint = panePeak > 1.0e-4 ? tint / panePeak : vec3(0.0);
+		// BATCH 746: A PANE TINTS THE COLOUR AND LEAVES THE LEVEL ALONE.
+		//
+		// Batch 745 split the pane's stored colour into a hue and a peak, tinted
+		// with the hue and shortened the reach by the peak. The author saw the
+		// result and described it exactly: the coloured light came out as TWO
+		// PATCHES.
+		//
+		// A pane is one voxel thick, so the peak multiplied the level once - but
+		// once is a step. Light arrives at the pane at level L and leaves at
+		// L * peak, so there is a discontinuity at the pane's own voxel: a bright
+		// patch on the near side, a dimmer one beyond, and a visible edge between
+		// them. Eclipse never does this; it multiplies the tint into the COLOUR and
+		// leaves the level alone (dimensions/shadowcomp.csh:150-154:
+		// `lightMixed.rgb *= tintColor`), so its falloff stays continuous.
+		//
+		// The colour is normalised by the writer again (see program/shadow/shadow.fsh),
+		// so what arrives here is a hue at full strength and there is nothing to
+		// split. The cost is recorded there rather than hidden: a pane whose
+		// brightest channel is low normalises towards white and tints very little.
+		tint = max(tint, vec3(0.0));
 	} else {
 		// The constant tints - foliage and the three non-cube shapes. These are
 		// Eclipse's mixWeight, and they go to the LEVEL rather than to the colour.
