@@ -1802,6 +1802,12 @@ void main() {
 			#else
 				worldNormal,
 			#endif
+			// The geometric normal, which is the same on both branches: the
+			// coloured light field is sampled along it, and which neighbouring
+			// voxel is air is a property of the block's geometry rather than of
+			// the shading detail painted on its surface. See the note on
+			// SurfaceFragment.geometricNormal.
+			worldNormal,
 			// Where this fragment sits in the lightmap, which is where the
 			// color of its block light comes from.
 			lightMap,
@@ -2280,17 +2286,18 @@ void main() {
 	//
 	// The field is sampled exactly the way BlockLighting samples it: the same
 	// function, the same parity and anchor offset, and the same normal offset.
-	// The normal is the one the SurfaceFragment carried - the normal-mapped one
-	// where PBR is on - because that is what the consumer offsets along.
+	// The normal is the GEOMETRIC one, which is what the consumer offsets along -
+	// not the normal-mapped one, even where PBR is on. The field is a voxel grid
+	// and the offset picks the empty voxel on this side of the surface, which is a
+	// property of the block's geometry rather than of the shading detail painted on
+	// it. See SurfaceFragment.geometricNormal.
 	#if LIGHT_VOLUME_DEBUG != LIGHT_VOLUME_DEBUG_NONE
 		vec3 lightVolumeDebugColor = vec3(0.0);
 
 		#if LIGHT_VOLUME_DEBUG == LIGHT_VOLUME_DEBUG_FIELD
-			#if defined(PBR_SURFACE)
-				vec3 volumeDebugNormal = pbrNormal;
-			#else
-				vec3 volumeDebugNormal = worldNormal;
-			#endif
+			// The geometric normal on both branches, because that is the one the
+			// consumer offsets along - see the note above.
+			vec3 volumeDebugNormal = worldNormal;
 
 			// BATCH 739: LightVolumeSample returns the colour in rgb and the light
 			// level in alpha, so the view shows the colour the field carries. The

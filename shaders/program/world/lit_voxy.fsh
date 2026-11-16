@@ -141,6 +141,10 @@ void voxy_emitFragment(VoxyFragmentParameters parameters) {
 		// The normal vector of the surface where this fragment is, in
 		// world-space.
 		worldNormal,
+		// The geometric normal, which is the same value here: this program has
+		// no material maps, so there is no normal map to differ from it. The
+		// field is sampled along this one - see SurfaceFragment.geometricNormal.
+		worldNormal,
 		// Where this fragment sits in the lightmap, which is where the color of
 		// its block light comes from.
 		parameters.lightMap,

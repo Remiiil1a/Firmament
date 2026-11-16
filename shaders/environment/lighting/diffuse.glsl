@@ -487,8 +487,13 @@ vec3 BlockLightColorAt(
 	// its surface faces. The fill is a grid of voxels around the player, so it is
 	// sampled by position, and the normal picks the empty voxel on this side of
 	// the surface - see LIGHT_VOLUME_NORMAL_OFFSET in the module.
+	//
+	// The normal here is the GEOMETRIC one, not the normal-mapped one: which
+	// neighbouring voxel is air is a property of the block's geometry, not of the
+	// shading detail painted on its surface. See the note on
+	// SurfaceFragment.geometricNormal.
 	vec3 cameraRelativePos,
-	vec3 worldNormal,
+	vec3 geometricNormal,
 	// The fractional part of the camera's position, which is where the fixed grid
 	// is snapped: the module takes it as an argument because the writer includes
 	// the same file and declares cameraPosition of its own.
@@ -507,7 +512,7 @@ vec3 BlockLightColorAt(
 		vec3 colored = LightVolumeBlockLight(
 			fallback,
 			cameraRelativePos,
-			worldNormal,
+			geometricNormal,
 			subBlockOffset,
 			blockLight,
 			fillLevel);
@@ -524,8 +529,10 @@ vec3 BlockLighting(
 	vec2 lightMapCoord,
 	// Where this fragment is relative to the camera, and which way it faces,
 	// which is what the flood fill is sampled by. See BlockLightColorAt.
+	//
+	// The normal is the GEOMETRIC one, for the reason given there.
 	vec3 cameraRelativePos,
-	vec3 worldNormal,
+	vec3 geometricNormal,
 	float skyLight,
 	float blockLight,
 	float heldLight
@@ -555,7 +562,7 @@ vec3 BlockLighting(
 	vec3 blockLightColor = BlockLightColorAt(
 			lightMapCoord,
 			cameraRelativePos,
-			worldNormal,
+			geometricNormal,
 			// The grid's sub-block offset, which the consumer passes in because
 			// the module cannot read cameraPosition itself - see the note there.
 			fract(cameraPosition),
@@ -670,6 +677,25 @@ struct SurfaceFragment {
 	uint materialID;
 	// The normal vector of the surface where this fragment is, in world-space.
 	vec3 worldNormal;
+	// The same surface's geometric normal: the face the block actually has,
+	// before any normal map is applied to it.
+	//
+	// The coloured light field is sampled along this one rather than along
+	// worldNormal above, and the reason is what the field is. It is a voxel grid
+	// aligned to blocks, and the offset along the normal exists to move the
+	// sample off the surface and into the empty voxel on the visible side. Which
+	// voxel next to a block is empty is a property of the block's geometry, not
+	// of the shading detail painted on its surface: a normal map describes how
+	// light bounces off a surface, and says nothing about which neighbouring
+	// voxel is air. Offsetting along the mapped normal also imports that map's
+	// view-dependent level-of-detail fade into a quantity that has no business
+	// being view-dependent - see LIGHT_VOLUME_NORMAL_OFFSET in
+	// /environment/lighting/light_volume.glsl.
+	//
+	// It is a second field rather than a replacement for worldNormal because the
+	// two are read by different things: the shading terms want the mapped normal,
+	// and only the field wants this one.
+	vec3 geometricNormal;
 	// This fragment's coordinate in the lightmap, which is where the color of
 	// block light is read from. Not folded into the block light strength below
 	// because the color has to be looked up, not computed.
@@ -931,7 +957,11 @@ vec3 DiffuseLightingImpl(
 	vec3 blocklightIndirect = BlockLighting(
 		fragment.lightMapCoord,
 		fragment.cameraRelativePos,
-		fragment.worldNormal,
+		// The geometric normal, not fragment.worldNormal: the field is a voxel
+		// grid and the offset picks the empty voxel on this side of the surface,
+		// which is a property of the block's geometry rather than of the shading
+		// detail painted on it. See SurfaceFragment.geometricNormal.
+		fragment.geometricNormal,
 		fragment.skyLight,
 		fragment.blockLight,
 		fragment.heldLight
