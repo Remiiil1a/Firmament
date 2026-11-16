@@ -402,6 +402,42 @@ uint FetchMaterialID(vec3 worldNormal) {
 			return GENERIC;
 		}
 
+		// BATCH 747: the same trap, for the ids the block comparison added.
+		//
+		// Everything from 51 to 64 is above the four bits EncodePerFace keeps, so
+		// each arrives in the fragment stage as its low nibble:
+		//
+		//     51 -> 3  SUBSURFACE_SCATTERING   a copper bulb gets subsurface scattering
+		//     52 -> 4  WATER                   an oxidised bulb is shaded as water
+		//     53 -> 5  ICE
+		//     54 -> 6  GLASS
+		//     55 -> 7  LIGHT_WARM
+		//     56 -> 8  LIGHT_SOUL
+		//     57 -> 9  LIGHT_REDSTONE
+		//     58 -> 10 LIGHT_LAVA
+		//     59 -> 11 LIGHT_SEA
+		//     60 -> 12 LIGHT_END_ROD
+		//     61 -> 13 LIGHT_CRYING
+		//     62 -> 14 LIGHT_AMETHYST
+		//     63 -> 15 STAINED_GLASS
+		//     64 -> 0  GENERIC
+		//
+		// Only 64 lands on something harmless. The rest are wrong in ways that are
+		// visible and, worse, plausible: a candle shaded as a sea lantern, a slab
+		// as stained glass. None of them is a compile error, so nothing in the
+		// chain would report it - which is exactly the failure b745 recorded for
+		// 48-50.
+		//
+		// What these blocks need from the fragment stage is nothing: they are
+		// ordinary surfaces with their own texture, and GENERIC is the material
+		// that says so. What they need from the SHADOW program is the number
+		// itself, because that decides whether the fill treats them as a wall or a
+		// filter - and the shadow program decodes the raw value, so it still sees
+		// them.
+		if (materialID >= LIGHT_COPPER_BULB && materialID <= FIRE) {
+			return GENERIC;
+		}
+
 		return materialID;
 	#elif defined(HAS_DH_MATERIAL_ID)
 		if (dhMaterialId == DH_BLOCK_LEAVES) {

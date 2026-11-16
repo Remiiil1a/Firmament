@@ -441,6 +441,26 @@ bool LightVolumeOpaque(uint materialID) {
 		return false;
 	}
 
+	// BATCH 747: the pass-through groups the block comparison found.
+	//
+	// These are the blocks Eclipse gives a mixWeight to and we were treating as
+	// walls: candles, chains, lightning rods, scaffolding, coral, banners,
+	// mushrooms, slabs, bells, grates, flower pots, shelves. The author's list
+	// named some of them; the comparison found the rest.
+	//
+	// ⚠️ SAME FAILURE DIRECTION AS THE BRANCH ABOVE. Every id here is named in
+	// block.properties, so every one of them would be a wall without this line -
+	// and a wall is the worse bug, because it looks like "the coloured light
+	// stopped working" rather than like a missing feature.
+	if (materialID == PASS_FULL
+		|| materialID == PASS_MOSTLY
+		|| materialID == PASS_SHELF
+		|| materialID == PASS_POT
+		|| materialID == PASS_HALF
+		|| materialID == PASS_QUARTER) {
+		return false;
+	}
+
 	if (BlockLightRange(materialID) > 0.0) {
 		// A light source is not a wall. A source whose voxel was marked solid
 		// would light nothing, because the colour starts in this voxel and the
@@ -495,7 +515,20 @@ bool LightVolumeFilters(uint materialID) {
 		|| materialID == SUBSURFACE_SCATTERING
 		|| materialID == THIN_FLAT
 		|| materialID == THIN_VERTICAL
-		|| materialID == DOOR;
+		|| materialID == DOOR
+		// BATCH 747. A filter is a block that dims what crosses it, and these are
+		// the groups the comparison found. PASS_FULL is here even though its
+		// weight is 1.0: the weight is what the tint returns, and a filter that
+		// returns 1.0 is the same as one that does not dim, so listing it costs
+		// nothing and keeps the two functions in step - a block that passes in
+		// LightVolumeOpaque but is not a filter here would pass at full strength
+		// whatever weight it was given.
+		|| materialID == PASS_FULL
+		|| materialID == PASS_MOSTLY
+		|| materialID == PASS_SHELF
+		|| materialID == PASS_POT
+		|| materialID == PASS_HALF
+		|| materialID == PASS_QUARTER;
 }
 
 // The tint a filter applies, for the filters whose tint is not in the image.
@@ -584,6 +617,43 @@ vec3 LightVolumeFilterTint(uint materialID) {
 	if (materialID == DOOR) {
 		// Door 0.8 and trapdoor 0.8 (setup.csh:1008, 1041).
 		return vec3(0.8);
+	}
+
+	// BATCH 747: the pass-through groups, at Eclipse's own weights.
+	//
+	// These are the values from the comparison's table, not invented: block.50 is
+	// 1.0, block.401 and block.15 are 0.9, block.412 is 0.8, block.51 is 0.75,
+	// block.407 and block.52 are 0.5, block.53 is 0.25.
+	if (materialID == PASS_FULL) {
+		// Candles, chains, lightning rods, scaffolding, coral, banners, mushrooms,
+		// cactus, honey, slime, sculk vein, comparators, tripwire hooks. Eclipse
+		// gives every one of them 1.0 - they pass light without dimming it.
+		return vec3(1.0);
+	}
+
+	if (materialID == PASS_MOSTLY) {
+		// Saplings 0.9 (block.15), carpets and lectern 0.9 (block.401).
+		return vec3(0.9);
+	}
+
+	if (materialID == PASS_SHELF) {
+		// Shelves 0.8 (block.412), piston head 0.8 (block.410).
+		return vec3(0.8);
+	}
+
+	if (materialID == PASS_POT) {
+		// Flower pots 0.75 (block.51).
+		return vec3(0.75);
+	}
+
+	if (materialID == PASS_HALF) {
+		// Slabs 0.5 (block.407), copper bars 0.5 (block.52).
+		return vec3(0.5);
+	}
+
+	if (materialID == PASS_QUARTER) {
+		// Bells 0.25 (block.53), grates 0.25 (block.53).
+		return vec3(0.25);
 	}
 
 	return vec3(1.0);

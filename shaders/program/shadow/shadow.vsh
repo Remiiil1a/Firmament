@@ -421,7 +421,7 @@ void main() {
 	// it - with all three vertices gone, the primitives are gone with them.
 	// The buffer's own depth is therefore unchanged where the glass was, and a
 	// fragment that the map holds as lit stays lit.
-	if (materialID == GLASS) {
+	if (materialID == GLASS || materialID == FIRE) {
 		gl_Position = vec4(-1.0);
 	}
 

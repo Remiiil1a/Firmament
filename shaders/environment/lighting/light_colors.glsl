@@ -157,6 +157,38 @@ vec3 BlockLightColor(uint materialID) {
 		return vec3(0.747, 0.323, 0.110);
 	} else if (materialID == LIGHT_AMETHYST_CLUSTER) {
 		return vec3(0.72, 0.42, 1.0);
+	} else if (materialID == LIGHT_COPPER_BULB) {
+		// BATCH 747. Eclipse's LightColor_CopperBulb (dimensions/setup.csh), used
+		// for every oxidation state. The bulb dims as it oxidises - 15, 12, 8, 4 -
+		// which is a RANGE difference rather than a colour one, so the two ids
+		// below share this colour and differ only in BlockLightRange.
+		return vec3(1.0, 0.7, 0.6);
+	} else if (materialID == LIGHT_COPPER_BULB_DIM) {
+		return vec3(1.0, 0.7, 0.6);
+	} else if (materialID == LIGHT_REDSTONE_ORE) {
+		// Eclipse's LightColor_RedstoneTorch, which is what it gives redstone ore.
+		return vec3(0.939, 0.305, 0.164);
+	} else if (materialID == LIGHT_LIGHT_BLOCK) {
+		// Eclipse's LightColor_LightBlock is vec3(0.7) - a neutral grey, which is
+		// right for a block whose whole purpose is to be a light with no colour.
+		return vec3(0.7);
+	} else if (materialID == LIGHT_SCULK_SENSOR) {
+		return vec3(0.1, 0.4, 1.0);
+	} else if (materialID == LIGHT_BREWING_STAND) {
+		return vec3(0.636, 0.509, 0.179);
+	} else if (materialID == LIGHT_AMETHYST_BUD) {
+		// Eclipse's LightColor_Amethyst, the same colour the cluster uses.
+		return vec3(0.464, 0.227, 0.788);
+	} else if (materialID == LIGHT_LAVA_CAULDRON) {
+		// Eclipse gives a lava cauldron BLOCK_LAVA's colour and range, which is
+		// what a cauldron full of lava is.
+		return vec3(0.959, 0.302, 0.106);
+	} else if (materialID == FIRE) {
+		// BATCH 747. Eclipse's BLOCK_FIRE (dimensions/setup.csh): a warm orange,
+		// range 15. Fire was in block.10006 with glass, so it was transparent and
+		// emitted nothing - the author's report is that its light is too dim, and
+		// the truth is that there was none.
+		return vec3(0.864, 0.598, 0.348);
 	}
 
 	return vec3(0.0);
@@ -237,6 +269,34 @@ float BlockLightRange(uint materialID) {
 		return 3.0;
 	} else if (materialID == LIGHT_AMETHYST_CLUSTER) {
 		return 5.0;
+	} else if (materialID == LIGHT_COPPER_BULB) {
+		// BATCH 747. A copper bulb is level 15 and dims as it oxidises: exposed 12,
+		// weathered 8, oxidised 4. Eclipse carries the same four numbers
+		// (dimensions/setup.csh, block.180-183), and they are the game's own.
+		return 15.0;
+	} else if (materialID == LIGHT_COPPER_BULB_DIM) {
+		// The three oxidised states share one id, so they share one range. The
+		// average of 12, 8 and 4 is 8, and that is what this takes: the fill
+		// carries one number per material, so the three cannot be told apart.
+		// Recorded rather than silently picked - a weathered bulb reaches exactly
+		// as far as the game says, and an exposed or oxidised one is off by four.
+		return 8.0;
+	} else if (materialID == LIGHT_REDSTONE_ORE) {
+		return 7.0;
+	} else if (materialID == LIGHT_LIGHT_BLOCK) {
+		return 1.0;
+	} else if (materialID == LIGHT_SCULK_SENSOR) {
+		return 1.0;
+	} else if (materialID == LIGHT_BREWING_STAND) {
+		return 1.0;
+	} else if (materialID == LIGHT_AMETHYST_BUD) {
+		return 2.0;
+	} else if (materialID == LIGHT_LAVA_CAULDRON) {
+		return 15.0;
+	} else if (materialID == FIRE) {
+		// BATCH 747. Fire is level 15 in the game, and Eclipse carries the same
+		// number (dimensions/setup.csh, BLOCK_FIRE).
+		return 15.0;
 	}
 
 	return 0.0;

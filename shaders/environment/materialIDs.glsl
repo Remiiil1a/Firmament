@@ -206,6 +206,82 @@ const uint THIN_FLAT = 48u;      // Carpet, snow layer, pressure plate, lily pad
 const uint THIN_VERTICAL = 49u;  // Sign, ladder, chain, fence, rail, button, lever
 const uint DOOR = 50u;           // Door and trapdoor: a solid slab when closed
 
+// BATCH 747: THE BLOCKS THE COMPARISON FOUND.
+//
+// The author said his own list was incomplete, so batch 747 built a comparison
+// against Eclipse's block.properties rather than working from the list. It found
+// 490 vanilla names Eclipse assigns and we did not, in 43 Eclipse ids. The ones
+// below are the subset that matters for the field: blocks Eclipse treats as a
+// light source or as something light passes through, and we treated as walls.
+//
+// The rest of the 490 are Eclipse's opaque group - 183 plain building blocks at
+// block.503, ores, wool, ice - and those are correct as walls. They are recorded
+// in the batch log rather than given ids, because an id that only says "this is
+// solid" is the same answer SOLID_UNLISTED already gives.
+//
+// ⚠️ EVERY ID HERE IS ABOVE 50 AND MUST BE DEMOTED IN FetchMaterialID. EncodePerFace
+// keeps four bits, so 51 arrives in the fragment stage as 3 - SUBSURFACE_SCATTERING
+// - and a candle would be given subsurface scattering. See the note on 48-50 above
+// and the demotion in lit.vsh.
+
+// --- light sources -------------------------------------------------------
+//
+// Each is a family of its own rather than a member of an existing one, because
+// the fill carries a light LEVEL and these disagree with their neighbours about
+// it: a copper bulb is 15 and a redstone ore is 7, where LIGHT_WARM is 14 and
+// LIGHT_REDSTONE is 7. Lumping them would make a bulb reach as far as a torch.
+const uint LIGHT_COPPER_BULB = 51u;   // Copper bulb, every oxidation state, level 15
+const uint LIGHT_COPPER_BULB_DIM = 52u; // Exposed/weathered/oxidized bulbs, 12/8/4
+const uint LIGHT_REDSTONE_ORE = 53u;  // Redstone ore and deepslate variant, level 7
+const uint LIGHT_LIGHT_BLOCK = 54u;   // The `light` block and a creaking heart, level 1
+const uint LIGHT_SCULK_SENSOR = 55u;  // Sculk sensor, level 1
+const uint LIGHT_BREWING_STAND = 56u; // Brewing stand, level 1
+const uint LIGHT_AMETHYST_BUD = 57u;  // Medium amethyst bud, level 2
+const uint LIGHT_LAVA_CAULDRON = 58u; // A cauldron of lava, level 15
+
+// --- transparent, with Eclipse's mixWeight -------------------------------
+//
+// Grouped by the WEIGHT rather than by what the block is, because the weight is
+// the only thing the fill reads. Eclipse's own grouping is the same shape:
+// block.50 holds candles, chains, lightning rods, scaffolding, comparators and
+// tripwire hooks together because they all pass light at 1.0.
+//
+// The 1.0 group is one id and not five. Coral, banners, mushrooms, cactus, honey
+// and slime are different blocks with the same treatment, and the fill cannot
+// tell them apart - it reads a tint and nothing else - so five ids would be five
+// names for one behaviour. That is the opposite of the light families above,
+// where the level genuinely differs and the split is load-bearing.
+const uint PASS_FULL = 59u;      // mixWeight 1.0: candles, chains, rods, coral, banners
+const uint PASS_MOSTLY = 60u;    // mixWeight 0.9: saplings, carpets, lectern
+const uint PASS_SHELF = 61u;     // mixWeight 0.8: shelves, piston head
+const uint PASS_POT = 62u;       // mixWeight 0.75: flower pots
+const uint PASS_HALF = 63u;      // mixWeight 0.5: slabs, copper bars
+const uint PASS_QUARTER = 64u;   // mixWeight 0.25: bells, grates
+
+// BATCH 747: ordinary fire, which is a light source that must not cast a shadow.
+//
+// Fire was in block.10006 with glass and glass_pane, and that grouping is why it
+// was not a light source at all: GLASS is transparent and emits nothing, so the
+// fill saw a transparent voxel and the palette was never asked. The author's
+// report is that ordinary fire's coloured light is too dim - it is not dim, it is
+// absent.
+//
+// Eclipse gives it lightColor vec3(0.864, 0.598, 0.348), lightRange 15.0 and
+// mixWeight 1.0 (dimensions/setup.csh, BLOCK_FIRE). A range of 15 is the game's
+// own level for fire, so the reach is not a judgement.
+//
+// ⚠️ IT HAS TO KEEP THE NO-SHADOW BEHAVIOUR, AND THAT IS WHY IT NEEDS ITS OWN ID
+// RATHER THAN JOINING A LIGHT FAMILY. The shadow program culls a material by
+// sending its vertices to vec4(-1.0) (program/shadow/shadow.vsh), and the cull
+// tests `materialID == GLASS`. Fire was culled because it WAS glass. Moving it to
+// a light family would have made it cast a shadow - a solid dark patch under
+// every flame, which is a worse bug than the one being fixed and would look like
+// a lighting error rather than a missing feature.
+//
+// So it gets an id of its own and the cull is extended to it, which keeps both
+// properties: the fill sees a light source, and the shadow map sees nothing.
+const uint FIRE = 65u;
+
 // Stained glass, in every colour, along with its panes and tinted glass.
 //
 // Deliberately a material of its own rather than another entry in GLASS: the
