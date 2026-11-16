@@ -133,6 +133,11 @@ void voxy_emitFragment(VoxyFragmentParameters parameters) {
 		// fallback - whereas zero is the camera's own position, and would tint the
 		// whole distant view with the light around the player's feet.
 		vec3(1.0e6),
+		// The coloured light field's sample position. The same sentinel as the
+		// position above, and for the same reason: this program has no
+		// vertex-stage position to offer, and the module is not compiled into this
+		// translation unit, so nothing reads it. See SurfaceFragment.fieldWorldPos.
+		vec3(1.0e6),
 		// The linear RGB color of the surface at this position, including all
 		// AO and tinting.
 		surfaceColor.rgb,

@@ -488,11 +488,16 @@ vec3 BlockLightColorAt(
 	// sampled by position, and the normal picks the empty voxel on this side of
 	// the surface - see LIGHT_VOLUME_NORMAL_OFFSET in the module.
 	//
+	// This is the VERTEX stage's position, not the one this stage rebuilds: the
+	// rebuild carries the view bobbing's translation and the field is anchored to
+	// world blocks, so sampling it there makes the light pulse as the player
+	// walks. See SurfaceFragment.fieldWorldPos.
+	//
 	// The normal here is the GEOMETRIC one, not the normal-mapped one: which
 	// neighbouring voxel is air is a property of the block's geometry, not of the
 	// shading detail painted on its surface. See the note on
 	// SurfaceFragment.geometricNormal.
-	vec3 cameraRelativePos,
+	vec3 fieldWorldPos,
 	vec3 geometricNormal,
 	// The fractional part of the camera's position, which is where the fixed grid
 	// is snapped: the module takes it as an argument because the writer includes
@@ -511,7 +516,7 @@ vec3 BlockLightColorAt(
 	#ifdef BLOCK_LIGHT_FLOOD_FILL
 		vec3 colored = LightVolumeBlockLight(
 			fallback,
-			cameraRelativePos,
+			fieldWorldPos,
 			geometricNormal,
 			subBlockOffset,
 			blockLight,
@@ -530,8 +535,12 @@ vec3 BlockLighting(
 	// Where this fragment is relative to the camera, and which way it faces,
 	// which is what the flood fill is sampled by. See BlockLightColorAt.
 	//
+	// The position is the VERTEX stage's, for the reason given there: the field
+	// is anchored to world blocks and the fragment-stage rebuild carries the view
+	// bobbing's translation.
+	//
 	// The normal is the GEOMETRIC one, for the reason given there.
-	vec3 cameraRelativePos,
+	vec3 fieldWorldPos,
 	vec3 geometricNormal,
 	float skyLight,
 	float blockLight,
@@ -561,7 +570,7 @@ vec3 BlockLighting(
 	float fillLevel;
 	vec3 blockLightColor = BlockLightColorAt(
 			lightMapCoord,
-			cameraRelativePos,
+			fieldWorldPos,
 			geometricNormal,
 			// The grid's sub-block offset, which the consumer passes in because
 			// the module cannot read cameraPosition itself - see the note there.
@@ -662,6 +671,30 @@ struct SurfaceFragment {
 	// unconditional now - the same field with a wider guard rather than a second
 	// copy of it. See BlockLightColorAt.
 	vec3 cameraRelativePos;
+	// The same fragment's position, but taken from the VERTEX stage instead of
+	// rebuilt here, and this is the one the coloured light field is sampled by.
+	//
+	// The two are the same value whenever the view is not bobbing, and they
+	// differ by about a tenth of a block when it is. cameraRelativePos above is
+	// rebuilt from gl_FragCoord as transpose(mat3(gbufferModelView)) * viewPos,
+	// and with View Bobbing on that matrix is affine - vanilla's bobView opens
+	// with a translate() - so the 3x3 transpose cannot undo the translation and
+	// the rebuild carries a residual that contains no position at all: a
+	// constant per-frame offset whose direction turns with the camera's heading.
+	// The field is a voxel grid anchored to world blocks, so that offset changes
+	// the level read at a fixed world position, by an amount set by the local
+	// slope of the staircase - nothing at a ring centre, tens of percent on a
+	// ring boundary. That is the author's pulsing rings.
+	//
+	// This one comes from lit.vsh as the full 4x4 inverse applied to the
+	// position the geometry was drawn at, which is exact. It is the same value
+	// the portal effect samples, and the reason the portal has never been
+	// affected by the bob.
+	//
+	// cameraRelativePos is deliberately NOT replaced by this. It has more than
+	// twenty readers - the shadow map, the held light, the portals, the
+	// reflections - and none of them is wrong; only the field moves.
+	vec3 fieldWorldPos;
 	#if defined(REAL_TIME_SHADOWS)
 		// The projected shadow map position to sample from.
 		//
@@ -956,7 +989,10 @@ vec3 DiffuseLightingImpl(
 	// based on depth to avoid ruining submerged bases.
 	vec3 blocklightIndirect = BlockLighting(
 		fragment.lightMapCoord,
-		fragment.cameraRelativePos,
+		// The vertex stage's position, not fragment.cameraRelativePos: the field
+		// is anchored to world blocks and the fragment-stage rebuild carries the
+		// view bobbing's translation. See SurfaceFragment.fieldWorldPos.
+		fragment.fieldWorldPos,
 		// The geometric normal, not fragment.worldNormal: the field is a voxel
 		// grid and the offset picks the empty voxel on this side of the surface,
 		// which is a property of the block's geometry rather than of the shading

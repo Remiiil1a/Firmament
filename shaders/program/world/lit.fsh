@@ -464,6 +464,29 @@ flat in uint rawMaterialID;
 	in vec3 portalWorldPos;
 #endif
 
+// The coloured light field's coordinate, from lit.vsh: this fragment's place in
+// the world, relative to the camera, interpolated from the vertices.
+//
+// WHY THE FIELD DOES NOT USE cameraRelativePos BELOW. That value is rebuilt in
+// this stage from gl_FragCoord, and the rebuild is
+// transpose(mat3(gbufferModelView)) * viewPos. With View Bobbing on,
+// gbufferModelView is AFFINE - vanilla's bobView opens with a translate() - so
+// the 3x3 transpose cannot undo the translation and the rebuild carries a
+// residual of about a tenth of a block. It contains no position, so it is a
+// constant per-frame offset whose direction turns with the camera's heading;
+// against the field's one-block staircase that is nothing at a ring centre and
+// tens of percent on a ring boundary. That is the author's pulsing rings.
+//
+// The vertex stage's position is the full 4x4 inverse applied to the position
+// the geometry was drawn at, which is exact, so it carries no residual at all.
+// It is the same value the portal effect samples, and the reason the portal has
+// never been affected by the bob.
+//
+// cameraRelativePos itself is NOT changed: it has more than twenty readers -
+// the shadow map, the held light, the portals, the reflections - and none of
+// them is wrong. Only the field moves to this one.
+in vec3 fieldWorldPos;
+
 
 // --- portal surfaces ---------------------------------------------------------
 //
@@ -1779,10 +1802,17 @@ void main() {
 		#endif
 
 		SurfaceFragment surface = SurfaceFragment(
-			// Where this fragment sits relative to the camera. The flood fill is
-			// sampled by it as well as the shadow map - see the note on the field
-			// in diffuse.glsl.
+			// Where this fragment sits relative to the camera. The shadow map and
+			// the held light read it; the coloured light field does NOT - it reads
+			// fieldWorldPos below, because this value carries the view bobbing's
+			// translation and the field is anchored to world blocks. See the note
+			// on SurfaceFragment.fieldWorldPos.
 			cameraRelativePos,
+			// The coloured light field's sample position, from the vertex stage.
+			// It is the same value as cameraRelativePos above whenever the view is
+			// not bobbing, and it is the one that stays put when it is. See the
+			// note on SurfaceFragment.fieldWorldPos.
+			fieldWorldPos,
 			#if defined(REAL_TIME_SHADOWS)
 				// The projected shadowmap position to sample from.
 				shadowPos,
@@ -2291,6 +2321,14 @@ void main() {
 	// and the offset picks the empty voxel on this side of the surface, which is a
 	// property of the block's geometry rather than of the shading detail painted on
 	// it. See SurfaceFragment.geometricNormal.
+	//
+	// The POSITION is fieldWorldPos, the vertex stage's, and that is not a detail:
+	// this view claims to show what the consumer samples, and the consumer samples
+	// the vertex-stage value. It used to read cameraRelativePos, which carries the
+	// view bobbing's translation - so with View Bobbing on this view and the real
+	// picture disagreed by about a tenth of a block, and a diagnostic that
+	// disagrees with its consumer is worse than none. That mismatch is part of why
+	// batch 742 looked like it worked here while the real view was broken.
 	#if LIGHT_VOLUME_DEBUG != LIGHT_VOLUME_DEBUG_NONE
 		vec3 lightVolumeDebugColor = vec3(0.0);
 
@@ -2306,12 +2344,12 @@ void main() {
 			// which is the right reading, because a field with a level and no
 			// colour is a field that lights nothing.
 			lightVolumeDebugColor = LightVolumeSample(
-				cameraRelativePos
+				fieldWorldPos
 					+ volumeDebugNormal * LIGHT_VOLUME_NORMAL_OFFSET,
 				fract(cameraPosition)).rgb * 4.0;
 		#else
 			ivec3 volumeVoxel = ivec3(floor(LightVolumeCoord(
-				cameraRelativePos,
+				fieldWorldPos,
 				fract(cameraPosition))));
 
 			if (all(greaterThanEqual(volumeVoxel, ivec3(0)))

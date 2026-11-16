@@ -217,6 +217,41 @@ flat out uint rawMaterialID;
 	out vec3 portalWorldPos;
 #endif
 
+// The coloured light field's coordinate: this vertex's own position in the
+// world, relative to the camera, in world axes.
+//
+// WHY THE FIELD NEEDS A VARYING OF ITS OWN. The field is a voxel grid anchored
+// to world blocks, so it has to be sampled at the fragment's true place in the
+// world. The fragment stage can rebuild a position - that is what
+// cameraRelativePos in lit.fsh is - but the rebuild is
+// transpose(mat3(gbufferModelView)) * viewPos, and with View Bobbing on that
+// matrix is AFFINE: vanilla's bobView opens with a translate(), so
+// gbufferModelView is B*R with B carrying a small offset. The transpose of a 3x3
+// block cannot undo a translation, so the rebuild carries a residual
+//
+//     e = R3t * B3t * bt
+//
+// which contains no position at all: it is a CONSTANT per-frame offset of about
+// a tenth of a block, whose world direction turns with the camera's heading.
+// Against a one-block staircase that is invisible at a ring centre and worth
+// tens of percent on a ring boundary, which is the author's pulsing rings.
+//
+// The full 4x4 inverse is exact - M^-1 * (M * P) = P by construction - so the
+// position written below has no residual of any kind. That is the same value
+// portalWorldPos carries, and the reason the portal effect has never been
+// affected by the bob.
+//
+// WHY IT IS UNCONDITIONAL. The obvious guard would be COLORED_LIGHTS, but that
+// name is declared in /environment/lighting/light_colors.glsl, which this stage
+// does not include - and an option macro is only visible in the include subtree
+// of the file that declares it (LESSONS 107). Including the whole palette here
+// to reach one name would pull four functions into every vertex program for
+// nothing. A guard the two stages could disagree about is the failure mode that
+// lesson records, and an interpolant nobody reads costs less than that: the
+// fragment stage reads this only under COLORED_LIGHTS, and with the option off
+// the value is written and ignored, which is exactly the b741 picture.
+out vec3 fieldWorldPos;
+
 // Temporal anti-aliasing: the sub-pixel offset this frame is rendered with.
 // Uniforms: frameCounter, viewWidth, viewHeight, and taaJitter, which is not
 // declared here - shaders.properties computes it and declares it as a custom
@@ -617,6 +652,13 @@ void main() {
 		// pattern must follow is the surface as it is drawn.
 		portalWorldPos = cameraRelativePos.xyz;
 	#endif
+
+	// The coloured light field's coordinate, written after the same
+	// displacements for the same reason: the field must be sampled where the
+	// surface is drawn, not where it was before the wind moved it. See the note
+	// where the varying is declared.
+	fieldWorldPos = cameraRelativePos.xyz;
+
 	gl_Position = gl_ProjectionMatrix * viewPos;
 
 	// Temporal anti-aliasing: shift this frame's sample position inside the
