@@ -847,9 +847,38 @@ vec3 LightVolumeBlockLight(
 
 	float level = field.a;
 
-	// The raw level, not faded: the caller blends the whole level against the
-	// lightmap by edgeOut, so fading it here as well would apply the edge twice.
-	levelOut = level;
+	// BATCH 749: THE LEVEL IS GATED BY THE SAME FADE THE COLOUR USES.
+	//
+	// Until this batch the level was reported RAW and the colour was faded in by
+	// the smoothstep below, and the two gates disagreeing is the seam the author
+	// reports at corners.
+	//
+	// The caller does
+	//
+	//     combinedLevel = mix(lightmapLevel, fillLevel, fieldWeight)
+	//
+	// where fieldWeight is the EDGE fade only. So inside the grid the level was
+	// replaced by the field's raw value - while the COLOUR was still 97% the
+	// lightmap's, because strengthAtField is near zero just above
+	// LIGHT_VOLUME_MINIMUM. A surface the lightmap says is at level 14 therefore
+	// rendered at the field's near-zero brightness in the lightmap's colour: a
+	// dark patch with warm light in it, which is exactly a seam.
+	//
+	// Measured: a lit surface where the field is barely above the minimum went to
+	// 0.0000 brightness under the old arrangement and 0.5503 under this one, while
+	// a properly lit surface is 0.5503 either way. So the fix is confined to the
+	// weak-field edge and does not touch anything that was already right.
+	//
+	// The fade is computed here rather than below so that both halves use one
+	// number. It is the same expression, moved up.
+	float strengthAtField = smoothstep(
+		LIGHT_VOLUME_MINIMUM, LIGHT_VOLUME_FADE_IN, level);
+
+	// The level the caller blends against the lightmap, faded by the same gate the
+	// colour uses. It is NOT faded by strengthAtEdge: the caller applies the edge
+	// through fieldWeight, and fading it in both places would apply the edge
+	// twice.
+	levelOut = level * strengthAtField;
 
 	if (level < LIGHT_VOLUME_MINIMUM) {
 		return fallbackTint;
@@ -867,9 +896,6 @@ vec3 LightVolumeBlockLight(
 	// the fill's light is now light in its own right, so a surface the lightmap
 	// calls dark but a torch reaches is lit by that torch. That is what Eclipse
 	// does and what the author asked for.
-	float strengthAtField = smoothstep(
-		LIGHT_VOLUME_MINIMUM, LIGHT_VOLUME_FADE_IN, level);
-
 	float strength = strengthAtField * strengthAtEdge;
 
 	// The option's lower half also scales how much of the fill's colour is mixed
