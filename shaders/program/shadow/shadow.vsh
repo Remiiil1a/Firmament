@@ -329,6 +329,17 @@ uniform mat4 shadowModelViewInverse;
 	// are the interesting member of that set: they are not an opaque cube to the
 	// eye, but the game's own light engine treats them as a block that dims what
 	// crosses it, and that is the question this image is answering.
+	//
+	// BATCH 744: AN UNLISTED SOLID IS NOT GENERIC HERE. The image is cleared to
+	// zero every frame and air is never drawn, so an air voxel holds zero - and
+	// GENERIC is also zero. Storing GENERIC for stone therefore made stone and air
+	// the same value, and the fill had no way to tell a wall from the room beside
+	// it: whichever way LightVolumeOpaque answered for GENERIC, one of the two was
+	// wrong, and the pack shipped the answer that let light through every wall.
+	// This stage is the only one that knows a vertex was drawn, so it is the only
+	// one that can separate them: an unlisted solid stores SOLID_UNLISTED, and the
+	// cleared zero keeps meaning air. See that constant in
+	// /environment/materialIDs.glsl.
 	void LightVolumeWriteTerrain(uint material, vec3 centerCameraRelative) {
 		// Stained glass is the one material whose tint the fragment stage has to
 		// write, because the tint is the pane's own texture and this stage does not
@@ -342,7 +353,13 @@ uniform mat4 shadowModelViewInverse;
 		// fragment stage, so a later primitive's vertex store could land after an
 		// earlier one's fragment store. Writing the ID from both stages means the
 		// two agree about it and only the tint is at stake.
-		LightVolumeStore(centerCameraRelative, LightVolumeBlockValue(material));
+		//
+		// The substitution below is the whole of batch 744's report 1. It is done
+		// here rather than in the fill because the fill cannot make the distinction:
+		// by the time it reads the image, "air" and "unlisted solid" are both zero.
+		uint stored = material == GENERIC ? SOLID_UNLISTED : material;
+
+		LightVolumeStore(centerCameraRelative, LightVolumeBlockValue(stored));
 	}
 #endif
 

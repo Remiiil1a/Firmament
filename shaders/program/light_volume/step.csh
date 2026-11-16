@@ -294,6 +294,11 @@ void main() {
 		// what keeps a stale tint from a pane that has since been broken from
 		// colouring the air it used to stand in.
 		tint = vec3(1.0);
+	} else {
+		// A filter's tint. A stained pane's is the colour the fragment stage wrote
+		// into the image; foliage has no colour to read and takes a constant
+		// instead, which is batch 744's report 5. See LightVolumeFilterTint.
+		tint *= LightVolumeFilterTint(blockId);
 	}
 
 	// The neighbours, one step down, and the two ways they are combined.

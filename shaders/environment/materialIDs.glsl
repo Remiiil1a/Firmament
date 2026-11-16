@@ -148,6 +148,30 @@ const uint LIGHT_REDSTONE_LAMP = 44u;         // A lit redstone lamp, level 15
 const uint LIGHT_MAGMA = 45u;                 // Magma blocks, level 3
 const uint LIGHT_AMETHYST_CLUSTER = 46u;      // Amethyst clusters and large buds, level 5
 
+// A solid block the pack gives no material of its own: stone, dirt, planks,
+// bricks, and every other ordinary opaque cube.
+//
+// WHY THIS NUMBER HAS TO EXIST, AND WHY IT IS NOT GENERIC. The flood fill's world
+// image is cleared to zero every frame, and the shadow pass only draws geometry -
+// air has none, so an air voxel is never written and keeps the cleared zero. An
+// unlisted solid block used to write its material ID, which is GENERIC, which is
+// also zero. Air and stone were therefore the same value in the image, and no
+// rule in LightVolumeOpaque could tell them apart: "GENERIC is a wall" would have
+// made every empty voxel a wall and stopped the fill dead, and "GENERIC is air"
+// is what the pack shipped, which let light through every wall in the world.
+//
+// The writer is the only place that can tell them apart, because it is the only
+// place that knows a vertex was drawn at all: it runs for geometry, and air has
+// none. So it stores this number for an unlisted solid, and the fill reads
+// "nothing was drawn here" as air and this as a wall. See LightVolumeWriteTerrain
+// in /program/shadow/shadow.vsh, and LightVolumeOpaque in
+// /environment/lighting/light_volume.glsl.
+//
+// It sits above every other ID so that it cannot collide with a family added
+// later, and it is deliberately not a light: BlockLightColor and BlockLightRange
+// both answer zero for it, so a wall emits nothing.
+const uint SOLID_UNLISTED = 47u;
+
 // Stained glass, in every colour, along with its panes and tinted glass.
 //
 // Deliberately a material of its own rather than another entry in GLASS: the

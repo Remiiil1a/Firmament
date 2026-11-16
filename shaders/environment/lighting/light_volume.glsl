@@ -332,14 +332,45 @@
 // compiled into the terrain programs: the consumer half below reads the field,
 // which already has the answers baked into it.
 
-// Whether a block stops light. Everything the pack gives a material to is opaque
-// unless it is named here, and GENERIC - which is what an unlisted block decodes
-// to - is deliberately not opaque: the pack's material list is short, so leaves,
-// planks and stone all arrive as GENERIC, and treating GENERIC as a wall would
-// make most of the world a wall to the fill.
+// Whether a block stops light.
+//
+// BATCH 744 REWROTE THIS, AND THE OLD FIRST BRANCH WAS THE BUG. It read
+//
+//     if (materialID == GENERIC) { return false; }
+//
+// with a comment arguing that treating GENERIC as a wall "would make most of the
+// world a wall to the fill", because the pack's material list is short and stone,
+// planks and bricks all arrive as GENERIC. That reasoning is backwards twice
+// over. Most of the world IS a wall - that is what a world is - and the fill is
+// supposed to stop at it. What the old branch actually did was make every
+// unlisted solid transparent, so a torch's light crossed stone, dirt and planks
+// as if they were air. That is the author's first screenshot.
+//
+// The reason it could not simply be flipped is the other half of the same
+// problem, and it is why this batch also changed the writer. The world image is
+// cleared to zero every frame and air is never drawn, so an air voxel holds zero
+// - and GENERIC is zero too. Air and stone were the same value in the image, so
+// no answer for GENERIC could be right: "opaque" would have walled off every
+// empty voxel and stopped the fill dead, and "transparent" is what shipped. The
+// writer now stores SOLID_UNLISTED for an unlisted solid, which leaves the
+// cleared zero meaning air and nothing else. See that constant in
+// /environment/materialIDs.glsl and LightVolumeWriteTerrain in
+// /program/shadow/shadow.vsh.
+//
+// So the rule is now the one that reads correctly: a block stops light unless it
+// is named below as something light crosses.
 bool LightVolumeOpaque(uint materialID) {
 	if (materialID == GENERIC) {
+		// Nothing was drawn in this voxel, which is air. The writer never stores
+		// GENERIC: an unlisted solid stores SOLID_UNLISTED, below.
 		return false;
+	}
+
+	if (materialID == SOLID_UNLISTED) {
+		// An ordinary solid block the pack gives no material of its own: stone,
+		// dirt, planks, bricks. This is the branch batch 744 added, and it is what
+		// makes a wall a wall.
+		return true;
 	}
 
 	if (materialID == WATER || materialID == ICE || materialID == GLASS) {
@@ -356,6 +387,29 @@ bool LightVolumeOpaque(uint materialID) {
 
 	if (materialID == NETHER_PORTAL) {
 		// A source, and light crosses its surface.
+		return false;
+	}
+
+	// Foliage, which is batch 744's report 5.
+	//
+	// These three materials are the pack's own names for plants: LEAVES is the
+	// connected-waving canopy, GROUND_FOLIAGE the disconnected ground cover, and
+	// SUBSURFACE_SCATTERING the no-waving set that block.properties gives grass
+	// blocks, flowers and saplings. None of them was mentioned here, so all three
+	// fell through to the `return true` at the bottom and a sapling blocked light
+	// like a stone block. The author's fifth report is exactly that.
+	//
+	// They are not air either. Eclipse passes them with a mix weight rather than
+	// treating them as empty (dimensions/setup.csh:65-97: BLOCK_SSS_* and
+	// BLOCK_GRASS_* get 0.85, BLOCK_GROUND_WAVING and BLOCK_SAPLING 0.9), which is
+	// the right shape: a canopy does dim what passes through it, it just does not
+	// stop it. That weight is applied as a tint below rather than as a third state
+	// here, because the fill already has a way to dim light - the tint channel -
+	// and a second mechanism for the same thing would be one more thing to keep in
+	// step. See LightVolumeFilters.
+	if (materialID == LEAVES
+		|| materialID == GROUND_FOLIAGE
+		|| materialID == SUBSURFACE_SCATTERING) {
 		return false;
 	}
 
@@ -376,8 +430,57 @@ bool LightVolumeOpaque(uint materialID) {
 // and for everything else it is white. This function answers the question the
 // propagation needs - "is the tint in the image meaningful here" - so that a
 // block which is not a filter cannot accidentally tint by holding a stale colour.
+//
+// BATCH 744 ADDED FOLIAGE, AND THE VALUE IS A JUDGEMENT RATHER THAN A READING.
+// The three plant materials pass light (see LightVolumeOpaque) but they should
+// not pass all of it: a canopy that left a torch's light at full strength would
+// read as a hole in the leaves, and one that stopped it would be the sapling
+// shadow the author reported. Eclipse's answer is a mix weight of 0.85 for grass
+// and 0.9 for ground cover and saplings (dimensions/setup.csh:65-97), applied as
+// a multiplier on the light that crosses.
+//
+// The value here is 0.85 for all three, and the reasoning is:
+//
+//  * It is Eclipse's grass number, which is the material most of these blocks
+//    actually are - block.properties gives 10019 (grass blocks, flowers, saplings)
+//    and 10003 (vines, tall grass, ferns) to the same two families.
+//  * It is a dimming, not a stop: 0.85 per block means a two-block canopy keeps
+//    72% and a four-block one 52%, which is the "shade under a tree" reading
+//    rather than either extreme.
+//  * It is applied to the COLOUR only, never to the level. That is the same rule
+//    the stained pane follows and for the same reason: the level is a number of
+//    blocks of reach, and a leaf that shortened a torch's reach would disagree
+//    with the game's own light engine, which does not attenuate through leaves at
+//    all. What the eye reads as shade is the colour dimming, and that is what
+//    this is.
+//
+// The tint is a constant here rather than a texture read because a leaf's colour
+// is not what it transmits - a green leaf does not put green light on the ground,
+// it puts less light on the ground. Tinting by the leaf's own texture would make
+// a canopy cast coloured light, which is a different effect and not one the
+// author asked for.
 bool LightVolumeFilters(uint materialID) {
-	return materialID == STAINED_GLASS;
+	return materialID == STAINED_GLASS
+		|| materialID == LEAVES
+		|| materialID == GROUND_FOLIAGE
+		|| materialID == SUBSURFACE_SCATTERING;
+}
+
+// The tint a filter applies, for the filters whose tint is not in the image.
+//
+// A stained pane's colour comes from its texture and is written into the world
+// image by the shadow program's fragment stage, so the propagation reads it from
+// there. Foliage has no such colour to read - see the note above - so it takes
+// this constant instead. White is the value that leaves light unchanged, which is
+// what every non-filter gets.
+vec3 LightVolumeFilterTint(uint materialID) {
+	if (materialID == LEAVES
+		|| materialID == GROUND_FOLIAGE
+		|| materialID == SUBSURFACE_SCATTERING) {
+		return vec3(0.85);
+	}
+
+	return vec3(1.0);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
