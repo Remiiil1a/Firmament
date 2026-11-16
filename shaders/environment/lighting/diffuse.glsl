@@ -142,7 +142,31 @@
 // the lightmap supplies the color, but the brightnesses it carries have its own
 // falloff baked into them, and this model replaces that with its own falloff
 // and this.
-#define BLOCKLIGHT_STRENGTH 4.0 // [1.0 2.0 3.0 4.0 5.0 6.0 8.0]
+//
+// BATCH 748 RAISED IT FROM 4.0 TO 5.0, AND THE REASON IS THE CURVE ABOVE.
+// This option is defined as "how bright block light is at FULL light level", so
+// it has to be re-anchored whenever the curve changes, or the change leaks into
+// the bright end where nothing was wrong. The old pair was pow(x,4) at 4.0,
+// which gives 3.03 for a surface beside a torch (level 0.933); the new curve at
+// 5.0 gives 2.75, which is 0.91 of that - inside the 10% the batch was asked to
+// hold. The exact match would be 5.52, and the slider offers 5.0 and 6.0 either
+// side of it; 5.0 was chosen because it errs dimmer, and the bright end is not
+// the end that was wrong.
+//
+// What the change does, level by level, at 5.0:
+//
+//     level 0.05   0.0000 -> 0.0032   128x brighter   deep shadow
+//     level 0.10   0.0004 -> 0.0132    33x brighter   shadow
+//     level 0.20   0.0064 -> 0.0557   8.7x brighter   shadow edge
+//     level 0.40   0.1024 -> 0.2540   2.5x brighter   dim
+//     level 0.70   0.9604 -> 1.0228   1.06x           lit
+//     level 0.933  3.0310 -> 2.7466   0.91x           beside a torch
+//     level 1.00   4.0000 -> 5.0000   1.25x           full light
+//
+// So the dark end is lifted by one to two orders of magnitude and the lit end is
+// within 10%, which is the whole intent: the shadows were too black, and the
+// bright end was fine.
+#define BLOCKLIGHT_STRENGTH 5.0 // [1.0 2.0 3.0 4.0 5.0 6.0 8.0]
 
 // The color temperature of block light, in kelvin.
 //
@@ -533,6 +557,59 @@ vec3 BlockLightColorAt(
 	#endif
 }
 
+// The curve that turns a light level into brightness.
+//
+// BATCH 748 REPLACED pow(level, 4.0) WITH THIS, AND THE AUTHOR IS THE REASON.
+// His correction to the previous batch's framing was that the corner problem is
+// not "replace vs fall back" at all - it is that our shadowed areas are simply
+// too dark and the transition is not as natural as Eclipse's. That is a curve
+// problem, and the fourth power was the curve.
+//
+// WHY THE FOURTH POWER WAS WRONG, IN TWO NUMBERS. At level 0.10 it returns
+// 0.0001 where Eclipse's returns 0.0026 - 26 times darker - and at level 0.05 it
+// is 103 times darker. That is the "black too hard". And its SLOPE at zero is
+// zero: it lies flat and then explodes, so a one-voxel ramp in the level becomes
+// a step in brightness. A curve that is flat then steep IS a hard edge, whatever
+// the sampling does - which is why batch 747 could not find the corner by moving
+// the normal offset, and why the offset turned out to be innocent.
+//
+// WHERE THE SHAPE COMES FROM. Eclipse's lib/diffuse_lighting.glsl:113-120:
+//
+//     float lightmapBrightspot = min(max(lightmap-0.7,0.0)*3.3333,1.0);
+//     lightmapBrightspot *= lightmapBrightspot*lightmapBrightspot;
+//     float lightmapLight = 1.0-sqrt(1.0-lightmap);
+//     lightmapLight *= lightmapLight;
+//     float lightmapCurve = mix(lightmapLight, 2.5, lightmapBrightspot);
+//
+// `lightmapLight` is the half taken here: (1 - sqrt(1 - x))^2. It rises
+// immediately from zero, which is the natural transition, and it returns exactly
+// 1.0 at full light.
+//
+// ⚠️ THE BRIGHTSPOT TERM IS DELIBERATELY NOT TAKEN, AND THIS IS THE ONE PLACE
+// THIS PACK CANNOT FOLLOW ECLIPSE. That term lifts the curve to 2.5 at full
+// light. Our function does not return the curve directly - it returns
+//
+//     envelope = min(1.0, blockLightIntensity + heldLightIntensity)
+//
+// so anything above 1.0 is clamped before BLOCKLIGHT_STRENGTH multiplies it.
+// Eclipse's curve passes 1.0 at level 0.89, so dropped in verbatim everything
+// from 0.89 to 1.0 would render IDENTICALLY: a surface beside a torch and one a
+// block away would stop being distinguishable. That is a worse defect than the
+// one being fixed, and it does not show up in a table that only compares the
+// curves - only in the clamped output. The probe measures both.
+//
+// What the brightspot term does in Eclipse - make a surface right next to a
+// source read as bright - is already what BLOCKLIGHT_STRENGTH does here, and
+// doing it twice is what the clamp would turn into a flat top.
+float BlockLightCurve(float level) {
+	// Clamped because the field's level can exceed the game's ceiling near a
+	// strong source, and a negative base under the sqrt would be NaN.
+	level = clamp(level, 0.0, 1.0);
+
+	float curve = 1.0 - sqrt(1.0 - level);
+	return curve * curve;
+}
+
 vec3 BlockLighting(
 	// Where this fragment sits in the lightmap, which is where the color of its
 	// block light comes from.
@@ -644,8 +721,8 @@ vec3 BlockLighting(
 	float combinedLevel = mix(lightmapLevel, fillLevel, fieldWeight);
 	float combinedLight = min(combinedLevel, 15.0) / 15.0;
 
-	float blockLightIntensity = pow(combinedLight, 4.0);
-	float heldLightIntensity = pow(heldLight, 4.0);
+	float blockLightIntensity = BlockLightCurve(combinedLight);
+	float heldLightIntensity = BlockLightCurve(heldLight);
 
 	// Apply block light suppression (see details in shaders.properties).
 	//

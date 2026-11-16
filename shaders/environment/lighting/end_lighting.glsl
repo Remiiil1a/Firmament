@@ -82,10 +82,11 @@
 // they look like.
 //
 // Recorded: for the comparison the note was written with, a torch lights a
-// surface with BLOCKLIGHT_STRENGTH, which is 4.0 by default and 8.0 at the top of
+// surface with BLOCKLIGHT_STRENGTH, which is 5.0 by default and 8.0 at the top of
 // its range (diffuse.glsl); 8.0 is the figure the original note used, and it is
-// the maximum rather than the default. The sun is given as one to three, which
-// is not read off any one line here.
+// the maximum rather than the default. The default was 4.0 until batch 748, which
+// raised it when it replaced the brightness curve - see the note on the option.
+// The sun is given as one to three, which is not read off any one line here.
 //
 // The shipped default is 1.0 as of v0.7, not the 0.35 this note was written
 // around: the user's own settings were taken as the release's defaults, and
