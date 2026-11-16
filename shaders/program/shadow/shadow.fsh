@@ -151,9 +151,29 @@ void main() {
 	// or depth test could have run, and clipping happens after both.
 	#if defined(COLORED_LIGHTS) && defined(IRIS_FEATURE_CUSTOM_IMAGES)
 		if (materialID == STAINED_GLASS) {
+			// BATCH 745: THE TINT IS STORED RAW, NOT NORMALISED.
+			//
+			// Until this batch this divided by the pane's brightest channel before
+			// storing, on the argument that a pale pane must not dim the light. The
+			// argument is right about pale panes and wrong about dark ones, and the
+			// normalisation cannot tell them apart: it maps EVERY pane's brightest
+			// channel to one. Measured on the vanilla textures, black stained glass
+			// (linear 0.0097) and grey (0.0723) both normalise to (1, 1, 1) - pure
+			// white - so a black pane tinted the light not at all and passed it at
+			// full strength. That is the author's second report.
+			//
+			// The field stores a colour normalised to its brightest channel with the
+			// level in alpha, so a magnitude written into the colour is discarded by
+			// the encode anyway. What carries "how much light got through" is the
+			// level, and the level is only reachable if the peak survives to the
+			// fill. So the peak is stored here, in the colour, and the fill splits it
+			// back out: the hue tints, the peak shortens the reach. See
+			// LightVolumeWorldAt and the spread in program/light_volume/step.csh.
+			//
+			// A white pane has a peak of 1.0 and is unchanged, which is the property
+			// the old comment was protecting. A black pane has a peak near zero and
+			// now stops the light, which is what black glass does.
 			vec3 filterTint = SrgbToLinear(surfaceColor.rgb);
-			float filterPeak = max(filterTint.r, max(filterTint.g, filterTint.b));
-			filterTint /= max(filterPeak, 1.0e-4);
 
 			// The writer leaves (-1, -1, -1) in the varying where it stored
 			// nothing, and every voxel it did store is inside the grid by

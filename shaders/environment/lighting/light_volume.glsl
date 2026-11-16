@@ -377,6 +377,15 @@ bool LightVolumeOpaque(uint materialID) {
 		// Transparent. Water is here rather than being opaque because the game's
 		// own light engine lets block light through water, and a pool that stopped
 		// a torch's light would be a visible disagreement with the lightmap.
+		//
+		// BATCH 745: WATER NOW DIMS AS WELL AS PASSES. Eclipse gives water a
+		// mixWeight of 0.8 (dimensions/setup.csh:74-76) rather than letting it
+		// through untouched, and the author asked for Eclipse's table to be
+		// followed. A pool that dims light slightly is more correct than one that
+		// does not: water does absorb, and the game's own light engine does not
+		// model that at all, so this is the pack adding the part the game leaves
+		// out. The value is applied through LightVolumeFilterTint, which is why
+		// water is now also a filter below.
 		return false;
 	}
 
@@ -410,6 +419,25 @@ bool LightVolumeOpaque(uint materialID) {
 	if (materialID == LEAVES
 		|| materialID == GROUND_FOLIAGE
 		|| materialID == SUBSURFACE_SCATTERING) {
+		return false;
+	}
+
+	// The non-cube shapes, which are batch 745's report 6.
+	//
+	// A sign, a door, a carpet and a fence are not solid cubes, so light crosses
+	// them - but they are not air either, and the amount they obstruct differs by
+	// shape. They pass here and take a tint below, which is the same arrangement
+	// the foliage uses one branch up.
+	//
+	// ⚠️ THIS BRANCH IS THE ONE THAT MATTERS FOR THE FAILURE DIRECTION. Since
+	// batch 744 the fill fails CLOSED: a block with an ID that is not named here
+	// is a wall. So giving these blocks an ID in block.properties without adding
+	// them here would have made every sign and door in the world opaque to the
+	// fill - a worse bug than the one being fixed, and one that would look like
+	// "the coloured light stopped working near my house".
+	if (materialID == THIN_FLAT
+		|| materialID == THIN_VERTICAL
+		|| materialID == DOOR) {
 		return false;
 	}
 
@@ -461,23 +489,101 @@ bool LightVolumeOpaque(uint materialID) {
 // author asked for.
 bool LightVolumeFilters(uint materialID) {
 	return materialID == STAINED_GLASS
+		|| materialID == WATER
 		|| materialID == LEAVES
 		|| materialID == GROUND_FOLIAGE
-		|| materialID == SUBSURFACE_SCATTERING;
+		|| materialID == SUBSURFACE_SCATTERING
+		|| materialID == THIN_FLAT
+		|| materialID == THIN_VERTICAL
+		|| materialID == DOOR;
 }
 
 // The tint a filter applies, for the filters whose tint is not in the image.
 //
 // A stained pane's colour comes from its texture and is written into the world
 // image by the shadow program's fragment stage, so the propagation reads it from
-// there. Foliage has no such colour to read - see the note above - so it takes
-// this constant instead. White is the value that leaves light unchanged, which is
-// what every non-filter gets.
+// there. Everything else here has no colour to read and takes a constant.
+//
+// BATCH 745 TOOK THESE FROM ECLIPSE, ON THE AUTHOR'S INSTRUCTION. He asked for
+// Eclipse's table to be followed rather than for values invented here, and the
+// numbers below are Eclipse's `mixWeight` (dimensions/setup.csh:61-97, 989-1062,
+// 1156), which multiplies its tint (setup.csh:1214). 1.0 passes light unchanged
+// and 0.0 blocks it; Eclipse's default is 0.0, which is the same conclusion
+// batch 744 reached independently for an unlisted block.
+//
+// ⚠️ THE VALUE IS APPLIED TO THE LEVEL, NOT TO THE COLOUR, AND THAT IS A FIX.
+// Batch 744 multiplied these constants into the colour. That was a no-op: the
+// encode normalises the colour to its brightest channel (LightVolumeEncode), so a
+// uniform scalar is divided straight back out and the block passed light at full
+// strength. The level is the only channel that can carry "less light got through",
+// which is why the pane's peak goes there too. See the spread in
+// program/light_volume/step.csh.
+//
+// WHICH ECLIPSE CATEGORY EACH OF OUR THREE FOLIAGE MATERIALS IS:
+//
+//  * LEAVES -> BLOCK_AIR_WAVING (0.9). Eclipse puts leaves in block.56, which is
+//    BLOCK_AIR_WAVING, and that is 0.9. This is the one that changed: batch 744
+//    used 0.85 for all three, which was Eclipse's grass value applied to the
+//    wrong material.
+//  * GROUND_FOLIAGE -> BLOCK_GROUND_WAVING (0.9). block.54 in Eclipse's
+//    block.properties is fern, short_dry_grass, bush, firefly_bush and the like,
+//    which is what this pack's 10002 holds.
+//  * SUBSURFACE_SCATTERING -> BLOCK_GRASS_SHORT (0.85). This pack's 10003 holds
+//    vine, tall_grass, saplings and flowers; Eclipse splits those across
+//    BLOCK_GRASS_SHORT (0.85), BLOCK_SAPLING (0.9) and BLOCK_VINE (1.0).
+//
+// ⚠️ OUR THREE MATERIALS CANNOT EXPRESS ECLIPSE'S FIVE VALUES. Eclipse separates
+// grass 0.85, sapling 0.9, ground-waving 0.9, vine 1.0 and vine-other 0.5; this
+// pack's 10003 lumps vines, tall grass, saplings and flowers into one material.
+// Rather than silently average them, SUBSURFACE_SCATTERING takes 0.85 - the
+// grass value, which is the largest single group in that list - and the
+// difference is recorded here. Splitting it would cost a new material ID and a
+// block.properties entry, which is a decision for a batch that is asked for it.
+//
+// Eclipse also gives doors, trapdoors, slabs, stairs and walls a six-bit face
+// mask so a slab passes light in five directions rather than six. This pack has
+// no per-face data in the field and does not add one here; the mixWeight is the
+// part that was asked for. That is a known difference, not an oversight.
 vec3 LightVolumeFilterTint(uint materialID) {
-	if (materialID == LEAVES
-		|| materialID == GROUND_FOLIAGE
-		|| materialID == SUBSURFACE_SCATTERING) {
+	if (materialID == WATER) {
+		// Eclipse's water, 0.8 (setup.csh:74-76). See the note on the transparent
+		// branch of LightVolumeOpaque for why water dims rather than passing
+		// untouched.
+		return vec3(0.8);
+	}
+
+	if (materialID == LEAVES) {
+		return vec3(0.9);
+	}
+
+	if (materialID == GROUND_FOLIAGE) {
+		return vec3(0.9);
+	}
+
+	if (materialID == SUBSURFACE_SCATTERING) {
 		return vec3(0.85);
+	}
+
+	if (materialID == THIN_FLAT) {
+		// Carpet 0.9 and pressure plate 0.9 (setup.csh:991, 1025). Snow layers
+		// and the daylight detector are 0.5 in Eclipse (setup.csh:1036), but they
+		// share this material with carpet, so the group takes the value of the
+		// majority and the difference is recorded rather than averaged away.
+		return vec3(0.9);
+	}
+
+	if (materialID == THIN_VERTICAL) {
+		// Sign 0.9 (setup.csh:1156). Eclipse gives buttons 1.0 (setup.csh:69-71)
+		// and has no entry for ladders, chains, fences, rails or levers - those
+		// stay opaque there, and the author's instruction is to follow Eclipse.
+		// They are grouped here because they are the same shape as a sign and the
+		// author named them; 0.9 is the sign's value.
+		return vec3(0.9);
+	}
+
+	if (materialID == DOOR) {
+		// Door 0.8 and trapdoor 0.8 (setup.csh:1008, 1041).
+		return vec3(0.8);
 	}
 
 	return vec3(1.0);

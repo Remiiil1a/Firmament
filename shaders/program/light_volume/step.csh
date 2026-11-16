@@ -276,6 +276,11 @@ void main() {
 	uint blockId = uint(world.a + 0.5);
 	vec3 tint = world.rgb;
 
+	// How much of the level survives this voxel. One for everything that is not a
+	// filter: a non-filter leaves light alone, and the step at the spread below is
+	// the only thing that shortens the reach.
+	float tintLevel = 1.0;
+
 	// The block's own light, from the palette. A block that is not a source
 	// answers black and a range of zero, and then the two branches below are the
 	// air branch and nothing else.
@@ -294,11 +299,27 @@ void main() {
 		// what keeps a stale tint from a pane that has since been broken from
 		// colouring the air it used to stand in.
 		tint = vec3(1.0);
+	} else if (blockId == STAINED_GLASS) {
+		// A pane's colour is stored raw by the fragment stage, so its brightest
+		// channel is the fraction of the light that got through. The hue tints and
+		// the peak shortens the reach - see the split at the spread below, and the
+		// note on the write in program/shadow/shadow.fsh.
+		float panePeak = max(tint.r, max(tint.g, tint.b));
+		tintLevel = clamp(panePeak, 0.0, 1.0);
+		tint = panePeak > 1.0e-4 ? tint / panePeak : vec3(0.0);
 	} else {
-		// A filter's tint. A stained pane's is the colour the fragment stage wrote
-		// into the image; foliage has no colour to read and takes a constant
-		// instead, which is batch 744's report 5. See LightVolumeFilterTint.
-		tint *= LightVolumeFilterTint(blockId);
+		// The constant tints - foliage and the three non-cube shapes. These are
+		// Eclipse's mixWeight, and they go to the LEVEL rather than to the colour.
+		//
+		// BATCH 745 MOVED THEM, AND THAT IS A FIX RATHER THAN A REFINEMENT. Batch
+		// 744 multiplied them into the colour, which was a no-op: the encode
+		// normalises the colour to its brightest channel, so a uniform scalar is
+		// divided straight back out and the block passed light at full strength.
+		// The level is the only channel that can carry "less light got through".
+		// See LightVolumeFilterTint. The function returns a colour so that a filter
+		// with a hue could use it; every constant it returns today is grey, so the
+		// red channel is the scalar.
+		tintLevel *= LightVolumeFilterTint(blockId).r;
 	}
 
 	// The neighbours, one step down, and the two ways they are combined.
@@ -359,19 +380,46 @@ void main() {
 	weightSum += n.a;
 
 	// The spread: one step of the falloff, and the tint of the block the light is
-	// crossing. The tint is normalised by the writer, so it moves the hue and not
-	// the level - a pale pane must not starve the surfaces behind it while the
-	// lightmap still says they are lit.
+	// crossing.
 	//
-	// The falloff is additive - one level per voxel - for the reason written out
-	// at LIGHT_VOLUME_STEP: this pack's consumer compares the field against the
+	// BATCH 745 SPLIT THE IMAGE TINT INTO A HUE AND A PEAK. Until this batch the
+	// writer normalised a pane's colour to its brightest channel before storing it,
+	// so the image only ever carried the hue - and a black pane arrived as pure
+	// white, tinted nothing and passed light at full strength. Measured on the
+	// vanilla textures: black stained glass is linear 0.0097 and grey is 0.0723, and
+	// both normalise to (1, 1, 1). That is the author's second report.
+	//
+	// The writer now stores the pane's colour raw, and this is where the two halves
+	// are separated:
+	//
+	//   * the HUE (colour / peak) tints the light, which is the part the old code
+	//     was after and the part that makes a red pane put red light on the floor;
+	//   * the PEAK shortens the reach, which is the part that was missing. A pane
+	//     that transmits a tenth of the light should not let a torch reach as far as
+	//     it would through air.
+	//
+	// The peak goes to the LEVEL because the colour is normalised by the encode
+	// below and a magnitude put there is discarded - the level is the only channel
+	// that can carry "less light got through". This is Eclipse's shape: it multiplies
+	// its tint into the colour and its encoding keeps the magnitude in the V channel
+	// (dimensions/shadowcomp.csh:150-154, 163-166), which is the same quantity this
+	// pack keeps in alpha.
+	//
+	// A pale pane has a peak of one and is unchanged, which is the property the old
+	// normalisation was protecting; a black pane has a peak near zero and now stops
+	// the light, which is what black glass does.
+	//
+	// The falloff itself is additive - one level per voxel - for the reason written
+	// out at LIGHT_VOLUME_STEP: this pack's consumer compares the field against the
 	// game's own block light level, which drops by one per block, so a
-	// multiplicative decay would give a torch thirty-three blocks of reach where
-	// the game says fourteen.
+	// multiplicative decay would give a torch thirty-three blocks of reach where the
+	// game says fourteen. The pane's peak is a separate factor applied on top of
+	// that step, not instead of it.
 	vec3 spreadColour = weightSum > 1.0e-4 ? colourSum / weightSum : vec3(0.0);
 	float spreadLevel = max(level - LIGHT_VOLUME_STEP, 0.0);
 
 	spreadColour *= tint;
+	spreadLevel *= tintLevel;
 
 	// The voxel's own light, if it is a source. A source is at full strength in
 	// the frame it is drawn rather than one step away from where it is, which is

@@ -137,7 +137,24 @@ vec3 BlockLightColor(uint materialID) {
 		// /environment/materialIDs.glsl for why it is a family of its own.
 		return vec3(1.0, 0.13, 0.08);
 	} else if (materialID == LIGHT_MAGMA) {
-		return vec3(1.0, 0.32, 0.06);
+		// BATCH 745: Eclipse's ratio, not the pack's own.
+		//
+		// This was vec3(1.0, 0.32, 0.06), which normalises to (1.0, 0.32, 0.06) -
+		// a very saturated orange. Eclipse's BLOCK_MAGMA is
+		// vec3(0.747, 0.323, 0.110) (dimensions/setup.csh:630-634), which
+		// normalises to (1.0, 0.432, 0.147).
+		//
+		// The absolute scale does not matter and is not what was compared: the
+		// field stores a colour normalised to its brightest channel with the level
+		// in alpha (see LightVolumeEncode), so only the RATIO survives to the
+		// picture. What changes is the green and blue: 0.32 -> 0.432 and
+		// 0.06 -> 0.147, which is a less saturated, slightly paler orange. The
+		// author's report is that ours reads too saturated next to Eclipse's.
+		//
+		// The value is written in Eclipse's own scale rather than pre-normalised,
+		// so that it can be compared against the reference line for line. Nothing
+		// downstream cares: BlockLightColor's output is normalised by the fill.
+		return vec3(0.747, 0.323, 0.110);
 	} else if (materialID == LIGHT_AMETHYST_CLUSTER) {
 		return vec3(0.72, 0.42, 1.0);
 	}

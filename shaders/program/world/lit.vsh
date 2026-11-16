@@ -357,6 +357,26 @@ uint FetchMaterialID(vec3 worldNormal) {
 			return GENERIC;
 		}
 
+		// The three non-cube shapes added in batch 745 are demoted for the same
+		// reason, and the consequence of forgetting is worse than a wrong colour.
+		//
+		// EncodePerFace keeps four bits, so 48, 49 and 50 arrive in the fragment
+		// stage as 0, 1 and 2 - which are GENERIC, LEAVES and GROUND_FOLIAGE. A
+		// sign would be handed the leaves material and wave in the wind; a door
+		// would be handed ground foliage and get subsurface scattering. Neither is
+		// a colour error, so nothing in the chain would report it.
+		//
+		// What these blocks need from the fragment stage is nothing: they are
+		// ordinary surfaces with their own texture, and GENERIC is the material
+		// that says so. What they need from the SHADOW program is the number
+		// itself, because that is what decides whether the fill treats them as a
+		// wall - and the shadow program decodes the raw value, so it still sees
+		// them. See THIN_FLAT and the two beside it in
+		// /environment/materialIDs.glsl.
+		if (materialID >= THIN_FLAT && materialID <= DOOR) {
+			return GENERIC;
+		}
+
 		return materialID;
 	#elif defined(HAS_DH_MATERIAL_ID)
 		if (dhMaterialId == DH_BLOCK_LEAVES) {

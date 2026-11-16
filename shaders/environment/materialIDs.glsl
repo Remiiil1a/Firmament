@@ -172,6 +172,40 @@ const uint LIGHT_AMETHYST_CLUSTER = 46u;      // Amethyst clusters and large bud
 // both answer zero for it, so a wall emits nothing.
 const uint SOLID_UNLISTED = 47u;
 
+// The blocks that are not solid cubes but are not air either: signs, doors,
+// trapdoors, carpets, buttons, levers, rails, ladders, chains and fences.
+//
+// BATCH 745. Until this batch none of them had a material ID at all, so they
+// decoded to GENERIC, the writer stored SOLID_UNLISTED for them, and the fill
+// called them walls - a sign stopped a torch's light like a block of stone. The
+// author's sixth report is exactly that, and it is the same shape as the fifth
+// (plants) one batch earlier: a block the pack never named falls through to the
+// wall branch.
+//
+// THREE GROUPS RATHER THAN ONE, because the fill has one scalar tint per block
+// and these three shapes obstruct light by different amounts. Eclipse separates
+// them the same way, with a mix weight per block and a directional mask this pack
+// does not have (dimensions/setup.csh:989-1062: carpet 0.9, pressure plate 0.9,
+// door 0.8, trapdoor 0.8, snow layers 0.5). The values chosen here are in
+// LightVolumeFilterTint, with the reasoning.
+//
+// WHY THEY LIVE AT 48-50. The geometry selector is bits 4-7 of the material ID
+// and only selector 1 is defined (GEOMETRY_HORIZONTAL_DIAGONAL_ONLY), so a number
+// whose selector is 2 or 3 survives the shadow program's raw decode intact. 48-50
+// are selector 3, which is not defined at all - the same argument that puts the
+// light families at 40-46.
+//
+// ⚠️ THEY MUST BE DEMOTED IN FetchMaterialID. EncodePerFace keeps four bits
+// (lib/encoding/face.glsl:321), so 48, 49 and 50 would arrive in the fragment
+// stage as 0, 1 and 2 - GENERIC, LEAVES and GROUND_FOLIAGE. A sign would wave in
+// the wind and a door would be given subsurface scattering. lit.vsh reduces them
+// to GENERIC for the same reason it reduces the 40-43 light families, and the
+// shadow program - which decodes the raw number - is the only consumer that needs
+// to see them.
+const uint THIN_FLAT = 48u;      // Carpet, snow layer, pressure plate, lily pad
+const uint THIN_VERTICAL = 49u;  // Sign, ladder, chain, fence, rail, button, lever
+const uint DOOR = 50u;           // Door and trapdoor: a solid slab when closed
+
 // Stained glass, in every colour, along with its panes and tinted glass.
 //
 // Deliberately a material of its own rather than another entry in GLASS: the

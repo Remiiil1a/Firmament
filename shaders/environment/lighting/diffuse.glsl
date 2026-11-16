@@ -614,10 +614,65 @@ vec3 BlockLighting(
 	float heldLightSkyLight = sqrt(max(skyLight, heldLightSuppression));
 	heldLightIntensity *= 1.0 - heldLightSkyLight * blocklightSuppression;
 
-	// This method of combining held light and block light avoids weird lines
-	// where the lights intersect.
-	return blockLightColor
-		* (BLOCKLIGHT_STRENGTH * min(1.0, blockLightIntensity + heldLightIntensity));
+	// BATCH 745: THE TWO TERMS NO LONGER SHARE ONE COLOUR.
+	//
+	// Until this batch this was
+	//
+	//     return blockLightColor
+	//         * (BLOCKLIGHT_STRENGTH * min(1.0, blockLightIntensity + heldLightIntensity));
+	//
+	// which multiplies BOTH intensities by blockLightColor - the colour the flood
+	// fill put at this fragment. The held light therefore took on whatever colour
+	// the field happened to carry there, and where the field is empty it took the
+	// fallback tint. A player holding a torch in a room lit by a soul lantern got
+	// cyan light from his own torch; standing in a dark corner he got the pack's
+	// warm default. Neither is the light the item gives off.
+	//
+	// The two are separate lights and they now have separate colours:
+	//
+	//   * block light keeps the field's colour, which is the whole point of the
+	//     flood fill - it is the colour that actually arrives at this surface;
+	//   * held light gets the pack's own block light colour, taken from the
+	//     lightmap at full block light rather than at this fragment's own level.
+	//     That is the game's answer to "what colour is block light", moved by
+	//     BLOCKLIGHT_TEMPERATURE like everything else, and it is independent of
+	//     both the field and this fragment's position - which is what a light
+	//     carried by the player should be.
+	//
+	// WHY NOT THE HELD ITEM'S OWN COLOUR. The loader gives this shader a light
+	// LEVEL (heldBlockLightValue, see shaders.properties) and nothing else - not
+	// the item, not its texture. There is no colour to look up, so the honest
+	// choice is the pack's own block light colour rather than a guess at what the
+	// player is holding. A torch, a lantern and a glowstone all read as warm block
+	// light, which is what they are.
+	//
+	// The clamp is kept, and it is now component-wise on the sum rather than on the
+	// scalar before the multiply. The old form could not exceed one because the
+	// colour was factored out; with two colours the sum has to be bounded after
+	// they are applied, or a bright field plus a held torch would blow out.
+	vec3 heldLightColor = BlockLightTint(vec2(1.0, 0.0));
+
+	// The two intensities share one brightness envelope and are mixed by weight,
+	// which is the same shape the fill uses to blend two colours meeting head-on
+	// (see the level-weighted average in program/light_volume/step.csh). The
+	// envelope is still the SUM, so the property the old comment was protecting -
+	// no seam where the two lights intersect - is kept.
+	//
+	// With no held light this reduces exactly to the old expression:
+	// heldLightIntensity is zero, so the weight is zero, the colour is
+	// blockLightColor and the envelope is min(1.0, blockLightIntensity). That
+	// identity is the reason for this shape rather than for two separate terms
+	// added together: the overwhelming majority of fragments have no held light,
+	// and they must come out of this function bit for bit as they did before.
+	float lightSum = blockLightIntensity + heldLightIntensity;
+	float envelope = min(1.0, lightSum);
+
+	vec3 lightColor = lightSum > 1.0e-6
+		? (blockLightColor * blockLightIntensity
+			+ heldLightColor * heldLightIntensity) / lightSum
+		: blockLightColor;
+
+	return lightColor * (BLOCKLIGHT_STRENGTH * envelope);
 }
 
 // Tilt the path of the sun sideways. This is a standard shader effect that
