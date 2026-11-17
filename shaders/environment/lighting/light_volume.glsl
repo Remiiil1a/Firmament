@@ -841,82 +841,9 @@ vec3 LightVolumeBlockLight(
 
 	// Offset along the normal first, then sample - see LIGHT_VOLUME_NORMAL_OFFSET
 	// for why sampling where the fragment actually is does not work.
-	vec3 samplePos = cameraRelativePos + worldNormal * LIGHT_VOLUME_NORMAL_OFFSET;
-	vec4 field = LightVolumeSample(samplePos, subBlockOffset);
-
-	// BATCH 750: THE CORNER CREASE, WHICH IS THE FILTER BLENDING A SOLID.
-	//
-	// The author asked for the corner shadow to be removed entirely - "我在想能不能
-	// 直接不要这个角落的阴影，我倒觉得那样画面其实会更自然". It is his call, and this is
-	// what the crease turned out to be.
-	//
-	// IT IS NOT A SHADOW. The brief's account was that light reaches a corner
-	// voxel only by going around the corner, so its path is longer. That is not
-	// what the grid does. What happens is simpler: the trilinear filter blends the
-	// four voxels around the sample point, and beside a wall ONE OF THEM IS INSIDE
-	// THE WALL, where the fill stores zero. Measured on a floor beside a wall:
-	//
-	//     voxel (9, 1, 5)  = 4.0   air
-	//     voxel (9, 2, 5)  = 5.0   air
-	//     voxel (10, 1, 5) = 0.0   INSIDE THE WALL
-	//     voxel (10, 2, 5) = 0.0   INSIDE THE WALL
-	//     trilinear sample = 2.275, where the air alone gives 4.500
-	//
-	// So the crease is 2.23 levels of average pulled down by a zero that should
-	// not be in it. That is why it can be removed without letting light past the
-	// wall: the fix is to stop averaging in the solid, not to brighten the shadow.
-	//
-	// THE FIX IS A PATH-CORRECTED MAX OVER THE TANGENTS. Four extra samples, one
-	// along each tangent, and the brightest wins - but each tangent sample is
-	// LIGHT_VOLUME_NORMAL_OFFSET further from the surface than the normal sample,
-	// so it is legitimately dimmer by that much, because the field falls by one
-	// level per block. Subtracting that expected loss before comparing means a
-	// tangent only wins when it is brighter than its own extra distance explains,
-	// which is exactly the case where the normal sample landed in a solid.
-	//
-	// WHY NOT A PLAIN MAX. Measured: a plain max removes the crease (2.275 ->
-	// 4.600) but lifts an open floor by +0.55 as well, because the field has a
-	// gradient along the tangents and the max picks the brighter side. That would
-	// undo batch 748's dark end. The path correction is what makes the difference:
-	// on open floor no tangent beats its own distance, so the max never fires and
-	// the surface is EXACTLY unchanged (8.550 -> 8.550).
-	//
-	// WHY NOT A MAX OVER ALL 26 NEIGHBOURS. The diagonal offsets reach around the
-	// end of a wall, which is the light-through-walls regression batch 744 fixed.
-	// The four tangents stay on the fragment's own side of any wall it is touching.
-	//
-	// The colour is taken from whichever sample won, so the hue follows the level
-	// rather than being averaged separately.
-	vec4 best = field;
-	vec3 tangentA = normalize(cross(worldNormal, abs(worldNormal.y) < 0.99
-		? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
-	vec3 tangentB = cross(worldNormal, tangentA);
-
-	vec4 candidate = LightVolumeSample(
-		samplePos + tangentA * LIGHT_VOLUME_NORMAL_OFFSET, subBlockOffset);
-	if (candidate.a - LIGHT_VOLUME_NORMAL_OFFSET > best.a) {
-		best = candidate;
-	}
-
-	candidate = LightVolumeSample(
-		samplePos - tangentA * LIGHT_VOLUME_NORMAL_OFFSET, subBlockOffset);
-	if (candidate.a - LIGHT_VOLUME_NORMAL_OFFSET > best.a) {
-		best = candidate;
-	}
-
-	candidate = LightVolumeSample(
-		samplePos + tangentB * LIGHT_VOLUME_NORMAL_OFFSET, subBlockOffset);
-	if (candidate.a - LIGHT_VOLUME_NORMAL_OFFSET > best.a) {
-		best = candidate;
-	}
-
-	candidate = LightVolumeSample(
-		samplePos - tangentB * LIGHT_VOLUME_NORMAL_OFFSET, subBlockOffset);
-	if (candidate.a - LIGHT_VOLUME_NORMAL_OFFSET > best.a) {
-		best = candidate;
-	}
-
-	field = best;
+	vec4 field = LightVolumeSample(
+		cameraRelativePos + worldNormal * LIGHT_VOLUME_NORMAL_OFFSET,
+		subBlockOffset);
 
 	float level = field.a;
 
