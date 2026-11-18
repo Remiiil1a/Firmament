@@ -473,14 +473,39 @@ const float rippleMagnitude[4] = float[](
 // reached by a different route. At the cap the waves stop changing with distance,
 // so the far water keeps the surface it had at the cap rather than losing it.
 //
-// The value is a multiplier on the sample offset, not a fade: 1.0 is the
-// unmodified wave field and 4.0 is a footprint four times as wide.
+// The value is a multiplier on the SAMPLE STEP, not a fade and not a scale on the
+// coordinate: 1.0 is the unmodified wave field and 4.0 reads it over a footprint
+// four times as wide.
 //
 // BATCH 756 changed the INPUT, not the shape. `distanceToCamera` is
 // `length(cameraRelativePos)`, a world quantity, so TAA's jitter cannot move it -
 // see the note above. The factor of four is the ratio between the two ends of the
 // ramp: the footprint is one texel wide up to a quarter of
 // WATER_FOOTPRINT_DISTANCE and four texels wide from there outwards.
+//
+// ⚠️ BATCH 757 CHANGED WHAT THE FOOTPRINT MULTIPLIES, AND THAT IS THE AUTHOR'S
+// CIRCLE. Batches 754 and 756 divided the SAMPLE COORDINATE by this value:
+//
+//     vec2 atScaled = (time * scroll + stretched) / footprint;
+//
+// With the footprint proportional to the distance, that is `worldPos / distance`
+// - a RADIAL pattern centred on the player. The wave field is not a function of
+// world position any more; it is a function of the direction and the distance from
+// the camera, so every wave is stretched along the radius and the normals collapse
+// into radial streaks. The visible edge is where the ramp starts, at a quarter of
+// WATER_FOOTPRINT_DISTANCE - a circle of radius 16 blocks around the player, which
+// is exactly what the author photographed.
+//
+// Bliss does not do that. Its `deltaPos` is the step of a FINITE DIFFERENCE: the
+// coordinate it samples is untouched, and only the distance between the two
+// samples grows. That is a box filter over the wave field, which is what "widen
+// the footprint" was supposed to mean - the pattern stays anchored to the world
+// and only its resolution changes.
+//
+// So the footprint now multiplies the finite-difference step in
+// WaterNGradientFDM, and the analytic path takes its own equivalent: the gradient
+// is divided by the footprint while the coordinate is left alone, which is the
+// same box filter expressed in the derivative. See both functions below.
 float antialiasFootprint(float distanceToCamera) {
 	return clamp(
 		distanceToCamera * (4.0 / WATER_FOOTPRINT_DISTANCE), 1.0, 4.0);
@@ -493,10 +518,15 @@ float antialiasFootprint(float distanceToCamera) {
 // to a wave: they shrink its variation towards zero, and at aa = 1 the layer is a
 // constant - no height, no gradient, no tilt. That is the mirror.
 //
-// The replacement is not a helper at all: the footprint widens the SAMPLE, so the
-// layer keeps its full variation and simply gets averaged over a wider area by the
-// texture filter. See antialiasFootprint above and the `footprint` argument of the
-// functions below.
+// The replacement is not a helper at all: the layer keeps its full variation, and
+// the widening is applied to the GRADIENT - a box filter of width w has a slope
+// 1/w of the unfiltered one at the same position. See antialiasFootprint above and
+// the division in the two gradient functions below.
+//
+// ⚠️ BATCH 757 MOVED IT THERE FROM THE COORDINATE. Batches 754 and 756 divided the
+// sample coordinate instead, which turned the wave field into a function of
+// distance from the camera and drew a circle of radial streaks around the player.
+// The note on antialiasFootprint has the whole of it.
 
 // Returns water height between 0.0 and 1.0, with 0.0 being the lowest and 1.0
 // being the highest.
@@ -508,11 +538,14 @@ float antialiasFootprint(float distanceToCamera) {
 // derivatives of it, time in seconds, the fragment's distance to the camera, and
 // `approximate`.
 //
-// The screen derivatives are accepted and NOT read, and that is batch 756: the
-// sample footprint is built from `distanceToCamera` now, because a screen-space
-// quantity is what TAA's jitter moved every frame. They stay in the signature
-// because the caller computes them for the parallax mapping and because
-// surface_basic.glsl has to keep the same one - see the note above
+// The screen derivatives and `distanceToCamera` are accepted and NOT read, and
+// that is batches 756 and 757 together. The derivatives stopped being read in 756,
+// because a screen-space quantity is what TAA's jitter moved every frame. The
+// distance stopped being read in 757, when the widening moved out of the coordinate
+// and into the gradient - the height is the surface's shape, which the parallax
+// mapping wants, and the slope is what the normal is built from. They stay in the
+// signature because the caller computes the derivatives for the parallax mapping
+// and because surface_basic.glsl has to keep the same one - see the note above
 // antialiasFootprint.
 //
 // On the space of `worldPos`: the X and Z are world space, but for a face that
@@ -535,13 +568,18 @@ float WaterHeight(
 ) {
 	float height = 0.0;
 
-	// BATCH 756: the footprint is the same for every layer, so it is built once.
+	// BATCH 757: THE FOOTPRINT NO LONGER SCALES THE COORDINATE.
 	//
-	// It used to be built inside both loops, because it was derived from the
-	// layer's own `stretch` - the ratio was per-layer by construction. A distance
-	// is not: every layer of the field is sampled at the same distance from the
-	// camera, so the widening is one number for the whole function.
-	float footprint = antialiasFootprint(distanceToCamera);
+	// It used to divide `at` by itself, which made the wave field a function of
+	// distance from the camera rather than of world position - see the long note
+	// on antialiasFootprint. The height is now read at the world position it
+	// always was; the widening lives in the gradient, where it belongs, because
+	// the gradient is what the normal is built from and the gradient is where a
+	// finite difference has a step to widen.
+	//
+	// The height itself is still used by the parallax mapping, which wants the
+	// surface's shape rather than its slope, and a height read at a distance-scaled
+	// coordinate would have put the same radial pattern into the parallax offset.
 
 	// === A note on dot products and fused multiply add (FMA) ===
 	//
@@ -576,21 +614,7 @@ float WaterHeight(
 			dot(worldPos, stretch.zy));
 		vec2 at = time * scroll + stretched;
 
-		// BATCH 754: THE FOOTPRINT WIDENS THE SAMPLE, IT DOES NOT FADE THE LAYER.
-		//
-		// Dividing the coordinate by the footprint is the same as sampling the
-		// field over a footprint-times-wider area: the texture filter then
-		// averages that area, which removes the detail that cannot be resolved at
-		// this distance and keeps the large waves. The layer's own variation is
-		// untouched, so the normal still tilts.
-		//
-		// The scroll is divided by the same factor so that the wave does not
-		// appear to speed up as the footprint grows - the pattern is being
-		// magnified, and its motion has to be magnified with it or distant water
-		// would crawl faster than near water.
-		vec2 atScaled = (time * scroll + stretched) / footprint;
-
-		height += rippleMagnitude[i] * smoothNoise2D(atScaled);
+		height += rippleMagnitude[i] * smoothNoise2D(at);
 	}
 
 	// Crest waves - Like ripple waves, but we use crest around the result of
@@ -604,10 +628,7 @@ float WaterHeight(
 			dot(worldPos, stretch.zy));
 		vec2 at = time * scroll + stretched;
 
-		// Same footprint as the ripple loop above, and for the same reason.
-		vec2 atScaled = (time * scroll + stretched) / footprint;
-
-		height += crestMagnitude[i] * crest(smoothNoise2D(atScaled));
+		height += crestMagnitude[i] * crest(smoothNoise2D(at));
 	}
 
 	return height;
@@ -655,11 +676,16 @@ vec2 WaterNGradientAnalytic(
 ) {
 	vec2 gradient = vec2(0.0);
 
-	// BATCH 756: one footprint for every layer, built from the distance.
+	// BATCH 757: the footprint divides the GRADIENT, and the coordinate is left
+	// alone.
 	//
-	// It used to be built inside both loops from the layer's own `stretch`, which
-	// made it per-layer; a distance is not per-layer. See the note above
-	// antialiasFootprint.
+	// This is the analytic path's equivalent of widening a finite-difference step:
+	// a box filter of width w over a field has a slope 1/w of the unfiltered one,
+	// at the same position. Dividing the gradient by w is therefore the same
+	// operation Bliss performs by sampling `coord` and `coord + deltaPos` further
+	// apart - and unlike dividing the coordinate, it leaves the pattern anchored to
+	// the world. See the note on antialiasFootprint for the circle that the other
+	// form produced.
 	float footprint = antialiasFootprint(distanceToCamera);
 
 	// Ripple waves - Scrolled and stretched smooth value noise
@@ -673,16 +699,10 @@ vec2 WaterNGradientAnalytic(
 			dot(worldPos, stretch.zy));
 		vec2 at = time * scroll + stretched;
 
-		// BATCH 754: THE FOOTPRINT SCALES THE GRADIENT, IT DOES NOT FADE IT.
-		//
-		// Sampling the field over a footprint-times-wider area divides the
-		// gradient by the footprint - a wider box filter has a gentler slope for
-		// the same underlying wave. That is the chain rule, not a fade: the wave
-		// is still there, it is just being read at a coarser scale. The old
-		// `antialiasGradient` multiplied by (1 - aa), which went to ZERO at full
-		// fade and took the tilt with it.
+		// BATCH 757: the gradient is read at the world position, and the widening
+		// is the division below. Reading it at `at / footprint` was the circle.
 		vec2 waveGradient = (GRADIENT_STRENGTH * rippleMagnitude[i])
-			* gradSmoothNoise2D(at / footprint);
+			* gradSmoothNoise2D(at);
 
 		// This part is the main tricky part of the analytic gradient - we have
 		// the scaled gradient of the value noise at this position, but due to
@@ -727,23 +747,16 @@ vec2 WaterNGradientAnalytic(
 			dot(worldPos, stretch.zy));
 		vec2 at = time * scroll + stretched;
 
-		// BATCH 754: the crest loop takes the same footprint as the ripple loop.
-		//
-		// The old code inlined both halves of the fade here - `mix(noise, 0.5, aa)`
-		// for the height and `(1 - aa)` for the gradient - which is the same
-		// flattening by another route. Now the coordinate is divided by the
-		// footprint and the gradient by the same factor, so the crest keeps its
-		// shape and only its scale changes.
-		//
-		// The height the crest function is evaluated at, at the widened scale.
-		float heightAt = smoothNoise2D(at / footprint);
+		// BATCH 757: the crest loop reads at the world position too, and takes the
+		// same division below. See the note on antialiasFootprint.
+		float heightAt = smoothNoise2D(at);
 
 		// The main complexity here is that we need to apply the chain rule due
 		// to the crest function.
 		//
 		// Other than that, this is fairly similar to above.
 		vec2 waveGradient = (GRADIENT_STRENGTH * crestMagnitude[i])
-			* gradSmoothNoise2D(at / footprint) * crestDerivative(heightAt);
+			* gradSmoothNoise2D(at) * crestDerivative(heightAt);
 
 		// Same notes apply as above: the division is the chain rule for the wider
 		// sample, not a fade.
@@ -797,16 +810,28 @@ vec2 WaterNGradientFDM(
 	// which is why it is a fixed constant and not scaled by the wave size.
 	const float delta = 0.05;
 
+	// BATCH 757: THE FOOTPRINT WIDENS THE STEP, WHICH IS BLISS'S OWN FORM.
+	//
+	// This is the path the reference actually takes: `deltaPos` is the distance
+	// between the two samples of a finite difference, and widening it is a box
+	// filter over the wave field. The coordinate is untouched, so the pattern stays
+	// anchored to the world.
+	//
+	// The division by the widened step is what keeps the result a gradient rather
+	// than a difference: (h(x + w) - h(x)) / w is the slope over that width, and it
+	// is the same quantity the analytic path produces by dividing its gradient.
+	float step = delta * antialiasFootprint(distanceToCamera);
+
 	vec2 ddxPos = ddxWorldPos;
 	vec2 ddyPos = ddyWorldPos;
 	float h00 = WaterHeight(
 		worldPos, ddxPos, ddyPos, time, distanceToCamera);
 	float hX0 = WaterHeight(
-		worldPos + vec2(delta, 0.0), ddxPos, ddyPos, time, distanceToCamera);
+		worldPos + vec2(step, 0.0), ddxPos, ddyPos, time, distanceToCamera);
 	float h0Y = WaterHeight(
-		worldPos + vec2(0.0, delta), ddxPos, ddyPos, time, distanceToCamera);
+		worldPos + vec2(0.0, step), ddxPos, ddyPos, time, distanceToCamera);
 
-	return (-GRADIENT_STRENGTH / delta) * (vec2(hX0, h0Y) - vec2(h00));
+	return (-GRADIENT_STRENGTH / step) * (vec2(hX0, h0Y) - vec2(h00));
 }
 
 // Returns the normal map for the water surface computed from the gradient of
