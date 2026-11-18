@@ -47,24 +47,18 @@ const int RG8 = 0;
 // are not bound in gbuffers shaders.
 const int colortex4Format = R11F_G11F_B10F;
 
-// BATCH 760: MIPMAPS ON, SO THAT THE REFLECTION CAN BE BLURRED BY LOD.
+// BATCH 762: THE MIPMAP FLAG IS NOT DECLARED HERE, AND DECLARING IT HERE IS WHAT
+// MADE BATCH 760 A NO-OP.
 //
-// This is Bliss's arrangement (dimensions/composite1.fsh: `const bool
-// colortex5MipmapEnabled = true;`) and it is the whole of how that pack blurs a
-// rough reflection: it does not take more taps, it samples a higher mip level.
-// See the note on the LOD in environment_reflection.glsl.
+// Iris reads `colortex<N>MipmapEnabled` per program, and it builds the chain only
+// for the buffers a COMPOSITE pass names (CompositeRenderer.setupMipmapping). This
+// program runs in the DEFERRED stage, and DeferredRenderer never generates a
+// mipmap - so a flag here is recorded against a pass that cannot use it and the
+// chain is never built. `textureLod` then returns level 0 for every level, which
+// is a blur of zero, and it looks exactly like "the blur is too weak".
 //
-// WHY IT IS SAFE HERE. Iris generates the mip chain after every composite pass
-// that reads the buffer (CompositeRenderer.setupMipmapping, called from the pass
-// loop), so by the time composite1 samples colortex4 the chain is built from this
-// frame's copy - the deferred pass wrote it, and composite1 is a later pass. The
-// one reader that runs BEFORE the write is the hand's reflection in lit.fsh, and
-// it samples level 0 with a plain texture(), so it is unaffected either way.
-//
-// The cost is the mip chain itself: a third of the buffer again in memory, and
-// the generation pass. That is the price of the blur and it is paid once per
-// frame, not per tap.
-const bool colortex4MipmapEnabled = true;
+// The flag lives in composite1.fsh, which is the pass that samples the chain. See
+// the note there.
 
 // Not cleared between frames, for the one reader that runs before this pass
 // writes it: the hand's reflection, in lit.fsh, is taken from this buffer

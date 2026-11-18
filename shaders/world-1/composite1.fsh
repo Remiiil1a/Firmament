@@ -67,6 +67,24 @@ const int R11F_G11F_B10F = 0;
 const int RGBA16F = 0;
 const int colortex3Format = RGBA16F;
 
+// BATCH 762: THE MIPMAP FLAG HAS TO BE DECLARED HERE, NOT WHERE THE BUFFER IS
+// WRITTEN, AND THAT IS WHY BATCH 760 DID NOTHING.
+//
+// Batch 760 declared colortex4MipmapEnabled in program/post/copy_and_fog.fsh,
+// which is the program that declares colortex4's FORMAT. That is the wrong place
+// for a different flag: Iris reads the mipmap directives per program
+// (ProgramDirectives, `colortex<N>MipmapEnabled`), and it builds the chain only
+// for the buffers a COMPOSITE pass names (CompositeRenderer.setupMipmapping,
+// called from the composite pass loop). copy_and_fog runs in the DEFERRED stage,
+// and DeferredRenderer never generates a mipmap at all - so the flag was read,
+// recorded against a pass that cannot use it, and the chain was never built.
+// textureLod then returns level 0 for every level, which is a blur of zero.
+//
+// The declaration belongs in the pass that SAMPLES the chain, which is this one.
+// Iris builds it after this pass runs, so the chain is built from this frame's
+// copy - the deferred pass wrote colortex4 earlier in the frame.
+const bool colortex4MipmapEnabled = true;
+
 uniform sampler2D colortex0;
 
 // The previous frame, resolved, which is what this pass accumulates onto.
