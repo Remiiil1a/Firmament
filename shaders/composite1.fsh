@@ -474,10 +474,15 @@ uniform float blindness;
 // Whether a history texel may be allowed to contribute to the filtered sample.
 //
 // The test is "exactly zero, or not a number", and not "dark". colortex3 is
-// R11F_G11F_B10F, which has no encoding for a NaN, so a value that could not be
-// stored comes back as a literal black pixel - that is the signature this looks
-// for, and it is the same one main() uses when it treats an exactly-zero history
-// as no history at all. A genuinely dark pixel is not exactly zero and passes.
+// RGBA16F (see colortex3Format at the top of this file), which DOES encode a NaN
+// and an infinity - so the zero this looks for is not the buffer rounding a bad
+// value away, it is a value that reached the buffer as zero. The distinction
+// matters and was wrong here until batch 760: the note used to say the format was
+// R11F_G11F_B10F, which has no NaN encoding, and the guard chain below was argued
+// from that. The guard is still worth having - a zero written by something
+// upstream is still not a colour - but it is not the mechanism the old note
+// described, and a NaN now survives into the buffer rather than becoming a zero.
+// A genuinely dark pixel is not exactly zero and passes.
 bool HistoryTapUsable(vec3 tap) {
 	return (dot(tap, tap) < 1.0e18) && (tap != vec3(0.0));
 }
@@ -1090,17 +1095,27 @@ void main() {
 	//
 	// This is Mellow Shader's guard, and it is taken from there because it is the
 	// one thing in that resolve this pack did not have - see `if (PrevColor ==
-	// vec3(0)) return Color;` in global/post/taa.glsl. What it is for is the value
-	// held here is colortex3, which is RGBA16F: no encoding for a NaN or an
-	// infinity, so a value that is not a number is written as an ordinary zero
-	// and read back the next frame looking like a pixel that is black. Nothing
-	// in the clamp below can tell that zero from a real one, because every
-	// bound there is built to allow black - a shadow is black, and the lower
-	// end is floored at zero on purpose.
+	// vec3(0)) return Color;` in global/post/taa.glsl.
+	//
+	// WHAT IT IS FOR, CORRECTED IN BATCH 760. The note here used to say that
+	// colortex3 is R11F_G11F_B10F, which cannot encode a NaN, so a value that was
+	// not a number came back as an ordinary zero - and that this guard was what
+	// caught it. colortex3 is RGBA16F (see colortex3Format at the top of this
+	// file), which DOES encode a NaN and an infinity, so that mechanism does not
+	// exist. The guard is kept because the case it actually covers is real: a zero
+	// that something upstream wrote, which the clamp below cannot tell from a
+	// genuine black because every bound there is built to allow black - a shadow is
+	// black, and the lower end is floored at zero on purpose.
+	//
+	// ⚠️ THE CONSEQUENCE OF THE OLD NOTE BEING WRONG IS WORTH RECORDING, because it
+	// is why the black blot was chased for so long: five guards in this pass were
+	// argued from "the buffer cannot hold a NaN", and for colortex3 that premise is
+	// false. A NaN now survives into the buffer rather than becoming a zero, so if
+	// the blot ever returns, the first thing to check is whether it is a NaN that
+	// reached colortex3 - not whether a zero did.
 	//
 	// An exact zero is what it is looking for and not "very dark", because very
-	// dark is a shadow and this is not: it is the shape a value takes when the
-	// buffer had to round it away. A pixel that was genuinely black last frame
+	// dark is a shadow and this is not. A pixel that was genuinely black last frame
 	// takes the current frame here instead of the history, so it stops
 	// accumulating for as long as it stays black - a little of the dither is left
 	// in the darkest parts of the image, which is the price of a blot that
@@ -1192,25 +1207,28 @@ void main() {
 	// The weight is checked before it is used, and this is the last place in
 	// this pass where a value that is not a number can still get in.
 	//
-	// The frames either side of this pass cannot carry one, and that is not an
-	// assumption about the effects upstream - it is the buffer formats. colortex0
-	// and colortex3 are both R11F_G11F_B10F, an unsigned format with no encoding
-	// for a NaN or an infinity, so whatever the surfaces write arrives here finite
-	// and so does the history. Everything that could produce one is therefore
-	// arithmetic inside this function, and velocity is the arithmetic left:
-	// previousCoord came out of a clip-space division by its own w, and a clip
-	// position that is zero in both is 0/0.
+	// ⚠️ THE PREMISE OF THIS NOTE WAS WRONG UNTIL BATCH 760, AND THE GUARD IS KEPT
+	// ANYWAY. It used to say that colortex0 and colortex3 are both
+	// R11F_G11F_B10F, an unsigned format with no encoding for a NaN, so whatever
+	// the surfaces write arrives here finite. colortex0 is that format
+	// (program/post/postprocessing.fsh), but colortex3 is RGBA16F (see
+	// colortex3Format at the top of this file) and DOES encode a NaN and an
+	// infinity. So the argument "the buffers cannot carry one, therefore the only
+	// source is arithmetic in this function" does not hold for the history.
 	//
-	// offScreen does catch that coordinate, and history is replaced by current for
-	// it. The weight is built from the same velocity and was never checked, and
-	// mix(current, current, NaN) is a NaN.
+	// What does hold is the part that matters: velocity is built from a clip-space
+	// division by its own w, and a clip position that is zero in both is 0/0, so
+	// the weight can be a NaN whatever the buffers can store. offScreen catches
+	// that coordinate and replaces history with current for it; the weight is built
+	// from the same velocity and was never checked, and mix(current, current, NaN)
+	// is a NaN.
 	//
 	// Why a NaN here is worse than one frame of one pixel: it does not stay a NaN.
-	// Neither buffer can hold one, so what the next frame reads back is an ordinary
-	// zero - black, finite, and inside every bound the clamp below can put on it.
-	// That is a black pixel in the history that the current frame does not have,
-	// and the Catmull-Rom fetch hands it to the pixels beside it, which is a blot
-	// that starts somewhere and grows. See BATCH_LOG.md 158.
+	// colortex3 can hold it, but the next frame reads it back through the clamp
+	// below, and a NaN fails every comparison there - so it is not clamped to
+	// anything, it is written back, and the Catmull-Rom fetch hands it to the
+	// pixels beside it. That is a blot that starts somewhere and grows. See
+	// BATCH_LOG.md 158.
 	//
 	// Zero rather than anything else: a weight of zero means this pixel is taken
 	// from the current frame and not from the history at all, which is the one

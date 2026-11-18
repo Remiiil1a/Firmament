@@ -64,6 +64,46 @@ uniform sampler2D colortex7;
 uniform sampler2D colortex8;
 uniform sampler2D depthtex1;
 
+// How far a reflection has to travel before the LOD ramp is complete, in blocks.
+//
+// BATCH 760. This is the one number that is NOT Bliss's, and the reason is worth
+// stating because the obvious translation is wrong.
+//
+// Bliss's `reflectionLength` is not a distance. It is the fraction of the ray to
+// the screen edge that the march consumed (`reflectionLength += 1.0 / quality`,
+// lib/specular.glsl:169, where `stepv = direction * mult / quality` and `mult` is
+// the ray's length to the edge, :128-130). So Bliss's ramp is over SCREEN SPAN,
+// and its `min(max(reflectionLength - 0.1, 0.0)/0.9, 1.0)` (:212) means "the
+// first tenth of the ray is perfectly sharp, the ramp covers the rest".
+//
+// This pack's trace reports a distance in blocks, not a fraction, so the same
+// statement needs a length. 64 blocks is where a reflection has crossed enough of
+// the screen for the cone to span several texels at any field of view - the same
+// reasoning and the same kind of number as WATER_FOOTPRINT_DISTANCE in
+// surface_noise.glsl. It is a starting value for the author to tune.
+#define PBR_SSR_BLUR_DISTANCE 64.0
+
+// The fraction of that distance that stays perfectly sharp.
+//
+// Bliss's 0.1 (:212), kept as a fraction rather than as a length so that it means
+// the same thing whatever PBR_SSR_BLUR_DISTANCE is set to. Without it a
+// reflection a few centimetres away is already blurred, which is the failure the
+// author's tap-based attempts had: the highlight is the nearest thing in the
+// reflection and it is the first thing a filter eats.
+#define PBR_SSR_BLUR_SHARP_FRACTION 0.1
+
+// The highest mip level the reflection may be sampled at.
+//
+// Bliss uses 6.0 (lib/specular.glsl:213). A level is a halving of resolution, so
+// 6 is a 64x64 box - far wider than any cone a surface's roughness opens, and it
+// is the cap rather than the working range: the roughness term saturates well
+// before it, and the distance term is what reaches it.
+//
+// It is a #define and not an option because the two terms that build the LOD are
+// Bliss's and were tuned against its picture; exposing the cap would invite
+// tuning a number that is not the one that needs tuning.
+#define PBR_SSR_BLUR_MAX_LOD 6.0
+
 // The depth of the surface each pixel shows with the translucents in it, and
 // the one with neither the translucents nor the hand.
 //
@@ -456,20 +496,63 @@ vec3 EnvironmentReflection(
 					// copy_and_fog.fsh's copy of the world as this frame left it,
 					// which is also the frame this reflection is added to.
 					//
-					// One sample, and this is where the traced half used to be spread
-					// over the cone the surface's roughness opens - an eight-tap ring
-					// with PBR_REFLECTION_BLUR capping how far it reached. Both the
-					// ring and the option are gone as of batch 631: the author judged
-					// that the metal reflections no longer need it, and without it the
-					// reflection is the sharp picture the trace actually found.
+					// BATCH 760: THE TRACED HALF IS BLURRED BY LOD, WHICH IS BLISS'S
+					// ARRANGEMENT.
 					//
-					// The SKY half still averages over the cone - see above - and
-					// that asymmetry is deliberate. The sky is not a picture of
-					// anything: a rough surface sees a whole range of sky directions
-					// at once, so one sample of that range is an arbitrary choice
-					// rather than an answer. The traced half is a picture, and one
-					// sample of a picture is that picture.
-					vec3 hitColor = texture(colortex4, hitPos).rgb;
+					// Batches 631 and 660-668 tried to blur this with taps - an
+					// eight-tap ring, then a 32/56-pixel Vogel disk - and the author
+					// rejected both ("滤波看起来很奇怪、还把高光一起过滤了"). The
+					// reason a tap filter failed is worth stating, because it is why
+					// this is a different mechanism rather than a better-tuned one: a
+					// tap filter averages a FIXED number of samples over a FIXED
+					// radius, so it either blurs too little at high roughness or
+					// costs a fortune at low roughness, and it always costs the same
+					// whatever the surface is.
+					//
+					// Bliss does not take taps. It samples a higher MIP LEVEL
+					// (lib/specular.glsl:211-213):
+					//
+					//     float LOD = mix(0.0, 6.0*(1.0-exp(-15.0*sqrt(roughness))),
+					//                     1.0-pow(1.0-reflectionLength,5.0));
+					//     reflection.rgb = texture2DLod(colortex5, previousPosition.xy, LOD).rgb;
+					//
+					// The mip chain is a prefiltered pyramid, so the cost is one
+					// sample at any radius, and the radius is chosen per pixel by two
+					// things that both matter:
+					//
+					//   * roughness - a rough surface sees a wide cone, so it wants a
+					//     wide average. The `1 - exp(-15*sqrt(roughness))` term is
+					//     steep near zero and saturates, which is the shape a
+					//     microfacet distribution has.
+					//   * reflectionLength - a reflection that travelled far has
+					//     covered more screen, so the same cone spans more texels.
+					//     The `1 - (1-x)^5` term is Bliss's, and it keeps a near
+					//     reflection sharp however rough the surface is.
+					//
+					// The mip chain exists because copy_and_fog.fsh sets
+					// colortex4MipmapEnabled, and Iris builds it after every composite
+					// pass that reads the buffer - so by the time this pass samples it,
+					// it is this frame's copy. See the note there.
+					//
+					// WHAT IS NOT TAKEN FROM BLISS: its `reflectionLength` is the
+					// fraction of the ray to the screen edge that the march consumed,
+					// not a distance (see the note on PBR_SSR_BLUR_DISTANCE). This
+					// pack's trace reports blocks, so the same statement - "the first
+					// tenth of the way is perfectly sharp, the ramp covers the rest" -
+					// is written with a length and a fraction instead of one number.
+					float reflectionLength = clamp(
+						(reflectionHitDistanceOut / PBR_SSR_BLUR_DISTANCE
+							- PBR_SSR_BLUR_SHARP_FRACTION)
+						/ (1.0 - PBR_SSR_BLUR_SHARP_FRACTION),
+						0.0, 1.0);
+
+					float reflectionLod = mix(
+						0.0,
+						PBR_SSR_BLUR_MAX_LOD
+							* (1.0 - exp(-15.0 * sqrt(roughness))),
+						1.0 - pow(1.0 - reflectionLength, 5.0));
+
+					vec3 hitColor = textureLod(colortex4, hitPos, reflectionLod).rgb;
 
 					// Fade the result out near the edge of the screen, where the
 					// ray is about to leave the buffer and there is nothing more
