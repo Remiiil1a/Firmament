@@ -76,21 +76,44 @@ uniform sampler2D depthtex1;
 // and its `min(max(reflectionLength - 0.1, 0.0)/0.9, 1.0)` (:212) means "the
 // first tenth of the ray is perfectly sharp, the ramp covers the rest".
 //
-// This pack's trace reports a distance in blocks, not a fraction, so the same
-// statement needs a length. 64 blocks is where a reflection has crossed enough of
-// the screen for the cone to span several texels at any field of view - the same
-// reasoning and the same kind of number as WATER_FOOTPRINT_DISTANCE in
-// surface_noise.glsl. It is a starting value for the author to tune.
-#define PBR_SSR_BLUR_DISTANCE 64.0
-
-// The fraction of that distance that stays perfectly sharp.
+// ⚠️ BATCH 763: THE TRANSLATION BELOW WAS THE REASON NOTHING WAS VISIBLE, AND IT
+// TOOK THREE BATCHES TO FIND BECAUSE IT LOOKS SO REASONABLE.
 //
-// Bliss's 0.1 (:212), kept as a fraction rather than as a length so that it means
-// the same thing whatever PBR_SSR_BLUR_DISTANCE is set to. Without it a
-// reflection a few centimetres away is already blurred, which is the failure the
-// author's tap-based attempts had: the highlight is the nearest thing in the
-// reflection and it is the first thing a filter eats.
-#define PBR_SSR_BLUR_SHARP_FRACTION 0.1
+// 760 read "the first tenth of the ray" as "the first tenth of 64 blocks", which
+// is 6.4 blocks, and made everything inside that perfectly sharp. But a metal
+// reflects the wall and the floor a few blocks away - that is what a metal block
+// in a build actually shows - so the reflections the author was looking at were
+// ALL inside the dead zone, where the distance term is exactly 0.0 and the LOD is
+// exactly 0.0 whatever the roughness does. 761 then pushed the roughness term from
+// 5.14 to 6.00, which is 1.17x of zero.
+//
+// The scale is now 16 blocks and the sharp fraction is a length rather than a
+// proportion, so that "near" means near in blocks and not in some fraction of a
+// number that was itself a guess. 16 is where a reflection has crossed enough of
+// the screen for the cone to span several texels at a typical field of view.
+#define PBR_SSR_BLUR_DISTANCE 16.0
+
+// How far from the fragment a reflection stays perfectly sharp, in blocks.
+//
+// BATCH 763: THIS IS A LENGTH NOW, NOT A FRACTION. As a fraction of
+// PBR_SSR_BLUR_DISTANCE it was 6.4 blocks, which is most of what a metal reflects.
+// Half a block is the distance at which a reflection is still the surface's own
+// immediate surroundings - the thing the author's tap-based attempts kept eating -
+// and past it the ramp starts immediately.
+#define PBR_SSR_BLUR_SHARP_DISTANCE 0.5
+
+// The narrowest cone the sky half of the reflection is averaged over, in pixels.
+//
+// BATCH 763. The cone is the roughness in radians, which is right for a dielectric
+// and far too narrow for a polished metal: iron_block's roughness is 0.0167 rad,
+// about 13 pixels at a 70 degree field of view, and a metal block reflects mostly
+// sky - so those 13 pixels were the whole of its blur. See the note at the cone.
+//
+// 24 pixels is roughly the width of a block face at arm's length, which is the
+// scale a metal block's reflection is read at. It is a starting value for the
+// author to tune, and it is in pixels rather than radians so that it does not
+// change with the field of view.
+#define PBR_SSR_BLUR_MIN_CONE_PIXELS 24.0
 
 // The highest mip level the reflection may be sampled at.
 //
@@ -289,9 +312,29 @@ vec3 EnvironmentReflection(
 		// half the field of view, which is what the projection's second row
 		// carries - gbufferProjection[1][1] is 1 / tan(fovY / 2). windowToNdc is
 		// two divided by the viewport size, so half the height is its reciprocal.
+		//
+		// BATCH 763: THE CONE HAS A FLOOR NOW, AND THAT IS WHAT MAKES A POLISHED
+		// METAL'S SKY REFLECTION SOFT.
+		//
+		// The angle is the roughness, which is right for a dielectric - a stone
+		// floor arrives at 0.44 rad and its sky reflection is properly wide. A
+		// polished metal does not: iron_block's specular map is smoothness 222/255,
+		// so its roughness is (1 - 0.871)^2 = 0.0167 rad, which is 13 pixels at a
+		// 70 degree field of view. That is a mirror, and it is what the author was
+		// looking at: a metal block reflects the sky, the trace finds nothing above
+		// it, and the only blur it ever got was those 13 pixels.
+		//
+		// The floor is not a fudge to make metals look soft. It is the observation
+		// that a reflection is never sharper than the buffer it is read from, and
+		// the buffer is one sample per pixel: a cone narrower than a pixel is a
+		// cone that cannot be resolved, so widening it to a pixel costs nothing and
+		// is the honest answer. PBR_SSR_BLUR_MIN_CONE_PIXELS is that pixel, and it
+		// is in pixels rather than radians so that it means the same thing at every
+		// field of view.
 		float coneAngle = clamp(roughness, 0.0, 1.0);
 		float pixelsPerRadian = gbufferProjection[1][1]
 			/ max(windowToNdc.y, 1.0e-6);
+		coneAngle = max(coneAngle, PBR_SSR_BLUR_MIN_CONE_PIXELS / pixelsPerRadian);
 		float blurPixels = coneAngle * pixelsPerRadian;
 
 		// The sky, which is what an environment reflection is made of on its own,
@@ -538,54 +581,34 @@ vec3 EnvironmentReflection(
 					// fraction of the ray to the screen edge that the march consumed,
 					// not a distance (see the note on PBR_SSR_BLUR_DISTANCE). This
 					// pack's trace reports blocks, so the same statement - "the first
-					// tenth of the way is perfectly sharp, the ramp covers the rest" -
-					// is written with a length and a fraction instead of one number.
+					// stretch of the way is perfectly sharp, the ramp covers the rest"
+					// - is written with two lengths instead of one number.
 					float reflectionLength = clamp(
-						(reflectionHitDistanceOut / PBR_SSR_BLUR_DISTANCE
-							- PBR_SSR_BLUR_SHARP_FRACTION)
-						/ (1.0 - PBR_SSR_BLUR_SHARP_FRACTION),
+						(reflectionHitDistanceOut - PBR_SSR_BLUR_SHARP_DISTANCE)
+							/ max(PBR_SSR_BLUR_DISTANCE
+								- PBR_SSR_BLUR_SHARP_DISTANCE, 1.0e-4),
 						0.0, 1.0);
 
-					// BATCH 761: THE ROUGHNESS IS TRANSFORMED BEFORE IT REACHES THE
-					// LOD, AND THAT IS THE WHOLE OF WHY THE METAL WAS STILL SHARP.
+					// BATCH 763: THE ROUGHNESS IS USED AS IT ARRIVES, AND BATCH 761'S
+					// TRANSFORM WAS A SECOND DECODE.
 					//
-					// Batch 760 copied Bliss's LOD formula but fed it this pack's
-					// `roughness` directly. Bliss does not: it rewrites the value
-					// first (lib/specular.glsl:338-339):
+					// 761 added `roughness = 1.0 - roughness; roughness *= roughness;`
+					// here, copying Bliss's lib/specular.glsl:338-339. That was wrong,
+					// and the reason is that this pack had already done it: the
+					// material decode is `pbr.roughness = pow(1.0 - specularSample.r,
+					// 2.0)` (environment/lighting/pbr.glsl:1974), which is the same
+					// (1 - smoothness)^2 Bliss applies at its line 338. So 761 decoded
+					// a value that was already decoded - iron went from 0.0167 to
+					// 0.9668 - and pushed the LOD term from 5.14 to 6.00, which is the
+					// wrong direction for a surface that should be blurred.
 					//
-					//     roughness = 1.0 - roughness;
-					//     roughness *= roughness;
-					//
-					// so what its LOD formula receives is (1 - roughness)^2, not
-					// roughness. The two are not close: at the ends they are
-					// INVERTED. A mirror (roughness 0) becomes 1.0 and takes the full
-					// blur; a fully rough surface (roughness 1) becomes 0.0 and takes
-					// none. Fed the untransformed value, the same formula does the
-					// opposite of what Bliss's picture shows - which is exactly the
-					// author's report: the metal reflection stayed sharp while Bliss's
-					// is almost entirely soft.
-					//
-					// The transform is not metal-specific, and that is worth recording
-					// because the author's reading was that Bliss must treat metals
-					// specially. It does not: `isMetal` (lib/specular.glsl:346) gates
-					// the F0 table, the albedo tint and the diffuse darkening, and
-					// never touches roughness. Metals and plain blocks take the same
-					// LOD. What differs is that a metal's roughness is low, so it sits
-					// at the end of the curve where the transform matters most - which
-					// is why the metal was where the difference showed and the plain
-					// blocks looked the same.
-					//
-					// The transform is applied here rather than at the material write
-					// because it is a property of this formula, not of the material:
-					// PbrReflectionSmoothness and the reflection gate read the same
-					// `roughness` and must keep seeing the linear value.
-					float lodRoughness = 1.0 - roughness;
-					lodRoughness *= lodRoughness;
-
+					// The value that arrives here is already the linear roughness the
+					// formula wants. See the note on PBR_SSR_BLUR_DISTANCE for the
+					// other half of why nothing was visible.
 					float reflectionLod = mix(
 						0.0,
 						PBR_SSR_BLUR_MAX_LOD
-							* (1.0 - exp(-15.0 * sqrt(lodRoughness))),
+							* (1.0 - exp(-15.0 * sqrt(roughness))),
 						1.0 - pow(1.0 - reflectionLength, 5.0));
 
 					vec3 hitColor = textureLod(colortex4, hitPos, reflectionLod).rgb;
