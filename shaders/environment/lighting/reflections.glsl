@@ -116,6 +116,78 @@ vec3 PbrVisibleNormal(
 		return reflect(-viewDirection, worldNormal);
 	}
 
+	// The same direction, drawn from the cone the surface's roughness opens.
+	//
+	// BATCH 764. The note above says roughness SPREADS the reflection rather than
+	// bending it, and that the spreading was PBR_REFLECTION_BLUR "applied where the
+	// reflection is sampled" - which is what batches 760 to 763 built, and what the
+	// author then reported as not enough: the texture in the reflection went soft
+	// while the block's outline stayed exactly where one ray put it. Spreading the
+	// COLOUR is not spreading the reflection; the outline is the geometry, and one
+	// ray has one outline.
+	//
+	// This spreads the direction instead, which is what Bliss does
+	// (lib/specular.glsl:355-362, SampleVNDFGGX) and what a rough surface actually
+	// does: it reflects a range of directions. Every pixel's ray then leaves at a
+	// slightly different angle and lands on a slightly different place, so the
+	// reflection's outline is smeared over the cone.
+	//
+	// The distribution is the visible-normal one, the same family the highlight is
+	// built from, so the reflection and the highlight agree about how rough the
+	// surface is. It is written out here rather than taken from pbr.glsl because
+	// that one is shaped for the highlight's half-vector and this one needs the
+	// reflected direction itself.
+	//
+	// `alpha` is the roughness, which is the cone's half-angle in radians - the same
+	// angle the sky half of the reflection is averaged over, so the two halves agree
+	// about width. A mirror (alpha 0) draws a zero-width cone and returns the exact
+	// direction, which is why a mirror still reads as a mirror.
+	vec3 PbrReflectionDirectionJittered(
+		vec3 worldNormal,
+		vec3 viewDirection,
+		float alpha,
+		vec2 noise
+	) {
+		// A frame on the normal, so that the cone can be drawn around it.
+		vec3 tangent = normalize(cross(
+			abs(worldNormal.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0),
+			worldNormal));
+		vec3 bitangent = cross(worldNormal, tangent);
+
+		// The exact reflection, in that frame: the centre of the cone.
+		vec3 exact = reflect(-viewDirection, worldNormal);
+		vec3 local = vec3(
+			dot(exact, tangent),
+			dot(exact, bitangent),
+			dot(exact, worldNormal));
+
+		// The visible-normal draw, in the hemisphere configuration. This is
+		// SampleVNDFGGX's arithmetic (Bliss lib/specular.glsl:42-71) with the
+		// viewer direction replaced by the exact reflection, which is the direction
+		// the cone is drawn around.
+		//
+		// Written as `a * b + c` rather than with fma(), which needs an extension
+		// this pack does not request everywhere: the compiler recognises the pattern
+		// and emits the fused instruction anyway.
+		vec3 viewer = normalize(vec3(alpha * 0.5 * local.xy, local.z));
+		float phi = 6.2831853 * noise.x;
+		float cosTheta = (1.0 - noise.y) * (1.0 + viewer.z) - viewer.z;
+		float sinTheta = sqrt(clamp(1.0 - cosTheta * cosTheta, 0.0, 1.0));
+		sinTheta = clamp(sinTheta, 0.0, 1.0);
+		cosTheta = clamp(cosTheta, sinTheta * 0.5, 1.0);
+
+		vec3 sampled = vec3(vec2(cos(phi), sin(phi)) * sinTheta, cosTheta);
+		vec3 halfway = sampled + viewer;
+		vec3 jittered = normalize(vec3(alpha * halfway.xy, halfway.z));
+
+		// Back to world axes. A zero-width cone leaves `jittered` equal to `local`,
+		// so this is the exact direction for a mirror.
+		return normalize(
+			tangent * jittered.x
+			+ bitangent * jittered.y
+			+ worldNormal * jittered.z);
+	}
+
 	// Fresnel by the model Adobe uses, which interpolates between the
 	// reflectance at normal incidence and the one at 82 degrees instead of
 	// taking everything to white.

@@ -458,12 +458,53 @@ vec3 EnvironmentReflection(
 				// than derived.
 				float traceDither = fract(Bayer8(gl_FragCoord.xy) * 1.32);
 
+				// BATCH 764: THE RAY DIRECTION IS JITTERED OVER THE CONE, WHICH IS
+				// WHAT MAKES THE REFLECTION SPREAD RATHER THAN MERELY BLUR.
+				//
+				// The author's report, after 763 finally made the blur visible: the
+				// texture in the reflection is soft now, but the SHAPE of the block
+				// is still pinned where it was, where Bliss's reflection looks
+				// smeared out. That is exactly right, and it is a difference in what
+				// is being blurred.
+				//
+				// 763 blurred the COLOUR the ray came back with. A mip level is a
+				// wider average of the picture, so the picture's detail softens while
+				// its outline stays where the single ray put it - and one ray has one
+				// outline.
+				//
+				// Bliss blurs the DIRECTION instead (lib/specular.glsl:355-362):
+				//
+				//     vec3 samplePoints = SampleVNDFGGX(viewDir, roughness, noise.xy);
+				//     vec3 reflectedVector_L = basis * reflect(-normalize(viewDir), samplePoints);
+				//
+				// and that jittered vector is what its march walks along (:411). So
+				// every pixel's ray leaves at a slightly different angle, lands on a
+				// slightly different place, and the reflection's outline is spread
+				// over the cone - which is what "smeared out" looks like, and what a
+				// rough surface actually does: it reflects a range of directions, not
+				// one direction with a soft colour.
+				//
+				// The two uniform numbers are the spatial dither this pass already
+				// computes, so the cost is zero and the reflection stays correlated
+				// with the highlight rather than reading as noise on top of it.
+				//
+				// ⚠️ The cone is the roughness in radians - the same angle the sky
+				// half is averaged over - so both halves of the reflection now agree
+				// about width. A mirror (roughness 0) draws a zero-width cone and
+				// keeps its exact direction, which is why a mirror still reads as a
+				// mirror.
+				vec3 rayDirection = PbrReflectionDirectionJittered(
+					worldNormal,
+					viewDirection,
+					roughness,
+					vec2(traceDither, fract(traceDither * 7.0 + 0.37)));
+
 				if (ScreenSpaceRaytrace(
 					depthtex1,
 					gbufferProjection,
 					gbufferProjectionInverse,
 					viewPos,
-					mat3(gbufferModelView) * worldReflected,
+					mat3(gbufferModelView) * rayDirection,
 					windowToNdc,
 					traceDither,
 					hitPos,
