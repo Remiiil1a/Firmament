@@ -546,10 +546,46 @@ vec3 EnvironmentReflection(
 						/ (1.0 - PBR_SSR_BLUR_SHARP_FRACTION),
 						0.0, 1.0);
 
+					// BATCH 761: THE ROUGHNESS IS TRANSFORMED BEFORE IT REACHES THE
+					// LOD, AND THAT IS THE WHOLE OF WHY THE METAL WAS STILL SHARP.
+					//
+					// Batch 760 copied Bliss's LOD formula but fed it this pack's
+					// `roughness` directly. Bliss does not: it rewrites the value
+					// first (lib/specular.glsl:338-339):
+					//
+					//     roughness = 1.0 - roughness;
+					//     roughness *= roughness;
+					//
+					// so what its LOD formula receives is (1 - roughness)^2, not
+					// roughness. The two are not close: at the ends they are
+					// INVERTED. A mirror (roughness 0) becomes 1.0 and takes the full
+					// blur; a fully rough surface (roughness 1) becomes 0.0 and takes
+					// none. Fed the untransformed value, the same formula does the
+					// opposite of what Bliss's picture shows - which is exactly the
+					// author's report: the metal reflection stayed sharp while Bliss's
+					// is almost entirely soft.
+					//
+					// The transform is not metal-specific, and that is worth recording
+					// because the author's reading was that Bliss must treat metals
+					// specially. It does not: `isMetal` (lib/specular.glsl:346) gates
+					// the F0 table, the albedo tint and the diffuse darkening, and
+					// never touches roughness. Metals and plain blocks take the same
+					// LOD. What differs is that a metal's roughness is low, so it sits
+					// at the end of the curve where the transform matters most - which
+					// is why the metal was where the difference showed and the plain
+					// blocks looked the same.
+					//
+					// The transform is applied here rather than at the material write
+					// because it is a property of this formula, not of the material:
+					// PbrReflectionSmoothness and the reflection gate read the same
+					// `roughness` and must keep seeing the linear value.
+					float lodRoughness = 1.0 - roughness;
+					lodRoughness *= lodRoughness;
+
 					float reflectionLod = mix(
 						0.0,
 						PBR_SSR_BLUR_MAX_LOD
-							* (1.0 - exp(-15.0 * sqrt(roughness))),
+							* (1.0 - exp(-15.0 * sqrt(lodRoughness))),
 						1.0 - pow(1.0 - reflectionLength, 5.0));
 
 					vec3 hitColor = textureLod(colortex4, hitPos, reflectionLod).rgb;
