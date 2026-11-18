@@ -481,8 +481,7 @@ float antialiasFactor(vec2 ddxWorldPos, vec2 ddyWorldPos, vec3 stretch) {
 	vec2 maxes = max(abs(ddxAt), abs(ddyAt));
 	float ratio = max(maxes.x, maxes.y);
 
-	// BATCH 754: THE WATER_AA OPTION IS GONE, AND THE CURVE IT DEFAULTED TO IS
-	// WHAT REMAINS.
+	// BATCH 754: THE WATER_AA OPTION IS GONE, AND SO IS THE FLATTENING.
 	//
 	// The option existed because this pack had no temporal antialiasing: it let
 	// the player choose how much wave detail to trade away for a still image that
@@ -491,40 +490,81 @@ float antialiasFactor(vec2 ddxWorldPos, vec2 ddyWorldPos, vec3 stretch) {
 	// across frames, so the waves can keep the detail they have and the aliasing
 	// is removed downstream instead of being pre-emptively blurred away here.
 	//
-	// What is kept is the Nyquist fade itself, at the value the option shipped as
-	// its default. It is not redundant with TAA: it fades a layer out when the
-	// noise texture is being sampled below its own Nyquist rate, which is a
-	// property of the sampling and not of the frame. TAA cannot recover detail
-	// that was never sampled - it averages what is there - so removing this
-	// entirely would bring back the white-noise shimmer on distant water that the
-	// comment above describes. What goes away is the CHOICE, not the fade.
+	// ⚠️ AND THE FADE ITSELF WAS THE WRONG MECHANISM, WHICH IS THE AUTHOR'S SECOND
+	// REPORT. Fading a layer to its average (0.5) removes the layer's VARIATION,
+	// and the variation is the whole of what a wave normal is: at the far end every
+	// layer sits at its average, the gradient is zero, the normal is straight up,
+	// and distant water reads as a MIRROR. Measured, the fade is complete at a
+	// sampling ratio of 0.55 and stays complete for every ratio above it, so
+	// everything past that distance is flat - which is exactly the "water looks
+	// like a mirror" the author describes.
 	//
-	// The four value macros (OFF/LOW/BALANCED/HIGH) went with the option. That
-	// also removes a real defect: `BALANCED` was defined here as 2 and in
+	// WHAT REPLACES IT IS BLISS'S ANSWER (lib/waterBump.glsl, getWaveNormal): widen
+	// the SAMPLE FOOTPRINT with distance instead of fading the result.
+	//
+	//     float range = min(length(playerpos) / (16.0*24.0), 3.0);
+	//     deltaPos += range;
+	//
+	// A wider footprint is a box filter over the wave field. It removes the detail
+	// that cannot be represented at that distance - which is the same aliasing this
+	// function was written to remove - while KEEPING the large waves, because a
+	// large wave is still resolved by a wide footprint. That is the opposite of
+	// fading everything to flat, and it is why Bliss's distant water still has a
+	// surface.
+	//
+	// Sundial, the other reference, has no distance term at all (libs/Water.glsl:
+	// a fixed layer count and a per-layer weight, nothing indexed by distance). So
+	// neither reference flattens, and the two disagree only on whether to widen.
+	// Widening is taken here because it is the one that also addresses aliasing.
+	//
+	// The footprint is applied by the CALLER, which is where the sample position is
+	// built - see the `footprint` argument of WaterHeight and the two gradient
+	// functions below. This function keeps returning the ratio, because the ratio
+	// is what says how wide the footprint should be.
+	//
+	// The four value macros (OFF/LOW/BALANCED/HIGH) went with the option. That also
+	// removes a real defect: `BALANCED` was defined here as 2 and in
 	// /environment/water/absorption.glsl as a vec3, and both reach the same
 	// translation unit through gbuffers_water.fsh. The front end had to carry an
 	// explicit allowance for that redefinition (see glslang_check.py); it is no
 	// longer needed.
-	return smoothstep(0.45, 0.55, ratio);
+	return ratio;
 }
 
-// Simple helper function to apply antialiasing to a height returned by a noise
-// function at a given position. This fades the height to 0.5 as needed to avoid
-// aliasing.
-float antialiasHeight(float aa, float height) {
-	return mix(height, 0.5, aa);
-}
-
-// Assuming antialiasFactor returns a factor f, from the perspective of
-// derivative it is just as if we multiplied the height by (1.0 - f) and
-// otherwise added a constant.
+// How much wider than one texel the wave field should be sampled at this distance.
 //
-// We can assume that f remains constant in the small local area around the
-// point we are sampling, and therefore, (1.0 - f) is a constant factor in the
-// multitplication that we can peel out and multiply by the gradient.
-vec2 antialiasGradient(float aa, vec2 gradient) {
-	return gradient * (1.0 - aa);
+// BATCH 754. This is the replacement for the fade above, and it is Bliss's formula
+// with this pack's units: `min(distance / (16 * 24), 3)` in Bliss, where the 16 is
+// its own wave scale. Here the distance is already in blocks and the wave field is
+// indexed in blocks, so the divisor is the distance at which the widest footprint
+// is reached.
+//
+// ⚠️ THE CAP MATTERS AND IS BLISS'S. Without it the footprint would keep growing
+// and the far water would go flat again - which is the defect being fixed, reached
+// by a different route. At the cap the waves stop changing with distance, so the
+// far water keeps the surface it had at the cap rather than losing it.
+//
+// The value is a multiplier on the sample offset, not a fade: 1.0 is the
+// unmodified wave field and 4.0 is a footprint four times as wide.
+float antialiasFootprint(float ratio) {
+	// The ratio is noise-texture pixels per screen pixel, so it is already a
+	// measure of "how much wave is being crammed into one pixel". One texel per
+	// pixel is the point where the field is exactly resolved; past it the
+	// footprint has to grow in proportion, or the extra detail aliases.
+	return clamp(ratio, 1.0, 4.0);
 }
+
+// BATCH 754: THE TWO HELPERS THAT FADED A LAYER TO ITS AVERAGE ARE GONE.
+//
+// They were `antialiasHeight(aa, height) = mix(height, 0.5, aa)` and
+// `antialiasGradient(aa, gradient) = gradient * (1 - aa)`. Both do the same thing
+// to a wave: they shrink its variation towards zero, and at aa = 1 the layer is a
+// constant - no height, no gradient, no tilt. That is the mirror.
+//
+// The replacement is not a helper at all: the footprint widens the SAMPLE, so the
+// layer keeps its full variation and simply gets averaged over a wider area by the
+// texture filter. See antialiasFootprint above and the `footprint` argument of the
+// functions below.
 
 // Returns water height between 0.0 and 1.0, with 0.0 being the lowest and 1.0
 // being the highest.
@@ -586,9 +626,24 @@ float WaterHeight(
 			worldPos.x * stretch.x,
 			dot(worldPos, stretch.zy));
 		vec2 at = time * scroll + stretched;
-		float aa = antialiasFactor(ddxWorldPos, ddyWorldPos, stretch);
 
-		height += rippleMagnitude[i] * antialiasHeight(aa, smoothNoise2D(at));
+		// BATCH 754: THE FOOTPRINT WIDENS THE SAMPLE, IT DOES NOT FADE THE LAYER.
+		//
+		// Dividing the coordinate by the footprint is the same as sampling the
+		// field over a footprint-times-wider area: the texture filter then
+		// averages that area, which removes the detail that cannot be resolved at
+		// this distance and keeps the large waves. The layer's own variation is
+		// untouched, so the normal still tilts.
+		//
+		// The scroll is divided by the same factor so that the wave does not
+		// appear to speed up as the footprint grows - the pattern is being
+		// magnified, and its motion has to be magnified with it or distant water
+		// would crawl faster than near water.
+		float footprint = antialiasFootprint(
+			antialiasFactor(ddxWorldPos, ddyWorldPos, stretch));
+		vec2 atScaled = (time * scroll + stretched) / footprint;
+
+		height += rippleMagnitude[i] * smoothNoise2D(atScaled);
 	}
 
 	// Crest waves - Like ripple waves, but we use crest around the result of
@@ -601,10 +656,13 @@ float WaterHeight(
 			worldPos.x * stretch.x,
 			dot(worldPos, stretch.zy));
 		vec2 at = time * scroll + stretched;
-		float aa = antialiasFactor(ddxWorldPos, ddyWorldPos, stretch);
 
-		height += crestMagnitude[i] * crest(
-			antialiasHeight(aa, smoothNoise2D(at)));
+		// Same footprint as the ripple loop above, and for the same reason.
+		float footprint = antialiasFootprint(
+			antialiasFactor(ddxWorldPos, ddyWorldPos, stretch));
+		vec2 atScaled = (time * scroll + stretched) / footprint;
+
+		height += crestMagnitude[i] * crest(smoothNoise2D(atScaled));
 	}
 
 	return height;
@@ -657,10 +715,20 @@ vec2 WaterNGradientAnalytic(
 			worldPos.x * stretch.x,
 			dot(worldPos, stretch.zy));
 		vec2 at = time * scroll + stretched;
-		float aa = antialiasFactor(ddxWorldPos, ddyWorldPos, stretch);
+
+		// BATCH 754: THE FOOTPRINT SCALES THE GRADIENT, IT DOES NOT FADE IT.
+		//
+		// Sampling the field over a footprint-times-wider area divides the
+		// gradient by the footprint - a wider box filter has a gentler slope for
+		// the same underlying wave. That is the chain rule, not a fade: the wave
+		// is still there, it is just being read at a coarser scale. The old
+		// `antialiasGradient` multiplied by (1 - aa), which went to ZERO at full
+		// fade and took the tilt with it.
+		float footprint = antialiasFootprint(
+			antialiasFactor(ddxWorldPos, ddyWorldPos, stretch));
 
 		vec2 waveGradient = (GRADIENT_STRENGTH * rippleMagnitude[i])
-			* gradSmoothNoise2D(at);
+			* gradSmoothNoise2D(at / footprint);
 
 		// This part is the main tricky part of the analytic gradient - we have
 		// the scaled gradient of the value noise at this position, but due to
@@ -686,8 +754,12 @@ vec2 WaterNGradientAnalytic(
 		//
 		// Finally, as this is the negative gradient, we subtract when
 		// accumulating.
-		gradient -= antialiasGradient(aa,
-			vec2(dot(stretch.xz, waveGradient), waveGradient.y * stretch.y));
+		//
+		// The division by the footprint is the chain rule for the wider sample:
+		// the coordinate was divided by it above, so the derivative is divided by
+		// it too. See the note at the top of this loop.
+		gradient -= vec2(dot(stretch.xz, waveGradient), waveGradient.y * stretch.y)
+			/ footprint;
 	}
 
 	// Crest waves - Like ripple waves, but we use crest around the result of
@@ -700,29 +772,31 @@ vec2 WaterNGradientAnalytic(
 			worldPos.x * stretch.x,
 			dot(worldPos, stretch.zy));
 		vec2 at = time * scroll + stretched;
-		float aa = antialiasFactor(ddxWorldPos, ddyWorldPos, stretch);
 
-		// Antialiasing is a bit more involved in the gradients of these crest
-		// waves.
+		// BATCH 754: the crest loop takes the same footprint as the ripple loop.
 		//
-		// We need to compute the antialiased height at this position for use in
-		// the chain rule for the derivative of the crest function, but we also
-		// need to apply antialiasing to the returned gradient. Since we use
-		// antialiasFactor twice, we have inlined antialiasHeight and
-		// antialiasGradient here.
-		float heightAt = mix(smoothNoise2D(at), 0.5, aa);
+		// The old code inlined both halves of the fade here - `mix(noise, 0.5, aa)`
+		// for the height and `(1 - aa)` for the gradient - which is the same
+		// flattening by another route. Now the coordinate is divided by the
+		// footprint and the gradient by the same factor, so the crest keeps its
+		// shape and only its scale changes.
+		float footprint = antialiasFootprint(
+			antialiasFactor(ddxWorldPos, ddyWorldPos, stretch));
+
+		// The height the crest function is evaluated at, at the widened scale.
+		float heightAt = smoothNoise2D(at / footprint);
 
 		// The main complexity here is that we need to apply the chain rule due
 		// to the crest function.
 		//
 		// Other than that, this is fairly similar to above.
 		vec2 waveGradient = (GRADIENT_STRENGTH * crestMagnitude[i])
-			* gradSmoothNoise2D(at) * crestDerivative(heightAt);
+			* gradSmoothNoise2D(at / footprint) * crestDerivative(heightAt);
 
-		// Same notes apply as above, note that we have inlined the
-		// functionality of antialiasGradient here.
-		gradient -= (1.0 - aa) * 
-			vec2(dot(stretch.xz, waveGradient), waveGradient.y * stretch.y);
+		// Same notes apply as above: the division is the chain rule for the wider
+		// sample, not a fade.
+		gradient -= vec2(dot(stretch.xz, waveGradient), waveGradient.y * stretch.y)
+			/ footprint;
 	}
 
 	return gradient;
