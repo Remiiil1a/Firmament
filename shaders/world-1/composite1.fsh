@@ -601,31 +601,40 @@ void main() {
 	// negation is the check. See BATCH_LOG.md 131.
 	bool currentUsable = dot(current, current) < 1.0e18;
 
-	// BATCH 664: THE ENVIRONMENT REFLECTION, APPLIED BEFORE THE RESOLVE.
+	// BATCH 758: THE ENVIRONMENT REFLECTION IS COMPUTED HERE AND APPLIED AFTER
+	// THE RESOLVE.
 	//
-	// It used to be a pass of its own, after this one (batch 267), tracing the
-	// resolved colortex3. It is applied to `current` here instead, before the
-	// resolve consumes it, for one reason: the trace dithers its ray start every
-	// frame, and a reflection added after the resolve is a fresh noisy sample with
-	// nothing downstream to average it. Ahead of the resolve, the history averages
-	// it - which is what both reference packs do with theirs.
+	// Batches 664 and 674 are the history of the other arrangement. 664 moved the
+	// reflection into this pass so the history would average its dither; 674
+	// widened the neighbourhood clamp by |reflectionDelta| so the clamp would not
+	// cut the reflected part back out. Both were right about what they solved, and
+	// together they made a reflection live as long as the picture around it -
+	// about 1/(1-0.85) = 6.7 frames at the default TAA_STRENGTH. That is the
+	// author's trailing, lagging water reflection.
 	//
-	// WHAT THIS COSTS, recorded because it is the thing to look at in game: the
-	// reflection now enters the anti-aliasing history, and that history has no
-	// motion vectors for anything that moves on its own - only the camera's. The
-	// reflection of a moving object can therefore trail behind it, where before it
-	// was answered afresh every frame and could not. Batch 220 took the reflection
-	// out of this pass for a related reason and batch 267 gave it a pass of its
-	// own after the resolve to stop it crawling; batch 664 is the author's decision
-	// to move it back and take the other side of that trade. The neighbourhood
-	// clamp below is the only thing that limits such a trail, and it is
-	// deliberately left exactly as it was: do not weaken it to make a reflection
-	// look sharper.
+	// Neither reference pack puts a reflection in its temporal history. Sundial
+	// composites in Composite0 through Composite3 and resolves in Composite7 and
+	// Composite9; Bliss composites in composite1.fsh and resolves in
+	// composite5.fsh. In both the reflection is an INPUT to the resolve, not part
+	// of its history, so it is never averaged across frames and cannot trail.
 	//
-	// One-step rollback: `git -C Firmament checkout -- shaders/` restores the
-	// pre-664 tree - composite3.fsh and .vsh with their two dimension copies, the
-	// three program.composite3 lines in shaders.properties, and a library that
-	// traces the resolved colortex3. There is nothing else to put back.
+	// So the trace still happens here - it needs this pixel's depth and material,
+	// and it is the same work either way - but the result is applied to `resolved`
+	// below rather than to `current`. The two values are declared outside the
+	// branch so that they survive to that point.
+	//
+	// WHAT THIS COSTS, and why it is not paid in the history. The trace dithers its
+	// ray start, and a reflection applied after the resolve is a fresh noisy sample
+	// with nothing downstream to average it - which is exactly why 664 moved it.
+	// The answer is not to put it back: it is to stop the trace needing a temporal
+	// average. `traceDither` in environment_reflection.glsl is a spatial dither
+	// now, so one frame of it is already as smooth as the average used to be. See
+	// the note there.
+	//
+	// One-step rollback: `git -C Firmament revert <this commit>`.
+	vec3 environmentReflection = vec3(0.0);
+	vec3 reflectionWeight = vec3(0.0);
+
 	#if defined(PBR_SSR)
 	// The view position is rebuilt here rather than passed in: this pass has only
 	// the pixel it is writing, and every buffer it needs is read by coordinate.
@@ -677,15 +686,15 @@ void main() {
 		// How much of the environment this pixel takes, as a colour, out of the
 		// function as well as the colour it takes: with energy conservation on,
 		// that fraction is what the reflection replaces in the picture rather than
-		// something added to it.
-		vec3 reflectionWeight;
+		// something added to it. Declared above, so that it survives to the point
+		// after the resolve where it is applied.
 
 		// Whether the trace found the world, and how far away what it found was.
 		// Both are read by the reflection debug view below.
 		bool reflectionHit;
 		float reflectionHitDistance;
 
-		vec3 environmentReflection = EnvironmentReflection(
+		environmentReflection = EnvironmentReflection(
 			reflectionViewPos,
 			texelFetch(colortex2, pixel, 0).r,
 			seenThrough,
@@ -790,30 +799,32 @@ void main() {
 			currentUsable ? 1.0 : 0.0);
 
 		return;
-		#elif defined(PBR_ENERGY_CONSERVATION)
-		// The reflection REPLACES the fraction of the picture it stands for
-		// instead of being added to it.
-		//
-		// This is the difference between a metal and a metal with a white film
-		// over it, and it is the one structural thing the packs this was compared
-		// against do differently: Bliss composites
-		// mix(DarkenedDiffuseLighting, reflection, F0), and the fraction there is
-		// the same Fresnel this pass has already worked out as `reflectionWeight`.
-		//
-		// Added rather than replaced, a full-strength reflection at a grazing
-		// angle sits on top of a full diffuse response, so the surface is brighter
-		// than the light falling on it and its own colour is diluted toward the
-		// sky's - which is what "washed out" is, on glass, on emerald and on gold
-		// at the same time.
-		//
-		// It rides on PBR_ENERGY_CONSERVATION rather than being unconditional,
-		// because it is the same bargain that option makes for the direct light,
-		// and turning the option off has to give the old additive look back.
-		current = current * (vec3(1.0) - reflectionWeight)
-			+ environmentReflection;
-		#else
-		current += environmentReflection;
 		#endif
+		// BATCH 758: THE REFLECTION IS NO LONGER APPLIED HERE.
+		//
+		// It used to be, and batches 664 and 674 are the history of that: 664 moved
+		// the reflection into this pass so that the history would average its
+		// dither, and 674 widened the neighbourhood clamp by |reflectionDelta| so
+		// that the clamp would not cut the reflected part back out again. Both were
+		// correct about what they were solving, and together they made the
+		// reflection live as long as the picture around it - about 1/(1-0.85) = 6.7
+		// frames at the default TAA_STRENGTH. That is the author's trailing and
+		// lagging water reflection.
+		//
+		// Neither reference pack does this. Sundial composites its reflection in
+		// Composite0 through Composite3 and runs TAA in Composite7 and Composite9;
+		// Bliss composites in composite1.fsh and runs TAA in composite5.fsh. In
+		// both, the reflection is an INPUT to the temporal resolve rather than part
+		// of its history, so it is never averaged across frames and cannot trail.
+		//
+		// So the reflection is applied after the resolve now, below. What that
+		// costs is the dither averaging the move was made for, and the answer is
+		// not to keep the reflection in the history: it is to stop the trace from
+		// needing a temporal average at all. See the note on traceDither in
+		// environment_reflection.glsl, which is now a spatial dither.
+		//
+		// `reflectionWeight` and `environmentReflection` are unchanged in meaning -
+		// only the point at which they are applied has moved.
 	}
 	#endif
 
@@ -1138,54 +1149,26 @@ void main() {
 	// never above the upper one, whatever the deviation does.
 	historyUpper = min(historyUpper, neighborhoodMaximum);
 
-	// BATCH 665 fixed the reflection being cut by the clamp; BATCH 674 makes the
-	// clamp let it through so that it can be averaged.
+	// BATCH 758: THE REFLECTION IS NO LONGER IN THE HISTORY, SO THE BAND IS NOT
+	// WIDENED FOR IT.
 	//
-	// Both halves of the story matter, because the first one had a cost that only
-	// showed up later.
+	// Batches 665 and 674 are the history of this block, and both were solving a
+	// real problem: 665 found that the band was built from reflection-free samples
+	// while the history carried a reflection, so 85% of the reflection was rejected
+	// every frame and it settled at half strength while still, then brightened as
+	// soon as the camera moved. 674 answered it by widening the band by
+	// |reflectionDelta|, which let the reflection through to be averaged - and that
+	// is what gave it the history's length, about 6.7 frames, which is the trailing
+	// the author reports.
 	//
-	// Every sample this band was built from comes from colortex0 - the frame with
-	// no reflection in it (the centre sample was folded in as `currentRaw` for that
-	// reason, see the note there) - while `history` is last frame's resolved
-	// picture, which does carry one. Comparing them directly makes the reflection's
-	// own brightness look like a stale sample: the bound sits at the scene's
-	// brightness, the reflected history is brighter than that, 85% of it is rejected
-	// every frame, and the reflection settles at about half strength while the
-	// camera is still. Then the camera moves, the history weight drops towards 0.7
-	// - but `mix(current, history, weight)` starts taking the current frame's full
-	// reflection, and the reflection brightens. The author reported exactly that
-	// asymmetry ("静止时反射会变暗，视角移动时反射又会变亮", batch 665).
+	// None of it applies now. The reflection is applied after the resolve, so
+	// `current` and `history` both hold reflection-free pictures and the band
+	// compares like with like. The asymmetry 665 found cannot occur, because there
+	// is no reflection on either side of the comparison to be rejected.
 	//
-	// Batch 665 answered it by taking the reflection difference out before the clamp
-	// and putting it back after. That does keep the band from cutting the reflection
-	// - and it also stops the reflection from ever being averaged: both operands of
-	// `mix(current, history, weight)` end up carrying THIS frame's reflection, so
-	// the mix reproduces it exactly and the temporal resolve has nothing to average.
-	// Which is why the trace's dither still showed as noise after batch 664 moved
-	// the reflection into this pass; the author reported that on 2026-10-31.
-	//
-	// Widening the band by the magnitude of the reflection answers both at once.
-	// The reflected part of the history is inside the band, so it is not cut back to
-	// the scene (batch 665's fix survives); it is also not taken out of the blend,
-	// so two frames of reflection average with the same weight the rest of the
-	// picture uses, and the dither's noise falls by that weight. The mean is the
-	// same on both sides of the asymmetry above, because both operands carry a
-	// complete reflection: only the noise is averaged, not the brightness.
-	//
-	// What it costs is the same thing a longer history always costs: a reflection
-	// now lives about as long as the picture around it, so what moves on its own
-	// trails a little further. That trade was already made when the reflection
-	// moved into this pass (batch 664); this lengthens it by the weight the option
-	// already had.
-	//
-	// A pixel with no reflection has reflectionDelta == 0 and keeps exactly the
-	// bounds it had.
-	vec3 reflectionDelta = currentUsable ? current - currentRaw : vec3(0.0);
-
-	history = clamp(
-		history,
-		historyLower - abs(reflectionDelta),
-		historyUpper + abs(reflectionDelta));
+	// `currentRaw` stays: it is what the TAA_DEBUG view shows on its left half, and
+	// it is still the frame with no reflection in it.
+	history = clamp(history, historyLower, historyUpper);
 
 	// How far this pixel moved since the previous frame, in pixels.
 	// Measured from this pixel to where this pixel's history was - the anchor's own
@@ -1321,6 +1304,32 @@ void main() {
 	// own temporal stage would otherwise be averaged twice. The two are not a
 	// contradiction - they are the difference between a sample that has no
 	// temporal stage of its own (the reflection) and one that does (the fog).
+
+	// BATCH 758: THE ENVIRONMENT REFLECTION IS APPLIED HERE, AFTER THE RESOLVE.
+	//
+	// It used to be applied to `current` above, which put it in the history and
+	// gave it the history's length - about 6.7 frames at the default
+	// TAA_STRENGTH. That is the trailing the author reports. Both reference packs
+	// composite their reflection before their temporal resolve, so it is an input
+	// to the average rather than part of it; this is the same arrangement.
+	//
+	// The reflection is therefore never averaged across frames, and it cannot
+	// trail. What it loses is the dither averaging the old arrangement gave it,
+	// and that is paid for in the trace instead: `traceDither` is a spatial dither
+	// now, so a single frame is already smooth. See environment_reflection.glsl.
+	//
+	// The energy-conservation form is unchanged - the reflection replaces the
+	// fraction of the surface's own light that it represents, rather than being
+	// added on top - because that is a property of the compositing, not of when it
+	// happens. Only the timing moved.
+	#if defined(PBR_SSR)
+		#if PBR_ENERGY_CONSERVATION
+			resolved = resolved * (vec3(1.0) - reflectionWeight)
+				+ environmentReflection;
+		#else
+			resolved += environmentReflection;
+		#endif
+	#endif
 
 	// What the screen shows, which is the resolved frame unless the debug view
 	// below is on. The history written underneath is the resolved frame either

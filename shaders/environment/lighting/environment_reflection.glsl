@@ -19,29 +19,37 @@
 //
 // It samples colortex4: the deferred pass's copy of this frame, written by
 // /program/post/copy_and_fog.fsh. That is a raw single frame rather than a
-// resolved one, and the per-frame dither of the trace is exactly what the
-// temporal resolve is for - which is where this reflection is applied now,
-// ahead of that resolve, since batch 664.
+// resolved one.
 //
-// The move is the whole of batch 664. A reflection added AFTER a temporal
-// resolve is a fresh noisy sample every frame, with nothing downstream to
-// average it: that is what a crawling reflection is, and it reads worse at a
-// lower frame rate. Both reference packs trace their reflections before their
-// temporal stage for the same reason. A reflection added BEFORE it is part of
-// what the history accumulates, and the history averages the dither for free.
+// BATCH 758 PUT THE REFLECTION AFTER THE TEMPORAL RESOLVE, AND THE HISTORY OF THE
+// OTHER ARRANGEMENT IS WORTH KEEPING BECAUSE IT EXPLAINS THE TRAILING.
 //
-// Sampling colortex4 rather than colortex3 is what makes that legal. composite1
-// writes colortex3, and a buffer a pass writes is not one it may trace over: the
-// read side is the previous frame's resolved image, reflection and all, so a
-// trace over it would sample a picture that already contains a reflection - the
-// feedback loop whose symptom was a black blot that grew (BATCH_LOG.md 210).
+// Batch 664 moved the reflection ahead of the resolve, on the argument that a
+// reflection added after it is a fresh noisy sample every frame with nothing
+// downstream to average it. That argument was right about the noise and wrong
+// about the price: a reflection inside the history lives as long as the history,
+// which is about 1/(1-0.85) = 6.7 frames at the default TAA_STRENGTH, and it
+// trails. Batch 674 then widened the neighbourhood clamp so the reflection would
+// not be cut back out, which lengthened the trail to the full weight. The author
+// reports the result as trailing and lagging water reflections.
+//
+// Neither reference pack does it that way. Sundial composites its reflection in
+// Composite0 through Composite3 and resolves in Composite7 and Composite9; Bliss
+// composites in composite1.fsh and resolves in composite5.fsh. In both, the
+// reflection is an input to the resolve rather than part of its history.
+//
+// So the reflection is applied after the resolve now, and the noise the move was
+// avoiding is answered where it comes from instead: `traceDither` below is a
+// spatial dither, so a single frame is already smooth and nothing needs to average
+// it across frames.
+//
+// Sampling colortex4 rather than colortex3 is still what makes the trace legal.
+// composite1 writes colortex3, and a buffer a pass writes is not one it may trace
+// over: the read side is the previous frame's resolved image, reflection and all,
+// so a trace over it would sample a picture that already contains a reflection -
+// the feedback loop whose symptom was a black blot that grew (BATCH_LOG.md 210).
 // colortex4 carries no reflection, and it is this frame's world, which is also
 // the frame the reflection is being added to.
-//
-// The price of the move is recorded where the reflection is applied, in
-// composite1.fsh. Batches 220 and 267 chose the other side of that trade - a
-// pass of its own, after the resolve, tracing over the resolved colortex3 - and
-// batch 664 was the author's decision to move the reflection back.
 //
 // The uniforms are declared here rather than in the pass, because the pass
 // includes this file. colortex3 is declared here too although this file no
@@ -346,17 +354,26 @@ vec3 EnvironmentReflection(
 				// where one pixel ends and the next begins: the fragment's own
 				// surface is in the depth buffer too, and a sample that has not
 				// left the pixel the ray started from is still standing on it.
-				// Where in the first cell of the ladder this pixel starts, and
-				// it has to move from frame to frame as well as from pixel to
-				// pixel. The note at the head of the trace says why a fixed
-				// starting point is not good enough; this is the value that
-				// makes it not fixed. The frame term walks by the golden ratio,
-				// so the sequence does not repeat on a short cycle and the
-				// reflection's own temporal resolve averages the lattice away
-				// instead of reinforcing it.
-				float traceDither = fract(
-					Bayer8(gl_FragCoord.xy) * 1.32
-					+ float(frameCounter) * 0.618034);
+				// Where in the first cell of the ladder this pixel starts.
+				//
+				// BATCH 758: THIS IS A SPATIAL DITHER NOW, AND THE FRAME TERM IS
+				// GONE. It used to walk by the golden ratio every frame, on the
+				// strength of the reflection being averaged by the temporal resolve
+				// - which it was, from batch 664 until 758. That averaging is what
+				// gave the reflection the history's length, about 6.7 frames at the
+				// default TAA_STRENGTH, and it is the trailing the author reports.
+				//
+				// The reflection is applied after the resolve now, so nothing
+				// averages a per-frame dither and a moving one would simply be
+				// noise. What is left is the spatial term: Bayer8 already spreads
+				// the starting point across the 8x8 neighbourhood, so one frame of
+				// it is as smooth as the temporal average used to be, and it does
+				// not move when the camera holds still.
+				//
+				// The 1.32 is kept: it is what decorrelates the Bayer value from the
+				// ladder's own spacing, and it was tuned against the picture rather
+				// than derived.
+				float traceDither = fract(Bayer8(gl_FragCoord.xy) * 1.32);
 
 				if (ScreenSpaceRaytrace(
 					depthtex1,
