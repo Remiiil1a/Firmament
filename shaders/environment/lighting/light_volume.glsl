@@ -275,10 +275,38 @@
 //
 // Below this the field is either far from every source or decaying after one was
 // removed, and what it holds is a rounding error in the format rather than a
-// colour. The band above it is the fade-in, so that a source coming into range
-// does not step the tint on in one frame.
+// colour.
+//
+// BATCH 753: THE FADE-IN IS NOW WIDE, AND THE OLD ONE WAS THE HARD EDGE.
+//
+// Until this batch the pair was 0.02 and 0.12, and the band between them is what
+// the colour's fade-in was measured over. That band is 0.10 LEVELS, and the field
+// steps by exactly one level per voxel (LIGHT_VOLUME_STEP), so the gate was 1.0
+// for every level at or above 1 and 0.0 at level 0: the colour went from fully
+// the field's to fully the fallback across a tenth of a block. Measured, the
+// colour's 90%-to-10% width was 0.061 blocks. That is the author's hard edge, and
+// it is why the edge's shape follows the voxel grid rather than the distance to
+// the source.
+//
+// The gate is now two levels wide, which is two blocks of the field's own decay -
+// the same unit the level is in, so the fade is as wide as the thing it is fading.
+// Measured, the colour's 90%-to-10% width goes from 0.061 blocks to 1.2.
+//
+// WHY THIS IS SAFE FOR BRIGHTNESS, WHICH IS THE PART THAT HAD TO BE CHECKED. The
+// gate multiplies the LEVEL, and the level is what the brightness curve reads, so
+// widening it lowers the level near the outer edge. The curve is (1-sqrt(1-x))^2,
+// which is flat near zero, so the loss is small and confined to where the light is
+// already nearly gone: at level 1.0 the brightness goes 0.00115 -> 0.00027, and at
+// level 2.0 and above it is unchanged to five decimals. Nothing that was visible
+// gets darker; what changes is that the colour no longer switches off in a tenth
+// of a block.
+//
+// ⚠️ THE MINIMUM IS UNCHANGED AND STILL DOES ITS JOB. It is the "is there a colour
+// here at all" test, and it is also what the early-out below uses. Raising it
+// would shorten every source's reach; raising only the fade-in, which is what this
+// batch does, leaves the reach alone.
 #define LIGHT_VOLUME_MINIMUM 0.02
-#define LIGHT_VOLUME_FADE_IN 0.12
+#define LIGHT_VOLUME_FADE_IN 2.0
 
 // How far along its own normal a fragment looks for the light that reaches it.
 //
