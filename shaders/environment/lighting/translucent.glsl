@@ -238,16 +238,34 @@ vec3 parallaxWaterNormal(
 				ddxWorldPos,
 				ddyWorldPos,
 				timeSeconds,
+				length(cameraRelativePos),
 				viewDirTangent);
 			waterWorldPos = mix(waterWorldPos, offsetPos, parallaxStrength);
 		}
 	#endif
 
+	// BATCH 756: the wave normal is given the DISTANCE TO THE CAMERA, and that is
+	// what stops distant water flickering under TAA.
+	//
+	// The sample footprint the wave field is read at used to be derived from
+	// `ddxWorldPos` / `ddyWorldPos` below - the world-space screen derivatives,
+	// which are a screen-space quantity however they are computed. TAA jitters
+	// gl_FragCoord every frame, this stage rebuilds its position from
+	// gl_FragCoord, so those derivatives moved every frame and the normal jumped
+	// with them. `length(cameraRelativePos)` is a world distance: the jitter
+	// cannot reach it, and the normal becomes a function of world position and
+	// time alone - which is what both reference packs' water normals are.
+	//
+	// The derivatives are still computed and still passed, because the parallax
+	// mapping above needs them and because surface_basic.glsl has to keep the
+	// same signature. See the note in surface_noise.glsl above
+	// antialiasFootprint.
 	vec3 waterNormal = WaterNormal(
 		waterWorldPos,
 		ddxWorldPos,
 		ddyWorldPos,
-		timeSeconds);
+		timeSeconds,
+		length(cameraRelativePos));
 
 	// A wave normal that is not a direction is replaced by the flat surface,
 	// which is the one value in here that cannot be wrong.

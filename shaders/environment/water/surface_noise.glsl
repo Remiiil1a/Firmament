@@ -394,21 +394,20 @@ const float rippleMagnitude[4] = float[](
 // get aliasing at lower ratios. As it turns out, we can base this on the
 // https://en.wikipedia.org/wiki/Nyquist_rate.
 //
-// So, our goal here is to fade away noise layers to their average values when
-// the ratio climbs too high. To implement that, we determine a metric for
-// approximating this ratio of noise pixels to screen pixels (explained in the
-// implementation), and then use that to determine a fade-out factor for the
-// layer.
+// So, our goal here is to widen the area each layer is sampled over once that
+// layer's detail stops fitting on the screen. Widening is a box filter: it
+// removes the detail that cannot be represented at that distance and keeps the
+// large waves. That is the opposite of fading a layer to its average, and the
+// note on antialiasFootprint below is where the difference is argued.
 //
 // The noise texture is 64x64 - see `noiseTextureResolution` in
 // lib/valueNoise.glsl, which is the constant this comment's "64x64" means.
 //
-// We fade out to the average value of noise, which is 0.5. This is a bit basic
-// as we could do some fancy mipmapping or integrating (ie, averaging over the
-// covered area) of the noise texture for a better result, but it is OK for now.
-// 0.5 is the midpoint of the noise texture's own 0.0 to 1.0 range rather than a
-// measured mean, so it is exact for unbiased value noise and approximate for
-// whatever the texture actually contains.
+// What decides the width is the fragment's DISTANCE FROM THE CAMERA, and that is
+// the whole point of batch 756. The ratio this used to be built from was a
+// screen-space quantity, so the sub-pixel jitter TAA adds to gl_FragCoord moved
+// it every frame, the sample coordinate moved with it, and distant water
+// flickered. Distance is a world quantity; the jitter cannot reach it.
 //
 // References:
 //
@@ -419,139 +418,72 @@ const float rippleMagnitude[4] = float[](
 // Further work:
 //
 // - If we support cone-traced rough/glossy reflections in the future, we can
-//   forward some sort of roughness value out of here instead of just fading
-//   away to perfectly smooth mirror-like reflections.
-float antialiasFactor(vec2 ddxWorldPos, vec2 ddyWorldPos, vec3 stretch) {
-	// Because the wave noise sampling position is just a uniform scroll plus
-	// the stretched coordinate, its partial derivatives are the same as the
-	// partial derivates of the stretched coordinate, therefore:
-	//
-	// * dFdx(at) = dFdx(stretched)
-	// * dFdy(at) = dFdy(stretched)
-	//
-	// And, because we define stretched as:
-	//
-	//     stretched = vec2(worldPos.x * stretch.x, dot(worldPos, stretch.zy))
-	//
-	// Its partial derivatives are just the same operations on the partial
-	// derivatives of the world position, for example for dFdx (same for dFdy):
-	//
-	// dFdx(stretched) = vec2(
-	//     dFdx(worldPos).x * stretch.x,
-	//     dot(dFdx(worldPos), stretch.zy));
-	//
-	//
-	// Per the following, each partial derivative operation is basically 3 ALUs:
-	// https://fgiesen.wordpress.com/2011/07/10
-	// /a-trip-through-the-graphics-pipeline-2011-part-8/#comment-1990
-	//
-	// So, the code this replaces was 12 ALUs for the 4 partial derivatives, and
-	// our goal is to beat or match that. Since our replacement is 2 multiplies,
-	// 2 dots (which are an fma + multiple each), we just replaced 12 ALUs with
-	// 6 ALUs, so the analytical derivative way is actually faster!
-	vec2 ddxAt = vec2(ddxWorldPos.x * stretch.x, dot(ddxWorldPos, stretch.zy));
-	vec2 ddyAt = vec2(ddyWorldPos.x * stretch.x, dot(ddyWorldPos, stretch.zy));
+//   forward some sort of roughness value out of here instead of leaving the
+//   reflection as smooth as the widened sample makes it.
+//
+// BATCH 756: THE SCREEN-SPACE RATIO IS GONE, AND THE FOOTPRINT IS A DISTANCE.
+//
+// What used to be here was `antialiasFactor(ddxWorldPos, ddyWorldPos, stretch)`.
+// It built the Jacobian of the noise coordinate with respect to the screen from
+// the world-space screen derivatives, took the largest absolute element, and
+// returned that as a ratio of noise pixels to screen pixels - a Nyquist metric,
+// after "Detail Synthesis for Image-based Texturing" (Ismert/Bala/Greenberg).
+//
+// That metric was correct about aliasing and wrong about time. It is a
+// SCREEN-SPACE quantity, so it moves whenever the sample moves on the screen,
+// and this pack's TAA moves the sample every frame: the sub-pixel jitter is
+// added to gl_FragCoord, gl_FragCoord is what the fragment rebuilds its position
+// from, and the derivatives are built from that position. So the ratio changed
+// every frame, the footprint changed with it, the sample coordinate changed with
+// it, and the wave normal jumped every frame. Distant water flickered.
+//
+// The author's report dates the symptom to batch 754, and that is right: before
+// 754 the ratio only fed `smoothstep(0.45, 0.55, ratio)`, which is saturated at
+// 1.0 for every ratio past 0.55 - so the jitter was invisible. 754 replaced the
+// fade with `clamp(ratio, 1.0, 4.0)`, which varies continuously over exactly the
+// range the jitter moves the ratio through, and the jitter became a visible jump.
+//
+// Neither reference pack reads a screen-space quantity here. Bliss
+// (lib/waterBump.glsl, getWaveNormal) widens by `length(playerpos)`, a world
+// distance; Sundial (libs/Water.glsl) has no distance term at all. So the
+// footprint is now built from the fragment's distance to the camera, which is
+// also a world quantity: the jitter cannot reach it, and the normal becomes a
+// function of world position and time alone, the way both references are.
 
-	// How this actually works:
-	//
-	// We can think of the input noise coordinate as being given by a vector
-	// function M(x, y) accounting for all of the calculation and interpolation
-	// needed to produce that coordinate for each screen fragment. This function
-	// takes in a screen pixel position, transforms that to a tangent-space
-	// position (attribute interpolation / accounting for camera projection),
-	// and finally transforms that to a noise texture position (our scaling
-	// factors).
-	//
-	// We compute the Jacobian of this function (essentially a gradient, but for
-	// vector functions) using implicit derivatives, then find the absolute
-	// value of each element, and then find the maximum of those.
-	//
-	// We then use this as a metric to judge if our sampling rate of this
-	// texture appears to be nearing or exceeding the Nyquist rate.
-	//
-	// In terms of units, the result is a ratio of noise pixels to screen pixels.
-	//
-	// This technique is inspired by the below paper, but the metric we retrieve
-	// from the Jacobian is more of a good-looking approximation than an exact
-	// formulaic approixmation of the sampling rate:
-	//
-	// "Detail Synthesis for Image-based Texturing" by Ismert/Bala/Greenberg
-	// https://www.cs.cornell.edu/~kb/publications
-	// /DetailSynthesis_I3D03_cameraready_WithHeader.pdf
-	vec2 maxes = max(abs(ddxAt), abs(ddyAt));
-	float ratio = max(maxes.x, maxes.y);
-
-	// BATCH 754: THE WATER_AA OPTION IS GONE, AND SO IS THE FLATTENING.
-	//
-	// The option existed because this pack had no temporal antialiasing: it let
-	// the player choose how much wave detail to trade away for a still image that
-	// did not crawl, and its default (BALANCED) was the compromise. With TAA on,
-	// that trade is the wrong one to offer - TAA resolves the sub-pixel detail
-	// across frames, so the waves can keep the detail they have and the aliasing
-	// is removed downstream instead of being pre-emptively blurred away here.
-	//
-	// ⚠️ AND THE FADE ITSELF WAS THE WRONG MECHANISM, WHICH IS THE AUTHOR'S SECOND
-	// REPORT. Fading a layer to its average (0.5) removes the layer's VARIATION,
-	// and the variation is the whole of what a wave normal is: at the far end every
-	// layer sits at its average, the gradient is zero, the normal is straight up,
-	// and distant water reads as a MIRROR. Measured, the fade is complete at a
-	// sampling ratio of 0.55 and stays complete for every ratio above it, so
-	// everything past that distance is flat - which is exactly the "water looks
-	// like a mirror" the author describes.
-	//
-	// WHAT REPLACES IT IS BLISS'S ANSWER (lib/waterBump.glsl, getWaveNormal): widen
-	// the SAMPLE FOOTPRINT with distance instead of fading the result.
-	//
-	//     float range = min(length(playerpos) / (16.0*24.0), 3.0);
-	//     deltaPos += range;
-	//
-	// A wider footprint is a box filter over the wave field. It removes the detail
-	// that cannot be represented at that distance - which is the same aliasing this
-	// function was written to remove - while KEEPING the large waves, because a
-	// large wave is still resolved by a wide footprint. That is the opposite of
-	// fading everything to flat, and it is why Bliss's distant water still has a
-	// surface.
-	//
-	// Sundial, the other reference, has no distance term at all (libs/Water.glsl:
-	// a fixed layer count and a per-layer weight, nothing indexed by distance). So
-	// neither reference flattens, and the two disagree only on whether to widen.
-	// Widening is taken here because it is the one that also addresses aliasing.
-	//
-	// The footprint is applied by the CALLER, which is where the sample position is
-	// built - see the `footprint` argument of WaterHeight and the two gradient
-	// functions below. This function keeps returning the ratio, because the ratio
-	// is what says how wide the footprint should be.
-	//
-	// The four value macros (OFF/LOW/BALANCED/HIGH) went with the option. That also
-	// removes a real defect: `BALANCED` was defined here as 2 and in
-	// /environment/water/absorption.glsl as a vec3, and both reach the same
-	// translation unit through gbuffers_water.fsh. The front end had to carry an
-	// explicit allowance for that redefinition (see glslang_check.py); it is no
-	// longer needed.
-	return ratio;
-}
+// The distance, in blocks, at which the sample footprint is at its widest.
+//
+// This is the one number that decides how much wave detail survives at distance,
+// and it is a starting value for the author to tune in game rather than a
+// measurement: 64 blocks is roughly where the pack's smallest ripple tiles (15 x
+// 20 cm) stop fitting a pixel at a typical field of view, so it is where the
+// widening has to be complete. The footprint is at its narrowest at a quarter of
+// this distance - see antialiasFootprint below.
+#define WATER_FOOTPRINT_DISTANCE 64.0
 
 // How much wider than one texel the wave field should be sampled at this distance.
 //
-// BATCH 754. This is the replacement for the fade above, and it is Bliss's formula
-// with this pack's units: `min(distance / (16 * 24), 3)` in Bliss, where the 16 is
-// its own wave scale. Here the distance is already in blocks and the wave field is
-// indexed in blocks, so the divisor is the distance at which the widest footprint
-// is reached.
+// BATCH 754 introduced this as the replacement for the fade, and it is Bliss's
+// formula with this pack's units: `min(distance / (16 * 24), 3)` in Bliss, where
+// the 16 is its own wave scale. Here the distance is already in blocks and the
+// wave field is indexed in blocks, so the divisor is the distance at which the
+// widest footprint is reached.
 //
-// ⚠️ THE CAP MATTERS AND IS BLISS'S. Without it the footprint would keep growing
-// and the far water would go flat again - which is the defect being fixed, reached
-// by a different route. At the cap the waves stop changing with distance, so the
-// far water keeps the surface it had at the cap rather than losing it.
+// THE CAP MATTERS AND IS BLISS'S. Without it the footprint would keep growing
+// and the far water would go flat again - which is the defect being fixed,
+// reached by a different route. At the cap the waves stop changing with distance,
+// so the far water keeps the surface it had at the cap rather than losing it.
 //
 // The value is a multiplier on the sample offset, not a fade: 1.0 is the
 // unmodified wave field and 4.0 is a footprint four times as wide.
-float antialiasFootprint(float ratio) {
-	// The ratio is noise-texture pixels per screen pixel, so it is already a
-	// measure of "how much wave is being crammed into one pixel". One texel per
-	// pixel is the point where the field is exactly resolved; past it the
-	// footprint has to grow in proportion, or the extra detail aliases.
-	return clamp(ratio, 1.0, 4.0);
+//
+// BATCH 756 changed the INPUT, not the shape. `distanceToCamera` is
+// `length(cameraRelativePos)`, a world quantity, so TAA's jitter cannot move it -
+// see the note above. The factor of four is the ratio between the two ends of the
+// ramp: the footprint is one texel wide up to a quarter of
+// WATER_FOOTPRINT_DISTANCE and four texels wide from there outwards.
+float antialiasFootprint(float distanceToCamera) {
+	return clamp(
+		distanceToCamera * (4.0 / WATER_FOOTPRINT_DISTANCE), 1.0, 4.0);
 }
 
 // BATCH 754: THE TWO HELPERS THAT FADED A LAYER TO ITS AVERAGE ARE GONE.
@@ -572,8 +504,16 @@ float antialiasFootprint(float ratio) {
 // This function is responsible for adding together each wave layer into the
 // final heightmap.
 //
-// Inputs: world position on the water plane in meters plus the world-space
-// screen derivatives of it, time in seconds, and `approximate`.
+// Inputs: world position on the water plane in meters, the world-space screen
+// derivatives of it, time in seconds, the fragment's distance to the camera, and
+// `approximate`.
+//
+// The screen derivatives are accepted and NOT read, and that is batch 756: the
+// sample footprint is built from `distanceToCamera` now, because a screen-space
+// quantity is what TAA's jitter moved every frame. They stay in the signature
+// because the caller computes them for the parallax mapping and because
+// surface_basic.glsl has to keep the same one - see the note above
+// antialiasFootprint.
 //
 // On the space of `worldPos`: the X and Z are world space, but for a face that
 // is standing up the caller has already folded world Y into both of them - see
@@ -590,9 +530,18 @@ float WaterHeight(
 	vec2 ddxWorldPos,
 	vec2 ddyWorldPos,
 	float time,
+	float distanceToCamera,
 	bool approximate
 ) {
 	float height = 0.0;
+
+	// BATCH 756: the footprint is the same for every layer, so it is built once.
+	//
+	// It used to be built inside both loops, because it was derived from the
+	// layer's own `stretch` - the ratio was per-layer by construction. A distance
+	// is not: every layer of the field is sampled at the same distance from the
+	// camera, so the widening is one number for the whole function.
+	float footprint = antialiasFootprint(distanceToCamera);
 
 	// === A note on dot products and fused multiply add (FMA) ===
 	//
@@ -639,8 +588,6 @@ float WaterHeight(
 		// appear to speed up as the footprint grows - the pattern is being
 		// magnified, and its motion has to be magnified with it or distant water
 		// would crawl faster than near water.
-		float footprint = antialiasFootprint(
-			antialiasFactor(ddxWorldPos, ddyWorldPos, stretch));
 		vec2 atScaled = (time * scroll + stretched) / footprint;
 
 		height += rippleMagnitude[i] * smoothNoise2D(atScaled);
@@ -658,8 +605,6 @@ float WaterHeight(
 		vec2 at = time * scroll + stretched;
 
 		// Same footprint as the ripple loop above, and for the same reason.
-		float footprint = antialiasFootprint(
-			antialiasFactor(ddxWorldPos, ddyWorldPos, stretch));
 		vec2 atScaled = (time * scroll + stretched) / footprint;
 
 		height += crestMagnitude[i] * crest(smoothNoise2D(atScaled));
@@ -672,18 +617,22 @@ float WaterHeight(
 	vec2 worldPos,
 	vec2 ddxWorldPos,
 	vec2 ddyWorldPos,
-	float time
+	float time,
+	float distanceToCamera
 ) {
-	return WaterHeight(worldPos, ddxWorldPos, ddyWorldPos, time, false);
+	return WaterHeight(
+		worldPos, ddxWorldPos, ddyWorldPos, time, distanceToCamera, false);
 }
 
 float WaterHeightApproximate(
 	vec2 worldPos,
 	vec2 ddxWorldPos,
 	vec2 ddyWorldPos,
-	float time
+	float time,
+	float distanceToCamera
 ) {
-	return WaterHeight(worldPos, ddxWorldPos, ddyWorldPos, time, true);
+	return WaterHeight(
+		worldPos, ddxWorldPos, ddyWorldPos, time, distanceToCamera, true);
 }
 
 #if !defined(USE_FDM_GRADIENT)
@@ -701,9 +650,17 @@ vec2 WaterNGradientAnalytic(
 	vec2 worldPos,
 	vec2 ddxWorldPos,
 	vec2 ddyWorldPos,
-	float time
+	float time,
+	float distanceToCamera
 ) {
 	vec2 gradient = vec2(0.0);
+
+	// BATCH 756: one footprint for every layer, built from the distance.
+	//
+	// It used to be built inside both loops from the layer's own `stretch`, which
+	// made it per-layer; a distance is not per-layer. See the note above
+	// antialiasFootprint.
+	float footprint = antialiasFootprint(distanceToCamera);
 
 	// Ripple waves - Scrolled and stretched smooth value noise
 	for (uint i = uint(0); i < uint(NUM_RIPPLES); i++) {
@@ -724,9 +681,6 @@ vec2 WaterNGradientAnalytic(
 		// is still there, it is just being read at a coarser scale. The old
 		// `antialiasGradient` multiplied by (1 - aa), which went to ZERO at full
 		// fade and took the tilt with it.
-		float footprint = antialiasFootprint(
-			antialiasFactor(ddxWorldPos, ddyWorldPos, stretch));
-
 		vec2 waveGradient = (GRADIENT_STRENGTH * rippleMagnitude[i])
 			* gradSmoothNoise2D(at / footprint);
 
@@ -780,9 +734,7 @@ vec2 WaterNGradientAnalytic(
 		// flattening by another route. Now the coordinate is divided by the
 		// footprint and the gradient by the same factor, so the crest keeps its
 		// shape and only its scale changes.
-		float footprint = antialiasFootprint(
-			antialiasFactor(ddxWorldPos, ddyWorldPos, stretch));
-
+		//
 		// The height the crest function is evaluated at, at the widened scale.
 		float heightAt = smoothNoise2D(at / footprint);
 
@@ -832,7 +784,8 @@ vec2 WaterNGradientFDM(
 	vec2 worldPos,
 	vec2 ddxWorldPos,
 	vec2 ddyWorldPos,
-	float time
+	float time,
+	float distanceToCamera
 ) {
 	// This is about the lowest I could go without major artifacts. The lower
 	// you can go the better, but at some point we run out of floating-point
@@ -846,9 +799,12 @@ vec2 WaterNGradientFDM(
 
 	vec2 ddxPos = ddxWorldPos;
 	vec2 ddyPos = ddyWorldPos;
-	float h00 = WaterHeight(worldPos                   , ddxPos, ddyPos, time);
-	float hX0 = WaterHeight(worldPos + vec2(delta, 0.0), ddxPos, ddyPos, time);
-	float h0Y = WaterHeight(worldPos + vec2(0.0, delta), ddxPos, ddyPos, time);
+	float h00 = WaterHeight(
+		worldPos, ddxPos, ddyPos, time, distanceToCamera);
+	float hX0 = WaterHeight(
+		worldPos + vec2(delta, 0.0), ddxPos, ddyPos, time, distanceToCamera);
+	float h0Y = WaterHeight(
+		worldPos + vec2(0.0, delta), ddxPos, ddyPos, time, distanceToCamera);
 
 	return (-GRADIENT_STRENGTH / delta) * (vec2(hX0, h0Y) - vec2(h00));
 }
@@ -858,7 +814,7 @@ vec2 WaterNGradientFDM(
 //
 // Same input contract as WaterHeight above: world position with the caller's
 // possible folding of world Y into it, world-space screen derivatives, time in
-// seconds.
+// seconds, and the fragment's distance to the camera.
 //
 // Output: normal vector in tangent space (X/Y = in-plane, Z = up out of the
 // plane). Z is a constant 1.0 before the normalize, so this is a perturbed
@@ -867,14 +823,15 @@ vec3 WaterNormal(
 	vec2 worldPos,
 	vec2 ddxWorldPos,
 	vec2 ddyWorldPos,
-	float time
+	float time,
+	float distanceToCamera
 ) {
 	#if defined(USE_FDM_GRADIENT)
 		vec2 minusGradient = WaterNGradientFDM(
-			worldPos, ddxWorldPos, ddyWorldPos, time);
+			worldPos, ddxWorldPos, ddyWorldPos, time, distanceToCamera);
 	#else
 		vec2 minusGradient = WaterNGradientAnalytic(
-			worldPos, ddxWorldPos, ddyWorldPos, time);
+			worldPos, ddxWorldPos, ddyWorldPos, time, distanceToCamera);
 	#endif
 
 	return normalize(vec3(minusGradient, 1.0));

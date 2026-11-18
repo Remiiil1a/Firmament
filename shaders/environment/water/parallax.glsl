@@ -40,15 +40,22 @@
 // nothing in this file can express a surface that is not.
 //
 // This function relies solely on a previously-defined WaterHeight function. It
-// calls the five-argument approximate form,
-// `WaterHeightApproximate(worldPos, ddxWorldPos, ddyWorldPos, time)`, which is
-// `WaterHeight(..., true)` in both surface files. The height returned from that
-// function MUST be in the range 0.0 to 1.0.
+// calls the six-argument approximate form,
+// `WaterHeightApproximate(worldPos, ddxWorldPos, ddyWorldPos, time,
+// distanceToCamera)`, which is `WaterHeight(..., true)` in both surface files.
+// The height returned from that function MUST be in the range 0.0 to 1.0.
+//
+// `distanceToCamera` is passed straight through and is not used here: the
+// parallax march walks the surface, and the sample footprint is a property of
+// where the fragment is, not of where the march has got to. It is in this
+// signature because the height function needs it - see the note in
+// surface_noise.glsl above antialiasFootprint.
 vec2 WaterSurfaceParallaxMapping(
 	vec2 worldPos,
 	vec2 ddxWorldPos,
 	vec2 ddyWorldPos,
 	float time,
+	float distanceToCamera,
 	vec3 viewVector
 ) {
 	// We are tracing through a surface of height range 0.0 to 1.0, which the
@@ -87,7 +94,8 @@ vec2 WaterSurfaceParallaxMapping(
 			worldPos,
 			ddxWorldPos,
 			ddyWorldPos,
-			time);
+			time,
+			distanceToCamera);
 
 		// We have scaled the view vector such that adding it to the current
 		// position would take us from the top of the surface to the bottom of

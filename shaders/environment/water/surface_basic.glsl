@@ -97,7 +97,13 @@ vec2 gradWaterWave(vec2 worldPos, vec2 dir, float time) {
 //
 // Inputs: world position on the water plane, in meters, plus the world-space
 // screen derivatives of that position, which this function accepts and then
-// does not use, and time in seconds.
+// does not use, the fragment's distance to the camera, which it also does not
+// use, and time in seconds.
+//
+// The two unused inputs are the signature the caller has to be able to write
+// without knowing which surface model is compiled - see the note in
+// surface_noise.glsl above antialiasFootprint for why the noise surface needs
+// the distance and this one does not.
 //
 // The caller passes `cameraRelativePos.xz + cameraPosition.xz`, which is the
 // world X/Z, and for a face that is standing up it also folds world Y in - see
@@ -114,7 +120,8 @@ vec3 WaterNormal(
 	vec2 worldPos,
 	vec2 ddxWorldPos,
 	vec2 ddyWorldPos,
-	float time
+	float time,
+	float distanceToCamera
 ) {
 	// Deform the wavefront using a sine wave as in real life, water does not
 	// simply advance forward and straight diagonal wavefronts are entirely
