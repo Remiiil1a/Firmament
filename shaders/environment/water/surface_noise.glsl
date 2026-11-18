@@ -481,37 +481,31 @@ float antialiasFactor(vec2 ddxWorldPos, vec2 ddyWorldPos, vec3 stretch) {
 	vec2 maxes = max(abs(ddxAt), abs(ddyAt));
 	float ratio = max(maxes.x, maxes.y);
 
-	// We will allow users to choose their preferred tradeoff between aliasing &
-	// preserving detail vs losing detail but lacking aliasing. For example, if
-	// we have filter-based AA like TAA/FXAA, we can leave some more aliasing
-	// here in anticipation for it being removed later, in a way that preserves
-	// detail better. Alternatively, if we do not have filter-based AA, we can
-	// focus on removing more aliasing to keep it to an acceptable level.
-	#define OFF 0
-	#define LOW 1
-	#define BALANCED 2
-	#define HIGH 3
-	// Water antialiasing smooths out waves to avoid excessive aliasing,
-	// but might cause distant water to look flat.
-	#define WATER_AA BALANCED // [OFF LOW BALANCED HIGH]
-
-	#if WATER_AA == LOW
-		// Low: Not compliant with Nyquist rate. Preserves more detail at the
-		// expense of elevated aliasing.
-		return smoothstep(0.6, 0.8, ratio);
-	#elif WATER_AA == BALANCED
-		// Medium: Partially compliant with Nyquist rate. Preserves the majority
-		// of detail while maintaining an acceptable amount of aliasing.
-		return smoothstep(0.45, 0.55, ratio);
-	#elif WATER_AA == HIGH
-		// High: Mostly compliant with Nyquist rate. Sacrifices additional
-		// detail to further reduce aliasing.
-		return smoothstep(0.4, 0.5, ratio);
-	#elif WATER_AA == OFF
-		// Off: No attempt to comply with Nyquist rate. Not recommended, just
-		// for debugging.
-		return 0.0;
-	#endif
+	// BATCH 754: THE WATER_AA OPTION IS GONE, AND THE CURVE IT DEFAULTED TO IS
+	// WHAT REMAINS.
+	//
+	// The option existed because this pack had no temporal antialiasing: it let
+	// the player choose how much wave detail to trade away for a still image that
+	// did not crawl, and its default (BALANCED) was the compromise. With TAA on,
+	// that trade is the wrong one to offer - TAA resolves the sub-pixel detail
+	// across frames, so the waves can keep the detail they have and the aliasing
+	// is removed downstream instead of being pre-emptively blurred away here.
+	//
+	// What is kept is the Nyquist fade itself, at the value the option shipped as
+	// its default. It is not redundant with TAA: it fades a layer out when the
+	// noise texture is being sampled below its own Nyquist rate, which is a
+	// property of the sampling and not of the frame. TAA cannot recover detail
+	// that was never sampled - it averages what is there - so removing this
+	// entirely would bring back the white-noise shimmer on distant water that the
+	// comment above describes. What goes away is the CHOICE, not the fade.
+	//
+	// The four value macros (OFF/LOW/BALANCED/HIGH) went with the option. That
+	// also removes a real defect: `BALANCED` was defined here as 2 and in
+	// /environment/water/absorption.glsl as a vec3, and both reach the same
+	// translation unit through gbuffers_water.fsh. The front end had to carry an
+	// explicit allowance for that redefinition (see glslang_check.py); it is no
+	// longer needed.
+	return smoothstep(0.45, 0.55, ratio);
 }
 
 // Simple helper function to apply antialiasing to a height returned by a noise

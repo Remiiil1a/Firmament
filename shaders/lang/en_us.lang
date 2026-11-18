@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 753]
+option.PBR_DEBUG=Material debug view [build 754]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -921,12 +921,6 @@ option.WATER_PARALLAX_DISTANCE.comment=Distance in metres at which water \
 	parallax fades out. Beyond it a pixel covers more than a wave, so the effect \
 	describes nothing and only costs samples.
 
-option.WATER_AA=Water antialiasing
-option.WATER_AA.comment=How much the wave normals are smoothed, which stops \
-	distant water shimmering where the fine waves fall below a pixel. Smoothing \
-	also flattens the water: Off keeps every wave and its aliasing, High is the \
-	calmest and least detailed.
-
 option.NUM_CRESTS=Wave crests
 option.NUM_CRESTS.comment=How many large, slow crest waves the water surface \
 	is built from. Noise water only; more crests make a choppier sea at a higher \
@@ -1026,11 +1020,6 @@ value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.1.0=1/m
 value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.10.0=10/m
 value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.100.0=100/m
 value.CUSTOM_WATER_ABSORPTION_B_MAGNITUDE.1000.0=1000/m
-
-value.WATER_AA.OFF=Off
-value.WATER_AA.LOW=Low
-value.WATER_AA.BALANCED=Balanced
-value.WATER_AA.HIGH=High
 
 value.WATER_SURFACE.BASIC=Basic
 value.WATER_SURFACE.NOISE=Noise

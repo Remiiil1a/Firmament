@@ -215,7 +215,7 @@ option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 753]
+option.PBR_DEBUG=材质调试视图 [build 754]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
@@ -573,8 +573,6 @@ option.WATER_PARALLAX= 水体视差贴图
 option.WATER_PARALLAX.comment=沿视线方向按波高把采样的水面推开，掠射角看过去波纹就有了纵深，而不像画在一张平面上。只对「噪声」水面有效，因为只有它有浪可以位移。
 option.WATER_PARALLAX_DISTANCE= 水体视差渲染距离
 option.WATER_PARALLAX_DISTANCE.comment=水面视差淡出的距离（米）。超过之后一个像素就盖过整道浪，视差不再说明任何东西、只剩采样开销。
-option.WATER_AA= 水体抗锯齿
-option.WATER_AA.comment=波浪法线被平滑多少，这是让远处水面在细浪小于一个像素时不再闪动的关键。平滑也会把水面压平，所以是在闪烁与细节之间取舍：关闭保留每一道浪和它的锯齿，高最平静、细节也最少。
 option.NUM_CRESTS= 焦散纹理数量
 option.NUM_CRESTS.comment=水面由多少道又大又慢的「浪脊」搭成。只对「噪声」水面有效；浪脊越多海面越碎，开销也越高。
 option.NUM_RIPPLES= 水面波纹数量
@@ -587,11 +585,6 @@ option.WATER_CAUSTICS= 开启水底焦散光影
 option.WATER_CAUSTICS.comment=阳光下的水面投在下方地形上的移动光纹，光聚焦处更亮。它取自阴影贴图，所以最远只到阴影距离，再远就淡出。
 option.WATER_CHARACTER= 水体色调风格
 option.WATER_CHARACTER.comment=水随深度多快地把不同颜色的光吸收掉，这决定一片水看起来是热带、是寒带、还是都不像。选寒带先把红色拿走，剩下北方深水的蓝绿；选热带几乎只留蓝色，浅而暖的水因此发亮；居中则介于两者之间。「自定义」则不用预设，改用下一层页面（自定义水色）里那六个数。
-
-value.WATER_AA.BALANCED=平衡
-value.WATER_AA.HIGH=高
-value.WATER_AA.OFF=关
-value.WATER_AA.LOW=低
 
 value.WATER_SURFACE.BASIC=基础
 value.WATER_SURFACE.NOISE=噪点纹理
