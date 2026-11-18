@@ -282,6 +282,32 @@ const uint PASS_QUARTER = 64u;   // mixWeight 0.25: bells, grates
 // properties: the fill sees a light source, and the shadow map sees nothing.
 const uint FIRE = 65u;
 
+// A plant standing in a pot, which is a plant and a ceramic box in one model.
+//
+// BATCH 752. The author reports that flower pots block the coloured light
+// "strongly", and the potted plants were the reason: block.10019 held them
+// together with grass_block, and 10019 carries the diagonal geometry selector, so
+// they arrive at the fill as 19 rather than as 3. LightVolumeOpaque is written as
+// a chain of comparisons against the bare material constants, so 19 matched
+// nothing and fell through to `return true` - a potted flower was a wall to the
+// fill while the same flower standing in the ground passed at 0.85. That is the
+// whole of the report, and it is the same shape as batch 745's signs and doors.
+//
+// WHY A NEW ID RATHER THAN A BRANCH FOR 19. 19 is grass_block's number too, and
+// grass_block must stay a wall - a fill that let light through the ground would
+// light the surface above a torch from below. The two cannot be told apart by
+// their material, because they share it: the selector is a geometry hint for the
+// fragment stage, not a different material. So the plants move out and keep the
+// selector's behaviour through the branch in FetchMaterialID, which reproduces
+// the diagonal test exactly - the pot's own box faces stay GENERIC and the
+// plant's cross-quads stay SUBSURFACE_SCATTERING, which is the look they had.
+//
+// The number is selector 4, continuing 64 and 65, and it must be demoted in
+// FetchMaterialID: EncodePerFace keeps four bits, so 66 would arrive in the
+// fragment stage as 2 - GROUND_FOLIAGE - and a potted plant would wave in the
+// wind. See the note on 48-50 above for the same trap.
+const uint POTTED_PLANT = 66u;
+
 // Stained glass, in every colour, along with its panes and tinted glass.
 //
 // Deliberately a material of its own rather than another entry in GLASS: the

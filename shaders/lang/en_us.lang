@@ -458,7 +458,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 751]
+option.PBR_DEBUG=Material debug view [build 752]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -710,17 +710,19 @@ option.COLORED_LIGHTS_STRENGTH.comment=How far a light source's own surface \
 
 option.COLORED_LIGHT_RANGE=Colored light reach
 option.COLORED_LIGHT_RANGE.comment=The width, in blocks, of the cube the colour of \
-	block light lives in: 32, 48, 64, 96 or 128. The cube, the number of voxels the \
-	propagation advances every frame and the memory the effect costs all scale with \
-	it - 32,768 voxels and 0.375 MiB of images at 32, up to 2,097,152 and 24 MiB at \
-	128 - so this is the option that trades reach for GPU time and memory. Half of \
-	the width is how far from the player the colour reaches, so the default 64 \
-	reaches 32 blocks, past the game's own block light range of 15.
+	block light lives in: 32, 48, 64, 96, 128 or 256. The cube, the number of voxels \
+	the propagation advances every frame and the memory the effect costs all scale \
+	with it - 32,768 voxels and 0.75 MiB of images at 32, up to 16,777,216 and 384 \
+	MiB at 256 - so this is the option that trades reach for GPU time and memory. \
+	Half of the width is how far from the player the colour reaches, so the default \
+	128 reaches 64 blocks, past the game's own block light range of 15. 256 is the \
+	setting that covers a whole render distance, and it is the one that costs the most.
 value.COLORED_LIGHT_RANGE.32=32
 value.COLORED_LIGHT_RANGE.48=48
 value.COLORED_LIGHT_RANGE.64=64
 value.COLORED_LIGHT_RANGE.96=96
 value.COLORED_LIGHT_RANGE.128=128
+value.COLORED_LIGHT_RANGE.256=256
 
 option.COLORED_LIGHT_SATURATION=Colored light saturation
 option.COLORED_LIGHT_SATURATION.comment=How saturated the colour a light source \

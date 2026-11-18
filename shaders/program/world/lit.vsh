@@ -438,6 +438,34 @@ uint FetchMaterialID(vec3 worldNormal) {
 			return GENERIC;
 		}
 
+		// BATCH 752: the potted plants, and the small decorations that joined them.
+		//
+		// These used to be in block.10019 with grass_block, which carries the
+		// diagonal geometry selector, so they arrived here as 19 and the branch
+		// above decoded them: the pot's own box faces came out GENERIC and the
+		// plant's cross-quads came out SUBSURFACE_SCATTERING. They have their own
+		// id now, because the fill could not tell them from grass_block and called
+		// them walls - see POTTED_PLANT in /environment/materialIDs.glsl.
+		//
+		// ⚠️ THE DIAGONAL TEST HAS TO BE REPRODUCED HERE, not dropped. 66 is above
+		// the four bits EncodePerFace keeps, so without this branch it would arrive
+		// in the fragment stage as 2 - GROUND_FOLIAGE - and a potted plant would
+		// wave in the wind. Returning GENERIC outright would be the other wrong
+		// answer: the plant's cross-quads would lose the subsurface scattering they
+		// have always had, and a potted flower would stop matching the same flower
+		// standing in the ground.
+		//
+		// So the test below is the one the selector branch above applies, written
+		// out for this id. The eggs, the cakes and the decorated pot are not
+		// diagonal geometry and have no cross-quads; they take GENERIC, which is
+		// the material they had when they were unlisted.
+		if (materialID == POTTED_PLANT) {
+			bool horizontal = abs(worldNormal.y) < 0.01;
+			bool diag = abs(worldNormal.x) < 0.95 && abs(worldNormal.z) < 0.95;
+
+			return horizontal && diag ? SUBSURFACE_SCATTERING : GENERIC;
+		}
+
 		return materialID;
 	#elif defined(HAS_DH_MATERIAL_ID)
 		if (dhMaterialId == DH_BLOCK_LEAVES) {

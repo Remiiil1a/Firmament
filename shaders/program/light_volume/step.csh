@@ -91,11 +91,11 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
 // 8 invocations per axis and one group per eight voxels of the grid: the whole
 // volume in one dispatch, one invocation per voxel. The count follows the grid,
-// which follows COLORED_LIGHT_RANGE - 4 groups per axis at 32, then 6, 8, 12 and
-// 16 at 128 - so the dispatch is 32,768 invocations a frame at the smallest
-// setting and 2,097,152 at the largest.
+// which follows COLORED_LIGHT_RANGE - 4 groups per axis at 32, then 6, 8, 12, 16
+// and 32 at 256 - so the dispatch is 32,768 invocations a frame at the smallest
+// setting and 16,777,216 at the largest.
 //
-// The five declarations below are literal integers, one branch per setting, and
+// The six declarations below are literal integers, one branch per setting, and
 // they have to stay literal. The loader reads the work group count out of this
 // source before the program runs, so it has to be a number it can see there; what
 // it does with an expression is not something this machine can observe. What this
@@ -119,12 +119,16 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 const ivec3 workGroups = ivec3(4, 4, 4);
 #elif COLORED_LIGHT_RANGE == 48
 const ivec3 workGroups = ivec3(6, 6, 6);
+#elif COLORED_LIGHT_RANGE == 64
+const ivec3 workGroups = ivec3(8, 8, 8);
 #elif COLORED_LIGHT_RANGE == 96
 const ivec3 workGroups = ivec3(12, 12, 12);
 #elif COLORED_LIGHT_RANGE == 128
 const ivec3 workGroups = ivec3(16, 16, 16);
+#elif COLORED_LIGHT_RANGE == 256
+const ivec3 workGroups = ivec3(32, 32, 32);
 #else
-const ivec3 workGroups = ivec3(8, 8, 8);
+const ivec3 workGroups = ivec3(16, 16, 16);
 #endif
 
 #ifdef IS_IRIS

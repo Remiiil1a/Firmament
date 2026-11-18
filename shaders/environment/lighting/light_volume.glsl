@@ -103,12 +103,13 @@
 // kind of disagreement that compiles everywhere.
 //
 // COLORED_LIGHT_RANGE is the side, in blocks, of the cube the colour lives in:
-// 32, 48, 64, 96 or 128. It sizes the grid itself - the three images, the number
-// of voxels the propagation advances each frame and the number of invocations its
-// dispatch runs - so it is the option that buys performance, not only a fade. The
-// side of a cube rather than a radius because that is the number the images and the
-// dispatch are counted in, and because the memory is the cube of it; half of this
-// value is how far from the player the colour can actually reach.
+// 32, 48, 64, 96, 128 or 256. It sizes the grid itself - the three images, the
+// number of voxels the propagation advances each frame and the number of
+// invocations its dispatch runs - so it is the option that buys performance, not
+// only a fade. The side of a cube rather than a radius because that is the number
+// the images and the dispatch are counted in, and because the memory is the cube
+// of it; half of this value is how far from the player the colour can actually
+// reach.
 //
 // The cost of each setting, for the whole feature. One voxel is one invocation a
 // frame, and the three images are RGBA16 - the logarithmic encoding is what the
@@ -120,13 +121,24 @@
 //   64 ->     262,144 invocations a frame, 6 MiB
 //   96 ->     884,736 invocations a frame, 20 MiB
 //   128 ->  2,097,152 invocations a frame, 48 MiB
+//   256 -> 16,777,216 invocations a frame, 384 MiB
+//
+// BATCH 752 ADDED 256 AND MOVED THE DEFAULT TO 128, on the author's instruction.
+// 256 is the setting that covers a whole render distance rather than a room: it
+// reaches 128 blocks, which is the shadow distance and therefore the furthest a
+// surface can be lit by anything this pack draws. The price is the row above and
+// it is not a rounding error - 384 MiB of images and sixteen times the dispatch
+// of the old default - so it is the top tier's setting and not the shipped one.
+// The default moved to 128 (48 MiB, 64 blocks of reach) because that is what the
+// author wants a fresh install to look like; see the profile pins in
+// shaders.properties, which have to agree with this line.
 //
 // Three separate readers take this one value and none of them can see the others:
 // the image declarations in shaders.properties, which are what the loader
 // allocates; the #if chain below, which is the voxel count the shader indexes
 // with; and the literal work group counts in program/light_volume/step.csh, which
 // is where the dispatch size comes from. All three have to be edited together.
-#define COLORED_LIGHT_RANGE 64 // [32 48 64 96 128]
+#define COLORED_LIGHT_RANGE 128 // [32 48 64 96 128 256]
 
 // How saturated the colour the fill contributes is, applied where the field is
 // turned back into light in LightVolumeBlockLight below. 1.0 is the colour the
@@ -144,11 +156,12 @@
 // One voxel is one block, so the grid is LIGHT_VOLUME_SIZE blocks across and
 // covers LIGHT_VOLUME_GRID_RADIUS blocks in every direction from the player. What
 // the fill can reach is therefore half the option's number: 16 blocks at 32, 24 at
-// 48, 32 at 64, 48 at 96 and 64 at 128. The default 64 reaches 32, twice the game's
-// own block light span of 15, which keeps the colour's whole falloff inside the
-// grid and leaves the edge fade below room to run before the boundary is reached.
+// 48, 32 at 64, 48 at 96, 64 at 128 and 128 at 256. The default 128 reaches 64,
+// four times the game's own block light span of 15, which keeps the colour's whole
+// falloff inside the grid and leaves the edge fade below room to run before the
+// boundary is reached.
 //
-// This chain and the one in shaders.properties are the same five values in the
+// This chain and the one in shaders.properties are the same six values in the
 // same order, and the final #else is the default value in both files: Iris reads
 // an image's side from the properties file, so a shader that resolved a different
 // size would index a grid the images do not have. The third chain - the dispatch
@@ -158,12 +171,16 @@
 	#define LIGHT_VOLUME_SIZE 32
 #elif COLORED_LIGHT_RANGE == 48
 	#define LIGHT_VOLUME_SIZE 48
+#elif COLORED_LIGHT_RANGE == 64
+	#define LIGHT_VOLUME_SIZE 64
 #elif COLORED_LIGHT_RANGE == 96
 	#define LIGHT_VOLUME_SIZE 96
 #elif COLORED_LIGHT_RANGE == 128
 	#define LIGHT_VOLUME_SIZE 128
+#elif COLORED_LIGHT_RANGE == 256
+	#define LIGHT_VOLUME_SIZE 256
 #else
-	#define LIGHT_VOLUME_SIZE 64
+	#define LIGHT_VOLUME_SIZE 128
 #endif
 
 // Half the grid, in voxels. This is the grid's centre in its own coordinates and
@@ -279,8 +296,8 @@
 // fill's own decay never reaches zero at the boundary, so what is beyond it is a
 // hard end to the colour rather than a falloff. The fade runs from 0.70 to 0.95 of
 // the radius, so the last quarter of the radius is spent fading: about 4 blocks at
-// the 32 setting, 6 at 48, 8 at 64, 12 at 96 and 16 at 128. A fraction rather than
-// a distance keeps the fade the same shape at every setting.
+// the 32 setting, 6 at 48, 8 at 64, 12 at 96, 16 at 128 and 32 at 256. A fraction
+// rather than a distance keeps the fade the same shape at every setting.
 #define LIGHT_VOLUME_EDGE_FADE_START 0.70
 #define LIGHT_VOLUME_EDGE_FADE_END 0.95
 
@@ -461,6 +478,20 @@ bool LightVolumeOpaque(uint materialID) {
 		return false;
 	}
 
+	// BATCH 752: a plant in a pot, and the small decorations the author named with
+	// it. These are not solid cubes - a pot is a thin box with a plant in it, an
+	// egg is a small ovoid, a cake is a flat disc - so light crosses them, and they
+	// are not air either. They pass here and take a tint below, which is the same
+	// arrangement the foliage and the non-cube shapes use.
+	//
+	// ⚠️ THIS BRANCH IS WHY THE AUTHOR'S REPORT IS FIXED. The potted plants used to
+	// arrive as 19, which nothing here named, so they fell through to the `return
+	// true` at the bottom and were walls. See POTTED_PLANT in
+	// /environment/materialIDs.glsl.
+	if (materialID == POTTED_PLANT) {
+		return false;
+	}
+
 	if (BlockLightRange(materialID) > 0.0) {
 		// A light source is not a wall. A source whose voxel was marked solid
 		// would light nothing, because the colour starts in this voxel and the
@@ -528,7 +559,12 @@ bool LightVolumeFilters(uint materialID) {
 		|| materialID == PASS_SHELF
 		|| materialID == PASS_POT
 		|| materialID == PASS_HALF
-		|| materialID == PASS_QUARTER;
+		|| materialID == PASS_QUARTER
+		// BATCH 752. A potted plant is a plant and a thin box, so it dims what
+		// crosses it rather than passing it untouched - the same reading the
+		// foliage above gets, and the reason it is a filter rather than only a
+		// non-wall.
+		|| materialID == POTTED_PLANT;
 }
 
 // The tint a filter applies, for the filters whose tint is not in the image.
@@ -654,6 +690,26 @@ vec3 LightVolumeFilterTint(uint materialID) {
 	if (materialID == PASS_QUARTER) {
 		// Bells 0.25 (block.53), grates 0.25 (block.53).
 		return vec3(0.25);
+	}
+
+	if (materialID == POTTED_PLANT) {
+		// BATCH 752. Eclipse's block.51, "Blocks that occlude 25% of light", which
+		// is BLOCK_LPV_MIN and therefore 0.75 (dimensions/setup.csh:979-981). That
+		// group holds flower_pot and every potted plant, so this is the reference's
+		// own number for exactly these blocks rather than a value chosen here.
+		//
+		// It is also the number the potted mushrooms and the potted cactus already
+		// get through PASS_POT, which is the same 0.75 - so a potted flower and a
+		// potted mushroom now obstruct light by the same amount, which is what they
+		// look like.
+		//
+		// The eggs, the cakes and the decorated pot share this id and this weight.
+		// They are small decorations of the same size class, and the author named
+		// them in the same breath; a separate id for each would be three more
+		// entries in block.properties and three more branches here to say the same
+		// thing. If one of them turns out to want its own weight, that is a batch
+		// that is asked for it.
+		return vec3(0.75);
 	}
 
 	return vec3(1.0);

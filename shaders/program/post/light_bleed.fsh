@@ -69,7 +69,15 @@ uniform float viewHeight;
 // This is added on top of the lighting, so it brightens as well as colors. If
 // surfaces near a light source look washed out rather than tinted, lower this;
 // if the color is not visible at all against the block light, raise it.
-#define LIGHT_BLEED_STRENGTH 3.0 // [0.0 0.5 1.0 1.5 2.0 3.0 4.0 6.0 8.0 10.0]
+//
+// BATCH 752 SET THE DEFAULT TO 0.0, on the author's instruction. The addition is
+// what made a lit room read as washed out: the flood fill already carries each
+// source's colour through the air, so this pass adding light on top of it was
+// counting the same light twice. At 0.0 the pass still runs and still turns the
+// surface's own colour towards the colour of the light around it - that is
+// LIGHT_TINT_STRENGTH below, a separate term - so the colour survives and only
+// the extra brightness is gone. Raise it to get the old look back.
+#define LIGHT_BLEED_STRENGTH 0.0 // [0.0 0.5 1.0 1.5 2.0 3.0 4.0 6.0 8.0 10.0]
 
 // How far a surface takes the color of the light sources near it, rather than
 // keeping its own color and having theirs added on top.
