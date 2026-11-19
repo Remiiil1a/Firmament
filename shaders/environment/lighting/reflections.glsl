@@ -127,16 +127,36 @@ vec3 PbrVisibleNormal(
 	// ray has one outline.
 	//
 	// This spreads the direction instead, which is what Bliss does
-	// (lib/specular.glsl:355-362, SampleVNDFGGX) and what a rough surface actually
-	// does: it reflects a range of directions. Every pixel's ray then leaves at a
-	// slightly different angle and lands on a slightly different place, so the
-	// reflection's outline is smeared over the cone.
+	// (lib/specular.glsl:349-357) and what a rough surface actually does: it
+	// reflects a range of directions. Every pixel's ray then leaves at a slightly
+	// different angle and lands on a slightly different place, so the reflection's
+	// outline is smeared over the cone.
+	//
+	// ⚠️ BATCH 765: THE DRAW RETURNS A MICROFACET NORMAL, AND THE RAY IS THAT NORMAL
+	// REFLECTED - BATCH 764 USED THE NORMAL AS THE RAY.
+	//
+	// That is the whole of why every reflection suddenly looked pasted flat onto the
+	// block. A visible-normal draw samples the normal of a microfacet, and the
+	// reflected direction is the incident direction reflected about that normal.
+	// Bliss does exactly that, one line after the draw (lib/specular.glsl:357):
+	//
+	//     vec3 reflectedVector_L = basis * reflect(-normalize(viewDir), samplePoints);
+	//
+	// 764 skipped that line and handed the normal to the march as if it were a
+	// direction. A normal points OUT of the surface, so the ray left almost
+	// perpendicular to it, hit the block it started on, and the reflection became a
+	// picture of the surface itself - which is what "pasted on" is.
+	//
+	// ⚠️ AND THE FRAME MATTERS. Bliss's `viewDir` is `-playerPos * basis`, which
+	// points INTO the surface, and its `viewDir.z = abs(viewDir.z)` (:353) is what
+	// keeps the draw on the upper hemisphere. This function takes `viewDirection`
+	// pointing back TOWARDS the camera, so the incident direction is its negation -
+	// and getting that sign wrong reflects the ray to the wrong side of the surface,
+	// which is the same pasted-on look by a different route.
 	//
 	// The distribution is the visible-normal one, the same family the highlight is
 	// built from, so the reflection and the highlight agree about how rough the
-	// surface is. It is written out here rather than taken from pbr.glsl because
-	// that one is shaped for the highlight's half-vector and this one needs the
-	// reflected direction itself.
+	// surface is.
 	//
 	// `alpha` is the roughness, which is the cone's half-angle in radians - the same
 	// angle the sky half of the reflection is averaged over, so the two halves agree
@@ -154,22 +174,29 @@ vec3 PbrVisibleNormal(
 			worldNormal));
 		vec3 bitangent = cross(worldNormal, tangent);
 
-		// The exact reflection, in that frame: the centre of the cone.
-		vec3 exact = reflect(-viewDirection, worldNormal);
-		vec3 local = vec3(
-			dot(exact, tangent),
-			dot(exact, bitangent),
-			dot(exact, worldNormal));
+		// The incident direction, in that frame: the way the view ray travels, which
+		// is towards the surface.
+		vec3 incident = vec3(
+			dot(-viewDirection, tangent),
+			dot(-viewDirection, bitangent),
+			dot(-viewDirection, worldNormal));
 
 		// The visible-normal draw, in the hemisphere configuration. This is
-		// SampleVNDFGGX's arithmetic (Bliss lib/specular.glsl:42-71) with the
-		// viewer direction replaced by the exact reflection, which is the direction
-		// the cone is drawn around.
+		// SampleVNDFGGX's arithmetic (Bliss lib/specular.glsl:42-71).
+		//
+		// ⚠️ BATCH 765: THE `abs` BELONGS HERE AND NOWHERE ELSE. Bliss takes
+		// `viewDir.z = abs(viewDir.z)` (:353) so that the draw stays on the upper
+		// hemisphere, and that is what this reproduces - but the value it reflects
+		// afterwards is the unmodified `viewDir`. Taking the abs of the incident
+		// direction as well flips the ray to the other side of the surface, which is
+		// the same pasted-on look by a second route.
 		//
 		// Written as `a * b + c` rather than with fma(), which needs an extension
 		// this pack does not request everywhere: the compiler recognises the pattern
 		// and emits the fused instruction anyway.
-		vec3 viewer = normalize(vec3(alpha * 0.5 * local.xy, local.z));
+		vec3 viewer = normalize(vec3(
+			alpha * 0.5 * incident.xy,
+			abs(incident.z)));
 		float phi = 6.2831853 * noise.x;
 		float cosTheta = (1.0 - noise.y) * (1.0 + viewer.z) - viewer.z;
 		float sinTheta = sqrt(clamp(1.0 - cosTheta * cosTheta, 0.0, 1.0));
@@ -178,10 +205,34 @@ vec3 PbrVisibleNormal(
 
 		vec3 sampled = vec3(vec2(cos(phi), sin(phi)) * sinTheta, cosTheta);
 		vec3 halfway = sampled + viewer;
-		vec3 jittered = normalize(vec3(alpha * halfway.xy, halfway.z));
+		vec3 microfacetNormal = normalize(vec3(alpha * halfway.xy, halfway.z));
 
-		// Back to world axes. A zero-width cone leaves `jittered` equal to `local`,
-		// so this is the exact direction for a mirror.
+		// BATCH 765: THE RAY IS THE INCIDENT DIRECTION REFLECTED ABOUT THE NORMAL,
+		// WHICH IS THE LINE 764 DROPPED. Without it the answer is a normal pointing
+		// out of the surface and the ray hits the block it started on.
+		//
+		// `incident` already points into the surface, which is the direction
+		// reflect() wants, so it is passed as it is - negating it here as well would
+		// flip the ray to the other side, which is the same pasted-on look by a
+		// second route.
+		vec3 jittered = reflect(incident, microfacetNormal);
+
+		// BATCH 765: A DRAW THAT LANDS BELOW THE HORIZON IS PUT BACK ON IT.
+		//
+		// The visible-normal distribution is not bounded by the surface: at a
+		// roughness of 0.6 and above, roughly a fifth of its draws reflect back INTO
+		// the surface, and at 1.0 it is half of them. A ray that starts by going
+		// into the block it left finds the block, so those pixels show the surface
+		// itself - the pasted-on look again, this time only on the roughest
+		// materials, which is the hardest kind of defect to attribute.
+		//
+		// Clamping z to zero puts such a ray on the horizon instead, which is the
+		// limit the distribution is approaching and the one answer that cannot be
+		// wrong. It is what the sky half does with its cone taps as well.
+		jittered.z = max(jittered.z, 0.0);
+
+		// Back to world axes. A zero-width cone leaves `jittered` equal to the exact
+		// reflection, so this is the exact direction for a mirror.
 		return normalize(
 			tangent * jittered.x
 			+ bitangent * jittered.y
