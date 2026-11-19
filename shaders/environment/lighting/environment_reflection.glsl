@@ -437,26 +437,27 @@ vec3 EnvironmentReflection(
 				// where one pixel ends and the next begins: the fragment's own
 				// surface is in the depth buffer too, and a sample that has not
 				// left the pixel the ray started from is still standing on it.
-				// Where in the first cell of the ladder this pixel starts.
+				// Where in the first cell of the ladder this pixel starts, and it has
+				// to move from frame to frame as well as from pixel to pixel.
 				//
-				// BATCH 758: THIS IS A SPATIAL DITHER NOW, AND THE FRAME TERM IS
-				// GONE. It used to walk by the golden ratio every frame, on the
-				// strength of the reflection being averaged by the temporal resolve
-				// - which it was, from batch 664 until 758. That averaging is what
-				// gave the reflection the history's length, about 6.7 frames at the
-				// default TAA_STRENGTH, and it is the trailing the author reports.
+				// BATCH 766: THE FRAME TERM IS BACK, AND BATCH 758 WAS WRONG TO REMOVE
+				// IT. 758 removed it on the argument that the reflection is applied
+				// after the temporal resolve, so nothing averages a per-frame dither
+				// and a moving one would simply be noise. The premise was false:
+				// composite1.fsh:1537 writes `max(resolved, ...)` to the history, and
+				// `resolved` carries the reflection - so the reflection IS in the
+				// history, and has been all along. What 758 actually did was leave the
+				// reflection in the history while making the dither identical every
+				// frame, so the history had a noise it could not average. That is the
+				// author's report: the SSR reflection shows clear noise.
 				//
-				// The reflection is applied after the resolve now, so nothing
-				// averages a per-frame dither and a moving one would simply be
-				// noise. What is left is the spatial term: Bayer8 already spreads
-				// the starting point across the 8x8 neighbourhood, so one frame of
-				// it is as smooth as the temporal average used to be, and it does
-				// not move when the camera holds still.
-				//
-				// The 1.32 is kept: it is what decorrelates the Bayer value from the
-				// ladder's own spacing, and it was tuned against the picture rather
-				// than derived.
-				float traceDither = fract(Bayer8(gl_FragCoord.xy) * 1.32);
+				// The frame term walks by the golden ratio, so the sequence does not
+				// repeat on a short cycle and the history averages the lattice away
+				// instead of reinforcing it. That is what it is for, and it only works
+				// because the reflection is in the history - which it is.
+				float traceDither = fract(
+					Bayer8(gl_FragCoord.xy) * 1.32
+					+ float(frameCounter) * 0.618034);
 
 				// BATCH 764: THE RAY DIRECTION IS JITTERED OVER THE CONE, WHICH IS
 				// WHAT MAKES THE REFLECTION SPREAD RATHER THAN MERELY BLUR.

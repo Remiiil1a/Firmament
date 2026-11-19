@@ -1182,26 +1182,54 @@ void main() {
 	// never above the upper one, whatever the deviation does.
 	historyUpper = min(historyUpper, neighborhoodMaximum);
 
-	// BATCH 758: THE REFLECTION IS NO LONGER IN THE HISTORY, SO THE BAND IS NOT
-	// WIDENED FOR IT.
+	// BATCH 766: THE BAND IS WIDENED FOR THE REFLECTION AGAIN, BECAUSE THE
+	// REFLECTION IS IN THE HISTORY AFTER ALL.
 	//
-	// Batches 665 and 674 are the history of this block, and both were solving a
-	// real problem: 665 found that the band was built from reflection-free samples
-	// while the history carried a reflection, so 85% of the reflection was rejected
-	// every frame and it settled at half strength while still, then brightened as
-	// soon as the camera moved. 674 answered it by widening the band by
-	// |reflectionDelta|, which let the reflection through to be averaged - and that
-	// is what gave it the history's length, about 6.7 frames, which is the trailing
-	// the author reports.
+	// Batch 758 removed this widening on the argument that the reflection had moved
+	// after the resolve, so `current` and `history` both held reflection-free
+	// pictures and the band compared like with like. That argument was false:
+	// `resolved` carries the reflection and line 1537 writes `resolved` to the
+	// history, so the reflection has been in the history the whole time. What 758
+	// actually did was leave the reflection in the history while removing the two
+	// things that made being there work - this widening, and the frame term of the
+	// trace dither.
 	//
-	// None of it applies now. The reflection is applied after the resolve, so
-	// `current` and `history` both hold reflection-free pictures and the band
-	// compares like with like. The asymmetry 665 found cannot occur, because there
-	// is no reflection on either side of the comparison to be rejected.
+	// So the block below is batch 674's, restored, and its reasoning is unchanged:
 	//
-	// `currentRaw` stays: it is what the TAA_DEBUG view shows on its left half, and
-	// it is still the frame with no reflection in it.
-	history = clamp(history, historyLower, historyUpper);
+	// Every sample this band is built from comes from colortex0 - the frame with no
+	// reflection in it (the centre sample was folded in as `currentRaw` for that
+	// reason) - while `history` is last frame's resolved picture, which does carry
+	// one. Comparing them directly makes the reflection's own brightness look like a
+	// stale sample: the bound sits at the scene's brightness, the reflected history
+	// is brighter than that, 85% of it is rejected every frame, and the reflection
+	// settles at about half strength while the camera is still. Then the camera
+	// moves, the history weight drops towards 0.7 - but `mix(current, history,
+	// weight)` starts taking the current frame's full reflection, and the reflection
+	// brightens. The author reported exactly that asymmetry ("静止时反射会变暗，
+	// 视角移动时反射又会变亮", batch 665).
+	//
+	// Widening the band by the magnitude of the reflection answers both at once. The
+	// reflected part of the history is inside the band, so it is not cut back to the
+	// scene; it is also not taken out of the blend, so two frames of reflection
+	// average with the same weight the rest of the picture uses, and the dither's
+	// noise falls by that weight. The mean is the same on both sides of the
+	// asymmetry, because both operands carry a complete reflection: only the noise is
+	// averaged, not the brightness.
+	//
+	// What it costs is the same thing a longer history always costs: a reflection
+	// lives about as long as the picture around it, so what moves on its own trails.
+	// That is the trade the author chose in batch 766 - noise that the history can
+	// average, over a reflection that never trails. See the note where the reflection
+	// is applied.
+	//
+	// A pixel with no reflection has reflectionDelta == 0 and keeps exactly the
+	// bounds it had.
+	vec3 reflectionDelta = currentUsable ? current - currentRaw : vec3(0.0);
+
+	history = clamp(
+		history,
+		historyLower - abs(reflectionDelta),
+		historyUpper + abs(reflectionDelta));
 
 	// How far this pixel moved since the previous frame, in pixels.
 	// Measured from this pixel to where this pixel's history was - the anchor's own
@@ -1343,21 +1371,28 @@ void main() {
 
 	// BATCH 758: THE ENVIRONMENT REFLECTION IS APPLIED HERE, AFTER THE RESOLVE.
 	//
-	// It used to be applied to `current` above, which put it in the history and
-	// gave it the history's length - about 6.7 frames at the default
-	// TAA_STRENGTH. That is the trailing the author reports. Both reference packs
-	// composite their reflection before their temporal resolve, so it is an input
-	// to the average rather than part of it; this is the same arrangement.
+	// BATCH 766: AND IT IS STILL IN THE HISTORY, WHICH IS WHAT 758 GOT WRONG.
 	//
-	// The reflection is therefore never averaged across frames, and it cannot
-	// trail. What it loses is the dither averaging the old arrangement gave it,
-	// and that is paid for in the trace instead: `traceDither` is a spatial dither
-	// now, so a single frame is already smooth. See environment_reflection.glsl.
+	// 758 moved the reflection from `current` to `resolved` and claimed that took it
+	// out of the temporal history. It did not: line 1537 writes `max(resolved, ...)`
+	// to the history, and `resolved` is what carries the reflection. So the
+	// reflection has been in the history from 664 until now, and 758 changed nothing
+	// about that - it only removed the two things that made being there work, the
+	// clamp widening and the frame term of the trace dither. The result was a
+	// reflection in the history whose noise the history could not average, which is
+	// the author's report: the SSR reflection shows clear noise.
+	//
+	// So the reflection stays here, and the two things that make it work are back.
+	// What that costs is the trailing 758 was trying to remove: a reflection lives
+	// about as long as the picture around it, about 1/(1 - TAA_STRENGTH) = 6.7
+	// frames at the default. The author chose that trade in 766 - noise the history
+	// can average, over a reflection that never trails - and it is the same trade
+	// batches 664 and 674 made.
 	//
 	// The energy-conservation form is unchanged - the reflection replaces the
 	// fraction of the surface's own light that it represents, rather than being
 	// added on top - because that is a property of the compositing, not of when it
-	// happens. Only the timing moved.
+	// happens.
 	#if defined(PBR_SSR)
 		#if PBR_ENERGY_CONSERVATION
 			resolved = resolved * (vec3(1.0) - reflectionWeight)
