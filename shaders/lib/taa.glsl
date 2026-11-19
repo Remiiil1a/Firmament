@@ -89,18 +89,33 @@
 // How much of the accumulated history each frame keeps, for a pixel that did not
 // move since the previous frame.
 //
-// This is the option that decides how much of the noise in the image averages
-// away: the dither of the godrays and the sky's own. Raising it leaves less noise
-// and resolves more detail, because a longer
-// history is the only thing that can average a per-frame sample out at all -
-// with a still camera the frame is a weighted average over roughly
-// 1 / (1 - TAA_STRENGTH) frames, which is about 6.7 at the default 0.85.
+// BATCH 767: THIS IS BLISS'S NUMBER NOW, AND IT IS 5.8 TIMES SHORTER THAN IT WAS.
 //
-// It is no longer also the weight for a pixel that *did* move: composite1 keeps
-// less of the history where the pixel moved - historyWeight is this value times
-// mix(0.7, 1.0, stillness) - so raising this does not buy ghosting behind
-// anything that moves on its own.
-#define TAA_STRENGTH 0.85 // [0.5 0.65 0.75 0.85 0.9 0.95]
+// The author asked for Bliss's TAA settings to be copied, because this pack's SSR
+// reflection showed clear noise where Bliss's does not. The number that matters is
+// this one, and the comparison is stark:
+//
+//   Bliss  blendingFactor = BLEND_FACTOR = 0.125  (lib/settings.glsl:219)
+//          => the history is 1 / (1 - 0.125) = 1.1 frames long
+//   before TAA_STRENGTH = 0.85
+//          => the history is 1 / (1 - 0.85) = 6.7 frames long
+//
+// A 6.7-frame history is 5.8 times more noise to average, and it is also 5.8 times
+// more of everything that moves on its own. Bliss does not compensate anywhere else:
+// it has no second temporal stage (its SCREENSHOT_MODE is a debug switch), so its
+// short history is the whole of the difference.
+//
+// ⚠️ WHAT THIS COSTS, and it is worth being plain about it: a 1.1-frame history is
+// barely a temporal filter at all. What it still does is reject the history outright
+// where the neighbourhood disagrees with it, which is what removes the noise - the
+// reflection's dither is different every frame, so a history that is mostly rejected
+// cannot accumulate it. What it no longer does is average the godrays' dither over
+// several frames, which is what the old value bought. If the author wants that back,
+// this is the number to raise, and 0.5 is the next step rather than 0.85.
+//
+// The option's range is Bliss's neighbourhood rather than this pack's old one, so
+// that the value can be moved in the direction it was tuned in.
+#define TAA_STRENGTH 0.125 // [0.0 0.05 0.1 0.125 0.15 0.2 0.25 0.3 0.4 0.5 0.65 0.75 0.85 0.9 0.95]
 
 // The radius of the sub-pixel jitter, in pixels.
 //
@@ -123,7 +138,14 @@
 // smudge: a sample only survives if it looks like a plausible value for this
 // pixel. Too tight and the image flickers, because legitimate history gets
 // thrown away every frame; too loose and moving objects smear.
-#define TAA_CLAMP 1.0 // [0.5 0.75 1.0 1.25 1.5 2.0 3.0]
+//
+// BATCH 767: 1.25 IS BLISS'S NUMBER (dimensions/composite5.fsh:375, `float tuner =
+// 1.25;`). It was 1.0 here. The two are close enough that this is not the change
+// that removed the noise - TAA_STRENGTH is - but it is part of copying the settings
+// the author asked for, and it leans the same way: a wider band keeps more of the
+// history, which is the opposite of what a short history wants, so it is worth
+// knowing that the two numbers pull against each other rather than together.
+#define TAA_CLAMP 1.25 // [0.5 0.75 1.0 1.25 1.5 2.0 3.0]
 
 
 // How much to sharpen the resolved image, to counter the softening that
