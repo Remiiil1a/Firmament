@@ -62,6 +62,51 @@ const int R11F_G11F_B10F = 0;
 const int RGBA16F = 0;
 const int colortex3Format = RGBA16F;
 
+// THE ENVIRONMENT REFLECTION'S OWN HISTORY (batch 779).
+//
+// The reflection used to have no history of its own: it was applied to the
+// resolved frame, and the resolved frame is what colortex3 holds, so the
+// reflection was accumulated by the anti-aliasing history along with everything
+// else. That is what made it swing. The resolve blends `mix(current, history,
+// historyWeight)` where `current` is read from colortex0 and carries no
+// reflection while `history` is last frame's resolved frame and does - so the
+// previous frame's reflection enters the picture at exactly `historyWeight`, and
+// `historyWeight` is `TAA_STRENGTH * mix(0.7, 1.0, stillness)`. Moving the camera
+// drops that weight by up to 30%, which drops the reflected part of the picture
+// by up to 30% with it: the author's "things go dark and bright again as the
+// picture moves". At the 0.125 default the swing is 3.75% and invisible; at the
+// 0.9 of batch 767 it was 30% and obvious. The reflection's strength must not
+// depend on how fast the camera is moving, and the only way to get that is to
+// stop it sharing a weight with the picture.
+//
+// So it gets a buffer of its own, accumulated at a constant weight. colortex9
+// held exactly this until batch 664 removed it; it is back, and the note in
+// shaders.properties says why it is declared there as well as here.
+//
+// RGBA16F for the same reason as colortex3: the accumulated colour is a light
+// value in linear HDR and R11F_G11F_B10F has neither the range nor a NaN.
+const bool colortex9Clear = false;
+const int colortex9Format = RGBA16F;
+
+// How much of the reflection's history each frame keeps. A constant, and that is
+// the whole point of the buffer above - it is deliberately NOT TAA_STRENGTH and
+// deliberately not modulated by how far the pixel moved.
+//
+// 0.75 is four frames. The reflection is reprojected with the camera like the
+// rest of the history, so a longer average does not smear the surface the
+// reflection sits on - that was batch 766's trailing, and it came from the
+// reflection sharing the anti-aliasing history, where the surface and the
+// reflection were averaged together and could not be told apart. Here the buffer
+// holds the reflection and nothing else, so the only thing that can trail is a
+// reflection of something that moves on its own, and 25% of the current frame
+// per frame clears that in four.
+//
+// Four frames rather than one: the trace dithers its ray start, and one frame of
+// it is one sample of that dither. Batch 758 made the dither spatial so that a
+// single frame is already smooth, which is why this is not the six or seven
+// frames the anti-aliasing history runs at - it is the residual, not the noise.
+const float REFLECTION_HISTORY_WEIGHT = 0.75;
+
 // BATCH 762: THE MIPMAP FLAG HAS TO BE DECLARED HERE, NOT WHERE THE BUFFER IS
 // WRITTEN, AND THAT IS WHY BATCH 760 DID NOTHING.
 //
@@ -123,6 +168,13 @@ uniform sampler2D colortex1;
 // is faded out by it, and this pass reads it nowhere else. (Its other reader,
 // copy_and_fog.fsh, declares its own copy.)
 uniform sampler2D colortex2;
+
+// The environment reflection's own history (batch 779), read back from the
+// previous frame and written again below. Declared here rather than in
+// /environment/lighting/environment_reflection.glsl because this pass is the
+// only program that touches it: the library computes the reflection, this pass
+// is what accumulates it.
+uniform sampler2D colortex9;
 
 uniform mat4 gbufferProjectionInverse;
 uniform mat4 gbufferModelViewInverse;
@@ -461,7 +513,8 @@ uniform float blindness;
 // this directive from the raw source text, so having one in each branch of an
 // #if would leave it unclear which one applies. The list names the buffers in
 // the order their gl_FragData outputs are written: index 0 is the colour,
-// index 1 the history. Both are written whether anti-aliasing is on or off.
+// index 1 the anti-aliasing history, index 2 the reflection's own history.
+// All three are written whether anti-aliasing is on or off.
 // colortex3 used to be skipped when it was off, because nothing read the
 // buffer in that case - which stopped being true when the environment
 // reflection moved into a pass of its own (batch 267): that pass read this one
@@ -469,7 +522,12 @@ uniform float blindness;
 // pass and it traces colortex4 now, so colortex3 is this pass's own history
 // again; it is still written unconditionally, because the write is what keeps
 // the buffer flow through the pipeline the same on both settings.
-/* DRAWBUFFERS:03 */
+//
+// colortex9 is the reflection's history, added in batch 779. It is a third
+// output rather than a second use of colortex3 because the two are accumulated
+// at different weights and for different reasons - see the note on
+// REFLECTION_HISTORY_WEIGHT at the top of this file.
+/* DRAWBUFFERS:039 */
 
 // The resolved image of the previous frame, at the given screen position,
 // fetched with a Catmull-Rom filter rather than with the bilinear one that a
@@ -624,17 +682,17 @@ void main() {
 	//
 	// Batches 664 and 674 are the history of the other arrangement. 664 moved the
 	// reflection into this pass so the history would average its dither; 674
-	// widened the neighbourhood clamp by |reflectionDelta| so the clamp would not
-	// cut the reflected part back out. Both were right about what they solved, and
-	// together they made a reflection live as long as the picture around it -
-	// about 1/(1-0.85) = 6.7 frames at the TAA_STRENGTH of the day. That is
-	// the author's trailing, lagging water reflection.
+	// widened the neighbourhood clamp so the clamp would not cut the reflected
+	// part back out. Both were right about what they solved, and together they
+	// made a reflection live as long as the picture around it - about
+	// 1/(1-0.85) = 6.7 frames at the TAA_STRENGTH of the day. That is the
+	// author's trailing, lagging water reflection.
 	//
-	// BATCH 778: the default is 0.125 now, which is a 1.1-frame history, so the
-	// trail this note describes is gone. The arrangement below is unchanged -
-	// the reflection is still composited after the resolve - and that is why the
-	// reflection does not trail. What the short history buys is the swing the
-	// author reported in 777; see the note on TAA_STRENGTH in lib/taa.glsl.
+	// BATCH 779 SETTLED IT. The reflection is still computed here and still
+	// applied after the resolve, but it is accumulated in a history of its own
+	// (colortex9) at a constant weight, so it neither trails like 664's
+	// arrangement nor swings like 778's. See REFLECTION_HISTORY_WEIGHT at the top
+	// of this file, and the note where the accumulation happens.
 	//
 	// Neither reference pack puts a reflection in its temporal history. Sundial
 	// composites in Composite0 through Composite3 and resolves in Composite7 and
@@ -647,17 +705,38 @@ void main() {
 	// below rather than to `current`. The two values are declared outside the
 	// branch so that they survive to that point.
 	//
-	// WHAT THIS COSTS, and why it is not paid in the history. The trace dithers its
-	// ray start, and a reflection applied after the resolve is a fresh noisy sample
-	// with nothing downstream to average it - which is exactly why 664 moved it.
-	// The answer is not to put it back: it is to stop the trace needing a temporal
-	// average. `traceDither` in environment_reflection.glsl is a spatial dither
-	// now, so one frame of it is already as smooth as the average used to be. See
-	// the note there.
+	// WHAT THIS COSTS, and why it is not paid in the picture's history. The trace
+	// dithers its ray start, and a reflection applied after the resolve is a fresh
+	// noisy sample with nothing downstream to average it - which is exactly why
+	// 664 moved it. The answer is not to put it back into colortex3: it is to give
+	// it a buffer where it can be averaged on its own terms. `traceDither` in
+	// environment_reflection.glsl is a spatial dither as well, so one frame of it
+	// is already smooth; the separate history is what takes the rest.
 	//
 	// One-step rollback: `git -C Firmament revert <this commit>`.
-	vec3 environmentReflection = vec3(0.0);
 	vec3 reflectionWeight = vec3(0.0);
+
+	// The environment colour this pixel sees, before the weight is multiplied in
+	// (batch 779). The weight is a property of the material and the view angle
+	// and is a fresh answer every frame - it must not be averaged, or a surface
+	// that stopped reflecting would keep reflecting. The colour is the sample
+	// that carries the trace's noise, and that is what the reflection's own
+	// history accumulates. See REFLECTION_HISTORY_WEIGHT at the top of this file.
+	//
+	// The function's return value - the two multiplied together - is not kept.
+	// It was, until batch 779, because it was what got applied; what is applied
+	// now is this colour averaged over four frames and then weighted by THIS
+	// frame's weight, which is a different product and is built at the
+	// application site.
+	vec3 environmentColor = vec3(0.0);
+
+	// What is actually applied, which is `environmentColor` averaged with the
+	// reflection's own history. It is set to this frame's sample below, once the
+	// trace has run, so that the paths that do not accumulate - anti-aliasing
+	// off, or a pixel with no usable history - apply exactly what they would have
+	// applied before this buffer existed. The resolve replaces it with the
+	// average where there is one.
+	vec3 accumulatedEnvironment = vec3(0.0);
 
 	#if defined(PBR_SSR)
 	// The view position is rebuilt here rather than passed in: this pass has only
@@ -718,30 +797,40 @@ void main() {
 		bool reflectionHit;
 		float reflectionHitDistance;
 
-		environmentReflection = EnvironmentReflection(
+		// The return value is the colour times the weight, and it is discarded:
+		// what is applied is the colour accumulated over four frames and then
+		// weighted by this frame's weight, which is a different product. See the
+		// note on `environmentColor` above.
+		EnvironmentReflection(
 			reflectionViewPos,
 			texelFetch(colortex2, pixel, 0).r,
 			seenThrough,
 			reflectionWeight,
 			reflectionHit,
-			reflectionHitDistance);
-
-		// The reflection is checked here, before anything is done with it.
+			reflectionHitDistance,
+			environmentColor);
+		// The colour is checked here, before anything is done with it.
 		//
 		// This is the only guard it needs now. In composite3 there were two of
 		// them, and they cleaned two different values: the one added to the
 		// picture, and the one written to a private history. Only the second sat
 		// at the end of the pass, which is how a non-finite reflection used to
 		// black out its pixel every frame without ever growing in a buffer - and
-		// why that black blot came and went with the view angle. There is no
-		// private history any more: the anti-aliasing history is the only one, and
-		// what is added to `current` here is what reaches it.
+		// why that black blot came and went with the view angle.
 		//
 		// Zero rather than something clever. A reflection that cannot be trusted
 		// is not a reflection, and adding nothing is the only replacement that
 		// cannot make the picture worse.
-		if (!(dot(environmentReflection, environmentReflection) < 1.0e18)) {
-			environmentReflection = vec3(0.0);
+		//
+		// Batch 779 checks the colour rather than the product, because the colour
+		// is what the reflection's own history accumulates: a non-finite colour
+		// would be written into that buffer and read back next frame, which is the
+		// growing blot this guard exists to prevent. The product is not checked
+		// because it is no longer what is applied - the application site builds it
+		// from this colour and this frame's weight, and a finite colour times a
+		// finite weight is finite.
+		if (!(dot(environmentColor, environmentColor) < 1.0e18)) {
+			environmentColor = vec3(0.0);
 		}
 
 		#if PBR_DEBUG == PBR_DEBUG_REFLECTION
@@ -822,18 +911,24 @@ void main() {
 			max(current, vec3(1.0e-7)),
 			currentUsable ? 1.0 : 0.0);
 
+		// And the third, for the same reason (batch 779). A readout is not a
+		// reflection, so what goes here is this frame's sample rather than an
+		// average: the diagnostic must not leave a trail of itself in the
+		// reflection's history either.
+		gl_FragData[2] = vec4(max(environmentColor, vec3(1.0e-7)), 1.0);
+
 		return;
 		#endif
 		// BATCH 758: THE REFLECTION IS NO LONGER APPLIED HERE.
 		//
 		// It used to be, and batches 664 and 674 are the history of that: 664 moved
 		// the reflection into this pass so that the history would average its
-		// dither, and 674 widened the neighbourhood clamp by |reflectionDelta| so
-		// that the clamp would not cut the reflected part back out again. Both were
-		// correct about what they were solving, and together they made the
-		// reflection live as long as the picture around it - about 1/(1-0.85) = 6.7
-		// frames at the default TAA_STRENGTH. That is the author's trailing and
-		// lagging water reflection.
+		// dither, and 674 widened the neighbourhood clamp so that the clamp would
+		// not cut the reflected part back out again. Both were correct about what
+		// they were solving, and together they made the reflection live as long as
+		// the picture around it - about 1/(1-0.85) = 6.7 frames at the
+		// TAA_STRENGTH of the day. That is the author's trailing and lagging water
+		// reflection.
 		//
 		// Neither reference pack does this. Sundial composites its reflection in
 		// Composite0 through Composite3 and runs TAA in Composite7 and Composite9;
@@ -841,16 +936,22 @@ void main() {
 		// both, the reflection is an INPUT to the temporal resolve rather than part
 		// of its history, so it is never averaged across frames and cannot trail.
 		//
-		// So the reflection is applied after the resolve now, below. What that
-		// costs is the dither averaging the move was made for, and the answer is
-		// not to keep the reflection in the history: it is to stop the trace from
-		// needing a temporal average at all. See the note on traceDither in
-		// environment_reflection.glsl, which is now a spatial dither.
+		// So the reflection is applied after the resolve now, below, and since
+		// batch 779 it is accumulated in a history of its own rather than in this
+		// one. See REFLECTION_HISTORY_WEIGHT at the top of this file.
 		//
-		// `reflectionWeight` and `environmentReflection` are unchanged in meaning -
-		// only the point at which they are applied has moved.
+		// `reflectionWeight` is unchanged in meaning - only the point at which it
+		// is applied has moved, and since batch 779 it is applied to a colour
+		// accumulated over four frames rather than to a single frame's sample.
 	}
 	#endif
+
+	// The default: this frame's own sample, unaccumulated. The resolve below
+	// replaces it with the average where there is a history to average with, and
+	// every path that does not reach that far - anti-aliasing off, a pixel with
+	// no usable history, the debug view - applies this instead. That is what
+	// makes the buffer an addition rather than a change of behaviour.
+	accumulatedEnvironment = environmentColor;
 
 	vec3 resolved;
 
@@ -1051,7 +1152,9 @@ void main() {
 		// eight fetched neighbours have no reflection in them (colortex0 does not
 		// carry one), so the ninth - the centre, folded in here - must not either,
 		// or the bound this band produces is a bound for a different picture than
-		// the one the history holds. See the note on reflectionDelta above.
+		// the one the history holds. Since batch 779 the reflection is not in that
+		// history at all, so the two agree by construction; the note is kept
+		// because the reason the centre is folded in as `currentRaw` is unchanged.
 		neighborhoodSum += currentRaw;
 		neighborhoodSquareSum += currentRaw * currentRaw;
 		neighborhoodCount += 1.0;
@@ -1183,37 +1286,32 @@ void main() {
 	// never above the upper one, whatever the deviation does.
 	historyUpper = min(historyUpper, neighborhoodMaximum);
 
-	// BATCH 777: THE BAND IS WIDENED BY THE REFLECTION THAT IS ACTUALLY APPLIED.
+	// BATCH 779: THE BAND IS NO LONGER WIDENED BY THE REFLECTION, BECAUSE THE
+	// REFLECTION IS NO LONGER IN THIS HISTORY.
 	//
-	// The widening has been here since batch 674 and it has never done anything.
-	// It was built from `current - currentRaw`, and those two are the same value:
-	// `current` is read from colortex0 at the top of this function and is only
-	// ever reassigned when it is not usable at all, while `currentRaw` is a copy
-	// taken between the two. So the difference was exactly zero on every pixel of
-	// every frame, and the band was never widened by anything.
+	// Batches 674 and 777 widened this clamp by the reflection so that the
+	// reflected part of the history would survive it. That was the right fix
+	// for the arrangement it was written in - the reflection was applied to
+	// `resolved`, `resolved` is what colortex3 holds, so the history carried a
+	// reflection while the band was built from colortex0, which does not, and
+	// without the widening the clamp cut the reflection back to the scene's
+	// brightness every frame.
 	//
-	// What that cost is the whole of the author's noise report. The reflection is
-	// applied to `resolved` further down, and `resolved` is what is written to the
-	// history - so the history carries a reflection while the band is built from
-	// colortex0, which does not. The reflected part of the history therefore looks
-	// like a stale sample, is clamped back to the scene's brightness every frame,
-	// and is then re-added at full strength. The reflection never accumulated: it
-	// was a single-frame sample wearing a temporal filter's clothes.
+	// The reflection has a buffer of its own now (colortex9, see the note at the
+	// top of this file), so colortex3 holds the picture and nothing else and the
+	// band is built from exactly what it bounds. Widening it here would be
+	// widening it for a value that is no longer in it - which is the same class
+	// of mistake as 674's, in the other direction: a guard kept after the thing
+	// it guarded had moved.
 	//
-	// So the delta is built from the reflection itself. `environmentReflection` is
-	// already weighted by `reflectionWeight` (see the return in
-	// environment_reflection.glsl), so it is the amount this pixel's picture gains
-	// from the reflection, and that is exactly how far the band has to move to
-	// admit last frame's copy of it.
+	// What the widening was protecting is now protected by construction: the
+	// reflection is accumulated at REFLECTION_HISTORY_WEIGHT, a constant, so
+	// there is no clamp for it to be cut by and no weight for it to swing with.
 	//
-	// A pixel with no reflection has both at zero and keeps exactly the bounds it
-	// had.
-	vec3 reflectionDelta = environmentReflection;
-
-	history = clamp(
-		history,
-		historyLower - abs(reflectionDelta),
-		historyUpper + abs(reflectionDelta));
+	// The clamp itself stays, and it is the whole of the anti-aliasing's
+	// rejection: it is what stops a stale sample from a surface that has moved
+	// on its own from being averaged into this one.
+	history = clamp(history, historyLower, historyUpper);
 
 	// How far this pixel moved since the previous frame, in pixels.
 	// Measured from this pixel to where this pixel's history was - the anchor's own
@@ -1274,6 +1372,75 @@ void main() {
 
 	resolved = mix(current, history, historyWeight);
 
+	// THE REFLECTION'S OWN ACCUMULATION (batch 779).
+	//
+	// This is the whole of the fix for the swing, and it is deliberately not
+	// `historyWeight`. The reflection is reprojected with the same coordinate the
+	// picture is - it is a reflection of the world, and the world moves with the
+	// camera - but it is averaged at a constant weight, so its strength is the
+	// same whether the camera is still or moving.
+	//
+	// The history is read from colortex9 at the reprojected coordinate, and the
+	// same three conditions that make the picture's history unusable make this
+	// one unusable: no coordinate, off screen, or nothing accumulated yet. In
+	// those cases the current frame's sample is used as-is, which is what "no
+	// history" means.
+	//
+	// THERE IS NO NEIGHBOURHOOD CLAMP HERE, and that is a decision rather than an
+	// omission. The band the picture's history is clamped to is built from
+	// colortex0, which carries no reflection - so it bounds the surface's own
+	// light, and the reflection is a different quantity that is routinely
+	// brighter or darker than it. Clamping the reflection to that band would cut
+	// a bright sky reflection down to the brightness of the block it is on, which
+	// is the defect batch 674 widened the band to avoid, reintroduced in a worse
+	// form.
+	//
+	// What the clamp would have protected against is already covered:
+	//
+	// * a pixel that stops reflecting has `environmentColor` at zero, and the
+	//   weight it is multiplied by at the application site is zero too - so a
+	//   stale bright reflection in the buffer cannot show on a surface that no
+	//   longer reflects, whatever the buffer holds;
+	// * a pixel that starts reflecting has no history worth trusting, and the
+	//   exactly-zero guard below sends it to the current sample;
+	// * a reflection of something that moved on its own is the one real trail,
+	//   and it is bounded by the weight: 25% of the frame is replaced each frame,
+	//   so it is gone in four.
+	//
+	// A pixel with no reflection has environmentColor at zero, so it accumulates
+	// zero and stays at zero however long it is averaged. That is why the weight
+	// is not in the buffer: a surface that stops reflecting must stop at once,
+	// and a weighted product in the history would fade out over four frames.
+	//
+	// A plain bilinear fetch rather than HistorySample's Catmull-Rom, and that is
+	// a decision. Catmull-Rom is used for the picture because it interpolates
+	// rather than approximates, which is what keeps detail that falls between
+	// texels from being averaged away frame after frame. The reflection has no
+	// such detail to keep: it is already blurred by PbrReflectionLod, by an amount
+	// that follows the surface's roughness. What Catmull-Rom would add here is its
+	// negative lobes, and there is no neighbourhood clamp on this buffer to catch
+	// the overshoot they produce at an edge - so the cheaper filter is also the
+	// one that cannot ring.
+	vec3 reflectionHistory = environmentColor;
+	if (historyUsable) {
+		reflectionHistory = texture(colortex9, previousScreenCoord).rgb;
+
+		// The same two guards the picture's history gets, for the same reasons:
+		// a value that is not a number fails every comparison and would be
+		// written back and spread by the next frame's fetch, and an exact zero is
+		// what an unwritten buffer holds rather than a reflection of black.
+		if (!(dot(reflectionHistory, reflectionHistory) < 1.0e18)) {
+			reflectionHistory = environmentColor;
+		}
+
+		if (reflectionHistory == vec3(0.0)) {
+			reflectionHistory = environmentColor;
+		}
+	}
+
+	accumulatedEnvironment = mix(
+		environmentColor, reflectionHistory, REFLECTION_HISTORY_WEIGHT);
+
 	// And the result, before it reaches the history. It is a hedge: resolved is
 	// built from the expressions above, and every one of them is finite by the
 	// argument in the note, but if a black blot is what follows from being
@@ -1332,59 +1499,50 @@ void main() {
 		}
 	#endif
 
-	// The environment reflection has already been applied, above, to `current`.
+	// BATCH 779: THE REFLECTION IS APPLIED HERE, AFTER THE RESOLVE, AND IT IS NO
+	// LONGER IN THE ANTI-ALIASING HISTORY.
 	//
-	// Its effect on the history written below is the whole of batch 664, so it is
-	// spelled out here: `resolved` is the frame the next one accumulates onto, so
-	// this frame's reflection is in the history now. The neighbourhood clamp above
-	// is what decides how much of it survives there, and it is worth being exact
-	// about which way it cuts: eight of its nine values are read from colortex0 and
-	// carry no reflection, while the ninth is this pixel's own `current`, which
-	// does carry one. So the clamp's own upper end is at least this frame's
-	// reflective value - the reflection is not clamped away - while the mean and
-	// the lower end sit around the surface's reflection-free brightness, which is
-	// what rejects a stale reflection that no longer matches the frame. Before the
-	// move the reflection deliberately stayed out of this buffer; now it is
-	// deliberately in it, because being in it is what averages the dither. The
-	// trade that comes with that is recorded where the reflection is applied.
+	// The history of this arrangement, because each batch in it was right about
+	// what it was solving and the sequence is what makes the current shape
+	// legible:
 	//
-	// The fog below goes the other way and is still kept out of the history: its
-	// own temporal stage would otherwise be averaged twice. The two are not a
-	// contradiction - they are the difference between a sample that has no
-	// temporal stage of its own (the reflection) and one that does (the fog).
-
-	// BATCH 758: THE ENVIRONMENT REFLECTION IS APPLIED HERE, AFTER THE RESOLVE.
+	// 664 moved the reflection into this pass so that the anti-aliasing history
+	// would average its dither, and 674 widened the neighbourhood clamp so that
+	// the clamp would not cut the reflected part back out. Together they made the
+	// reflection live as long as the picture around it - 6.7 frames at the
+	// TAA_STRENGTH of the day - which is the author's trailing water reflection.
 	//
-	// BATCH 766: AND IT IS STILL IN THE HISTORY, WHICH IS WHAT 758 GOT WRONG.
+	// 758 moved the application from `current` to `resolved` and claimed that
+	// took the reflection out of the history. It did not: the history write is
+	// `max(resolved, ...)`, and `resolved` is what carries the reflection. 766
+	// corrected that and put the two things back.
 	//
-	// 758 moved the reflection from `current` to `resolved` and claimed that took it
-	// out of the temporal history. It did not: line 1537 writes `max(resolved, ...)`
-	// to the history, and `resolved` is what carries the reflection. So the
-	// reflection has been in the history from 664 until now, and 758 changed nothing
-	// about that - it only removed the two things that made being there work, the
-	// clamp widening and the frame term of the trace dither. The result was a
-	// reflection in the history whose noise the history could not average, which is
-	// the author's report: the SSR reflection shows clear noise.
+	// 778 then found the cost of the long history: the reflection's strength
+	// depended on how fast the camera was moving, because the previous frame's
+	// reflection entered the picture at `historyWeight` and `historyWeight` falls
+	// with motion. That is the swing the author reported.
 	//
-	// So the reflection stays here, and the two things that make it work are back.
-	// What that costs is the trailing 758 was trying to remove: a reflection lives
-	// about as long as the picture around it. At the TAA_STRENGTH of the day that
-	// was 6.7 frames; at the 0.125 default of batch 778 it is 1.1, so the trail is
-	// short. The author chose the long-history side of this trade in 766 - noise
-	// the history can average, over a reflection that never trails - and 778 moved
-	// to the other side because the long history made the reflection swing as the
-	// camera moved.
+	// So the reflection leaves this history entirely. It has a buffer of its own
+	// (colortex9) and is accumulated at a constant weight there, which is the
+	// only arrangement in which its strength cannot depend on the camera. What
+	// this pass writes to colortex3 is now the picture and nothing else, so the
+	// clamp above bounds exactly what it holds.
 	//
 	// The energy-conservation form is unchanged - the reflection replaces the
 	// fraction of the surface's own light that it represents, rather than being
-	// added on top - because that is a property of the compositing, not of when it
-	// happens.
+	// added on top - because that is a property of the compositing, not of where
+	// the reflection was accumulated.
+	//
+	// `accumulatedEnvironment` rather than the function's return value: the
+	// return is this frame's colour times this frame's weight, while what is
+	// applied is the colour averaged over four frames and then weighted by this
+	// frame's weight. See the note where it is built.
 	#if defined(PBR_SSR)
 		#if PBR_ENERGY_CONSERVATION
 			resolved = resolved * (vec3(1.0) - reflectionWeight)
-				+ environmentReflection;
+				+ reflectionWeight * accumulatedEnvironment;
 		#else
-			resolved += environmentReflection;
+			resolved += reflectionWeight * accumulatedEnvironment;
 		#endif
 	#endif
 
@@ -1563,4 +1721,23 @@ void main() {
 	gl_FragData[1] = vec4(
 		max(resolved, vec3(1.0e-7)),
 		currentUsable ? 1.0 : 0.0);
+
+	// THE REFLECTION'S OWN HISTORY (batch 779).
+	//
+	// What is written is the accumulated COLOUR, not the weighted product and not
+	// what was applied to the picture. The weight is this frame's and is not
+	// accumulated - see the note where `accumulatedEnvironment` is built - so
+	// what the next frame needs from this one is the colour alone.
+	//
+	// Written whether anti-aliasing is on or off, and that is not symmetry for its
+	// own sake: with it off there is no accumulation, so this is a plain copy of
+	// this frame's sample, which is exactly what the next frame would read as "no
+	// history" if it were left unwritten. Leaving it unwritten would instead leave
+	// whatever the last frame with anti-aliasing on had put there, which is a
+	// reflection of a different place in the world.
+	//
+	// The floor is the same one the picture's history gets, and for the same
+	// reason: an exact zero is what an unwritten buffer holds, and the reader
+	// treats it as "no history" rather than as a reflection of black.
+	gl_FragData[2] = vec4(max(accumulatedEnvironment, vec3(1.0e-7)), 1.0);
 }

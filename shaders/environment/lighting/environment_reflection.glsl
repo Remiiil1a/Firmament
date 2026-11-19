@@ -33,8 +33,13 @@
 // would not be cut back out, which lengthened the trail to the full weight. The
 // author reports the result as trailing and lagging water reflections.
 //
-// BATCH 778: the default is 0.125 now, a 1.1-frame history, so that trail is
-// short. The arrangement below is unchanged.
+// BATCH 779 SETTLED IT, and the answer is neither of the two above: the
+// reflection is applied after the resolve AND accumulated, in a history of its
+// own (colortex9) at a constant weight. Being in the anti-aliasing history is
+// what made its strength depend on how fast the camera was moving, because that
+// history's weight falls with motion; being in no history at all is what made it
+// noisy. A separate history is the only arrangement that is neither. See
+// REFLECTION_HISTORY_WEIGHT in composite1.fsh.
 //
 // Neither reference pack does it that way. Sundial composites its reflection in
 // Composite0 through Composite3 and resolves in Composite7 and Composite9; Bliss
@@ -48,18 +53,20 @@
 //
 // Sampling colortex4 rather than colortex3 is still what makes the trace legal.
 // composite1 writes colortex3, and a buffer a pass writes is not one it may trace
-// over: the read side is the previous frame's resolved image, reflection and all,
-// so a trace over it would sample a picture that already contains a reflection -
-// the feedback loop whose symptom was a black blot that grew (BATCH_LOG.md 210).
-// colortex4 carries no reflection, and it is this frame's world, which is also
-// the frame the reflection is being added to.
+// over: the read side is the previous frame's resolved image, so a trace over it
+// would sample a picture that already contains a reflection - the feedback loop
+// whose symptom was a black blot that grew (BATCH_LOG.md 210). colortex4 carries
+// no reflection, and it is this frame's world, which is also the frame the
+// reflection is being added to.
 //
 // The uniforms are declared here rather than in the pass, because the pass
 // includes this file. colortex3 is declared here too although this file no
 // longer samples it: the pass that includes it does - that buffer is its
 // anti-aliasing history, written with colortex3Clear=false, see the note in
 // shaders.properties and lib/taa.glsl - and a uniform may only be declared once
-// per program.
+// per program. colortex9, the reflection's own history since batch 779, is
+// declared by the pass instead: this file computes the reflection, the pass is
+// what accumulates it.
 
 uniform sampler2D colortex3;
 uniform sampler2D colortex4;
@@ -121,13 +128,21 @@ uniform vec2 windowToNdc;
 // reflectionHitDistanceOut: how far from the fragment the hit was, in blocks, and
 // zero where there was no hit. Used by the same debug view to mark the hits
 // that are near enough to be this block's own geometry.
+// environmentOut: the environment colour this pixel sees, BEFORE the weight is
+// multiplied in - the sky, or what the trace found. The caller accumulates this
+// across frames and applies the weight itself (batch 779), which is why the two
+// are reported separately: the weight belongs to the material and the view angle
+// and is a fresh answer every frame, while the colour is the noisy sample that
+// needs averaging. Accumulating the weighted product instead would keep a
+// reflection alive on a surface that had stopped reflecting.
 vec3 EnvironmentReflection(
 	vec3 viewPos,
 	float skyLight,
 	bool seenThrough,
 	out vec3 reflectionWeightOut,
 	out bool reflectionHitOut,
-	out float reflectionHitDistanceOut
+	out float reflectionHitDistanceOut,
+	out vec3 environmentOut
 ) {
 	#if defined(PBR_SSR)
 		// A fragment that is being seen through something translucent is given
@@ -159,6 +174,7 @@ vec3 EnvironmentReflection(
 
 			reflectionHitOut = false;
 			reflectionHitDistanceOut = 0.0;
+			environmentOut = vec3(0.0);
 			return vec3(0.0);
 		}
 
@@ -186,6 +202,7 @@ vec3 EnvironmentReflection(
 
 			reflectionHitOut = false;
 			reflectionHitDistanceOut = 0.0;
+			environmentOut = vec3(0.0);
 			return vec3(0.0);
 		}
 
@@ -202,6 +219,7 @@ vec3 EnvironmentReflection(
 
 			reflectionHitOut = false;
 			reflectionHitDistanceOut = 0.0;
+			environmentOut = vec3(0.0);
 			return vec3(0.0);
 		}
 
@@ -384,17 +402,23 @@ vec3 EnvironmentReflection(
 				// IT. 758 removed it on the argument that the reflection is applied
 				// after the temporal resolve, so nothing averages a per-frame dither
 				// and a moving one would simply be noise. The premise was false:
-				// composite1.fsh:1537 writes `max(resolved, ...)` to the history, and
-				// `resolved` carries the reflection - so the reflection IS in the
-				// history, and has been all along. What 758 actually did was leave the
-				// reflection in the history while making the dither identical every
-				// frame, so the history had a noise it could not average. That is the
-				// author's report: the SSR reflection shows clear noise.
+				// composite1.fsh writes `max(resolved, ...)` to the anti-aliasing
+				// history, and `resolved` carried the reflection - so the reflection
+				// WAS in that history, and had been all along. What 758 actually did
+				// was leave the reflection in the history while making the dither
+				// identical every frame, so the history had a noise it could not
+				// average. That is the author's report: the SSR reflection shows
+				// clear noise.
+				//
+				// BATCH 779: the reflection is in a history of its own now, so the
+				// buffer that averages this dither is colortex9 rather than
+				// colortex3. The frame term is needed for exactly the same reason and
+				// is unchanged - what changed is which buffer does the averaging.
 				//
 				// The frame term walks by the golden ratio, so the sequence does not
 				// repeat on a short cycle and the history averages the lattice away
 				// instead of reinforcing it. That is what it is for, and it only works
-				// because the reflection is in the history - which it is.
+				// because the reflection is in a history - which it is.
 				float traceDither = fract(
 					Bayer8(gl_FragCoord.xy) * 1.32
 					+ float(frameCounter) * 0.618034);
@@ -702,6 +726,15 @@ vec3 EnvironmentReflection(
 			* environmentPresent;
 		reflectionWeightOut = clamp(weight, vec3(0.0), vec3(1.0));
 
+		// The colour is reported unweighted, and the weight is reported beside it
+		// rather than multiplied in, because the caller accumulates the colour
+		// across frames and applies the weight afterwards (batch 779). The weight
+		// is a property of the material and the view angle and is a fresh answer
+		// every frame; the colour is the sample that carries the trace's noise.
+		// Averaging the product instead would keep a reflection alive on a
+		// surface whose weight had fallen to zero.
+		environmentOut = environment;
+
 		return reflectionWeightOut * environment;
 	#else
 		// Nothing here reflects anything, so nothing may be taken out of the
@@ -710,6 +743,7 @@ vec3 EnvironmentReflection(
 
 		reflectionHitOut = false;
 		reflectionHitDistanceOut = 0.0;
+		environmentOut = vec3(0.0);
 		return vec3(0.0);
 	#endif
 }
