@@ -1029,17 +1029,20 @@ void main() {
 			pbrMaterial = pbrMaterial && materialID != ICE;
 		#endif
 
-		#if defined(PBR_HAND_ITEMS) && !defined(PBR_HAND_ITEM_MATERIALS)
-			// A held item is not a block, and the material maps are generated for
-			// the block atlas: its coordinates would land on another sprite's
-			// material and turn the item into a mirror of whatever is behind it.
-			// Only geometry the world gave a material to - which is to say a block,
-			// as mc_Entity reports it - is read from that atlas.
-			//
-			// A held block answers to a material ID and an item does not, so that
-			// is the test. See the option in gbuffers_hand.fsh for the whole of it.
-			pbrMaterial = pbrMaterial && materialID != GENERIC;
-		#endif
+		// BATCH 774: THE PBR_HAND_ITEM_MATERIALS BRANCH IS GONE.
+		//
+		// It excluded a held item from the block atlas, on the argument that the
+		// material maps are generated sprite for sprite for blocks and an item's
+		// coordinates would land on another sprite's material.
+		//
+		// ⚠️ BATCH 773 DELETED THE #define AND LEFT THIS, WHICH INVERTED IT. While
+		// the option was defined unconditionally this branch never ran; once the
+		// define was gone, `!defined(PBR_HAND_ITEM_MATERIALS)` became always true
+		// and the branch started excluding every held item from its material -
+		// which is the author's "all held item PBR is gone".
+		//
+		// Deleting an option means deleting the branch it guarded, not only the
+		// name it was switched by.
 
 		// This branch is safe even though it contains texture samples because
 		// every one of them uses explicit gradients (see PbrGradients) - only
