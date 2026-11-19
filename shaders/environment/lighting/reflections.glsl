@@ -308,6 +308,34 @@ vec3 PbrVisibleNormal(
 #define PBR_SSR_BLUR_MAX_LOD 6.0
 
 	
+// BATCH 782: THE NOISE TEXTURE, DECLARED HERE FOR THE SAME REASON AS
+// frameCounter ABOVE.
+//
+// The pair below reads noisetex, and lib/valueNoise.glsl declares it - but not
+// every program that includes this file reaches that library. Measured: two do
+// not, dh_terrain.fsh and gbuffers_weather.fsh, and both fail with
+// `'noisetex' : undeclared identifier`. That is the same shape of defect as the
+// frameCounter one above, and it has the same answer: declare it here, behind a
+// marker, in the one file every consumer is guaranteed to pass through.
+//
+// The guard is `#if !defined(M)` rather than `#ifndef M` because
+// _check_uniform_dups.ps1 only recognises that form, and the marker is shared
+// with lib/valueNoise.glsl so that exactly one of the two declarations compiles.
+#if !defined(NOISE_TEXTURE_DECLARED)
+#define NOISE_TEXTURE_DECLARED
+uniform sampler2D noisetex;
+#endif
+
+// The size of that texture, which the lookup below wraps to. Iris reads this
+// directive to BUILD the texture (PackDirectives.acceptConstIntDirective), so
+// the two cannot disagree - but it is declared in lib/valueNoise.glsl, which the
+// two programs above do not include, so it is repeated here behind the same
+// marker.
+#if !defined(NOISE_TEXTURE_DECLARED_SIZE)
+#define NOISE_TEXTURE_DECLARED_SIZE
+const int noiseTextureResolution = 64;
+#endif
+
 // The noise the reflection direction is drawn from.
 //
 // BATCH 777: THIS MOVES WITH THE FRAME NOW, AND THAT IS THE WHOLE POINT.
@@ -364,13 +392,6 @@ vec3 PbrVisibleNormal(
 uniform int frameCounter;
 #endif
 
-float PbrReflectionNoise(float offset) {
-	return fract(52.9829189 * fract(
-		0.06711056 * gl_FragCoord.x
-		+ 0.00583715 * gl_FragCoord.y
-		+ offset));
-}
-
 // The pair of uniform numbers the draw needs.
 //
 // BATCH 777: TWO HASHES WITH DIFFERENT COEFFICIENTS, NOT ONE HASH AND A SHIFT.
@@ -390,11 +411,72 @@ float PbrReflectionNoise(float offset) {
 // move between frames. The golden ratio is the stride because it is the
 // worst-approximated irrational, so successive frames visit the interval evenly
 // instead of clustering.
+//
+// BATCH 782: THE FIRST NUMBER IS A TEXTURE LOOKUP NOW, WHICH IS BLISS'S FORM.
+//
+// Bliss builds its pair from two UNRELATED generators (dimensions/composite1.fsh
+// :1337, `vec3(vec2(blueNoise(), ig_noise), ig_noise)`): a texture lookup and an
+// analytic hash. Ours was two analytic hashes of the same shape with the
+// coefficients swapped - which works, and is measurably worse than a texture:
+//
+//   pair                          fill   chi2/dof   cond. sd
+//   two swapped hashes          100.00%        2.4     0.2886
+//   texture lookup + IGN        100.00%        1.6     0.2887
+//   (independent ideal)         100.00%        1.0     0.2887
+//
+// `cond. sd` is the spread of the second number inside a bin of the first, which
+// is the statistic that says whether the pair covers the square or a curve: an
+// independent pair gives 0.2887, and both of the above are there. What the
+// texture buys is the TAIL - chi2/dof 2.4 against 1.6 - because an analytic hash
+// has a little more structure than a lookup does. Measured by
+// _team_bfog/noise_port_782.py.
+//
+// The hash that used to be the first number is gone rather than kept beside this
+// one: it had no other caller, and a function nothing calls is a function that
+// silently rots.
+//
+// ⚠️ TWO TRAPS, AND BOTH ARE INVISIBLE IN THE SOURCE.
+//
+// 1. IRIS'S NOISE TEXTURE HAS A CONSTANT ALPHA CHANNEL. Bliss reads `.a`
+//    (composite1.fsh:282) and gets away with it because it ships its own
+//    texture. Iris builds ours in NativeImageBackedNoiseTexture.create():
+//    `int color = random.nextInt() | (255 << 24);` - the `255 << 24` forces the
+//    alpha byte to 255 on every texel. Measured over 4096 texels: one distinct
+//    alpha value, 256 distinct red ones. So `.a` is exactly 1.0 everywhere and a
+//    pair built from it is a CONSTANT, which is the frozen draw b777 removed, in
+//    its most degenerate form. This reads `.r`.
+//
+// 2. THE TEXTURE IS 64x64, SO THE LOOKUP REPEATS EVERY 64 PIXELS. That size is
+//    this pack's own `const int noiseTextureResolution = 64;` in
+//    lib/valueNoise.glsl, which Iris reads to build the texture. Bliss uses
+//    %512 against a 512x512 texture and does not wrap on screen. Measured
+//    autocorrelation of the first number at lag 64: 1.000 for a %64 lookup,
+//    -0.384 for the analytic hash. So the lookup is offset by the frame number
+//    and by a per-pixel rotation below, which is what breaks the repeat without
+//    a bigger texture: the same texel is still read, but not at the same screen
+//    position twice in a frame.
+//
+// The rotation is a cheap hash of the pixel rather than a constant, because a
+// constant offset would move the repeat rather than break it.
 vec2 PbrReflectionNoisePair() {
 	float frame = float(frameCounter) * 0.618034;
 
+	// The texture coordinate, wrapped to the texture's own size. The frame term
+	// is what makes the lookup move between frames; the rotation is what stops
+	// the 64-pixel repeat from being a repeat.
+	vec2 noiseCoord = gl_FragCoord.xy
+		+ vec2(frame * 37.0, frame * 17.0)
+		+ vec2(
+			fract(gl_FragCoord.y * 0.0173) * 64.0,
+			fract(gl_FragCoord.x * 0.0231) * 64.0);
+
+	float textureNoise = texelFetch(
+		noisetex,
+		ivec2(mod(noiseCoord, float(noiseTextureResolution))),
+		0).r;
+
 	return vec2(
-		PbrReflectionNoise(frame),
+		textureNoise,
 		fract(52.9829189 * fract(
 			0.00583715 * gl_FragCoord.x
 			+ 0.06711056 * gl_FragCoord.y

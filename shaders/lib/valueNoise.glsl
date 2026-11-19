@@ -30,10 +30,24 @@
 // Recorded as the reason for the size, and not something the code shows: 64x64
 // is what is needed at most and 32x32 or 48x48 would probably do, and smaller is
 // better because it helps the texture stay in cache.
+//
+// BATCH 782: BOTH DECLARATIONS ARE BEHIND A MARKER NOW, because
+// environment/lighting/reflections.glsl declares them too. That file is included
+// by two programs that never reach this one (dh_terrain.fsh, gbuffers_weather.fsh)
+// and it reads the texture for the reflection pair, so it cannot rely on this
+// file being on its include chain. A uniform may only be declared once per
+// program, so whichever of the two arrives first declares it and the other is
+// skipped - which is what the marker is for. The guard is `#if !defined(M)`
+// rather than `#ifndef M` because _check_uniform_dups.ps1 only recognises that
+// form.
+#if !defined(NOISE_TEXTURE_DECLARED_SIZE)
+#define NOISE_TEXTURE_DECLARED_SIZE
 const int noiseTextureResolution = 64;
+#endif
 const float noisePixel = 1.0 / noiseTextureResolution;
 
-#if !defined(EXTERNALLY_DEFINED_UNIFORMS)
+#if !defined(NOISE_TEXTURE_DECLARED) && !defined(EXTERNALLY_DEFINED_UNIFORMS)
+	#define NOISE_TEXTURE_DECLARED
 	uniform sampler2D noisetex;
 #endif
 
