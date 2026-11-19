@@ -132,22 +132,28 @@
 // correct highlight is far less visible than most people expect from a
 // "reflective" material. Raise this if materials still look flat.
 //
-// 2.0 as of batch 621 section 33, chosen by eye by the author after comparing
-// 1.0 and 2.0 in game. The history matters more than the number:
+// The history matters more than the number:
 //
 // * 2.0 was the shipped value for a long time, with energy conservation off - a
-// highlight doubled to survive the tonemapper, on a body with no budget for it.
+//   highlight doubled to survive the tonemapper, on a body with no budget for it.
 // * 1.0 arrived with energy conservation switched ON, as the pair that balances.
-// It is the physically consistent setting, and what it costs is visible: iron,
-// gold and copper went a step dark, because a metal has no diffuse response
-// here and this number scales the only light it has besides its reflection.
-// * 2.0 is back, with conservation still on. That combination is deliberately
-// over budget - the surface reflects more than arrives - which is what makes
-// the metals read the way the author wants. It is a look, not a physics claim.
+//   It is the physically consistent setting, and what it costs is visible: iron,
+//   gold and copper went a step dark, because a metal has no diffuse response
+//   here and this number scales the only light it has besides its reflection.
+// * 2.0 came back for a while with conservation still on, which is deliberately
+//   over budget - the surface reflects more than arrives - and is what made the
+//   metals read the way the author wanted at the time. It was a look, not a
+//   physics claim.
+// * BATCH 768: THE AUTHOR SET IT BACK TO 1.0, by hand, alongside
+//   PBR_REFLECTION_SMOOTHNESS_MIN 0.9, PBR_SSR_STEPS 12 and TAA_STRENGTH 0.9.
+//   So the balanced pair is the shipped one again, and the over-budget look is
+//   the thing to compare against if the metals ever read too flat.
 //
-// 1.0 plus conservation remains the balanced pair, and it is one constant away; if
-// the over-budget highlight ever starts reading as the crystal it did before, that
-// is the value to compare against.
+// ⚠️ The note at environment_reflection.glsl that argues iron needs a clamp
+// because its weight reaches 1.56 was written against 2.0. At 1.0 that weight is
+// about 0.78, so the clamp there is now a guard against a value that cannot
+// occur rather than a fix for one that does. It is left in place - it costs one
+// min() and it is correct either way - but the argument no longer applies.
 #define PBR_SPECULAR_STRENGTH 1.0 // [1.0 1.25 1.5 2.0 2.5 3.0 4.0 6.0]
 
 // How big the sun and the moon are, as far as the highlight they make on a
@@ -1205,20 +1211,36 @@ const float PBR_METAL_ALBEDO = 238.0;
 // F0 values for the LabPBR hardcoded metals, looked up by the byte value stored
 // in the green channel of the specular map.
 //
-// It is reached only for a byte in 230-237, which is what lets it be an unrolled
-// chain of equality tests: the dielectric case is separated out by the two
-// comparisons in PbrDecode and never calls this, so the chain is paid for only
-// by the materials that use the feature.
+// BATCH 769: THESE WERE 1.05 TO 1.5 TIMES TOO HIGH, AND THE COMMENT ABOVE SAID
+// "LabPBR" WHILE THEY WERE NOT.
+//
+// LabPBR specifies each metal by its complex refractive index at 650 nm, and F0 is
+// ((1 - N)^2 + K^2) / ((1 + N)^2 + K^2). Evaluated against the standard's own N/K
+// table, the values that stood here were all too bright - iron was (0.78, 0.77,
+// 0.74) where the standard gives (0.5312, 0.5124, 0.4958), a factor of 1.49 - and
+// gold's blue channel was 0.61 against 0.373, which is why this pack's gold read
+// as yellow-white rather than gold.
+//
+// The values below are Bliss's (lib/specular.glsl:293-302), and they are not
+// copied on trust: each one was checked against the same N/K table and agrees to
+// four decimal places. That is the strongest evidence available without a
+// spectrometer, and it is why the table is worth taking from there rather than
+// recomputing.
+//
+// ⚠️ The old numbers were not invented - BATCH_LOG.md:21697 records "iron is
+// (0.78, 0.77, 0.74) per LabPBR", which is where they came from. That line is
+// wrong, and it is worth knowing that the error entered as a citation rather than
+// as a guess.
 vec3 PbrMetalF0(int metalID) {
-	if (metalID == 230) return vec3(0.78, 0.77, 0.74); // Iron
-	if (metalID == 231) return vec3(1.00, 0.90, 0.61); // Gold
-	if (metalID == 232) return vec3(1.00, 0.98, 1.00); // Aluminum
-	if (metalID == 233) return vec3(0.77, 0.80, 0.79); // Chrome
+	if (metalID == 230) return vec3(0.531228825312, 0.51235724246, 0.495828545714); // Iron
+	if (metalID == 231) return vec3(0.944229966045, 0.77610211732, 0.373402004593); // Gold
+	if (metalID == 232) return vec3(0.912298031535, 0.91385063144, 0.919680580954); // Aluminum
+	if (metalID == 233) return vec3(0.55559681715, 0.55453707574, 0.554779427513); // Chrome
 
-	if (metalID == 234) return vec3(1.00, 0.89, 0.73); // Copper
-	if (metalID == 235) return vec3(0.79, 0.87, 0.85); // Lead
-	if (metalID == 236) return vec3(0.92, 0.90, 0.83); // Platinum
-	if (metalID == 237) return vec3(1.00, 1.00, 0.91); // Silver
+	if (metalID == 234) return vec3(0.925952196272, 0.72090163805, 0.504154241735); // Copper
+	if (metalID == 235) return vec3(0.632483812932, 0.62593707362, 0.641478899539); // Lead
+	if (metalID == 236) return vec3(0.678849234658, 0.64240055565, 0.588409633571); // Platinum
+	if (metalID == 237) return vec3(0.961999998804, 0.94946811207, 0.922115710997); // Silver
 
 	return vec3(0.0);
 }
@@ -2332,10 +2354,27 @@ vec3 PbrDebugColor(
 		return a2 / (PBR_PI * d * d);
 	}
 
-	// Smith's visibility function with the height-correlated form of the
-	// geometric term, divided by the 4 * NdotL * NdotV denominator of the
-	// microfacet BRDF. The division is kept inside so that the caller can
-	// multiply the pieces together directly.
+	// Smith's visibility function with the height-correlated form of the geometric
+	// term.
+	//
+	// BATCH 769: THE NOTE HERE USED TO SAY THIS ALSO DIVIDED BY THE
+	// 4 * NdotL * NdotV DENOMINATOR OF THE MICROFACET BRDF, "kept inside so that
+	// the caller can multiply the pieces together directly". It does not, and the
+	// caller does not: PbrSpecular returns D * visibility * fresnel * lightTerm
+	// with no denominator anywhere. So the note described a normalisation that
+	// exists in neither place.
+	//
+	// Which of the two is right is not settled here, and it is worth being plain
+	// about that rather than picking one: the height-correlated Smith form is
+	// usually written as G / (4 * NdotL * NdotV) with G = 2 * lambdaV * lambdaL /
+	// (lambdaV + lambdaL), and this returns 0.5 / (lambdaV + lambdaL), which is
+	// that same quantity divided by 4 * lambdaV * lambdaL. Whether the missing
+	// factor belongs here or at the call site is a question for a hemisphere
+	// integral against a known F0, and that has not been done.
+	//
+	// What IS established: the note and the code disagreed, and the note was the
+	// wrong one. Recorded so that the next person does not read the note and
+	// conclude the normalisation is handled.
 	float V_SmithGGXCorrelated(float NdotL, float NdotV, float roughness) {
 		float a2 = roughness * roughness * roughness * roughness;
 		float lambdaV = NdotL * sqrt((-NdotV * a2 + NdotV) * NdotV + a2);
