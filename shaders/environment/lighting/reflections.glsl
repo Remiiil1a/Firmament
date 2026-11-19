@@ -174,114 +174,61 @@ vec3 PbrVisibleNormal(
 			worldNormal));
 		vec3 bitangent = cross(worldNormal, tangent);
 
-		// The view direction in that frame, pointing back towards the camera. This
-		// is the orientation the bounded draw is written in: +z is the surface
-		// normal and the viewer sits above it.
-		//
-		// The z is floored rather than taken as an absolute value. A surface being
-		// shaded faces the camera, so the dot is positive; the floor only keeps a
-		// grazing fragment from dividing by zero. Taking the absolute value, as the
-		// plain draw did, would fold a back-facing fragment onto the front and draw
-		// its cone on the wrong side.
-		vec3 viewer = vec3(
-			dot(viewDirection, tangent),
-			dot(viewDirection, bitangent),
-			max(dot(viewDirection, worldNormal), 1.0e-4));
+		// The incident direction, in that frame: the way the view ray travels, which
+		// is towards the surface.
+		vec3 incident = vec3(
+			dot(-viewDirection, tangent),
+			dot(-viewDirection, bitangent),
+			dot(-viewDirection, worldNormal));
 
-		// The incident direction, which is what reflect() wants: the way the view
-		// ray travels, towards the surface.
-		vec3 incident = -viewer;
-
-		// BATCH 776: THE DRAW IS BOUNDED, AND THE LINE THAT WAS DOING THE BOUNDING
-		// BY HAND IS GONE.
+		// The visible-normal draw, in the hemisphere configuration. This is
+		// SampleVNDFGGX's arithmetic (Bliss lib/specular.glsl:42-71).
 		//
-		// The author reports that raising the sample count and letting the resolve
-		// flatten it still leaves noise this pack's reflections and not Bliss's. The
-		// draw itself was never the difference - it is Bliss's arithmetic line for
-		// line (lib/specular.glsl:42-71) - and batch 775 already replaced the noise
-		// fed to it. What was left is the last line of that arithmetic:
+		// ⚠️ BATCH 765: THE `abs` BELONGS HERE AND NOWHERE ELSE. Bliss takes
+		// `viewDir.z = abs(viewDir.z)` (:353) so that the draw stays on the upper
+		// hemisphere, and that is what this reproduces - but the value it reflects
+		// afterwards is the unmodified `viewDir`. Taking the abs of the incident
+		// direction as well flips the ray to the other side of the surface, which is
+		// the same pasted-on look by a second route.
 		//
-		//     cosTheta = clamp(cosTheta, sinTheta * 0.5, 1.0);
-		//
-		// That line is not a guard. Measured over the draw, it bites on 72% of
-		// samples at every roughness, and it bites in one direction: it lifts every
-		// sample whose cosine fell below half its sine - everything past about 63
-		// degrees from the stretched normal - up onto that boundary. So three
-		// quarters of the distribution is folded onto one curve instead of being
-		// spread over the cone, and the samples that would have filled the cone are
-		// not there.
-		//
-		// That is the noise. Not too few samples - the wrong samples, and wrong the
-		// same way every frame, which is why neither the step count nor the resolve
-		// could ever average it away. A fold is a pattern, and a pattern survives
-		// averaging.
-		//
-		// Bounded VNDF (Tokuyoshi and Eto, "Bounded VNDF Sampling for the Smith-GGX
-		// BRDF", I3D 2024) does the same job without the fold: it shrinks the
-		// spherical cap the draw is taken from until the cap's own bound is the
-		// reflection vector's horizon, so the samples that would have gone below the
-		// surface are never drawn in the first place. The cone stays filled.
-		//
-		// The change is one line against the plain draw - the cap's cosine bound `b`
-		// is scaled by the factor below - which is why the paper describes it as a
-		// modification of the sampling range rather than a new sampler.
-		//
-		// ⚠️ THE HALF IS KEPT, AND IT IS BLISS'S. The stretch below is `alpha * 0.5`
-		// because that is what Bliss does (lib/specular.glsl:49), and the pack has
-		// been tuned against the cone width that produces. The paper stretches by the
-		// full alpha; using that here would widen every reflection by about 3.5x,
-		// which is a change the author did not ask for.
-		//
-		// ⚠️ AND THE STRETCH AND THE UNSTRETCH MUST USE THE SAME ALPHA. Bliss is
-		// asymmetric - it stretches by `alpha * 0.5` and unstretches by `alpha` - and
-		// that asymmetry is harmless for a plain draw but breaks the bound: the bound
-		// is derived for the alpha the draw was taken at, so unstretching by a
-		// different one puts the samples back outside the horizon the bound promised.
-		// Measured with the asymmetry kept, 34% of draws land below the surface at a
-		// roughness of 1.0; with both sides at `alpha * 0.5`, 6%. So the unstretch
-		// below uses `effectiveAlpha` too, and that is a deliberate departure from
-		// Bliss rather than an oversight.
-		float effectiveAlpha = alpha * 0.5;
-
-		vec3 viewerStretched = normalize(vec3(
-			viewer.xy * effectiveAlpha,
-			viewer.z));
-
+		// Written as `a * b + c` rather than with fma(), which needs an extension
+		// this pack does not request everywhere: the compiler recognises the pattern
+		// and emits the fused instruction anyway.
+		vec3 viewer = normalize(vec3(
+			alpha * 0.5 * incident.xy,
+			abs(incident.z)));
 		float phi = 6.2831853 * noise.x;
-
-		// The cap's cosine bound. `a` is the paper's Eq. 6, the roughness clamped to
-		// one; `awiz` is its Eq. 5 term, the bound widened by how far off-normal the
-		// viewer is. With `a` at zero the factor is one and this is the plain draw's
-		// bound, which is the mirror case and has to stay exact.
-		float b = viewerStretched.z;
-		float a = clamp(effectiveAlpha, 0.0, 1.0);
-		float awiz = a * viewer.z / (1.0 + length(viewer.xy));
-		b *= (1.0 - a * a) / (1.0 + awiz * awiz);
-
-		float cosTheta = (1.0 - noise.y) * (1.0 + b) - b;
+		float cosTheta = (1.0 - noise.y) * (1.0 + viewer.z) - viewer.z;
 		float sinTheta = sqrt(clamp(1.0 - cosTheta * cosTheta, 0.0, 1.0));
+		sinTheta = clamp(sinTheta, 0.0, 1.0);
+		cosTheta = clamp(cosTheta, sinTheta * 0.5, 1.0);
 
 		vec3 sampled = vec3(vec2(cos(phi), sin(phi)) * sinTheta, cosTheta);
-		vec3 halfway = sampled + viewerStretched;
-		vec3 microfacetNormal = normalize(vec3(
-			effectiveAlpha * halfway.xy,
-			halfway.z));
+		vec3 halfway = sampled + viewer;
+		vec3 microfacetNormal = normalize(vec3(alpha * halfway.xy, halfway.z));
 
 		// BATCH 765: THE RAY IS THE INCIDENT DIRECTION REFLECTED ABOUT THE NORMAL,
 		// WHICH IS THE LINE 764 DROPPED. Without it the answer is a normal pointing
 		// out of the surface and the ray hits the block it started on.
+		//
+		// `incident` already points into the surface, which is the direction
+		// reflect() wants, so it is passed as it is - negating it here as well would
+		// flip the ray to the other side, which is the same pasted-on look by a
+		// second route.
 		vec3 jittered = reflect(incident, microfacetNormal);
 
-		// BATCH 776: STILL LOAD-BEARING, BUT NO LONGER THE SAMPLER.
+		// BATCH 765: A DRAW THAT LANDS BELOW THE HORIZON IS PUT BACK ON IT.
 		//
-		// The bound reduces the draws that reflect below the surface; it does not
-		// eliminate them. Measured at the pack's effective alpha, 0.4% of draws land
-		// below at a roughness of 0.16, 2.5% at 0.44 and 6.0% at 1.0. So this line
-		// still catches real samples - but it is a correction on a few percent
-		// instead of the 72% fold it was doing before.
+		// The visible-normal distribution is not bounded by the surface: at a
+		// roughness of 0.6 and above, roughly a fifth of its draws reflect back INTO
+		// the surface, and at 1.0 it is half of them. A ray that starts by going
+		// into the block it left finds the block, so those pixels show the surface
+		// itself - the pasted-on look again, this time only on the roughest
+		// materials, which is the hardest kind of defect to attribute.
 		//
-		// That difference is the whole point: a clamp that catches a few percent is
-		// a guard, and a clamp that catches most of the distribution is the sampler.
+		// Clamping z to zero puts such a ray on the horizon instead, which is the
+		// limit the distribution is approaching and the one answer that cannot be
+		// wrong. It is what the sky half does with its cone taps as well.
 		jittered.z = max(jittered.z, 0.0);
 
 		// Back to world axes. A zero-width cone leaves `jittered` equal to the exact
