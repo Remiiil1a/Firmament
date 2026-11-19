@@ -89,33 +89,49 @@
 // How much of the accumulated history each frame keeps, for a pixel that did not
 // move since the previous frame.
 //
-// BATCH 767: THIS IS BLISS'S NUMBER NOW, AND IT IS 5.8 TIMES SHORTER THAN IT WAS.
+// BATCH 778: 0.125, AND THE COMPARISON THAT PUT IT HERE WAS ARITHMETICALLY
+// BACKWARDS.
 //
-// The author asked for Bliss's TAA settings to be copied, because this pack's SSR
-// reflection showed clear noise where Bliss's does not. The number that matters is
-// this one, and the comparison is stark:
+// 767 set this to 0.9 on the argument that Bliss's history is 1.1 frames and this
+// pack's was 6.7, so a shorter history was the whole of why Bliss's reflection
+// looked cleaner. That argument was wrong, and the error is worth recording
+// because it is easy to make again:
 //
-//   Bliss  blendingFactor = BLEND_FACTOR = 0.125  (lib/settings.glsl:219)
-//          => the history is 1 / (1 - 0.125) = 1.1 frames long
-//   before TAA_STRENGTH = 0.85
-//          => the history is 1 / (1 - 0.85) = 6.7 frames long
+//   Bliss  mix(tonemap(history), tonemap(current), blendingFactor)
+//          the third argument is the CURRENT frame's weight, so 0.125 leaves
+//          0.875 of the history - 1 / (1 - 0.875) = 8.0 frames.
+//   Ours   mix(current, history, historyWeight)
+//          the third argument is the HISTORY weight, so 0.125 leaves 0.125 of
+//          it - 1 / (1 - 0.125) = 1.1 frames.
 //
-// A 6.7-frame history is 5.8 times more noise to average, and it is also 5.8 times
-// more of everything that moves on its own. Bliss does not compensate anywhere else:
-// it has no second temporal stage (its SCREENSHOT_MODE is a debug switch), so its
-// short history is the whole of the difference.
+// The same number means opposite things in the two packs. 767 read Bliss's 0.125
+// as a history weight, concluded Bliss ran a 1.1-frame history, and set this
+// pack's history weight to 0.9 - which is 10 frames, LONGER than Bliss's 8, not
+// 5.8 times shorter. A longer history averages more noise, so the number was
+// never the reason the reflection was noisier. The reason was that the reflection
+// was not being averaged at all (batch 777).
 //
-// ⚠️ WHAT THIS COSTS, and it is worth being plain about it: a 1.1-frame history is
-// barely a temporal filter at all. What it still does is reject the history outright
-// where the neighbourhood disagrees with it, which is what removes the noise - the
-// reflection's dither is different every frame, so a history that is mostly rejected
-// cannot accumulate it. What it no longer does is average the godrays' dither over
-// several frames, which is what the old value bought. If the author wants that back,
-// this is the number to raise, and 0.5 is the next step rather than 0.85.
+// ⚠️ SO 0.125 HERE IS NOT BLISS'S 0.125. It is the value the author arrived at by
+// testing, and it is a 1.1-frame history - much shorter than Bliss's 8. It is
+// kept because it is what the picture wants, not because it matches Bliss.
 //
-// The option's range is Bliss's neighbourhood rather than this pack's old one, so
-// that the value can be moved in the direction it was tuned in.
-#define TAA_STRENGTH 0.9 // [0.0 0.05 0.1 0.125 0.15 0.2 0.25 0.3 0.4 0.5 0.65 0.75 0.85 0.9 0.95]
+// WHY IT IS SHORT, AND WHAT IT BUYS. Batch 777 made the reflection accumulate for
+// the first time, and that exposed a swing the author reports as the reflection
+// going dark and bright as the camera moves. The mechanism is in the resolve:
+// `current` carries no reflection and `history` does, so the previous frame's
+// reflection enters the picture at exactly this weight. `stillness` then drops the
+// weight by up to 30% when the camera moves, so the reflection's share of the
+// picture drops by that much and comes back when the camera stops.
+//
+// A short history shrinks that swing in proportion - at 0.125 the previous frame
+// contributes an eighth, so there is almost nothing left to swing against. It does
+// not remove the mechanism, it makes it small. The mechanism itself is the
+// reflection being composited after the resolve, which is batch 758's arrangement
+// and is what keeps the reflection from trailing.
+//
+// What a short history costs is the averaging of everything else that dithers -
+// the godrays most of all. That is the trade, and it is the author's to make.
+#define TAA_STRENGTH 0.125 // [0.0 0.05 0.1 0.125 0.15 0.2 0.25 0.3 0.4 0.5 0.65 0.75 0.85 0.9 0.95]
 
 // The radius of the sub-pixel jitter, in pixels.
 //

@@ -28,10 +28,13 @@
 // reflection added after it is a fresh noisy sample every frame with nothing
 // downstream to average it. That argument was right about the noise and wrong
 // about the price: a reflection inside the history lives as long as the history,
-// which is about 1/(1-0.85) = 6.7 frames at the default TAA_STRENGTH, and it
-// trails. Batch 674 then widened the neighbourhood clamp so the reflection would
-// not be cut back out, which lengthened the trail to the full weight. The author
-// reports the result as trailing and lagging water reflections.
+// which was about 1/(1-0.85) = 6.7 frames at the TAA_STRENGTH of the day, and
+// it trails. Batch 674 then widened the neighbourhood clamp so the reflection
+// would not be cut back out, which lengthened the trail to the full weight. The
+// author reports the result as trailing and lagging water reflections.
+//
+// BATCH 778: the default is 0.125 now, a 1.1-frame history, so that trail is
+// short. The arrangement below is unchanged.
 //
 // Neither reference pack does it that way. Sundial composites its reflection in
 // Composite0 through Composite3 and resolves in Composite7 and Composite9; Bliss

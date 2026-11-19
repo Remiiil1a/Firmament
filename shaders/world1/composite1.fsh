@@ -632,8 +632,14 @@ void main() {
 	// widened the neighbourhood clamp by |reflectionDelta| so the clamp would not
 	// cut the reflected part back out. Both were right about what they solved, and
 	// together they made a reflection live as long as the picture around it -
-	// about 1/(1-0.85) = 6.7 frames at the default TAA_STRENGTH. That is the
-	// author's trailing, lagging water reflection.
+	// about 1/(1-0.85) = 6.7 frames at the TAA_STRENGTH of the day. That is
+	// the author's trailing, lagging water reflection.
+	//
+	// BATCH 778: the default is 0.125 now, which is a 1.1-frame history, so the
+	// trail this note describes is gone. The arrangement below is unchanged -
+	// the reflection is still composited after the resolve - and that is why the
+	// reflection does not trail. What the short history buys is the swing the
+	// author reported in 777; see the note on TAA_STRENGTH in lib/taa.glsl.
 	//
 	// Neither reference pack puts a reflection in its temporal history. Sundial
 	// composites in Composite0 through Composite3 and resolves in Composite7 and
@@ -1367,10 +1373,12 @@ void main() {
 	//
 	// So the reflection stays here, and the two things that make it work are back.
 	// What that costs is the trailing 758 was trying to remove: a reflection lives
-	// about as long as the picture around it, about 1/(1 - TAA_STRENGTH) = 6.7
-	// frames at the default. The author chose that trade in 766 - noise the history
-	// can average, over a reflection that never trails - and it is the same trade
-	// batches 664 and 674 made.
+	// about as long as the picture around it. At the TAA_STRENGTH of the day that
+	// was 6.7 frames; at the 0.125 default of batch 778 it is 1.1, so the trail is
+	// short. The author chose the long-history side of this trade in 766 - noise
+	// the history can average, over a reflection that never trails - and 778 moved
+	// to the other side because the long history made the reflection swing as the
+	// camera moved.
 	//
 	// The energy-conservation form is unchanged - the reflection replaces the
 	// fraction of the surface's own light that it represents, rather than being
