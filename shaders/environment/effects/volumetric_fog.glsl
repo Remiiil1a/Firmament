@@ -26,7 +26,10 @@
 // left the underwater medium reading as air and the fog painted the grey
 // underwater light. BATCH_LOG.md 174 is where that was found.
 #if !defined(EXTERNALLY_DEFINED_UNIFORMS)
-	uniform int isEyeInWaterFog;
+#if !defined(IS_EYE_IN_WATER_FOG_DECLARED)
+#define IS_EYE_IN_WATER_FOG_DECLARED
+uniform int isEyeInWaterFog;
+#endif
 #endif
 
 // The wind, for the medium to drift on: windTheta.w is its clock. The same

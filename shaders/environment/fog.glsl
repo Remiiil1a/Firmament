@@ -28,7 +28,10 @@
 #if !defined (EXTERNALLY_DEFINED_UNIFORMS)
 	uniform vec3 caveFogColor;
 	uniform float eyeSkylight;
-	uniform int isEyeInWaterFog;
+#if !defined(IS_EYE_IN_WATER_FOG_DECLARED)
+#define IS_EYE_IN_WATER_FOG_DECLARED
+uniform int isEyeInWaterFog;
+#endif
 
 	uniform float underwaterFogIntensity;
 	uniform float atmosphereFogCoefficient;

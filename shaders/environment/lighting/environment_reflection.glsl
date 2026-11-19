@@ -64,69 +64,6 @@ uniform sampler2D colortex7;
 uniform sampler2D colortex8;
 uniform sampler2D depthtex1;
 
-// How far a reflection has to travel before the LOD ramp is complete, in blocks.
-//
-// BATCH 760. This is the one number that is NOT Bliss's, and the reason is worth
-// stating because the obvious translation is wrong.
-//
-// Bliss's `reflectionLength` is not a distance. It is the fraction of the ray to
-// the screen edge that the march consumed (`reflectionLength += 1.0 / quality`,
-// lib/specular.glsl:169, where `stepv = direction * mult / quality` and `mult` is
-// the ray's length to the edge, :128-130). So Bliss's ramp is over SCREEN SPAN,
-// and its `min(max(reflectionLength - 0.1, 0.0)/0.9, 1.0)` (:212) means "the
-// first tenth of the ray is perfectly sharp, the ramp covers the rest".
-//
-// ⚠️ BATCH 763: THE TRANSLATION BELOW WAS THE REASON NOTHING WAS VISIBLE, AND IT
-// TOOK THREE BATCHES TO FIND BECAUSE IT LOOKS SO REASONABLE.
-//
-// 760 read "the first tenth of the ray" as "the first tenth of 64 blocks", which
-// is 6.4 blocks, and made everything inside that perfectly sharp. But a metal
-// reflects the wall and the floor a few blocks away - that is what a metal block
-// in a build actually shows - so the reflections the author was looking at were
-// ALL inside the dead zone, where the distance term is exactly 0.0 and the LOD is
-// exactly 0.0 whatever the roughness does. 761 then pushed the roughness term from
-// 5.14 to 6.00, which is 1.17x of zero.
-//
-// The scale is now 16 blocks and the sharp fraction is a length rather than a
-// proportion, so that "near" means near in blocks and not in some fraction of a
-// number that was itself a guess. 16 is where a reflection has crossed enough of
-// the screen for the cone to span several texels at a typical field of view.
-#define PBR_SSR_BLUR_DISTANCE 16.0
-
-// How far from the fragment a reflection stays perfectly sharp, in blocks.
-//
-// BATCH 763: THIS IS A LENGTH NOW, NOT A FRACTION. As a fraction of
-// PBR_SSR_BLUR_DISTANCE it was 6.4 blocks, which is most of what a metal reflects.
-// Half a block is the distance at which a reflection is still the surface's own
-// immediate surroundings - the thing the author's tap-based attempts kept eating -
-// and past it the ramp starts immediately.
-#define PBR_SSR_BLUR_SHARP_DISTANCE 0.5
-
-// The narrowest cone the sky half of the reflection is averaged over, in pixels.
-//
-// BATCH 763. The cone is the roughness in radians, which is right for a dielectric
-// and far too narrow for a polished metal: iron_block's roughness is 0.0167 rad,
-// about 13 pixels at a 70 degree field of view, and a metal block reflects mostly
-// sky - so those 13 pixels were the whole of its blur. See the note at the cone.
-//
-// 24 pixels is roughly the width of a block face at arm's length, which is the
-// scale a metal block's reflection is read at. It is a starting value for the
-// author to tune, and it is in pixels rather than radians so that it does not
-// change with the field of view.
-#define PBR_SSR_BLUR_MIN_CONE_PIXELS 24.0
-
-// The highest mip level the reflection may be sampled at.
-//
-// Bliss uses 6.0 (lib/specular.glsl:213). A level is a halving of resolution, so
-// 6 is a 64x64 box - far wider than any cone a surface's roughness opens, and it
-// is the cap rather than the working range: the roughness term saturates well
-// before it, and the distance term is what reaches it.
-//
-// It is a #define and not an option because the two terms that build the LOD are
-// Bliss's and were tuned against its picture; exposing the cap would invite
-// tuning a number that is not the one that needs tuning.
-#define PBR_SSR_BLUR_MAX_LOD 6.0
-
 // The depth of the surface each pixel shows with the translucents in it, and
 // the one with neither the translucents nor the hand.
 //
@@ -619,40 +556,12 @@ vec3 EnvironmentReflection(
 					// pass that reads the buffer - so by the time this pass samples it,
 					// it is this frame's copy. See the note there.
 					//
-					// WHAT IS NOT TAKEN FROM BLISS: its `reflectionLength` is the
-					// fraction of the ray to the screen edge that the march consumed,
-					// not a distance (see the note on PBR_SSR_BLUR_DISTANCE). This
-					// pack's trace reports blocks, so the same statement - "the first
-					// stretch of the way is perfectly sharp, the ramp covers the rest"
-					// - is written with two lengths instead of one number.
-					float reflectionLength = clamp(
-						(reflectionHitDistanceOut - PBR_SSR_BLUR_SHARP_DISTANCE)
-							/ max(PBR_SSR_BLUR_DISTANCE
-								- PBR_SSR_BLUR_SHARP_DISTANCE, 1.0e-4),
-						0.0, 1.0);
-
-					// BATCH 763: THE ROUGHNESS IS USED AS IT ARRIVES, AND BATCH 761'S
-					// TRANSFORM WAS A SECOND DECODE.
-					//
-					// 761 added `roughness = 1.0 - roughness; roughness *= roughness;`
-					// here, copying Bliss's lib/specular.glsl:338-339. That was wrong,
-					// and the reason is that this pack had already done it: the
-					// material decode is `pbr.roughness = pow(1.0 - specularSample.r,
-					// 2.0)` (environment/lighting/pbr.glsl:1974), which is the same
-					// (1 - smoothness)^2 Bliss applies at its line 338. So 761 decoded
-					// a value that was already decoded - iron went from 0.0167 to
-					// 0.9668 - and pushed the LOD term from 5.14 to 6.00, which is the
-					// wrong direction for a surface that should be blurred.
-					//
-					// The value that arrives here is already the linear roughness the
-					// formula wants. See the note on PBR_SSR_BLUR_DISTANCE for the
-					// other half of why nothing was visible.
-					float reflectionLod = mix(
-						0.0,
-						PBR_SSR_BLUR_MAX_LOD
-							* (1.0 - exp(-15.0 * sqrt(roughness))),
-						1.0 - pow(1.0 - reflectionLength, 5.0));
-
+					// BATCH 770: the formula moved to reflections.glsl, as
+					// PbrReflectionLod, so that the hand and the dropped item - which
+					// trace for themselves in lit.fsh - can use the same one instead of
+					// sampling with a plain texture() and getting no blur at all.
+					float reflectionLod = PbrReflectionLod(
+						roughness, reflectionHitDistanceOut);
 					vec3 hitColor = textureLod(colortex4, hitPos, reflectionLod).rgb;
 
 					// Fade the result out near the edge of the screen, where the

@@ -1950,10 +1950,28 @@ void main() {
 						1.0,
 						(1.0 - max(handHitAbs.x, handHitAbs.y)) / 0.10);
 
-					handEnvironment =
-						texture(colortex4, handHitPos).rgb * handHitFade;
-				}
+					// BATCH 770: THE HAND IS BLURRED LIKE THE WORLD IS.
+					//
+					// This sampled with a plain texture(), whose implicit LOD is
+					// always 0, so a held item's reflection was the sharp picture
+					// however rough the material was - the author's report that held
+					// items have no blur where blocks do. The world's formula is
+					// PbrReflectionLod in reflections.glsl, and it is shared now
+					// rather than copied so the three paths cannot drift apart.
+					//
+					// `reflectionRoughness` is 1.0 on this path (see the note where
+					// it is set), so the roughness term is 0 and the LOD is 0 - the
+					// hand is deliberately given no environment reflection at all.
+					// The call is here so that the day that changes, the blur comes
+					// with it rather than being forgotten.
+					float handLod = PbrReflectionLod(
+						reflectionRoughness,
+						length(handHitViewPos - handViewPos));
 
+					handEnvironment =
+						textureLod(colortex4, handHitPos, handLod).rgb * handHitFade;
+
+				}
 				fragmentColor.rgb += handWeight * handEnvironment;
 			#endif
 
@@ -1975,6 +1993,25 @@ void main() {
 					// The same weight the deferred pass would have used, clamped the
 					// same way: a surface reflects at most all of the environment it
 					// stands in. See the note in environment_reflection.glsl.
+					// BATCH 770: THE FLOOR IS GONE, SO PBR_REFLECTION_SMOOTHNESS_MIN
+					// HAS ITS VETO BACK.
+					//
+					// This was max(PbrReflectionSmoothness(...),
+					// PBR_ENTITY_REFLECTION_MIN) with the constant at 0.35, so a
+					// material the gate rejected outright - the gate returns 0 - was
+					// still given 0.35 of the environment. The author's report is
+					// that PBR_REFLECTION_SMOOTHNESS_MIN does not control dropped
+					// items, and this is why: no setting of it could take the weight
+					// below 0.35.
+					//
+					// The floor was added in batch 625 for the iron golem, whose
+					// reflection the gate was cutting off. That is a real case and it
+					// is now handled where it belongs - by the gate itself, which
+					// halves its zero point for a metal (reflections.glsl:267-268) -
+					// so the floor is redundant as well as harmful.
+					//
+					// The hand never had a floor (see its weight above), so this also
+					// makes the two paths agree.
 					vec3 entityWeight = clamp(mix(
 						PBR_REFLECTIONS_STRENGTH,
 						PBR_METAL_REFLECTION_STRENGTH,
@@ -1984,8 +2021,7 @@ void main() {
 							PbrMetalF82(pbr.metalID),
 							entityNdotV,
 							pbr.roughness)
-						* max(PbrReflectionSmoothness(pbr.roughness, pbr.metalness),
-							PBR_ENTITY_REFLECTION_MIN),
+						* PbrReflectionSmoothness(pbr.roughness, pbr.metalness),
 						vec3(0.0),
 						vec3(1.0));
 
@@ -2015,10 +2051,25 @@ void main() {
 							1.0,
 							(1.0 - max(entityHitAbs.x, entityHitAbs.y)) / 0.10);
 
-						entityEnvironment =
-							texture(colortex4, entityHitPos).rgb * entityHitFade;
-					}
+						// BATCH 770: THE DROPPED ITEM IS BLURRED LIKE THE WORLD IS.
+						//
+						// Same defect as the hand above: a plain texture() has an
+						// implicit LOD of 0, so a dropped item's reflection was the
+						// sharp picture however rough the material was. The formula
+						// is PbrReflectionLod in reflections.glsl.
+						//
+						// `reflectionRoughness` is 1.0 on this path too (see the note
+						// where it is set), so the LOD is 0 here as well - the call is
+						// for the day that changes.
+						float entityLod = PbrReflectionLod(
+							reflectionRoughness,
+							length(entityHitViewPos - entityViewPos));
 
+						entityEnvironment =
+							textureLod(colortex4, entityHitPos, entityLod).rgb
+								* entityHitFade;
+
+					}
 					// The sky fills in where the trace found nothing (batch 639), and
 					// the reason is a metal that went black.
 					//
@@ -2040,11 +2091,31 @@ void main() {
 					// over an item reads as the item going pale - and that is still true of
 					// a dielectric. It is not true of a metal, which has no diffuse to go
 					// pale in the first place.
+					// BATCH 770: THE SKY FALLBACK IS GATED NOW, AND THAT IS THE
+					// AUTHOR'S NETHER REPORT.
+					//
+					// This was unconditional, and SkyColor has no Nether branch
+					// (environment/sky.glsl:75-94) - it returns the OVERWORLD's
+					// atmosphere in every dimension. So a dropped item or a
+					// third-person player in the Nether reflected a blue sky that
+					// does not exist there, which is the "strange sky reflection"
+					// the author reports.
+					//
+					// The deferred path never had this problem: it scales its sky by
+					// PbrSkyExposure(skyLight), and the Nether's skyLight is zero
+					// (diffuse.glsl:371 says so, and lightMap.y is level 0 there).
+					// This is the same gate, and EndSkyDimension is the same
+					// exception the deferred path makes - the End has a sky of its
+					// own and no sky light to say so.
+					//
+					// Both are already in scope: skyLight is computed above, and
+					// reflections.glsl is included at the top of this file.
 					if (dot(entityEnvironment, entityEnvironment) < 1.0e-8) {
 						vec3 entityWorldReflected =
 							mat3(gbufferModelViewInverse) * normalize(entityViewReflected);
 
-						entityEnvironment = SkyColor(entityWorldReflected);
+						entityEnvironment = SkyColor(entityWorldReflected)
+							* (EndSkyDimension() ? 1.0 : PbrSkyExposure(skyLight));
 					}
 
 					fragmentColor.rgb += entityWeight * entityEnvironment;

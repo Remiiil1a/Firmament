@@ -103,7 +103,20 @@
 	uniform vec3 minAmbient;
 	uniform vec3 skyAmbient;
 	uniform float blocklightSuppression;
-	uniform float nightVision;
+uniform float nightVision;
+
+// Whether the eye is under water, which decides whether the sunlight reaching a
+// fragment has been through any water at all.
+//
+// BATCH 770: the pack spells this isEyeInWaterFog, an alias shaders.properties
+// builds, and the two files that declare it are volumetric_fog.glsl and
+// fog.glsl - neither of which this file includes, and neither of which is
+// included by every program that includes this one. So it is declared here,
+// under the same name the rest of the pack uses.
+#if !defined(IS_EYE_IN_WATER_FOG_DECLARED)
+#define IS_EYE_IN_WATER_FOG_DECLARED
+uniform int isEyeInWaterFog;
+#endif
 
 	// The lightmap, which is where the color of block light comes from. See
 	// BlockLightTint below.
@@ -1229,7 +1242,37 @@ vec3 DiffuseLightingImpl(
 		fragment.heldLight
 	);
 
+	// BATCH 770: THE LIGHT THAT MAKES THE HIGHLIGHT IS ATTENUATED BY THE WATER IT
+	// CAME THROUGH, AND THAT IS THE AUTHOR'S UNDERWATER REPORT.
+	//
+	// The author reports that the underwater PBR highlight is far too strong. It is,
+	// and the reason is that nothing between the sun and this fragment takes anything
+	// away: directLightSurface arrives here as it was computed above, and it is
+	// what PbrSpecular multiplies its whole lobe by (see the call below). A block two
+	// metres away but twenty metres under water keeps almost all of its highlight.
+	//
+	// Bliss does this on the light rather than on the highlight
+	// (lib/water_absorbance_effects.glsl:49, directLightColor *= directLightAbsorbance),
+	// and that is the right place for it: the highlight is not a thing that is
+	// separately dimmed, it is the same sunlight, and the water took some of it away
+	// before it ever reached the surface. Its SNELLS_WINDOW is a different effect -
+	// it only feeds the water surface's own alpha blend and never touches the lobe.
+	//
+	// The path length is the fragment's own depth below the surface, which is what
+	// the pack already has: isEyeInWaterFog says the eye is
+	// view position's Y is how far down the fragment is. That is not the true
+	// sun-to-fragment path - a slant through the water is longer - but it is the
+	// quantity this pack has, and it is the one the frame's own absorption uses.
+	//
+	// ⚠️ PBR_SPECULAR_STRENGTH is NOT the knob for this. The f0 it multiplies is
+	// calibrated for air-to-block (0.04) rather than water-to-block (0.0035), an
+	// 11.5x difference, and lowering it would dull every surface above water too.
+	// Bliss's SUN_SPECULAR_MULT is also 1 and is also unchanged underwater.
 	vec3 directLightColor = directLightSurface;
+
+	if (isEyeInWaterFog == 1) {
+		directLightColor *= WaterAttenuation(max(-fragment.cameraRelativePos.y, 0.0));
+	}
 
 	// Block light goes in as it is. Upstream Steadfast held it back and added it by
 	// hand here, interleaved with the water absorption of the surface's light, and
