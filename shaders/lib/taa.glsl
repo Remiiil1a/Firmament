@@ -40,9 +40,8 @@
 // have is one shared, well-defined camera reprojection, in /lib/reproject.glsl,
 // which the resolve and the motion blur take their movement from. (The
 // reflection's own history took it from there too until batch 664 removed that
-// history, and takes it from there again since batch 779 restored it: the
-// reflection is accumulated in a buffer of its own, reprojected with the same
-// coordinate, at a weight that does not depend on motion.)
+// history: the reflection is applied by composite1 before the resolve now, and
+// the resolve's history is the only one it has.)
 
 // What this pass does with the frames it is given. **Off by default.**
 //
@@ -67,11 +66,11 @@
 // failed to turn it into one - so the choice made then was to leave the pass
 // available to whoever wants to look at it and take it out of the default path.
 // It is not deleted because the write it owns is the pack's temporal history:
-// colortex3 is what every frame of the resolve accumulates onto. It carried the
-// environment reflection too from batch 664 until batch 779, which gave the
-// reflection a history of its own (colortex9) - so this pass is now the picture's
-// history and nothing else. Removing the pass means keeping that write, and a
-// mistake there breaks something else entirely.
+// colortex3 is what every frame of the resolve accumulates onto, and since batch
+// 664 it carries the environment reflection too - the reflection is applied by
+// composite1 ahead of the resolve, because being in this history is what averages
+// its dither. Removing the pass means keeping that write, and a mistake there
+// breaks something else entirely.
 //
 // **Anti-aliasing does not need it.** SMAA is the supported answer and is on the
 // effect menu; what is lost by leaving this off is the temporal averaging of the
@@ -118,25 +117,20 @@
 //
 // WHY IT IS SHORT, AND WHAT IT BUYS. Batch 777 made the reflection accumulate for
 // the first time, and that exposed a swing the author reports as the reflection
-// going dark and bright as the camera moves. The mechanism was in the resolve:
-// `current` carries no reflection and `history` did, so the previous frame's
-// reflection entered the picture at exactly this weight. `stillness` then drops the
+// going dark and bright as the camera moves. The mechanism is in the resolve:
+// `current` carries no reflection and `history` does, so the previous frame's
+// reflection enters the picture at exactly this weight. `stillness` then drops the
 // weight by up to 30% when the camera moves, so the reflection's share of the
-// picture dropped by that much and came back when the camera stopped.
+// picture drops by that much and comes back when the camera stops.
 //
-// A short history shrank that swing in proportion - at 0.125 the previous frame
-// contributed an eighth, so there was almost nothing left to swing against. It did
-// not remove the mechanism, it made it small.
+// A short history shrinks that swing in proportion - at 0.125 the previous frame
+// contributes an eighth, so there is almost nothing left to swing against. It does
+// not remove the mechanism, it makes it small. The mechanism itself is the
+// reflection being composited after the resolve, which is batch 758's arrangement
+// and is what keeps the reflection from trailing.
 //
-// BATCH 779 REMOVED THE MECHANISM, SO THIS IS NO LONGER A REFLECTION SETTING. The
-// reflection has a history of its own now (colortex9, accumulated at
-// REFLECTION_HISTORY_WEIGHT in composite1.fsh), so it no longer enters the picture
-// at this weight and cannot swing with it. This option now decides only how much
-// of the PICTURE is averaged - which is what it should always have decided.
-//
-// That also means the trade below is no longer a trade against the reflection: a
-// short history here costs the averaging of everything else that dithers, the
-// godrays most of all, and buys nothing for the reflection either way.
+// What a short history costs is the averaging of everything else that dithers -
+// the godrays most of all. That is the trade, and it is the author's to make.
 #define TAA_STRENGTH 0.125 // [0.0 0.05 0.1 0.125 0.15 0.2 0.25 0.3 0.4 0.5 0.65 0.75 0.85 0.9 0.95]
 
 // The radius of the sub-pixel jitter, in pixels.
