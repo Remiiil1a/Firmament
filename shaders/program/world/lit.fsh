@@ -1656,36 +1656,24 @@ void main() {
 			// it is where albedo-based metals pick up their reflectance.
 			pbr = PbrResolveAlbedo(pbr, surfaceColor.rgb);
 
-			// How much of the diffuse response a metal keeps on a held item,
-			// from none of it to all of it.
+			// BATCH 773: THE HELD ITEM'S METALNESS IS NO LONGER HALVED.
 			//
-			// A metal in the world reflects what is around it and has almost no
-			// diffuse response of its own, and that trade is what makes it read
-			// as metal - see PBR_METAL_DIFFUSE, which is where the response is
-			// taken away. A held item cannot make the other half of that trade,
-			// because it is not in the world the reflection is built from. Both
-			// halves of that reflection were measured to leave a held item
-			// looking like a window onto whatever is behind it, and refusing
-			// both is what the neutral material below does; see §21 of
-			// BATCH_LOG.md for the test that settled it.
+			// This multiplied it by 1 - PBR_HAND_METAL_DIFFUSE, which is 0.5, and
+			// the reason was that the hand had no environment reflection at all:
+			// both halves of it were refused, so a metal held item had nothing to
+			// show and was black, and it kept half its diffuse response to
+			// compensate.
 			//
-			// So an item made of metal has to keep some of what a metal in the
-			// world gives up, or it has nothing left to show. With the
-			// reflection refused and the diffuse response removed, a metal held
-			// item is black whatever the light around it is doing - which is
-			// what a held gold block was doing before this number existed.
+			// That is no longer true. The hand traces for itself (batch 629), it
+			// draws its direction from the visible-normal cone (772) and it samples
+			// by LOD (770), so a metal held item has a reflection to show. Halving
+			// the metalness on top of that halves the highlight and the reflection
+			// with it, which is the author's "loss of gloss".
 			//
-			// Half of it is a guess, and one to adjust by eye: the constant is
-			// declared at the top of this file.
-			//
-			// The metalness is kept as well as scaled, so that the reflection
-			// below is weighted by the material the resource pack authored
-			// rather than by the adjusted one - the two would otherwise dim each
-			// other by the same amount, and a metal item would be left dimmer
-			// than either on its own.
+			// `handMetalness` is kept because the reflection weight below reads it,
+			// and it is now the material's own value rather than an adjusted one.
 			#if defined(PBR_HAND_ITEMS)
 				float handMetalness = pbr.metalness;
-				pbr.metalness *= 1.0 - PBR_HAND_METAL_DIFFUSE;
 			#endif
 
 			// Hand the material on to the environment reflection, which the

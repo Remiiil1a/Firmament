@@ -435,15 +435,6 @@ option.PBR_TRANSLUCENT.comment=Whether ice and other translucent solids take \
 	authored; with this on ice is decoded like any other block. Water is \
 	deliberately excluded, its normal coming from Steadfast's own wave model.
 
-option.PBR_HAND_ITEM_MATERIALS=PBR on held items (not blocks)
-option.PBR_HAND_ITEM_MATERIALS.comment=Whether a held item - not a held block \
-	- reads the resource pack's PBR materials as well. On, it is what makes a \
-	blade catch the sun or a polished tool mirror the sky. A pack that ships no \
-	LabPBR maps for its items leaves the item atlas coordinates reading another \
-	sprite's material, so turn this off for such a pack. A held item that looks \
-	see-through is not this option's doing - that was the hand's environment \
-	reflection, which no longer happens.
-
 option.PBR_HAND_ITEMS=PBR on held items
 option.PBR_HAND_ITEMS.comment=Whether the item or block in your hand gets PBR \
 	materials as well. A held block is drawn from the block atlas and so carries \
@@ -458,7 +449,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 772]
+option.PBR_DEBUG=Material debug view [build 773]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \

@@ -41,25 +41,16 @@
 	#define PBR_ATLAS
 #endif
 
-// Whether a held *item* - as opposed to a held block - gets the resource pack's
-// material too.
+// BATCH 773: PBR_HAND_ITEM_MATERIALS IS GONE.
 //
-// On, and it is what makes a held item look like the material it is made of: a
-// blade catches the sun, a polished tool mirrors the sky.
+// It was an option - whether a held item, as opposed to a held block, gets the
+// resource pack material too - and it stopped doing anything when this file began
+// defining it unconditionally, which is what made it dead rather than merely
+// defaulted on. The author asked for it to be removed rather than repaired: the
+// behaviour it switched is the behaviour the pack wants, and a switch that cannot
+// be switched off is worse than no switch.
 //
-// It exists as an option because of where the material comes from. The material
-// maps are generated for the block atlas, sprite for sprite, and an item model
-// is drawn from the item atlas, where the sprites sit elsewhere - a resource
-// pack that ships no LabPBR maps for its items leaves those coordinates reading
-// another sprite's material, or none. Turn this off for such a pack and items
-// keep the plain colour the pack gave them.
-//
-// This is not the option to reach for if a held item looks see-through. That was
-// the environment reflection being computed for the hand at all, which is fixed
-// in lit.fsh - see BATCH_LOG.md §21.
-#define PBR_HAND_ITEM_MATERIALS
-#ifdef PBR_HAND_ITEM_MATERIALS
-	// The switch itself is in lit.fsh, where the material is decided.
-#endif
+// What it used to guard is unconditional in lit.fsh now, where the material is
+// decided - see the note there.
 
 #include "/program/world/lit.fsh"

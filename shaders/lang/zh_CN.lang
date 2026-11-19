@@ -206,16 +206,13 @@ option.PBR_POROSITY_WETNESS.comment=资源包标记为多孔的材质在潮湿�
 option.PBR_TRANSLUCENT=冰与玻璃的 PBR
 option.PBR_TRANSLUCENT.comment=冰与玻璃等半透明固体是否从资源包读取反射率与法线。冰由半透明通道绘制，而该通道给水 0.1 的反射率、给其它一切 0，所以无论资源包为冰写了什么，冰面除了掠射角之外几乎不反射；开启后冰会像普通方块一样被解码。水被有意排除在外，因为它的法线来自 Steadfast 自己的波浪模型。
 
-option.PBR_HAND_ITEM_MATERIALS=非方块手持物品也使用材质
-option.PBR_HAND_ITEM_MATERIALS.comment=手持的物品（不是方块）是否也去读资源包的 PBR 材质。开启后，这才让刀剑接到日光、抛光工具映出天空。资源包若没给物品做 LabPBR 材质，物品图集的坐标就会读到别的精灵的材质，这时关掉这一项即可。物品看起来半透明不是这一项造成的——那曾是给手部算了环境反射，现在已不再发生。
-
 option.PBR_HAND_ITEMS=手持物品的 PBR
 option.PBR_HAND_ITEMS.comment=手里的物品或方块是否也使用 PBR 材质。手持方块取自方块图集，材质数据与放在地上的同一方块完全一致；非方块的手持物品则从物品图集读取材质。
 
 option.PBR_ENTITIES=实体的 PBR
 option.PBR_ENTITIES.comment=生物等实体是否使用 PBR 材质。这一项是实验性质：只有方块图集被 Iris 与 OptiFine 构建材质贴图，因此实体也可能被套上某个方块的材质数据。验证方法：开启后看着一只生物，在材质调试视图里选「遮蔽通道」——一片均匀的画面说明该实体没有绑定材质数据，应当把它关回去。
 
-option.PBR_DEBUG=材质调试视图 [build 772]
+option.PBR_DEBUG=材质调试视图 [build 773]
 option.DEFERRED_DEBUG= 延迟趟对照视图（几何 vs 后期）
 option.DEFERRED_DEBUG.comment=屏幕左半边显示几何程序写下的原样，右半边显示这一趟写回去的。只有右边单独出现才说明问题：几何没有它，是这一趟造的。两边都有是正常情况，说明不了什么。和另一个对照视图一次只开一个。
 option.TAA_DEBUG= 时间抗锯齿对照视图
