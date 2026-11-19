@@ -307,7 +307,51 @@ vec3 PbrVisibleNormal(
 // tuning a number that is not the one that needs tuning.
 #define PBR_SSR_BLUR_MAX_LOD 6.0
 
-	// The mip level a reflection is sampled at, from how rough the surface is and
+	
+// The noise the reflection direction is drawn from.
+//
+// BATCH 775: THIS IS INTERLEAVED GRADIENT NOISE NOW, NOT AN ORDERED DITHER.
+//
+// The author reports that raising the sample count and letting TAA flatten it still
+// does not reach Bliss's result - the noise is still there. The VNDF is not the
+// difference: this pack's draw is Bliss's arithmetic line for line. What differs is
+// the noise fed to it. Bliss uses interleaved gradient noise
+// (dimensions/voxy_translucent.glsl:176-179) and this pack used Bayer8, an 8x8
+// ordered dither.
+//
+// An ordered dither is a regular grid, so its error is correlated across the screen
+// and reads as a pattern; IGN is a hash of the pixel coordinate, so its error reads
+// as fine grain that a temporal resolve can average away. That is the whole of why
+// the same VNDF looks noisier here.
+//
+// ⚠️ IGN rather than the blue-noise texture, and that is a build constraint rather
+// than a preference: noisetex is declared in lib/valueNoise.glsl behind
+// EXTERNALLY_DEFINED_UNIFORMS, so the programs that define that would have no
+// declaration at all while the ones that do not would get two. IGN needs no texture
+// and no uniform, so it cannot collide with anything.
+//
+// ⚠️ NO frameCounter, for the same reason - it is declared in several files that are
+// included in different orders. The temporal decorrelation goes with it; the spatial
+// part is what a screen-space effect needs, and the resolve supplies the rest.
+//
+// Declared here rather than in either consumer because all three reflection paths
+// include this file and neither consumer includes the other.
+float PbrReflectionNoise() {
+	return fract(52.9829189 * fract(
+		0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
+}
+
+// The second uniform number the draw needs, from the first.
+//
+// The VNDF takes a pair of independent uniform numbers. Deriving the second from the
+// first with an irrational multiplier keeps them decorrelated without a second hash,
+// which is what the call sites used to do with Bayer8.
+vec2 PbrReflectionNoisePair() {
+	float first = PbrReflectionNoise();
+
+	return vec2(first, fract(first * 7.0 + 0.37));
+}
+// The mip level a reflection is sampled at, from how rough the surface is and
 	// how far the ray travelled.
 	//
 	// BATCH 770: THIS IS THE WORLD'S FORMULA, MOVED HERE SO THE OTHER TWO PATHS CAN

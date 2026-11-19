@@ -435,7 +435,7 @@ vec3 EnvironmentReflection(
 					worldNormal,
 					viewDirection,
 					roughness,
-					vec2(traceDither, fract(traceDither * 7.0 + 0.37)));
+					PbrReflectionNoisePair());
 
 				if (ScreenSpaceRaytrace(
 					depthtex1,

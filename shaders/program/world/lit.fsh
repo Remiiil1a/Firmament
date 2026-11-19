@@ -1894,13 +1894,13 @@ void main() {
 				// The noise is Bayer8 of the fragment, the same spatial dither the
 				// rest of this file uses, so the cost is zero and the two paths stay
 				// correlated with the world one.
-				float handDither = Bayer8(gl_FragCoord.xy);
+				vec2 handNoise = PbrReflectionNoisePair();
 
 				vec3 handViewReflected = handView * PbrReflectionDirectionJittered(
 					pbrNormal,
 					viewDirection,
 					pbr.roughness,
-					vec2(handDither, fract(handDither * 7.0 + 0.37)));
+					handNoise);
 
 				float handNdotV = max(dot(pbrNormal, viewDirection), 1.0e-4);
 
@@ -1996,13 +1996,13 @@ void main() {
 					vec3 entityViewPos = entityView * cameraRelativePos;
 
 					// BATCH 772: drawn from the cone, for the hand reason above.
-					float entityDither = Bayer8(gl_FragCoord.xy);
+					vec2 entityNoise = PbrReflectionNoisePair();
 
 					vec3 entityViewReflected = entityView * PbrReflectionDirectionJittered(
 						pbrNormal,
 						viewDirection,
 						pbr.roughness,
-						vec2(entityDither, fract(entityDither * 7.0 + 0.37)));
+						entityNoise);
 
 					float entityNdotV = max(dot(pbrNormal, viewDirection), 1.0e-4);
 
