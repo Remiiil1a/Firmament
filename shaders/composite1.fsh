@@ -1210,10 +1210,80 @@ void main() {
 	// had.
 	vec3 reflectionDelta = environmentReflection;
 
+	// The history as it arrived, kept so that the pull-back below can measure how
+	// far the clamp had to move it. Nothing else reads it.
+	vec3 historyUnclamped = history;
+
 	history = clamp(
 		history,
 		historyLower - abs(reflectionDelta),
 		historyUpper + abs(reflectionDelta));
+
+	// BATCH 781: A SAMPLE THE CLAMP HAD TO MOVE IS REPLACED BY THE NEIGHBOURHOOD
+	// MEAN, NOT MERELY MOVED TO THE EDGE OF THE BAND.
+	//
+	// This is Bliss's line (dimensions/composite5.fsh:393), and it is the one
+	// piece of its resolve this pack did not have:
+	//
+	//   clampedframeHistory = mix(clampedframeHistory, momentsA,
+	//       clamp(abs(clampedframeHistory - frameHistory)/clampedframeHistory,
+	//           0.0, 1.0));
+	//
+	// `momentsA` there is the 3x3 neighbourhood mean, which is this pass's
+	// `neighborhoodMean`, and its `colMin`/`colMax` are `momentsA -/+ 1.25 *
+	// standardDev`, which are this pass's `historyLower`/`historyUpper`. So the
+	// port is direct and the two resolves are otherwise the same arithmetic.
+	//
+	// WHAT IT FIXES. The clamp alone answers "how far may this sample be from the
+	// neighbourhood" and stops there: a sample that fails is dragged to the edge
+	// of the band and then blended at full weight, so a stale sample still
+	// contributes - it contributes the band's edge instead of itself. The
+	// pull-back asks the next question, "if it had to be dragged, was it ever
+	// this pixel's history at all", and answers by replacing it with the current
+	// neighbourhood mean. The ratio is how far the clamp moved it, relative to
+	// what it ended up as, so:
+	//
+	// * a sample the clamp left alone has ratio 0 and passes through untouched -
+	//   the pull-back is inert on every pixel that was not already wrong;
+	// * a sample the clamp had to move has ratio 1 and becomes the mean.
+	//
+	// The ramp between them is short, and worth knowing before tuning it. The
+	// ratio is the movement over what the clamp produced, so it reaches one at
+	// about twice the band's edge - `_team_bfog/pullback_781.py` measures, for a
+	// band of [0.0387, 0.0702]: a sample of 0.075 is pulled 7%, 0.090 28%,
+	// 0.120 71%, and 0.150 and above are replaced outright. So a sample barely
+	// outside the band is nudged toward the mean and a genuinely stale one is
+	// rejected, which is the behaviour the line is for - but it is a ramp, not a
+	// switch, and a band this narrow makes it a steep one.
+	//
+	// ⚠️ THE DENOMINATOR IS GUARDED, AND THAT IS NOT DEFENSIVE PROGRAMMING.
+	// Bliss divides by `clampedframeHistory` and gets away with it because its
+	// history is floored at 1e-7 and its band is never floored at zero. This
+	// pass floors `historyLower` at zero on purpose (see the note above it,
+	// BATCH_LOG.md 134: a specular highlight's Catmull-Rom undershoot is
+	// negative, and a negative colour draws as black), so a clamped history of
+	// exactly zero is an ordinary pixel here - a shadow, or the dark side of an
+	// edge. Dividing by it is 0/0, and a NaN in colortex3 is the blot that grows
+	// (BATCH_LOG.md 158): it fails every comparison in the clamp, so it is
+	// written back and the next frame's Catmull-Rom fetch spreads it to the
+	// pixels beside it.
+	//
+	// The guard makes both zero cases come out right rather than merely finite:
+	// a clamped zero against a non-zero history scores a ratio far above one and
+	// is clamped to one, so it becomes the mean - which is what a sample that had
+	// to be dragged all the way to zero deserves; and a clamped zero against a
+	// zero history scores zero, so a pixel that was black and stayed black keeps
+	// its zero instead of being lifted to the neighbourhood's brightness.
+	//
+	// The denominator is the MAGNITUDE of what the clamp produced, because the
+	// widened lower bound above is `historyLower - abs(reflectionDelta)` and that
+	// is negative wherever the reflection is non-zero - so unlike Bliss's, this
+	// pass's clamped history can be negative, and a signed denominator would flip
+	// the ratio's sign and with it the direction of the pull.
+	vec3 historyMoved = abs(history - historyUnclamped)
+		/ max(abs(history), vec3(1.0e-7));
+
+	history = mix(history, neighborhoodMean, clamp(historyMoved, 0.0, 1.0));
 
 	// How far this pixel moved since the previous frame, in pixels.
 	// Measured from this pixel to where this pixel's history was - the anchor's own
