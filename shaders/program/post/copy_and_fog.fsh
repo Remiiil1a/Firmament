@@ -115,6 +115,18 @@ const int colortex5Format = R8;
 // this pass has no material textures bound and no need for them.
 #include "/environment/lighting/pbr.glsl"
 
+// BATCH 777: THE FRAME NUMBER, DECLARED BEFORE THE REFLECTION NOISE NEEDS IT.
+//
+// This pass is the one include graph that reaches reflections.glsl without
+// passing through lib/taa.glsl, diffuse.glsl or volumetric_fog.fsh - deferred.fsh
+// includes this file and nothing else - so it is the one place the shared marker
+// has to be declared here rather than inherited. See the note at the same
+// declaration in lib/taa.glsl for why the marker exists at all.
+#if !defined(FRAME_COUNTER_DECLARED)
+#define FRAME_COUNTER_DECLARED
+uniform int frameCounter;
+#endif
+
 // PbrReflectionDirection, PbrReflectionFresnel, PbrReflectionPossible
 #include "/environment/lighting/reflections.glsl"
 

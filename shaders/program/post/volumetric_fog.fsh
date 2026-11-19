@@ -151,7 +151,12 @@ uniform vec3 cameraPosition;
 // and the composite stage is given it - composite1.fsh reads it, for its resolve
 // and for the reflection it now applies - so like cameraPosition this one is safe
 // to use here.
+// BATCH 777: GUARDED, BECAUSE THE REFLECTION NOISE NEEDS IT TOO.
+// See the note at the same declaration in lib/taa.glsl.
+#if !defined(FRAME_COUNTER_DECLARED)
+#define FRAME_COUNTER_DECLARED
 uniform int frameCounter;
+#endif
 
 // The fade of the shadow test at the map's own border needs no uniform of its
 // own - see where it is worked out. shadowDistance is deliberately not used

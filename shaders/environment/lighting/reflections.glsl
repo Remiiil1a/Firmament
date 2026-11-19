@@ -310,46 +310,95 @@ vec3 PbrVisibleNormal(
 	
 // The noise the reflection direction is drawn from.
 //
-// BATCH 775: THIS IS INTERLEAVED GRADIENT NOISE NOW, NOT AN ORDERED DITHER.
+// BATCH 777: THIS MOVES WITH THE FRAME NOW, AND THAT IS THE WHOLE POINT.
 //
-// The author reports that raising the sample count and letting TAA flatten it still
-// does not reach Bliss's result - the noise is still there. The VNDF is not the
-// difference: this pack's draw is Bliss's arithmetic line for line. What differs is
-// the noise fed to it. Bliss uses interleaved gradient noise
-// (dimensions/voxy_translucent.glsl:176-179) and this pack used Bayer8, an 8x8
-// ordered dither.
+// 775 replaced the ordered dither with interleaved gradient noise and it was not
+// enough, because it changed the SPATIAL distribution and left the temporal one
+// alone. This function read only gl_FragCoord, so a pixel drew the same point of
+// the cone on every frame - measured, one distinct value over sixty frames.
 //
-// An ordered dither is a regular grid, so its error is correlated across the screen
-// and reads as a pattern; IGN is a hash of the pixel coordinate, so its error reads
-// as fine grain that a temporal resolve can average away. That is the whole of why
-// the same VNDF looks noisier here.
+// A temporal resolve averages the error of successive frames. When the error is
+// the same every frame there is nothing to average: the history converges to that
+// one sample rather than to the cone's mean, and the residual is the single-sample
+// error, which does not shrink with more frames. That is why raising the step
+// count and raising TAA_STRENGTH both failed - neither adds a new sample.
 //
-// ⚠️ IGN rather than the blue-noise texture, and that is a build constraint rather
-// than a preference: noisetex is declared in lib/valueNoise.glsl behind
-// EXTERNALLY_DEFINED_UNIFORMS, so the programs that define that would have no
-// declaration at all while the ones that do not would get two. IGN needs no texture
-// and no uniform, so it cannot collide with anything.
+// Bliss walks its noise by the frame number (dimensions/composite1.fsh:237-244,
+// `coord += (frameCounter%40000) * 2.0`), and measured over sixty frames it gives
+// sixty distinct values where this gave one. The golden-ratio step below is the
+// same idea: an irrational stride, so the sequence does not repeat on a short
+// cycle and successive frames land in unrelated parts of the cone.
 //
-// ⚠️ NO frameCounter, for the same reason - it is declared in several files that are
-// included in different orders. The temporal decorrelation goes with it; the spatial
-// part is what a screen-space effect needs, and the resolve supplies the rest.
+// ⚠️ THE frameCounter BLOCKER IS GONE, AND IT WAS NEVER AS BAD AS IT LOOKED. 775
+// recorded that the uniform is declared in several files included in different
+// orders and gave up on the temporal term because of it. That is true - it is
+// declared in lib/taa.glsl, light_volume.glsl and volumetric_fog.fsh - but it is
+// the same problem this pack already solved for isEyeInWaterFog in batch 770: put
+// all three declarations behind one marker, written `#if !defined(M)` because
+// _check_uniform_dups.ps1 only recognises that form. Exactly one then compiles.
+//
+// ⚠️ AND THE TWO NUMBERS ARE INDEPENDENT NOW. 775 derived the second from the
+// first with `fract(first * 7.0 + 0.37)`, which is a pure function of the first -
+// so the pair traced a one-dimensional curve through the two-dimensional space
+// the draw samples from. Measured over a 1920x1080 grid it occupied 12.5% of a
+// 64x64 binning, with the fullest bin 9.2x over-represented. A second hash costs
+// one more multiply and fills the space.
 //
 // Declared here rather than in either consumer because all three reflection paths
 // include this file and neither consumer includes the other.
-float PbrReflectionNoise() {
+//
+// BATCH 777: AND THE DECLARATION IS HERE TOO, BECAUSE ONE PATH CANNOT REACH IT.
+//
+// The marker above makes exactly one declaration compile, but it cannot make one
+// EXIST. lit.fsh reaches frameCounter only through diffuse.glsl, and that include
+// is behind `#if defined(COLORED_LIGHTS) && !defined(EXTERNALLY_DEFINED_UNIFORMS)`
+// - so with COLORED_LIGHTS off, which is what the LOW profile ships, the terrain
+// programs have no declaration at all and this file does not compile. Measured:
+// fifteen programs fail with `'frameCounter' : undeclared identifier`.
+//
+// So this file declares it as well, behind the same marker. It is the one place
+// every consumer is guaranteed to pass through, which makes it the only
+// declaration that can be relied on rather than merely hoped for.
+#if !defined(FRAME_COUNTER_DECLARED)
+#define FRAME_COUNTER_DECLARED
+uniform int frameCounter;
+#endif
+
+float PbrReflectionNoise(float offset) {
 	return fract(52.9829189 * fract(
-		0.06711056 * gl_FragCoord.x + 0.00583715 * gl_FragCoord.y));
+		0.06711056 * gl_FragCoord.x
+		+ 0.00583715 * gl_FragCoord.y
+		+ offset));
 }
 
-// The second uniform number the draw needs, from the first.
+// The pair of uniform numbers the draw needs.
 //
-// The VNDF takes a pair of independent uniform numbers. Deriving the second from the
-// first with an irrational multiplier keeps them decorrelated without a second hash,
-// which is what the call sites used to do with Bayer8.
+// BATCH 777: TWO HASHES WITH DIFFERENT COEFFICIENTS, NOT ONE HASH AND A SHIFT.
+//
+// The obvious way to get a second number is to call the same hash with a
+// different offset, and it does not work: the offset lands inside the inner
+// fract, so it slides the whole one-dimensional curve along rather than tracing
+// a second one. Measured over a 1920x1080 grid, a constant-offset pair fills
+// 4.7% of a 64x64 binning - worse than the 12.5% the linear derivation gave.
+//
+// Swapping the two coefficients does work, because the two hashes then disagree
+// about which screen axis dominates: the first varies fastest along x, the second
+// along y, so their joint distribution covers the square. Measured, that pair
+// fills 100% of the binning at chi2/dof 0.5.
+//
+// The frame term is added to the coordinate of both, which is what makes the draw
+// move between frames. The golden ratio is the stride because it is the
+// worst-approximated irrational, so successive frames visit the interval evenly
+// instead of clustering.
 vec2 PbrReflectionNoisePair() {
-	float first = PbrReflectionNoise();
+	float frame = float(frameCounter) * 0.618034;
 
-	return vec2(first, fract(first * 7.0 + 0.37));
+	return vec2(
+		PbrReflectionNoise(frame),
+		fract(52.9829189 * fract(
+			0.00583715 * gl_FragCoord.x
+			+ 0.06711056 * gl_FragCoord.y
+			+ frame)));
 }
 // The mip level a reflection is sampled at, from how rough the surface is and
 	// how far the ray travelled.

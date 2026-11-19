@@ -182,7 +182,21 @@
 // state and costs nothing.
 //#define TAA_DEBUG
 
-uniform int frameCounter;
+	// BATCH 777: GUARDED, BECAUSE THE REFLECTION NOISE NEEDS IT TOO.
+	//
+	// The reflection direction is drawn from a cone, and a draw that does
+	// not move between frames is a draw a temporal resolve cannot average -
+	// it converges to one sample instead of to the cone. So the noise needs
+	// the frame number, and it is reached from three different include
+	// graphs. A uniform may be declared once per translation unit, so the
+	// three declarations share this marker and exactly one of them compiles.
+	//
+	// The form is `#if !defined(M)` rather than `#ifndef M` because
+	// _check_uniform_dups.ps1 only recognises the first.
+	#if !defined(FRAME_COUNTER_DECLARED)
+	#define FRAME_COUNTER_DECLARED
+	uniform int frameCounter;
+	#endif
 uniform float viewWidth;
 uniform float viewHeight;
 

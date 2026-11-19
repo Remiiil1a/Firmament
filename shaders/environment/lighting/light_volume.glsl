@@ -792,7 +792,15 @@ vec3 LightVolumeCoord(vec3 cameraRelativePos, vec3 subBlockOffset) {
 // include graph has no declaration of frameCounter, and Iris provides it in
 // every stage. Eclipse declares it in the same two places - its compute pass and
 // its consumer.
+// BATCH 777: GUARDED, BECAUSE THE REFLECTION NOISE NEEDS IT TOO.
+//
+// See the note at the same declaration in lib/taa.glsl. This one is the copy
+// the terrain programs see, and only when COLORED_LIGHTS is on - so it cannot
+// be the only declaration, and it must not be a second one.
+#if !defined(FRAME_COUNTER_DECLARED)
+#define FRAME_COUNTER_DECLARED
 uniform int frameCounter;
+#endif
 
 // The consumer half, compiled only for the programs that define
 // LIGHT_VOLUME_CONSUMER before including this file. diffuse.glsl is the only

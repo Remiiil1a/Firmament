@@ -1177,49 +1177,32 @@ void main() {
 	// never above the upper one, whatever the deviation does.
 	historyUpper = min(historyUpper, neighborhoodMaximum);
 
-	// BATCH 766: THE BAND IS WIDENED FOR THE REFLECTION AGAIN, BECAUSE THE
-	// REFLECTION IS IN THE HISTORY AFTER ALL.
+	// BATCH 777: THE BAND IS WIDENED BY THE REFLECTION THAT IS ACTUALLY APPLIED.
 	//
-	// Batch 758 removed this widening on the argument that the reflection had moved
-	// after the resolve, so `current` and `history` both held reflection-free
-	// pictures and the band compared like with like. That argument was false:
-	// `resolved` carries the reflection and line 1537 writes `resolved` to the
-	// history, so the reflection has been in the history the whole time. What 758
-	// actually did was leave the reflection in the history while removing the two
-	// things that made being there work - this widening, and the frame term of the
-	// trace dither.
+	// The widening has been here since batch 674 and it has never done anything.
+	// It was built from `current - currentRaw`, and those two are the same value:
+	// `current` is read from colortex0 at the top of this function and is only
+	// ever reassigned when it is not usable at all, while `currentRaw` is a copy
+	// taken between the two. So the difference was exactly zero on every pixel of
+	// every frame, and the band was never widened by anything.
 	//
-	// So the block below is batch 674's, restored, and its reasoning is unchanged:
+	// What that cost is the whole of the author's noise report. The reflection is
+	// applied to `resolved` further down, and `resolved` is what is written to the
+	// history - so the history carries a reflection while the band is built from
+	// colortex0, which does not. The reflected part of the history therefore looks
+	// like a stale sample, is clamped back to the scene's brightness every frame,
+	// and is then re-added at full strength. The reflection never accumulated: it
+	// was a single-frame sample wearing a temporal filter's clothes.
 	//
-	// Every sample this band is built from comes from colortex0 - the frame with no
-	// reflection in it (the centre sample was folded in as `currentRaw` for that
-	// reason) - while `history` is last frame's resolved picture, which does carry
-	// one. Comparing them directly makes the reflection's own brightness look like a
-	// stale sample: the bound sits at the scene's brightness, the reflected history
-	// is brighter than that, 85% of it is rejected every frame, and the reflection
-	// settles at about half strength while the camera is still. Then the camera
-	// moves, the history weight drops towards 0.7 - but `mix(current, history,
-	// weight)` starts taking the current frame's full reflection, and the reflection
-	// brightens. The author reported exactly that asymmetry ("静止时反射会变暗，
-	// 视角移动时反射又会变亮", batch 665).
+	// So the delta is built from the reflection itself. `environmentReflection` is
+	// already weighted by `reflectionWeight` (see the return in
+	// environment_reflection.glsl), so it is the amount this pixel's picture gains
+	// from the reflection, and that is exactly how far the band has to move to
+	// admit last frame's copy of it.
 	//
-	// Widening the band by the magnitude of the reflection answers both at once. The
-	// reflected part of the history is inside the band, so it is not cut back to the
-	// scene; it is also not taken out of the blend, so two frames of reflection
-	// average with the same weight the rest of the picture uses, and the dither's
-	// noise falls by that weight. The mean is the same on both sides of the
-	// asymmetry, because both operands carry a complete reflection: only the noise is
-	// averaged, not the brightness.
-	//
-	// What it costs is the same thing a longer history always costs: a reflection
-	// lives about as long as the picture around it, so what moves on its own trails.
-	// That is the trade the author chose in batch 766 - noise that the history can
-	// average, over a reflection that never trails. See the note where the reflection
-	// is applied.
-	//
-	// A pixel with no reflection has reflectionDelta == 0 and keeps exactly the
-	// bounds it had.
-	vec3 reflectionDelta = currentUsable ? current - currentRaw : vec3(0.0);
+	// A pixel with no reflection has both at zero and keeps exactly the bounds it
+	// had.
+	vec3 reflectionDelta = environmentReflection;
 
 	history = clamp(
 		history,
