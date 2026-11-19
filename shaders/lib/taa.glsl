@@ -115,7 +115,7 @@
 //
 // The option's range is Bliss's neighbourhood rather than this pack's old one, so
 // that the value can be moved in the direction it was tuned in.
-#define TAA_STRENGTH 0.125 // [0.0 0.05 0.1 0.125 0.15 0.2 0.25 0.3 0.4 0.5 0.65 0.75 0.85 0.9 0.95]
+#define TAA_STRENGTH 0.9 // [0.0 0.05 0.1 0.125 0.15 0.2 0.25 0.3 0.4 0.5 0.65 0.75 0.85 0.9 0.95]
 
 // The radius of the sub-pixel jitter, in pixels.
 //

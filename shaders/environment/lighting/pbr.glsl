@@ -148,7 +148,7 @@
 // 1.0 plus conservation remains the balanced pair, and it is one constant away; if
 // the over-budget highlight ever starts reading as the crystal it did before, that
 // is the value to compare against.
-#define PBR_SPECULAR_STRENGTH 2.0 // [1.0 1.25 1.5 2.0 2.5 3.0 4.0 6.0]
+#define PBR_SPECULAR_STRENGTH 1.0 // [1.0 1.25 1.5 2.0 2.5 3.0 4.0 6.0]
 
 // How big the sun and the moon are, as far as the highlight they make on a
 // surface is concerned.
@@ -809,7 +809,7 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // curve that crowds the samples towards the eye reports 96.9% at 16 steps and
 // 95.9% at 24, which is inside the model's own noise, and the even ladder is
 // what batch 621 tuned the dither against.
-#define PBR_SSR_STEPS 24 // [8 12 16 24 32 48]
+#define PBR_SSR_STEPS 12 // [8 12 16 24 32 48]
 
 // How much sky a surface has to see before it reflects any of it.
 //
@@ -851,7 +851,7 @@ const float PBR_WETNESS_DARKENING = 0.66;
 //
 // Raise it to restrict reflections to shinier blocks and lower it to let them
 // onto duller ones; 0.0 disables the gate and leaves the old fall-off alone.
-#define PBR_REFLECTION_SMOOTHNESS_MIN 0.5 // [0.0 0.25 0.5 0.6 0.7 0.8 0.9]
+#define PBR_REFLECTION_SMOOTHNESS_MIN 0.9 // [0.0 0.25 0.5 0.6 0.7 0.8 0.9]
 
 
 
