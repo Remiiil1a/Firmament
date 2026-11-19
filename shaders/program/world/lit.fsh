@@ -318,11 +318,12 @@ uniform vec2 windowToNdc;
 
 #endif
 
-#ifdef DISTANT_HORIZONS
-	// Needed for stippling between vanilla and distant terrain during the
-	// transition between the two near the edge of vanilla render distance.
+// The 8x8 ordered dither, used for the stippling between vanilla and distant
+// terrain and - since batch 772 - for the noise the hand and the dropped item
+// draw their reflection direction from. Unconditional now: it used to be inside
+// the DISTANT_HORIZONS test, which is why the two private reflection paths could
+// not reach it and had no VNDF at all.
 	#include "/lib/bayer8.glsl"
-#endif
 
 // sRGB to Linear RGB
 // Uniforms: none
@@ -1891,9 +1892,24 @@ void main() {
 				// view direction are both world-space, so what comes back is
 				// turned out of the world's axes by the same matrix as the
 				// position above.
-				vec3 handViewReflected = handView * PbrReflectionDirection(
+				// BATCH 772: DRAWN FROM THE CONE, NOT THE EXACT DIRECTION.
+				//
+				// Batch 764 gave the shared reflection a visible-normal draw around
+				// the exact direction, so a rough surface reflection spreads over its
+				// cone rather than being a sharp picture of one direction. The hand
+				// traces for itself and was never given it, so its reflection stayed
+				// pinned - the author report that the hand has no VNDF.
+				//
+				// The noise is Bayer8 of the fragment, the same spatial dither the
+				// rest of this file uses, so the cost is zero and the two paths stay
+				// correlated with the world one.
+				float handDither = Bayer8(gl_FragCoord.xy);
+
+				vec3 handViewReflected = handView * PbrReflectionDirectionJittered(
 					pbrNormal,
-					viewDirection);
+					viewDirection,
+					pbr.roughness,
+					vec2(handDither, fract(handDither * 7.0 + 0.37)));
 
 				float handNdotV = max(dot(pbrNormal, viewDirection), 1.0e-4);
 
@@ -1959,13 +1975,17 @@ void main() {
 					// PbrReflectionLod in reflections.glsl, and it is shared now
 					// rather than copied so the three paths cannot drift apart.
 					//
-					// `reflectionRoughness` is 1.0 on this path (see the note where
-					// it is set), so the roughness term is 0 and the LOD is 0 - the
-					// hand is deliberately given no environment reflection at all.
-					// The call is here so that the day that changes, the blur comes
-					// with it rather than being forgotten.
+					// pbr.roughness, NOT reflectionRoughness: the latter is 1.0 on
+					// this path because the SHARED reflection is switched off for the
+					// hand (see the note where it is set), and 1.0 would make the LOD
+					// zero - which is what batch 770 did, and why the author reported
+					// that the hand still had no blur after it.
+					//
+					// The material itself is untouched: the hand has its own trace
+					// precisely so that it can reflect the world without the shared
+					// path painting the scene through it.
 					float handLod = PbrReflectionLod(
-						reflectionRoughness,
+						pbr.roughness,
 						length(handHitViewPos - handViewPos));
 
 					handEnvironment =
@@ -1984,9 +2004,14 @@ void main() {
 					mat3 entityView = mat3(gbufferModelView);
 					vec3 entityViewPos = entityView * cameraRelativePos;
 
-					vec3 entityViewReflected = entityView * PbrReflectionDirection(
+					// BATCH 772: drawn from the cone, for the hand reason above.
+					float entityDither = Bayer8(gl_FragCoord.xy);
+
+					vec3 entityViewReflected = entityView * PbrReflectionDirectionJittered(
 						pbrNormal,
-						viewDirection);
+						viewDirection,
+						pbr.roughness,
+						vec2(entityDither, fract(entityDither * 7.0 + 0.37)));
 
 					float entityNdotV = max(dot(pbrNormal, viewDirection), 1.0e-4);
 
@@ -2058,11 +2083,11 @@ void main() {
 						// sharp picture however rough the material was. The formula
 						// is PbrReflectionLod in reflections.glsl.
 						//
-						// `reflectionRoughness` is 1.0 on this path too (see the note
-						// where it is set), so the LOD is 0 here as well - the call is
-						// for the day that changes.
+						// pbr.roughness, for the hand reason above: the shared
+						// reflection is switched off on this path, so
+						// reflectionRoughness is 1.0 and would make the LOD zero.
 						float entityLod = PbrReflectionLod(
-							reflectionRoughness,
+							pbr.roughness,
 							length(entityHitViewPos - entityViewPos));
 
 						entityEnvironment =
