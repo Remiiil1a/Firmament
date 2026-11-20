@@ -182,6 +182,28 @@ layout(rgba16) uniform image3D light_volume_b;
 // maximum while the colour is combined by a level-weighted average - see the note
 // at the top of the file for why those are different questions.
 vec4 LightVolumeDecode(vec4 stored) {
+	// BATCH 790: THE SAME GUARD AS THE CONSUMER'S, AND FOR THE SAME REASON.
+	//
+	// This decodes the field the pass is about to read - the one written on the
+	// previous frame - and on the first frame after a world load there is no
+	// previous frame. The images are allocated with a null data pointer and
+	// nothing clears them, so what comes back is whatever the driver had there.
+	//
+	// `exp2(a * 15) - 1` turns an alpha of 1.0 into 32767 and anything above it
+	// into an infinity, and a NaN alpha into a NaN. Here that would be spread
+	// across the whole grid by the flood fill rather than shown directly, which
+	// is worse: one bad voxel becomes every voxel it reaches.
+	//
+	// The range is the encoder's own - `log2(level + 1) / 15` for a level in
+	// [0, 15] gives [0, 0.2667], NOT [0, 1] - so an alpha outside it was never
+	// written by this pass. Treated as no light, which is what an unwritten voxel
+	// means. The bound is the encoder's own expression so the two cannot drift.
+	if (!(stored.a >= 0.0
+		&& stored.a <= log2(LIGHT_VOLUME_LEVEL_RANGE + 1.0)
+			/ LIGHT_VOLUME_LEVEL_RANGE)) {
+		return vec4(0.0);
+	}
+
 	float level = exp2(stored.a * LIGHT_VOLUME_LEVEL_RANGE) - 1.0;
 	return vec4(stored.rgb, level);
 }

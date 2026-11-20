@@ -858,6 +858,55 @@ vec4 LightVolumeSample(vec3 cameraRelativePos, vec3 subBlockOffset) {
 		? texture(light_volume_a_sampler, uv)
 		: texture(light_volume_b_sampler, uv);
 
+	// BATCH 790: THE DECODE IS GUARDED, AND THAT IS THE FULL-SCREEN NaN ON THE
+	// FIRST FRAME AFTER A WORLD LOAD.
+	//
+	// The two fields are images, not buffers with a clear colour: nothing in this
+	// pack clears them, and Iris allocates an image with a null data pointer, so
+	// their first contents are whatever the driver had in that memory. On the
+	// first frame after a world load the consumer below runs before anything has
+	// written the field it is about to read - the compute pass that fills it runs
+	// in shadowcomp, and whether that has run yet on the very first frame is the
+	// loader's business rather than this file's.
+	//
+	// What an uninitialised alpha does here is not a wrong colour. The decode is
+	// `exp2(a * 15) - 1`, so an alpha of 1.0 gives 32767 and anything above that
+	// overflows to infinity; a NaN alpha gives a NaN. Either one is then
+	// multiplied into the surface's block light, and a NaN there is a NaN in the
+	// fragment's colour - which is the full-screen NaN, and it is why it sits
+	// where the camera is looking: the grid is centred on the camera, so the
+	// voxels in front of it are the ones being read.
+	//
+	// It clears when the camera moves away because the grid is rebuilt around the
+	// new position, and the voxels that were never written are no longer the ones
+	// under the crosshair. That is also why reloading the pack does not show it:
+	// a reload re-runs the fill before the first frame is drawn.
+	//
+	// The guard is a comparison rather than a check for a number, because a NaN
+	// fails every comparison - the same shape this pack uses wherever a value has
+	// to be validated at the point of use. An alpha outside the range the encoder
+	// can produce is not a level, so the voxel is treated as one the fill has
+	// nothing to say about, which is the zero the note below already describes.
+	//
+	// ⚠️ THE RANGE IS THE ENCODER'S, AND IT IS NOT [0, 1]. The encoder is
+	// `log2(level + 1) / 15` for a level in [0, 15], so the largest alpha it ever
+	// writes is log2(16) / 15 = 0.2667. A first draft of this guard used [0, 1],
+	// which is the range of the CHANNEL rather than of the encoding - and it
+	// would have let an uninitialised alpha of 0.5 through, which decodes to a
+	// light level of 180. That is not a NaN, but it is a hundred times the
+	// brightest light the field can describe, and it would have been a white
+	// screen instead of a black one.
+	//
+	// The bound is written as the encoder's own expression rather than as 0.2667,
+	// so it cannot drift from the encoder if the range ever changes. The level
+	// the encoder can express is capped at LIGHT_VOLUME_LEVEL_RANGE itself, which
+	// is what makes the two the same number.
+	if (!(stored.a >= 0.0
+		&& stored.a <= log2(LIGHT_VOLUME_LEVEL_RANGE + 1.0)
+			/ LIGHT_VOLUME_LEVEL_RANGE)) {
+		return vec4(0.0);
+	}
+
 	// The level the alpha channel encodes, and the colour scaled by it. A stored
 	// alpha of zero decodes to a level of zero, so a voxel the fill has nothing
 	// to say about comes back black rather than as a colour at zero strength.
