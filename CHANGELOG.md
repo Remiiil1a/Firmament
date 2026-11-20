@@ -103,15 +103,6 @@ with the camera - are fixed.
   the last of these used `1e18`, which no finite `RGBA16F` value can reach, so it
   caught NaN and the infinities and nothing else.
 
-### Known issues
-
-* **The game's star field may still appear on some Iris versions.** `stars=false` is
-  read by Iris 1.21.1 and honoured there; the directive does not exist in 1.20.1, and
-  in 1.21.4 and 1.21.11 nothing consumes it. The shader-side discard covers every
-  version, but the loader half is version-dependent.
-* **A block's reflection still does not show water or glass on every setup.** Three
-  attempts at it were reverted; the notes are in the project's batch log.
-
 ## v1.0.8 - 2026-11-11
 
 Two fixes: the pack loads again on older Iris and with SMAA on, and the water
