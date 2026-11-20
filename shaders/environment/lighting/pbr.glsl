@@ -842,7 +842,13 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // ⚠️ AND PBR_SSR_SAMPLES ONLY MEANS ANYTHING WHEN THIS IS ON. With it off there
 // is one exact direction and nothing to average, so the sample count is not read
 // at all - see the note on it below.
-#define PBR_ROUGH_REFLECTION
+//
+// ⚠️ THE COMMENT ABOVE MUST NOT TOUCH THE #define. Iris reads a leading comment
+// as the option's default value (!hasLeadingComment in parseDefineOption), so a
+// comment on the line directly above would make this default to OFF by accident
+// rather than by decision. The blank line is load-bearing.
+
+// #define PBR_ROUGH_REFLECTION
 
 // How many directions the reflection draws from its cone, per pixel.
 //

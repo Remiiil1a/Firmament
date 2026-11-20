@@ -467,7 +467,7 @@ vec3 EnvironmentReflection(
 				// The sample count is not read when the switch is off. There is one
 				// exact direction and nothing to average, so PBR_SSR_SAMPLES is a
 				// cone setting and says so in its own note.
-				#if defined(PBR_ROUGH_REFLECTION)
+				#ifdef PBR_ROUGH_REFLECTION
 					const int reflectionSamples = PBR_SSR_SAMPLES;
 				#else
 					const int reflectionSamples = 1;
@@ -478,7 +478,7 @@ vec3 EnvironmentReflection(
 				float tracedHits = 0.0;
 
 				for (int sampleIndex = 0; sampleIndex < reflectionSamples; sampleIndex++) {
-					#if defined(PBR_ROUGH_REFLECTION)
+					#ifdef PBR_ROUGH_REFLECTION
 						vec3 rayDirection = PbrReflectionDirectionJittered(
 							worldNormal,
 							viewDirection,

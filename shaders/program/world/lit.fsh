@@ -1906,7 +1906,7 @@ void main() {
 				// BATCH 786: AND IT IS BEHIND PBR_ROUGH_REFLECTION, like the
 				// world's. With the switch off this runs once over the exact
 				// mirror direction, which is what the pack had before batch 764.
-				#if defined(PBR_ROUGH_REFLECTION)
+				#ifdef PBR_ROUGH_REFLECTION
 					const int handSamples = PBR_SSR_SAMPLES;
 				#else
 					const int handSamples = 1;
@@ -1916,7 +1916,7 @@ void main() {
 				float handHits = 0.0;
 
 				for (int sampleIndex = 0; sampleIndex < handSamples; sampleIndex++) {
-					#if defined(PBR_ROUGH_REFLECTION)
+					#ifdef PBR_ROUGH_REFLECTION
 						vec3 handViewReflected = handView * PbrReflectionDirectionJittered(
 							pbrNormal,
 							viewDirection,
@@ -2018,7 +2018,7 @@ void main() {
 					//
 					// BATCH 786: and behind PBR_ROUGH_REFLECTION, like the other
 					// two paths.
-					#if defined(PBR_ROUGH_REFLECTION)
+					#ifdef PBR_ROUGH_REFLECTION
 						const int entitySamples = PBR_SSR_SAMPLES;
 					#else
 						const int entitySamples = 1;
@@ -2034,7 +2034,7 @@ void main() {
 					vec3 entityViewReflected = vec3(0.0, 0.0, 1.0);
 
 					for (int sampleIndex = 0; sampleIndex < entitySamples; sampleIndex++) {
-						#if defined(PBR_ROUGH_REFLECTION)
+						#ifdef PBR_ROUGH_REFLECTION
 							entityViewReflected = entityView * PbrReflectionDirectionJittered(
 								pbrNormal,
 								viewDirection,
