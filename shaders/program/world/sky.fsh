@@ -29,7 +29,51 @@ uniform mat4 gbufferProjectionInverse;
 uniform vec2 windowToNdc;
 uniform float blindness;
 
+// BATCH 800: THE GAME'S STAR FIELD IS DROPPED HERE, AND `renderStage` IS THE
+// ONLY THING THAT CAN TELL IT APART.
+//
+// This program draws the generated sky for EVERY fragment of the sky-basic
+// program, and the game submits several different quads to that program: the
+// sky colour, the sunset band, the void plane, and the star field. They all
+// arrive here with the same uniforms and no vertex colour this file reads, so
+// from inside main() they are indistinguishable - which is why the two earlier
+// attempts failed:
+//
+//   batch 155 tested for a flat colour, which is local knowledge from the
+//   sky-textured program and cannot fire here.
+//
+//   batch 799 tested the vertex colour in gbuffers_skytextured, which is the
+//   WRONG PROGRAM: the star field is drawn with POSITION_COLOR and no texture,
+//   so Iris routes it to SKY_BASIC_COLOR - this program - not to sky-textured.
+//
+// `renderStage` is the loader's own statement about which draw is being
+// submitted, and it is the discriminator Bliss uses for exactly this
+// (Bliss-Shader-Unstable/shaders/world0/gbuffers_skytextured.fsh, which tests
+// renderStage against MC_RENDER_STAGE_SUN / _MOON / _SKY). Iris defines the
+// constants from its WorldRenderingPhase enum, whose order puts STARS at 6.
+//
+// The fallback is the same shape program/shadow/shadow.vsh uses for the stages
+// it reads: `#ifndef` around the number, so a loader that does not define the
+// name still compiles and still gets the right value, and a loader that does
+// define it wins. The number is the enum's own ordinal and is written out here
+// rather than derived, because a shader cannot read an enum.
+#ifndef MC_RENDER_STAGE_STARS
+	#define MC_RENDER_STAGE_STARS 6
+#endif
+
+// The pack draws its own stars in environment/sky/stars.glsl, so dropping this
+// quad leaves one field rather than two. Nothing else is affected: the sky
+// colour, the sunset band and the void plane are different stages and still
+// reach the code below.
+uniform int renderStage;
+
 void main() {
+	// The star field is the pack's own, drawn by SkyStars below. The game's is a
+	// texture on a quad and is not wanted.
+	if (renderStage == MC_RENDER_STAGE_STARS) {
+		discard;
+	}
+
 	// Project back to view space from the fragment coordinates. For this case,
 	// it is easier to start off with a position on the far plane and then
 	// normalize to a vector than to try to get a vector out of the screen
