@@ -1402,6 +1402,30 @@ void main() {
 		// frames is enough for the flip to have put a written frame on both sides,
 		// which is the condition that makes the read below a read of the frame
 		// before this one.
+		//
+		// ⚠️ BATCH 791: THE FRAME COUNT IS NOT ENOUGH ON ITS OWN, AND THE REASON
+		// IS THE SAME ONE composite1.fsh CARRIES.
+		//
+		// `frameCounter >= 3` is correct only while the counter is reset when the
+		// buffers are allocated. Iris pre-warms the pipeline at the title screen
+		// (Iris.java:152), which caches the dimension AND resets the counter, and
+		// the title screen then renders for as long as the player leaves it there
+		// - each frame advancing the counter (MixinGameRenderer.java:473).
+		// Entering the world calls preparePipeline for a dimension that is already
+		// cached, so PipelineManager.java:27-29 does NOT reset it: the counter
+		// arrives in the world already past 3, this test passes on the very first
+		// frame, and the history is read while it is still uninitialised.
+		//
+		// A pack reload does not show it because destroyEverything() calls
+		// destroyPipeline(), which clears `pipelinesPerDimension`
+		// (PipelineManager.java:90) - so the next preparePipeline DOES reset the
+		// counter. That asymmetry is the reported symptom exactly.
+		//
+		// So the read is also gated on the CONTENT. The alpha this pass writes is
+		// the scattering's own, and a texel that was never written holds whatever
+		// the driver left there - which is not a number this pass can produce. The
+		// test is the pack's usual comparison form, because a NaN fails every
+		// comparison and so is rejected by the negation.
 		if (frameCounter >= 3) {
 			// Where this texel was on the previous frame's screen.
 			//

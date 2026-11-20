@@ -501,8 +501,42 @@ uniform float blindness;
 // upstream is still not a colour - but it is not the mechanism the old note
 // described, and a NaN now survives into the buffer rather than becoming a zero.
 // A genuinely dark pixel is not exactly zero and passes.
-bool HistoryTapUsable(vec3 tap) {
-	return (dot(tap, tap) < 1.0e18) && (tap != vec3(0.0));
+//
+// ⚠️ BATCH 791: THE ALPHA IS THE "WAS THIS TEXEL EVER WRITTEN" MARKER, AND THAT
+// IS WHAT MAKES THE FIRST FRAME AFTER A WORLD LOAD SAFE.
+//
+// The write at the bottom of this file is
+//
+//     gl_FragData[1] = vec4(max(resolved, vec3(1.0e-7)), currentUsable ? 1.0 : 0.0);
+//
+// so the alpha this pack ever stores is EXACTLY 0.0 or EXACTLY 1.0 - never
+// anything else, on any frame. A texel whose alpha is neither was not written by
+// this pass, and on the first frame after a world load that is every texel:
+// colortex3 is not cleared (colortex3Clear = false) and Iris allocates it with a
+// null data pointer, so it holds whatever the driver had in that memory.
+//
+// WHY THE FRAME-COUNT GUARD ALONE IS NOT ENOUGH. `frameCounter >= 2` below is
+// correct only while the counter is reset when the buffers are allocated. It is
+// not: Iris pre-warms the pipeline at the title screen (Iris.java:152,
+// `preparePipeline(DimensionId.OVERWORLD)`), which caches the dimension AND
+// resets the counter, and the title screen then renders for as long as the player
+// leaves it there - each of those frames advancing the counter
+// (MixinGameRenderer.java:473). Entering the world calls preparePipeline again
+// for a dimension that is already cached, so PipelineManager.java:27-29 does NOT
+// reset it. The counter arrives in the world already large, both guards pass on
+// the very first frame, and the history is read while it is still uninitialised.
+//
+// A pack reload does not show it because destroyEverything() calls
+// destroyPipeline(), which clears `pipelinesPerDimension` (PipelineManager.java:90)
+// - so the next preparePipeline DOES reset the counter and the guards fire. That
+// asymmetry is exactly the reported symptom: first world entry yes, reload no.
+//
+// So the guard is on the CONTENT, which cannot lie, rather than on a frame count,
+// which can. The frame-count test is kept as well: it is still the right answer
+// when the counter is reset, and it costs one comparison.
+bool HistoryTapUsable(vec4 tap) {
+	bool written = tap.a == 0.0 || tap.a == 1.0;
+	return written && (dot(tap.rgb, tap.rgb) < 1.0e18) && (tap.rgb != vec3(0.0));
 }
 
 vec3 HistorySample(vec2 coord) {
@@ -547,23 +581,23 @@ vec3 HistorySample(vec2 coord) {
 	vec4 tap4;
 		tap4 = texture(colortex3, vec2(middle.x, middle.y)).rgba;
 	weight = w12.x * w12.y * tap4.a;
-	if (HistoryTapUsable(tap4.rgb)) { color += tap4.rgb * weight; total += weight; }
+	if (HistoryTapUsable(tap4)) { color += tap4.rgb * weight; total += weight; }
 
 		tap4 = texture(colortex3, vec2(middle.x, low.y)).rgba;
 	weight = w12.x * w0.y * tap4.a;
-	if (HistoryTapUsable(tap4.rgb)) { color += tap4.rgb * weight; total += weight; }
+	if (HistoryTapUsable(tap4)) { color += tap4.rgb * weight; total += weight; }
 
 		tap4 = texture(colortex3, vec2(low.x, middle.y)).rgba;
 	weight = w0.x * w12.y * tap4.a;
-	if (HistoryTapUsable(tap4.rgb)) { color += tap4.rgb * weight; total += weight; }
+	if (HistoryTapUsable(tap4)) { color += tap4.rgb * weight; total += weight; }
 
 		tap4 = texture(colortex3, vec2(high.x, middle.y)).rgba;
 	weight = w3.x * w12.y * tap4.a;
-	if (HistoryTapUsable(tap4.rgb)) { color += tap4.rgb * weight; total += weight; }
+	if (HistoryTapUsable(tap4)) { color += tap4.rgb * weight; total += weight; }
 
 		tap4 = texture(colortex3, vec2(middle.x, high.y)).rgba;
 	weight = w12.x * w3.y * tap4.a;
-	if (HistoryTapUsable(tap4.rgb)) { color += tap4.rgb * weight; total += weight; }
+	if (HistoryTapUsable(tap4)) { color += tap4.rgb * weight; total += weight; }
 
 	// Every tap unusable is the one case this cannot answer, and it is a real
 	// one: a frame in which the whole neighbourhood was not a number leaves the
