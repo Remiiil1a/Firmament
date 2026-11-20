@@ -16,6 +16,102 @@ report problems in this project, not in Steadfast's.
 
 ---
 
+## v1.0.9 - 2026-11-21
+
+Coloured block light is rebuilt on Eclipse's model, so a light now carries its own
+reach and its own colour instead of borrowing the lightmap's brightness. Reflections
+are reworked end to end: they spread over the cone a rough surface actually opens,
+they can be turned off, and they are no longer sampled from a buffer that predates
+the water. And a run of first-frame and full-screen defects - black squares on
+distant water, a black screen on the first frame after a world load, fog that swung
+with the camera - are fixed.
+
+### Added
+
+* **`PBR_ROUGH_REFLECTION` - rough reflections, off by default.** The reflection
+  draws its direction from the cone the surface's roughness opens instead of taking
+  the one exact mirror direction, so a brushed metal reflects a range and its outline
+  is smeared over it. Off is the plain mirror this pack shipped before. It governs
+  every reflection that draws a direction: blocks, entities, held items and dropped
+  items. It is off by default because the draw is a random sample and is visible
+  noise by construction - the same trade Bliss makes with its own switch.
+* **`PBR_SSR_SAMPLES` - how many directions the cone is drawn from, 1 to 4.** One
+  draw per frame is one sample of a range, and the temporal resolve averages across
+  frames, so a single draw stays a single draw however long the history is. Only
+  applies while `PBR_ROUGH_REFLECTION` is on; with it off there is one exact
+  direction and nothing to average.
+* **A 256-block preset for the coloured-light grid**, and the medium and high tiers
+  now default to 128 and 256.
+* **Three shortcuts on the root menu** - `COLORED_LIGHTS`, `WATER_INTERACTION` and
+  `PBR_FORMAT` - after the profile, with a gap before the page list. They are still
+  on their own pages; this is a second place to reach them.
+
+### Changed
+
+* **Coloured block light is Eclipse's, not a colour-only overlay.** The field now
+  carries brightness as well as hue, each light family has its own reach taken from
+  the game's own light level, and the world image stores block IDs rather than a
+  five-state tag. Two sources that meet blend by level instead of one winning per
+  channel. `COLORED_LIGHT_SATURATION` now describes the colour a source gives out.
+* **Distant water is no longer a mirror.** The old fade pulled the wave normal
+  towards its average, and the variation *is* the normal - so far water went flat and
+  read as glass. The fade is replaced by a wider sampling footprint, which keeps the
+  waves and still stops them shimmering. `WATER_AA` is gone: it was a trade from
+  before the pack had temporal anti-aliasing.
+* **`TAA_STRENGTH` defaults to 0.5** and **`PBR_SSR_SAMPLES` to 3**.
+* **`WATER_SURFACE` moved to the surface-shape page**, and the page it had to itself
+  is gone. On the reflection page `PBR_SSR` is first and the new rough-reflection
+  switch second.
+* **The high tier trades full-resolution volumetric fog for rough reflections.**
+  Full-resolution fog is still a menu option; it is no longer a tier default.
+* **The game's own star field is gone.** The pack draws its own; the game's was
+  drawn on top of it. Both halves are in place - the loader is told not to draw it,
+  and the sky program drops the star stage by `renderStage` if it arrives anyway.
+
+### Fixed
+
+* **Black squares on distant water.** The water's parallax step divided by the
+  vertical part of the view direction, which is zero when the camera is level with
+  the surface - exactly where this pack draws water to the horizon. The step became
+  an infinity, the height function was asked for the surface at an infinite
+  coordinate, and the result was a NaN normal and a black pixel. The division is
+  floored, and the march is skipped at that angle.
+* **A full-screen black region on the first frame after a world load.** Three
+  separate causes, all fixed: the light volume decoded an uninitialised alpha into a
+  light level of 32767 or a NaN; the first-frame guards were keyed on a frame counter
+  that Iris does not reset when a world is entered, so they never fired; and the fog
+  upscale returned the fog buffer unchecked from two of its three exits.
+* **Fog that swung with the camera.** A sky branch stored a world direction where a
+  view-space position was expected, so the direction was rotated twice - by exactly
+  the camera's yaw, which is why the fog slid across the world in the opposite
+  direction to the camera.
+* **Two more NaN routes into the water's colour.** The water's Fresnel took `pow()`
+  of a base that rounding can push below zero, and the refraction position divided by
+  a `w` that collapses at the far plane before the sky case was handled.
+* **The rough-reflection switch did not appear in the menu at all.** Iris only
+  registers a boolean option that is referenced by `#ifdef` or `#ifndef`; a toggle
+  tested only with `#if defined` is declared, works when edited by hand, and is
+  silently dropped from the settings screen.
+* **The reflection could not see glass, water or particles.** It sampled a buffer
+  written before the translucents were drawn, and the trace skipped any surface
+  within two pixels of the one it left - which is where a water surface directly
+  overhead sits. Both are fixed, and the trace now stops at the water instead of
+  passing through it.
+* **Held items reflected the texture atlas.** The hand sampled a buffer its own
+  program writes, so it read the unwritten half of the pair.
+* **The water's Fresnel, the refraction `w` divide, and the fog's history bound** -
+  the last of these used `1e18`, which no finite `RGBA16F` value can reach, so it
+  caught NaN and the infinities and nothing else.
+
+### Known issues
+
+* **The game's star field may still appear on some Iris versions.** `stars=false` is
+  read by Iris 1.21.1 and honoured there; the directive does not exist in 1.20.1, and
+  in 1.21.4 and 1.21.11 nothing consumes it. The shader-side discard covers every
+  version, but the loader half is version-dependent.
+* **A block's reflection still does not show water or glass on every setup.** Three
+  attempts at it were reverted; the notes are in the project's batch log.
+
 ## v1.0.8 - 2026-11-11
 
 Two fixes: the pack loads again on older Iris and with SMAA on, and the water
