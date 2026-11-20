@@ -772,7 +772,35 @@ vec4 TranslucentLighting(
 		// Otherwise, this follows the physically-based Schlick's approximation
 		// for the fresnel factor:
 		// https://en.wikipedia.org/wiki/Schlick's_approximation
-		float fresnel = F0 + (1.0 - F0) * pow(1.0 + dot(incident, normal), 5.0);
+		//
+		// BATCH 789: THE BASE IS CLAMPED, AND THIS IS THE SAME FIX THE PACK
+		// ALREADY MADE ONCE FOR THE SAME EXPRESSION.
+		//
+		// `incident` and `normal` are both unit vectors, so the dot product is
+		// mathematically in [-1, 0] for water seen from above and `1.0 + dot` is
+		// in [0, 1] - non-negative by construction. But neither operand is exact:
+		// `normal` has been through the wave field and the parallax march, and a
+		// dot product that is mathematically exactly -1.0 arrives as -1.0000001.
+		// The base is then a little below zero, and `pow()` with a negative base
+		// is undefined in GLSL - on the drivers this pack targets it is a NaN.
+		//
+		// This is not a theory. `reflections.glsl:542-568` carries the identical
+		// expression with the identical clamp and a note that says it is the fix
+		// for a black blot (BATCH_LOG.md 139). That one was found on reflective
+		// surfaces; this one is the water's own Fresnel, and it was left
+		// unguarded - the only unguarded `pow(1.0 + dot(...))` left in the pack.
+		//
+		// What a NaN here costs is worse than a wrong highlight: `fresnel` goes
+		// into `mix(fragmentColor.rgb, reflectedColor, fresnel)` below and into
+		// `srcAlpha *= 1.0 - fresnel`, so it reaches the water's colour AND its
+		// alpha. And water is drawn with AFTER_DEFERRED, so it is composited
+		// after composite1's temporal resolve - none of the NaN-repair guards in
+		// that pass ever see it. It reaches the tonemapper as black.
+		//
+		// The exponent is a constant, so `pow` is the only way this can happen
+		// and one clamp is the whole of the fix.
+		float fresnel = F0 + (1.0 - F0)
+			* pow(clamp(1.0 + dot(incident, normal), 0.0, 1.0), 5.0);
 		// The water's reflection strength is scaled by the option here, and by the
 		// material and by nothing else: ice and glass come through the same code
 		// and keep every bit of their reflection, because a window and a frozen
@@ -1276,8 +1304,32 @@ vec4 TranslucentLighting(
 			vec3 ndcPosRefracted = refractedScreenPos * 2.0 - 1.0;
 			vec4 viewPosHRefracted =
 				inverseProjectionMatrix * vec4(ndcPosRefracted, 1.0);
-			vec3 viewPosRefracted =
-				vec3(viewPosHRefracted.xyz / viewPosHRefracted.w);
+
+			// BATCH 789: THE DIVISION BY `w` IS GUARDED, AND IT IS THE ONE PLACE
+			// IN THIS FILE THAT DIVIDES BY A QUANTITY THE TRACE CAN DRIVE TO
+			// ZERO.
+			//
+			// `refractedScreenPos.z` is a depth in [0, 1], and when the trace
+			// reports that it reached the sky it is exactly 1.0 - the far plane.
+			// The inverse projection's `w` collapses there, and this division
+			// runs BEFORE the two places that handle the sky case (`:1424` and
+			// `:1494`), so it is asked for a position the projection cannot give.
+			//
+			// What it feeds is `absorption_refraction.glsl:181`,
+			// `abs(viewPos.z - viewPosRefracted.z)`, which becomes the number of
+			// metres of water the light travelled - and that goes into
+			// `exp(meters * coefficients)`. A NaN there is a NaN attenuation, and
+			// a NaN attenuation is a black pixel.
+			//
+			// The guard is the same shape the rest of this pack uses for a
+			// quantity that may not be a number: a comparison, because a NaN
+			// fails every comparison. A `w` that is not a usable number leaves
+			// the position at the fragment's own, which is what the rejected-hit
+			// paths above use as their fallback too.
+			vec3 viewPosRefracted = viewPosHRefracted.w != 0.0
+				&& abs(viewPosHRefracted.w) > 1.0e-6
+				? vec3(viewPosHRefracted.xyz / viewPosHRefracted.w)
+				: viewPos;
 
 			#if defined(DISTANT_HORIZONS) && !defined(DH_TERRAIN)
 				if (refractedScreenPos.z == 1.0) {
@@ -1293,8 +1345,14 @@ vec4 TranslucentLighting(
 					ndcPosRefracted = refractedScreenPos * 2.0 - 1.0;
 					viewPosHRefracted = inverseProjectionMatrixDistant
 						* vec4(ndcPosRefracted, 1.0);
-					viewPosRefracted =
-						vec3(viewPosHRefracted.xyz / viewPosHRefracted.w);
+
+					// The same guard as the first division above, for the same
+					// reason: this is the distant-horizons re-trace, and it is
+					// reached exactly when the first trace reported the sky.
+					viewPosRefracted = viewPosHRefracted.w != 0.0
+						&& abs(viewPosHRefracted.w) > 1.0e-6
+						? vec3(viewPosHRefracted.xyz / viewPosHRefracted.w)
+						: viewPos;
 				}
 			#endif
 
