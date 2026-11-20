@@ -77,6 +77,47 @@ void main() {
 	vec3 worldDir = (gbufferModelViewInverse * vec4(viewVec, 0.0)).xyz;
 
 	if (!EndSkyDimension()) {
+		// BATCH 799: THE GAME'S STAR FIELD IS DROPPED HERE, AND THIS IS THE
+		// DISCRIMINATOR THAT WORKS.
+		//
+		// `stars=false` in shaders.properties is still there and still correct -
+		// Iris reads it into shouldRenderStars() and MixinLevelRenderer_SunMoonToggle
+		// answers getStarBrightness with -0.1 so the game skips the draw. But that
+		// only works where Iris has that mixin, and the author reports the field
+		// still visible, so the pack cannot rely on it alone. This is the half that
+		// does not depend on the loader.
+		//
+		// ⚠️ BATCH 155 TRIED THIS AND THE TEST WAS WRONG, WHICH IS WHY IT IS WORTH
+		// SAYING WHAT THE RIGHT ONE IS. It used the flat-colour test from
+		// gbuffers_skybasic - "is this fragment one colour?" - and that test is
+		// local knowledge about a different program: here the colour comes from a
+		// texture, so it is never flat, and the discard never fired.
+		//
+		// The star field is drawn with a vertex colour of
+		// (brightness, brightness, brightness, brightness) - the game multiplies
+		// the whole quad by the star brightness, alpha included. The sun and the
+		// moon are drawn with (1, 1, 1, 1). So the two are separated by the vertex
+		// colour alone, with no texture inspection and no guessing:
+		//
+		//   stars    : rgb == a, and a < 1
+		//   sun/moon : rgb == a == 1
+		//
+		// The comparison is written as a tolerance rather than as equality because
+		// the colour arrives interpolated across a quad, and the alpha is what
+		// makes it a star: a quad drawn at full alpha is a body, whatever its
+		// colour.
+		//
+		// The pack draws its own stars in program/world/sky.fsh, so dropping these
+		// leaves one field rather than two.
+		bool isStarField = tinting.a < 0.999
+			&& abs(tinting.r - tinting.a) < 0.01
+			&& abs(tinting.g - tinting.a) < 0.01
+			&& abs(tinting.b - tinting.a) < 0.01;
+
+		if (isStarField) {
+			discard;
+		}
+
 		// The sun and the moon, and anything else textured in the sky.
 		//
 		// Note: the two bodies' images are the game's here, and are not replaced
