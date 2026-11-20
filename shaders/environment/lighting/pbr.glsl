@@ -817,6 +817,33 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // what batch 621 tuned the dither against.
 #define PBR_SSR_STEPS 12 // [8 12 16 24 32 48]
 
+// Whether the reflection draws its direction from the surface's roughness cone.
+//
+// BATCH 786, AND IT IS OFF BY DEFAULT. This is Bliss's switch
+// (lib/settings.glsl:302, `DEFERRED_ROUGH_REFLECTION`, named "Rough reflections
+// - CAN CAUSE VISUAL NOISE" in its menu), and it is off for the same reason
+// there: the draw is a random sample, so it is visible noise by construction.
+//
+// OFF is the plain mirror reflection this pack shipped before batch 764: one
+// exact direction per pixel, no draw, no cone. It is sharp and it is stable, and
+// what it cannot do is spread - a rough surface reflects a range of directions
+// and a single exact one is not that range.
+//
+// ON draws from the cone, so the reflection's outline is smeared over the angle
+// the roughness opens instead of being pinned where one ray put it. That is what
+// a rough surface physically does, and it is what makes a brushed metal read as
+// brushed rather than as a mirror with a soft colour.
+//
+// ⚠️ IT GOVERNS EVERY REFLECTION THAT DRAWS A DIRECTION, and there are three
+// paths that do: the world's (environment_reflection.glsl), the held item's and
+// the dropped item's (lit.fsh). All three read this one option, so they cannot
+// disagree about whether the reflection is rough.
+//
+// ⚠️ AND PBR_SSR_SAMPLES ONLY MEANS ANYTHING WHEN THIS IS ON. With it off there
+// is one exact direction and nothing to average, so the sample count is not read
+// at all - see the note on it below.
+#define PBR_ROUGH_REFLECTION
+
 // How many directions the reflection draws from its cone, per pixel.
 //
 // BATCH 783. The reflection used to draw ONE direction and trace it, so a rough
@@ -827,14 +854,14 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // and a single draw per frame is a single draw per frame however long the
 // history is.
 //
+// ⚠️ THIS ONLY APPLIES WHEN PBR_ROUGH_REFLECTION IS ON. With it off the
+// reflection is one exact mirror direction, so there is no cone to sample and
+// this number is never read. It is not a general "reflection quality" dial.
+//
 // The cost is linear and it is the trace that costs, not the draw: each sample
 // is a full ScreenSpaceRaytrace at PBR_SSR_STEPS steps. So this is the second
 // setting to lower if reflections are too expensive, after PBR_SSR_STEPS.
-//
-// 1 is the old behaviour exactly - one draw, one trace - which is what makes
-// this safe to ship as a default: the option can only add samples, never change
-// what the first one is.
-#define PBR_SSR_SAMPLES 1 // [1 2 3 4]
+#define PBR_SSR_SAMPLES 3 // [1 2 3 4]
 
 // How much sky a surface has to see before it reflects any of it.
 //

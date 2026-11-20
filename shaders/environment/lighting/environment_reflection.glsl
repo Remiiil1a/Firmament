@@ -454,16 +454,39 @@ vec3 EnvironmentReflection(
 				// the mip level the colour is sampled at: a reflection that landed
 				// at two different distances has to be blurred for the average of
 				// them, not for whichever sample happened to be first.
+				// BATCH 786: THE DRAW IS BEHIND PBR_ROUGH_REFLECTION, AND WITH IT
+				// OFF THIS IS THE PLAIN MIRROR REFLECTION AGAIN.
+				//
+				// The loop below is written for the cone, so with the switch off it
+				// runs exactly once over the exact direction - which is the same
+				// arithmetic the pack had before batch 764, not an approximation of
+				// it. That is deliberate: two code paths would be two things to
+				// keep in step, and the one-sample case is already the shape the
+				// loop has.
+				//
+				// The sample count is not read when the switch is off. There is one
+				// exact direction and nothing to average, so PBR_SSR_SAMPLES is a
+				// cone setting and says so in its own note.
+				#if defined(PBR_ROUGH_REFLECTION)
+					const int reflectionSamples = PBR_SSR_SAMPLES;
+				#else
+					const int reflectionSamples = 1;
+				#endif
+
 				vec3 tracedSum = vec3(0.0);
 				float tracedDistanceSum = 0.0;
 				float tracedHits = 0.0;
 
-				for (int sampleIndex = 0; sampleIndex < PBR_SSR_SAMPLES; sampleIndex++) {
-					vec3 rayDirection = PbrReflectionDirectionJittered(
-						worldNormal,
-						viewDirection,
-						roughness,
-						PbrReflectionNoisePair(float(sampleIndex)));
+				for (int sampleIndex = 0; sampleIndex < reflectionSamples; sampleIndex++) {
+					#if defined(PBR_ROUGH_REFLECTION)
+						vec3 rayDirection = PbrReflectionDirectionJittered(
+							worldNormal,
+							viewDirection,
+							roughness,
+							PbrReflectionNoisePair(float(sampleIndex)));
+					#else
+						vec3 rayDirection = worldReflected;
+					#endif
 
 					// The dither is offset per sample as well, or every draw walks
 					// the same ladder and the samples differ only in where they

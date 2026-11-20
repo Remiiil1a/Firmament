@@ -367,6 +367,9 @@ option.PBR_METAL_REFLECTION_STRENGTH.comment=How strong a metal's environment \
 	not about metals at all. 1.0 matches the reference packs; turn it down if \
 	metals are too bright in a scene.
 
+option.PBR_ROUGH_REFLECTION=Rough reflections (visible noise)
+option.PBR_ROUGH_REFLECTION.comment=Whether the reflection draws its direction from the cone the surface's roughness opens, instead of taking the one exact mirror direction. On, a rough surface reflects a range of directions and its outline is smeared over that range - which is what a brushed metal looks like. Off, the reflection is the plain mirror this pack shipped before, sharp and stable but unable to spread. It is off by default because the draw is a random sample and is visible noise by construction. This governs every reflection that draws a direction: blocks, entities, held items and dropped items.
+
 option.PBR_SSR=Screen-space reflections
 option.PBR_SSR.comment=Whether a reflection may include the world and not only \
 	the sky, by tracing the reflected ray through the depth buffer. Sky \
@@ -452,7 +455,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 785]
+option.PBR_DEBUG=Material debug view [build 786]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \
@@ -474,7 +477,6 @@ screen.CLOUDS=Clouds
 screen.CLOUD_BASIC_SETTINGS=Cloud basics
 screen.CLOUD_VOLUMETRIC_SETTINGS=Volumetric clouds
 screen.CLOUD_SCATTER_SETTINGS=Multiple scattering
-screen.WATER_STYLE_SETTINGS=Surface
 screen.WATER_SHAPE_SETTINGS=Surface shape
 screen.WATER_OPTICS_SETTINGS=Reflections and refraction
 screen.WATER_COLOUR_SETTINGS=Colour and absorption

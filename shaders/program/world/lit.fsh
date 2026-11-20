@@ -1902,17 +1902,31 @@ void main() {
 				// written out here rather than shared - but the contract is the
 				// same: average the hits, and a pixel with no hit keeps what it
 				// already had.
+				//
+				// BATCH 786: AND IT IS BEHIND PBR_ROUGH_REFLECTION, like the
+				// world's. With the switch off this runs once over the exact
+				// mirror direction, which is what the pack had before batch 764.
+				#if defined(PBR_ROUGH_REFLECTION)
+					const int handSamples = PBR_SSR_SAMPLES;
+				#else
+					const int handSamples = 1;
+				#endif
+
 				vec3 handEnvironment = vec3(0.0);
 				float handHits = 0.0;
 
-				for (int sampleIndex = 0; sampleIndex < PBR_SSR_SAMPLES; sampleIndex++) {
-					vec2 handNoise = PbrReflectionNoisePair(float(sampleIndex));
-
-					vec3 handViewReflected = handView * PbrReflectionDirectionJittered(
-						pbrNormal,
-						viewDirection,
-						pbr.roughness,
-						handNoise);
+				for (int sampleIndex = 0; sampleIndex < handSamples; sampleIndex++) {
+					#if defined(PBR_ROUGH_REFLECTION)
+						vec3 handViewReflected = handView * PbrReflectionDirectionJittered(
+							pbrNormal,
+							viewDirection,
+							pbr.roughness,
+							PbrReflectionNoisePair(float(sampleIndex)));
+					#else
+						vec3 handViewReflected = handView * PbrReflectionDirection(
+							pbrNormal,
+							viewDirection);
+					#endif
 
 					vec2 handHitPos;
 					vec3 handHitViewPos;
@@ -2001,6 +2015,15 @@ void main() {
 					// and some missed is a pixel that reflects the world, and
 					// filling the misses with sky before averaging would dilute
 					// every reflection by the miss rate.
+					//
+					// BATCH 786: and behind PBR_ROUGH_REFLECTION, like the other
+					// two paths.
+					#if defined(PBR_ROUGH_REFLECTION)
+						const int entitySamples = PBR_SSR_SAMPLES;
+					#else
+						const int entitySamples = 1;
+					#endif
+
 					vec3 entityEnvironment = vec3(0.0);
 					float entityHits = 0.0;
 
@@ -2010,14 +2033,18 @@ void main() {
 					// the same cone.
 					vec3 entityViewReflected = vec3(0.0, 0.0, 1.0);
 
-					for (int sampleIndex = 0; sampleIndex < PBR_SSR_SAMPLES; sampleIndex++) {
-						vec2 entityNoise = PbrReflectionNoisePair(float(sampleIndex));
-
-						entityViewReflected = entityView * PbrReflectionDirectionJittered(
-							pbrNormal,
-							viewDirection,
-							pbr.roughness,
-							entityNoise);
+					for (int sampleIndex = 0; sampleIndex < entitySamples; sampleIndex++) {
+						#if defined(PBR_ROUGH_REFLECTION)
+							entityViewReflected = entityView * PbrReflectionDirectionJittered(
+								pbrNormal,
+								viewDirection,
+								pbr.roughness,
+								PbrReflectionNoisePair(float(sampleIndex)));
+						#else
+							entityViewReflected = entityView * PbrReflectionDirection(
+								pbrNormal,
+								viewDirection);
+						#endif
 
 						vec2 entityHitPos;
 						vec3 entityHitViewPos;

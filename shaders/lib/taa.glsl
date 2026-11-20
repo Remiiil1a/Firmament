@@ -131,7 +131,7 @@
 //
 // What a short history costs is the averaging of everything else that dithers -
 // the godrays most of all. That is the trade, and it is the author's to make.
-#define TAA_STRENGTH 0.125 // [0.0 0.05 0.1 0.125 0.15 0.2 0.25 0.3 0.4 0.5 0.65 0.75 0.85 0.9 0.95]
+#define TAA_STRENGTH 0.5 // [0.0 0.05 0.1 0.125 0.15 0.2 0.25 0.3 0.4 0.5 0.65 0.75 0.85 0.9 0.95]
 
 // The radius of the sub-pixel jitter, in pixels.
 //
