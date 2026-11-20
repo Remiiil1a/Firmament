@@ -17,9 +17,25 @@
 // The environment reflection of a PBR material, as applied by the pass that
 // adds it to the picture.
 //
-// It samples colortex4: the deferred pass's copy of this frame, written by
-// /program/post/copy_and_fog.fsh. That is a raw single frame rather than a
-// resolved one.
+// It samples colortex0: the frame itself, as it was before this pass wrote it.
+// That is a raw single frame rather than a resolved one.
+//
+// BATCH 795 CHANGED THAT FROM colortex4, AND THE REASON IS WORTH KEEPING.
+//
+// colortex4 is written by /program/post/copy_and_fog.fsh, which runs in the
+// DEFERRED stage - before the translucents are drawn. Water, stained glass and
+// particles are all AFTER_DEFERRED, so that copy has never contained them and
+// never could. A reflection traced over it found the opaque world and stopped,
+// which is why a block's reflection was blank where the glass in front of it
+// should have been.
+//
+// colortex0 is the frame, and by the time this pass runs it holds everything that
+// was drawn. Reading it here is legal for the same reason reading colortex4 was:
+// this pass writes colortex0, so Iris hands it the other texture of the pair and
+// what comes back is the frame as it was before this pass touched it. That frame
+// carries no reflection - the reflection is added to `shown` further down and
+// written to colortex0 by this very pass - so the feedback loop described below
+// cannot start.
 //
 // BATCH 758 PUT THE REFLECTION AFTER THE TEMPORAL RESOLVE, AND THE HISTORY OF THE
 // OTHER ARRANGEMENT IS WORTH KEEPING BECAUSE IT EXPLAINS THE TRAILING.
@@ -46,13 +62,13 @@
 // spatial dither, so a single frame is already smooth and nothing needs to average
 // it across frames.
 //
-// Sampling colortex4 rather than colortex3 is still what makes the trace legal.
+// Sampling colortex0 rather than colortex3 is still what makes the trace legal.
 // composite1 writes colortex3, and a buffer a pass writes is not one it may trace
 // over: the read side is the previous frame's resolved image, reflection and all,
 // so a trace over it would sample a picture that already contains a reflection -
 // the feedback loop whose symptom was a black blot that grew (BATCH_LOG.md 210).
-// colortex4 carries no reflection, and it is this frame's world, which is also
-// the frame the reflection is being added to.
+// colortex0's read side carries no reflection, and it is this frame's world,
+// which is also the frame the reflection is being added to.
 //
 // The uniforms are declared here rather than in the pass, because the pass
 // includes this file. colortex3 is declared here too although this file no
@@ -62,7 +78,6 @@
 // per program.
 
 uniform sampler2D colortex3;
-uniform sampler2D colortex4;
 uniform sampler2D colortex7;
 uniform sampler2D colortex8;
 uniform sampler2D depthtex1;
@@ -505,8 +520,32 @@ vec3 EnvironmentReflection(
 						hitPos,
 						hitViewPos
 					)) {
+						// BATCH 795: colortex0, NOT colortex4, AND THAT IS WHAT
+						// LETS THE REFLECTION SEE GLASS, WATER AND PARTICLES.
+						//
+						// colortex4 is written by copy_and_fog.fsh in the DEFERRED
+						// stage, before the translucents are drawn - so water,
+						// stained glass and particles are not in it and never can
+						// be. A trace over it finds the opaque world and stops,
+						// which is why a block's reflection was blank where the
+						// glass in front of it should have been.
+						//
+						// colortex0 is the frame itself, and by now it holds
+						// everything that was drawn. This pass writes colortex0, so
+						// Iris hands it the other texture of the pair and what comes
+						// back is the frame as it was before this pass touched it -
+						// which carries no reflection, so the feedback loop the note
+						// at the top of this file warns about cannot start.
+						//
+						// The depth the trace walks still excludes the translucents
+						// (depthtex1), and that is deliberate rather than an
+						// oversight: a ray that stopped at the glass would reflect
+						// the glass's own surface, and what a reflection should show
+						// is what is BEHIND the glass, seen through it. Bliss makes
+						// the same split - its depth field comes from depthtex1 and
+						// its colour from a buffer that has the translucents in it.
 						tracedSum += textureLod(
-							colortex4,
+							colortex0,
 							hitPos,
 							PbrReflectionLod(
 								roughness, length(hitViewPos - viewPos))).rgb;

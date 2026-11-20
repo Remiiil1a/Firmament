@@ -85,6 +85,39 @@ const int colortex3Format = RGBA16F;
 // copy - the deferred pass wrote colortex4 earlier in the frame.
 const bool colortex4MipmapEnabled = true;
 
+// BATCH 795: THE REFLECTION SAMPLES colortex0, AND THAT IS WHAT LETS IT SEE
+// GLASS, WATER AND PARTICLES.
+//
+// It sampled colortex4 until this batch, and colortex4 is written by
+// copy_and_fog.fsh - which runs in the DEFERRED stage, BEFORE the translucents
+// are drawn. Water, stained glass and particles are all AFTER_DEFERRED, so they
+// are not in that copy and never can be: a reflection traced over it finds the
+// opaque world and nothing else, which is why a block's reflection showed a blank
+// where the glass in front of it should have been.
+//
+// colortex0 is the frame itself, and by the time this pass runs it holds
+// everything that was drawn - opaque, translucent and particles alike. Reading it
+// here is legal for the same reason reading colortex4 was: this pass writes
+// colortex0, so Iris gives it the OTHER texture of the pair (RenderTargets keeps
+// a main and an alt texture and flips them per pass), and what comes back is the
+// frame as it was written before this pass touched it. That frame carries no
+// reflection - the reflection is added to `shown` further down and written to
+// colortex0 by this very pass - so the feedback loop the note in
+// environment_reflection.glsl warns about cannot start.
+//
+// The mip chain is the reason this flag is here rather than in the reflection's
+// own file. `PbrReflectionLod` returns a level up to six, and `textureLod` on a
+// buffer with no chain returns level 0 for every level - a blur of zero, which
+// looks exactly like "the blur is too weak" and is what batch 760 spent a batch
+// on. Iris builds the chain after this pass, so the levels this pass reads are
+// the ones built from the PREVIOUS frame's colortex0. That is one frame stale,
+// and it is the same trade Bliss makes: its reflection samples colortex5, which
+// is its previous resolved frame.
+//
+// The three other readers of colortex0 use `texture()` with no LOD argument, so
+// they sample level 0 and are unaffected by the chain existing.
+const bool colortex0MipmapEnabled = true;
+
 uniform sampler2D colortex0;
 
 // The previous frame, resolved, which is what this pass accumulates onto.

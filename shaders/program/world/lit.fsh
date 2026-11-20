@@ -291,7 +291,28 @@ uniform vec2 windowToNdc;
 #if (defined(PBR_HAND_ITEMS) || (defined(AFTER_DEFERRED) && defined(PBR_ENTITIES))) \
 	&& defined(PBR_SSR)
 	uniform sampler2D depthtex2;
-	uniform sampler2D colortex4;
+
+	// BATCH 795: colortex0, NOT colortex4, AND THAT IS WHAT LETS THE HAND SEE
+	// THROUGH WATER INSTEAD OF PAST IT.
+	//
+	// colortex4 is written by copy_and_fog.fsh in the DEFERRED stage, and the
+	// translucents - water, stained glass, particles - are drawn AFTER it. So that
+	// copy has never contained them, and a hand reflecting the world through a
+	// lake was reading the lake bed with no water in front of it: the reflection
+	// looked straight through the surface.
+	//
+	// colortex0 is the frame itself, and this program runs in the gbuffers stage,
+	// so what it reads is the PREVIOUS frame's finished picture - which does have
+	// the water in it. That is the same "trace against the last finished frame"
+	// this bundle was built on (see the note above), only against a buffer that
+	// actually holds what the note says it holds.
+	//
+	// The mip chain is declared in composite1.fsh, which is the pass that samples
+	// it there; Iris builds it after that pass, so during gbuffers the chain is
+	// the one built from the previous frame - which is exactly the frame this
+	// reads. `textureLod` therefore still blurs, which is what batch 770 added and
+	// what a buffer with no chain would silently take away.
+	uniform sampler2D colortex0;
 
 	// The one test a hit has to pass that the trace does not make itself: it
 	// has to be beyond the item. See where it is used, at the end of the
@@ -1973,7 +1994,7 @@ void main() {
 							length(handHitViewPos - handViewPos));
 
 						handEnvironment +=
-							textureLod(colortex4, handHitPos, handLod).rgb * handHitFade;
+							textureLod(colortex0, handHitPos, handLod).rgb * handHitFade;
 						handHits += 1.0;
 					}
 				}
@@ -2082,7 +2103,7 @@ void main() {
 								length(entityHitViewPos - entityViewPos));
 
 							entityEnvironment +=
-								textureLod(colortex4, entityHitPos, entityLod).rgb
+								textureLod(colortex0, entityHitPos, entityLod).rgb
 									* entityHitFade;
 							entityHits += 1.0;
 						}
