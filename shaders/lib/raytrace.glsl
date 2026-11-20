@@ -646,26 +646,7 @@ bool ScreenSpaceRaytrace(
 		// it draws the surface's own colour as its reflection, which reads as
 		// the reflection being made of the surface. Bliss rejects a hit within
 		// about two thousandths of the screen for the same reason.
-		//
-		// ⚠️ BATCH 797: THE SKIP ALSO NEEDS THE DEPTH TO AGREE, AND WITHOUT THAT
-		// IT SWALLOWED EVERY THIN SURFACE STANDING ON THE ONE THE RAY LEFT.
-		//
-		// A screen distance alone cannot tell "the surface I started on" from
-		// "something a few centimetres above it". A block under water is the case
-		// that matters: the water's surface is directly above the block, so its
-		// screen position is within the two pixels this test rejects - and the
-		// water was therefore skipped as if it were the block's own surface. The
-		// reflection then marched on and found the lake bed, which is why a
-		// block's reflection was blank wherever water or glass was in front of it
-		// while particles, which are not directly overhead, came through.
-		//
-		// The depth separates them exactly. The surface the ray left is at
-		// `previousZ`; anything at a different depth is a different thing, however
-		// close it is on screen. The bound is the same one the hit test uses for
-		// one step, so a sample is skipped only when it is both on the starting
-		// pixel AND at the starting surface.
-		if (all(lessThan(abs(sampleNdc.xy - startNdc), windowToNdc * 2.0))
-			&& abs(rayZ - previousZ) <= max(abs(stepDepth), 0.02)) {
+		if (all(lessThan(abs(sampleNdc.xy - startNdc), windowToNdc * 2.0))) {
 			frontU = u;
 			frontPenetration = 0.0;
 			previousZ = rayZ;

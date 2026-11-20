@@ -85,64 +85,6 @@ const int colortex3Format = RGBA16F;
 // copy - the deferred pass wrote colortex4 earlier in the frame.
 const bool colortex4MipmapEnabled = true;
 
-// BATCH 795: THE REFLECTION SAMPLES colortex0, AND THAT IS WHAT LETS IT SEE
-// GLASS, WATER AND PARTICLES.
-//
-// It sampled colortex4 until this batch, and colortex4 is written by
-// copy_and_fog.fsh - which runs in the DEFERRED stage, BEFORE the translucents
-// are drawn. Water, stained glass and particles are all AFTER_DEFERRED, so they
-// are not in that copy and never can be: a reflection traced over it finds the
-// opaque world and nothing else, which is why a block's reflection showed a blank
-// where the glass in front of it should have been.
-//
-// colortex0 is the frame itself, and by the time this pass runs it holds
-// everything that was drawn - opaque, translucent and particles alike. Reading it
-// here is legal for the same reason reading colortex4 was: this pass writes
-// colortex0, so Iris gives it the OTHER texture of the pair (RenderTargets keeps
-// a main and an alt texture and flips them per pass), and what comes back is the
-// frame as it was written before this pass touched it. That frame carries no
-// reflection - the reflection is added to `shown` further down and written to
-// colortex0 by this very pass - so the feedback loop the note in
-// environment_reflection.glsl warns about cannot start.
-//
-// The mip chain is the reason this flag is here rather than in the reflection's
-// own file. `PbrReflectionLod` returns a level up to six, and `textureLod` on a
-// buffer with no chain returns level 0 for every level - a blur of zero, which
-// looks exactly like "the blur is too weak" and is what batch 760 spent a batch
-// on. Iris builds the chain after this pass, so the levels this pass reads are
-// the ones built from the PREVIOUS frame's colortex0. That is one frame stale,
-// and it is the same trade Bliss makes: its reflection samples colortex5, which
-// is its previous resolved frame.
-//
-// The three other readers of colortex0 use `texture()` with no LOD argument, so
-// they sample level 0 and are unaffected by the chain existing.
-const bool colortex0MipmapEnabled = true;
-
-// BATCH 796: colortex3 GETS A CHAIN TOO, AND IT IS WHAT THE HELD ITEM READS.
-//
-// b795 pointed the hand at colortex0 as well, and that was wrong in a way the
-// author saw immediately: a held item is drawn by lit.fsh, and lit.fsh WRITES
-// colortex0 (RENDERTARGETS: 0,2,6,7,8). A pass that writes a buffer reads the
-// other texture of the pair - and during the gbuffers stage that other texture
-// has never been written by anything, so the hand's reflection came back as
-// whatever the driver had in that memory. On this machine that was texture atlas
-// data, which is why the reflection looked like a wall of item sprites.
-//
-// colortex3 is the buffer the hand can actually use. It holds the previous
-// frame's resolved image, which is built from colortex0 and therefore HAS the
-// translucents in it - water, stained glass and particles alike. It carries no
-// reflection: the reflection is added to `shown`, and colortex3 is written from
-// `resolved`, which never sees it. And lit.fsh does not write colortex3, so
-// there is no flip to read the wrong side of.
-//
-// The chain is declared here because this is the pass that samples colortex3
-// elsewhere and because Iris reads the flag per program; the hand reads the
-// levels built from the previous frame, which is the frame it is sampling anyway.
-//
-// The five taps in HistorySample use `texture()` with no LOD argument, so they
-// sample level 0 and are unaffected by the chain existing.
-const bool colortex3MipmapEnabled = true;
-
 uniform sampler2D colortex0;
 
 // The previous frame, resolved, which is what this pass accumulates onto.
