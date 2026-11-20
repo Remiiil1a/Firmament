@@ -1,0 +1,89 @@
+// Steadfast is a fast and high-quality graphical overhaul for Minecraft (JE)
+// Copyright (C) 2026 coderbot
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+// 
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#version 150 compatibility
+
+// THE DEPTH FIELD THE REFLECTION TRACE WALKS, AT A QUARTER RESOLUTION (batch 784).
+//
+// This is Bliss's arrangement (dimensions/deferred1.fsh), and the reason it is
+// worth a whole pass is that the trace is the expensive half of the reflection
+// and the depth field is what it spends that cost on.
+//
+// WHAT IT FIXES. ScreenSpaceRaytrace walks depthtex1 at full resolution, so a
+// ray that crosses a block edge sees the edge exactly - and a hit that lands one
+// texel either side of it flips between the block and whatever is behind it.
+// Those flips are the reflection's noise: they are not a sampling problem the
+// temporal resolve can average, because they are a discontinuity in the thing
+// being sampled. A quarter-resolution field quantises the depth to 4x4 blocks,
+// so the edge is a step of one block instead of a cliff of one texel and the
+// flips are far rarer. Bliss measures the same thing and calls it the reason its
+// reflections are smooth.
+//
+// WHY A SEPARATE PASS AND NOT A MIPMAP. Iris builds mip chains only for buffers
+// a COMPOSITE pass names (CompositeRenderer.setupMipmapping), and depthtex is not
+// one of them - there is no depthtex mipmap support in the loader at all. So the
+// quarter-resolution field has to be written by something, and this is that
+// something.
+//
+// WHY IT RUNS UNCONDITIONALLY. Iris decides a pass's resolution from the buffers
+// it writes (CompositeRenderer.java:137-141), so a pass that writes a
+// quarter-resolution buffer runs at a quarter resolution. That is the whole
+// mechanism, and it means this pass cannot be skipped when the reflection is off:
+// the buffer it writes would then hold whatever the last frame with the
+// reflection on had put there. It is cheap - one fetch and one write per
+// quarter-resolution texel - and it is the same choice Bliss makes.
+//
+// The buffer is colortex9, which has been free since batch 664 removed the
+// reflection's own history from it. R32F rather than RGBA16F: it holds one
+// number, and the extra channels would be three quarters of the bandwidth for
+// nothing.
+//
+// WHAT IT STORES, AND WHY THAT IS THE SCREEN'S OWN DEPTH. The value is the
+// game's non-linear depth, exactly as depthtex1 holds it - not a view distance.
+// That is what makes the trace's read a one-line change: it already converts
+// this value to a view Z (lib/raytrace.glsl:674-679), and it already samples
+// with a normalised coordinate, so handing it a quarter-resolution buffer of the
+// same quantity needs no arithmetic changed anywhere. Converting here instead
+// would mean converting back at four separate reads, and the two conversions
+// would have to agree about the projection forever.
+
+const int R32F = 0;
+const int colortex9Format = R32F;
+
+// Not cleared, for the same reason colortex3 is not: a clear would cost a
+// full-buffer write every frame for a buffer this pass overwrites completely.
+const bool colortex9Clear = false;
+
+uniform sampler2D depthtex1;
+
+/* DRAWBUFFERS:9 */
+void main() {
+	// The full-resolution texel this quarter-resolution one stands for. The
+	// centre of the 4x4 block, so that the sample is the block's own middle
+	// rather than its corner - a corner sample biases every edge by two texels in
+	// one direction, which is exactly the kind of half-block shift that reads as
+	// the reflection being offset from the surface it belongs to.
+	ivec2 fullResTexel = ivec2(gl_FragCoord.xy) * 4 + 2;
+
+	// Clamped, because the last block of a screen whose size is not a multiple of
+	// four reaches past the buffer.
+	fullResTexel = clamp(
+		fullResTexel,
+		ivec2(0),
+		ivec2(textureSize(depthtex1, 0)) - 1);
+
+	gl_FragData[0] = vec4(texelFetch(depthtex1, fullResTexel, 0).r, 0.0, 0.0, 1.0);
+}

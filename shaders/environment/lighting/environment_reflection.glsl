@@ -65,6 +65,12 @@ uniform sampler2D colortex3;
 uniform sampler2D colortex4;
 uniform sampler2D colortex7;
 uniform sampler2D colortex8;
+
+// The depth field the trace walks, at a quarter resolution (batch 784), written
+// by deferred1.fsh. Declared here rather than in the pass because this is where
+// it is read; the pass that includes this file declares nothing about it.
+uniform sampler2D colortex9;
+
 uniform sampler2D depthtex1;
 
 // The depth of the surface each pixel shows with the translucents in it, and
@@ -471,8 +477,26 @@ vec3 EnvironmentReflection(
 					float sampleDither = fract(
 						traceDither + float(sampleIndex) * 0.618034);
 
+					// BATCH 784: THE TRACE WALKS THE QUARTER-RESOLUTION FIELD.
+					//
+					// colortex9 rather than depthtex1, and that is the whole of
+					// this batch: deferred1.fsh writes the same non-linear depth
+					// at a quarter resolution, so the trace's own conversion to a
+					// view Z is unchanged and only the sampler differs. What it
+					// buys is that a block edge is a step of one 4x4 block rather
+					// than a cliff of one texel, so a hit that lands either side
+					// of it no longer flips between the block and what is behind
+					// it - which is the reflection's noise, and not a kind the
+					// temporal resolve can average.
+					//
+					// The cost is that the field is quantised: a hit is placed to
+					// within a quarter of a screen pixel's worth of depth rather
+					// than exactly. That is the trade Bliss makes too, and it is
+					// the right way round - a reflection that is slightly soft is
+					// what a rough surface looks like, and a reflection that
+					// flickers is not.
 					if (ScreenSpaceRaytrace(
-						depthtex1,
+						colortex9,
 						gbufferProjection,
 						gbufferProjectionInverse,
 						viewPos,
