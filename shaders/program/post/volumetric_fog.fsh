@@ -558,9 +558,58 @@ void main() {
 	// camera-relative rather than absolute because that is the space the shadow
 	// matrices take, and it keeps the camera's own position out of a number that
 	// is only ever used as a difference.
-	vec4 viewPosH = gbufferProjectionInverse
-		* (vec4(screenCoord * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0));
-	vec3 viewPos = viewPosH.xyz / viewPosH.w;
+	// BATCH 793: THE DIVISION BY `w` IS GUARDED, AND IT IS THE SAME GUARD
+	// composite1.fsh PUTS ON THE SAME OPERATION.
+	//
+	// `depth` is the opaque depth, and the sky sits at EXACTLY 1.0 - it is drawn
+	// with depth writing off, which is what puts it at the far plane. At
+	// `z_ndc = 1` the inverse projection's `w` is zero, so this division is 0/0 on
+	// every sky pixel. `viewPos` becomes an infinity or a NaN, `surfaceDistance`
+	// below inherits it, and `rayDirection` - which is `normalize()` of a vector
+	// built from it - becomes a NaN for the whole pixel.
+	//
+	// That matters here more than it looks. A NaN `rayDirection` makes `cosSun`
+	// NaN, which makes both Henyey-Greenstein bases NaN, which makes `stepLight`
+	// NaN, which makes `raw` NaN - and `raw` is the value the temporal resolve
+	// falls back to when it distrusts its history. So a NaN here does not merely
+	// spoil one pixel's fog: it disables the fallback that exists to recover from
+	// a bad history.
+	//
+	// composite1.fsh:255-276 guards the identical expression twice - an early
+	// return for `!(depth < 1.0)`, and a ceiling on the quotient because `w`
+	// reaches zero at the far end of the depth range. This file had neither.
+	//
+	// The early return is the honest answer for the sky: there is no surface
+	// there, so there is no distance to it. The march below is given the far end
+	// of the medium instead, which is what it already does when it finds nothing.
+	vec3 viewPos;
+
+	if (!(depth < 1.0)) {
+		// No surface along this ray. The march still runs - the medium in front of
+		// the sky is exactly what a godray is - so it is given a direction and a
+		// distance that are both finite rather than being skipped.
+		vec3 skyDirection = normalize(transpose(mat3(gbufferModelView))
+			* vec3(screenCoord * 2.0 - 1.0, -1.0));
+		viewPos = skyDirection * VOLUMETRIC_FOG_DISTANCE;
+	} else {
+		// Everything below the near plane is pulled up to it: a depth outside 0..1
+		// cannot come out of a depth buffer, but this clamp is what makes the
+		// matrix product finite for every input rather than only for the inputs
+		// the game happens to produce.
+		depth = max(depth, 0.0);
+
+		vec4 viewPosH = gbufferProjectionInverse
+			* (vec4(screenCoord * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0));
+		vec3 divided = viewPosH.xyz / viewPosH.w;
+
+		// A ceiling, because the division above is by a `w` that reaches zero at
+		// the far end of the depth range. Written as a comparison rather than as
+		// min(), because min() cannot order a NaN - a NaN fails this test and
+		// takes the ceiling. That is what makes the guarantee hold for every input.
+		float distance = length(divided);
+		viewPos = distance < VOLUMETRIC_FOG_DISTANCE
+			? divided : normalize(divided) * VOLUMETRIC_FOG_DISTANCE;
+	}
 
 	// How far along the ray there is anything to light. The march does not use
 	// this to place its steps - see below - only to know where to stop.
@@ -1645,7 +1694,37 @@ void main() {
 			// in the fog rather than a dark fog. One bound asks the whole question,
 			// and a NaN fails every comparison - which is why the negation is the
 			// check.
-			if (!(dot(history, history) < 1.0e18)) {
+			//
+			// ⚠️ BATCH 793: THE BOUND WAS 1.0e18, AND FOR THIS BUFFER THAT IS NOT A
+			// BOUND AT ALL. colortex1 is RGBA16F, whose largest finite value is
+			// 65504 - so `dot(history, history)` tops out at 4 * 65504^2, about
+			// 1.7e10. Against 1e18 that test is true for EVERY finite value the
+			// buffer can hold, including every bit pattern uninitialised VRAM can
+			// produce. The guard caught NaN and the infinities and nothing else,
+			// which is exactly the case it was written to be more than.
+			//
+			// The file's own note further down already states this ceiling - it is
+			// used there to argue that the FINAL guard is harmless. The same
+			// arithmetic proves this one was blind.
+			//
+			// So the test is now on the values the pass can actually produce. The
+			// fog's channels are a scattered radiance and a transmittance: the
+			// radiance is a sum of non-negative terms and the transmittance is a
+			// product of exp()s, so both are non-negative, and the transmittance is
+			// additionally at most one. Anything outside that was not written by
+			// this pass - which on the first frame after a world load is every
+			// texel, because the buffer is not cleared.
+			//
+			// Written as comparisons rather than as a range test, because a NaN
+			// fails every comparison and so is rejected by the negation. The upper
+			// bound on the radiance is generous on purpose: it only has to be
+			// larger than anything the march can produce and smaller than the
+			// garbage, and the march's own ceiling is far below it.
+			bool historyIsFog = history.a >= 0.0 && history.a <= 1.0
+				&& history.r >= 0.0 && history.g >= 0.0 && history.b >= 0.0
+				&& history.r <= 1.0e6 && history.g <= 1.0e6 && history.b <= 1.0e6;
+
+			if (!historyIsFog) {
 				history = raw;
 			}
 
@@ -1742,11 +1821,31 @@ void main() {
 			float rawLuma = dot(raw.rgb, vec3(0.2126, 0.7152, 0.0722));
 			float historyLuma = dot(history.rgb, vec3(0.2126, 0.7152, 0.0722));
 
+			// ⚠️ BATCH 793: THE TRANSMITTANCE IS PART OF THE DISAGREEMENT, AND IT
+			// WAS NOT.
+			//
+			// The two lines above read `.rgb` only, so a history whose COLOUR agrees
+			// with this frame keeps the full weight however wrong its alpha is. That
+			// is the wrong channel to leave out: alpha is the transmittance, and the
+			// picture multiplies the whole scene by it -
+			// `shown = shown * volumetrics.a + volumetrics.rgb` in composite1.fsh.
+			// A transmittance of zero blacks out everything behind the fog, so a
+			// garbage alpha is a black region, and it was the one channel the
+			// falloff could not see.
+			//
+			// The transmittance is folded in as a third term rather than as a
+			// separate test, so that a texel whose alpha has changed is distrusted
+			// by the same smooth falloff as one whose colour has - no cliff, which is
+			// the whole point of this stage. It is on the same scale as the luma
+			// difference because both are in [0, 1]: a transmittance is a fraction
+			// and a luma of a normalised colour is too.
+			float alphaDisagreement = abs(history.a - raw.a);
+
 			// Floored, so that the ratio cannot be against zero.
 			float lumaScale = max(max(rawLuma, historyLuma), 1.0e-4);
 
 			float disagreement = clamp(
-				abs(historyLuma - rawLuma) / lumaScale
+				max(abs(historyLuma - rawLuma) / lumaScale, alphaDisagreement)
 					/ VOLUMETRIC_FOG_DENOISE_TOLERANCE,
 				0.0, 1.0);
 
