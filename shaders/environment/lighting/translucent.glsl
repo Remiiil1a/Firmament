@@ -233,14 +233,31 @@ vec3 parallaxWaterNormal(
 
 		if (parallaxStrength > 0.0001) {
 			vec3 viewDirTangent = facing * incident.xzy;
-			vec2 offsetPos = WaterSurfaceParallaxMapping(
-				waterWorldPos,
-				ddxWorldPos,
-				ddyWorldPos,
-				timeSeconds,
-				length(cameraRelativePos),
-				viewDirTangent);
-			waterWorldPos = mix(waterWorldPos, offsetPos, parallaxStrength);
+
+			// BATCH 788: THE MARCH IS NOT RUN AT A DEGENERATE ANGLE.
+			//
+			// `viewDirTangent.z` is the world Y of the direction to this
+			// fragment, so it is zero when the camera is level with the water -
+			// which is where this pack draws water to the horizon. The march
+			// divides by it, and `parallax.glsl` now floors that division, but
+			// the honest answer at this angle is that there is no parallax to
+			// apply: the surface is being seen exactly edge-on, so a displacement
+			// along it has nowhere to go. Skipping the march says that directly
+			// and costs nothing, rather than asking for a very large step and
+			// relying on the march's own clamp to cancel it.
+			//
+			// The threshold is the same one the division uses, so the two cannot
+			// disagree about where the degeneracy is.
+			if (abs(viewDirTangent.z) > 1.0e-4) {
+				vec2 offsetPos = WaterSurfaceParallaxMapping(
+					waterWorldPos,
+					ddxWorldPos,
+					ddyWorldPos,
+					timeSeconds,
+					length(cameraRelativePos),
+					viewDirTangent);
+				waterWorldPos = mix(waterWorldPos, offsetPos, parallaxStrength);
+			}
 		}
 	#endif
 

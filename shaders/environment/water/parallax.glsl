@@ -86,7 +86,43 @@ vec2 WaterSurfaceParallaxMapping(
 	// tracing into the surface! And since this fragment is on-screen and from
 	// a face that faces the camera, we certainly must be tracing into the
 	// surface.
-	vec2 posStep = viewVector.xy / abs(viewVector.z);
+	//
+	// BATCH 788: THE DIVISION IS GUARDED, AND THAT IS THE BLACK SQUARES.
+	//
+	// `viewVector` is `facing * incident.xzy` (see the caller), and `incident` is
+	// the normalized camera-relative position - so its third component here is
+	// the WORLD Y of the direction to the fragment. That goes to zero exactly
+	// when the camera is level with the water surface, which is the one place
+	// this pack draws water to the horizon: looking out across a sea, the water
+	// a few hundred blocks away is within a pixel of eye level.
+	//
+	// Unguarded, that is a division by zero: `posStep` becomes an infinity, the
+	// march below multiplies it by a step length and adds it to `worldPos`, and
+	// the height function is then asked for the surface at an infinite
+	// coordinate. `smoothNoise2Dx3` hands that to `texture(noisetex, at)`, which
+	// is undefined for a coordinate that is not a number - and what comes back
+	// is a NaN height, a NaN normal, and a pixel the tonemapper draws as black.
+	//
+	// It is a SQUARE rather than a smear because the NaN is per-fragment and the
+	// water is drawn as quads: the fragments that land on the degenerate angle
+	// are a block-sized patch of them. It flickers because the angle is a
+	// continuous function of the camera's height and the surface's own waves, so
+	// the patch appears and disappears as those cross zero. It does not spread
+	// because nothing here writes to a buffer that is read back - the value is
+	// produced downstream of every history, every frame, and thrown away with the
+	// fragment. (That is the same distinction BATCH_LOG.md 139 draws: a blot that
+	// GROWS has reached colortex3; one that does not is made fresh each frame.)
+	//
+	// The floor is the pack's own idiom for this exact division - see
+	// environment/clouds/volumetric.glsl:642, which guards `worldDir.y` the same
+	// way for the same reason. 1.0e-4 is a ten-thousandth of a unit vector, far
+	// below any angle the game actually renders water at, so the guard is inert
+	// everywhere except the degeneracy it exists for. What it produces there is a
+	// very large but FINITE step, which the march's own `max(currentHeight -
+	// sampleHeight, 0.0)` then scales to nothing - so the parallax offset goes to
+	// zero and the surface is left flat, which is what water seen exactly
+	// edge-on should look like.
+	vec2 posStep = viewVector.xy / max(abs(viewVector.z), 1.0e-4);
 
 	for (uint i = uint(0); i < uint(ITERATIONS); i++) {
 		// Determine the height of the surface at the current position.
