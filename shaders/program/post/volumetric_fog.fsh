@@ -586,11 +586,30 @@ void main() {
 
 	if (!(depth < 1.0)) {
 		// No surface along this ray. The march still runs - the medium in front of
-		// the sky is exactly what a godray is - so it is given a direction and a
-		// distance that are both finite rather than being skipped.
-		vec3 skyDirection = normalize(transpose(mat3(gbufferModelView))
-			* vec3(screenCoord * 2.0 - 1.0, -1.0));
-		viewPos = skyDirection * VOLUMETRIC_FOG_DISTANCE;
+		// the sky is exactly what a godray is - so it is given a position that is
+		// finite rather than being skipped.
+		//
+		// ⚠️ BATCH 794: THIS MUST BE A VIEW-SPACE POSITION, NOT A WORLD DIRECTION.
+		//
+		// The first version of this branch computed the ray's WORLD direction here
+		// and multiplied it by the distance. That is wrong twice over, and the
+		// second way is the visible one: `viewPos` is a position in VIEW space, and
+		// the line below turns it into a world direction with
+		// `transpose(mat3(gbufferModelView)) * viewPos`. Handing it a vector that
+		// was already in world space puts it through that rotation a SECOND time -
+		// which is exactly what the note below warns about, and what makes the fog
+		// swing with the camera instead of staying in the world.
+		//
+		// The direction is taken from the projection's inverse at the MIDDLE of the
+		// depth range rather than at the far plane. Every point along a ray from the
+		// eye has the same direction from the eye, so any depth gives the same
+		// answer - and the middle is the one depth where `w` cannot be zero, which
+		// is the whole reason this branch exists.
+		vec2 ndc = screenCoord * 2.0 - 1.0;
+		vec4 midPoint = gbufferProjectionInverse * vec4(ndc, 0.0, 1.0);
+		vec3 viewDirection = normalize(midPoint.xyz / midPoint.w);
+
+		viewPos = viewDirection * VOLUMETRIC_FOG_DISTANCE;
 	} else {
 		// Everything below the near plane is pulled up to it: a depth outside 0..1
 		// cannot come out of a depth buffer, but this clamp is what makes the
