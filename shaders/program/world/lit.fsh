@@ -292,27 +292,29 @@ uniform vec2 windowToNdc;
 	&& defined(PBR_SSR)
 	uniform sampler2D depthtex2;
 
-	// BATCH 795: colortex0, NOT colortex4, AND THAT IS WHAT LETS THE HAND SEE
-	// THROUGH WATER INSTEAD OF PAST IT.
+	// BATCH 796: colortex3, AND THE REASON IS THAT THIS PROGRAM WRITES colortex0.
 	//
-	// colortex4 is written by copy_and_fog.fsh in the DEFERRED stage, and the
-	// translucents - water, stained glass, particles - are drawn AFTER it. So that
-	// copy has never contained them, and a hand reflecting the world through a
-	// lake was reading the lake bed with no water in front of it: the reflection
-	// looked straight through the surface.
+	// b795 pointed the hand at colortex0, on the correct observation that
+	// colortex4 has no translucents in it. That observation was right and the
+	// buffer was wrong: lit.fsh writes colortex0 (RENDERTARGETS: 0,2,6,7,8), and a
+	// pass that writes a buffer reads the OTHER texture of the pair. During the
+	// gbuffers stage that other texture has never been written by anything, so the
+	// hand's reflection came back as uninitialised VRAM - which on the author's
+	// machine held texture atlas data, and looked like a wall of item sprites.
 	//
-	// colortex0 is the frame itself, and this program runs in the gbuffers stage,
-	// so what it reads is the PREVIOUS frame's finished picture - which does have
-	// the water in it. That is the same "trace against the last finished frame"
-	// this bundle was built on (see the note above), only against a buffer that
-	// actually holds what the note says it holds.
+	// colortex3 is the buffer this program can use. It holds the previous frame's
+	// resolved image, built from colortex0, so it HAS the translucents in it -
+	// water, stained glass and particles alike. It carries no reflection: the
+	// reflection is added to `shown`, and colortex3 is written from `resolved`,
+	// which never sees it. And lit.fsh does not write colortex3, so there is no
+	// flip to read the wrong side of.
 	//
-	// The mip chain is declared in composite1.fsh, which is the pass that samples
-	// it there; Iris builds it after that pass, so during gbuffers the chain is
-	// the one built from the previous frame - which is exactly the frame this
-	// reads. `textureLod` therefore still blurs, which is what batch 770 added and
-	// what a buffer with no chain would silently take away.
-	uniform sampler2D colortex0;
+	// The mip chain is declared in composite1.fsh; Iris builds it after that pass,
+	// so during gbuffers the levels are the ones built from the previous frame -
+	// which is exactly the frame this samples. `textureLod` therefore still blurs,
+	// which is what batch 770 added and what a buffer with no chain would silently
+	// take away.
+	uniform sampler2D colortex3;
 
 	// The one test a hit has to pass that the trace does not make itself: it
 	// has to be beyond the item. See where it is used, at the end of the
@@ -1994,7 +1996,7 @@ void main() {
 							length(handHitViewPos - handViewPos));
 
 						handEnvironment +=
-							textureLod(colortex0, handHitPos, handLod).rgb * handHitFade;
+							textureLod(colortex3, handHitPos, handLod).rgb * handHitFade;
 						handHits += 1.0;
 					}
 				}
@@ -2103,7 +2105,7 @@ void main() {
 								length(entityHitViewPos - entityViewPos));
 
 							entityEnvironment +=
-								textureLod(colortex0, entityHitPos, entityLod).rgb
+								textureLod(colortex3, entityHitPos, entityLod).rgb
 									* entityHitFade;
 							entityHits += 1.0;
 						}

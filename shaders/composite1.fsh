@@ -113,6 +113,31 @@ const bool colortex4MipmapEnabled = true;
 // they sample level 0 and are unaffected by the chain existing.
 const bool colortex0MipmapEnabled = true;
 
+// BATCH 796: colortex3 GETS A CHAIN TOO, AND IT IS WHAT THE HELD ITEM READS.
+//
+// b795 pointed the hand at colortex0 as well, and that was wrong in a way the
+// author saw immediately: a held item is drawn by lit.fsh, and lit.fsh WRITES
+// colortex0 (RENDERTARGETS: 0,2,6,7,8). A pass that writes a buffer reads the
+// other texture of the pair - and during the gbuffers stage that other texture
+// has never been written by anything, so the hand's reflection came back as
+// whatever the driver had in that memory. On this machine that was texture atlas
+// data, which is why the reflection looked like a wall of item sprites.
+//
+// colortex3 is the buffer the hand can actually use. It holds the previous
+// frame's resolved image, which is built from colortex0 and therefore HAS the
+// translucents in it - water, stained glass and particles alike. It carries no
+// reflection: the reflection is added to `shown`, and colortex3 is written from
+// `resolved`, which never sees it. And lit.fsh does not write colortex3, so
+// there is no flip to read the wrong side of.
+//
+// The chain is declared here because this is the pass that samples colortex3
+// elsewhere and because Iris reads the flag per program; the hand reads the
+// levels built from the previous frame, which is the frame it is sampling anyway.
+//
+// The five taps in HistorySample use `texture()` with no LOD argument, so they
+// sample level 0 and are unaffected by the chain existing.
+const bool colortex3MipmapEnabled = true;
+
 uniform sampler2D colortex0;
 
 // The previous frame, resolved, which is what this pass accumulates onto.

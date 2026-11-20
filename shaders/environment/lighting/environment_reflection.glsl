@@ -145,37 +145,31 @@ vec3 EnvironmentReflection(
 	out float reflectionHitDistanceOut
 ) {
 	#if defined(PBR_SSR)
-		// A fragment that is being seen through something translucent is given
-		// no reflection at all, and the reason for that is not about the
-		// surface - it is about where the reflection would be put.
+		// BATCH 796: A FRAGMENT SEEN THROUGH SOMETHING TRANSLUCENT NOW GETS ITS
+		// REFLECTION, AND THE NOTE THAT REFUSED IT WAS ARGUING ABOUT A DIFFERENT
+		// ARRANGEMENT.
 		//
-		// Water is drawn after the pass that copies the world into colortex4,
-		// and it refracts what is behind it, so the picture of a block under
-		// the surface is not where the block is. The depth and the material of
-		// that block still are: depthtex1 is the opaque depth, and the block is
-		// the opaque surface at those pixels, so neither of them has ever heard
-		// of the water. The reflection is therefore worked out for the block,
-		// at the block's own pixels, sampled out of a buffer that holds the
-		// block at the block's own position - and then added on top of a
-		// picture in which the waves have moved the block somewhere else.
+		// The refusal was written when the reflection was sampled out of
+		// colortex4 - the pre-water copy of the world. In that arrangement the
+		// argument was sound: the block under the surface is at its own pixels in
+		// that copy, the water has since refracted it somewhere else on screen, and
+		// a reflection computed for the block and added at the block's pixels
+		// landed on top of a picture where the block had moved. The result was the
+		// same block twice, one of them sharp and in the wrong place.
 		//
-		// The result is the same block twice: once distorted by the water, and
-		// once sharp, unreflected and in the wrong place, because what the
-		// reflection sampled was the pre-water picture of the block itself. It
-		// reads exactly like a second copy of whatever is under the surface.
+		// The reflection samples colortex0 now, which is the frame WITH the water
+		// in it, and the march walks depthtex0, which stops at the water's surface.
+		// So the sample is the water's own colour at the water's own position, and
+		// the "second copy of the block" cannot happen: there is no pre-water
+		// picture in the chain any more.
 		//
-		// The two depth buffers answer the question between them. Only one of
-		// them has the translucent pass in it, so they differ at a pixel
-		// exactly when something translucent is in front of what is drawn
-		// there - which is exactly when this happens, and exactly when a
-		// reflection drawn here would be drawn in the wrong place.
-		if (seenThrough) {
-			reflectionWeightOut = vec3(0.0);
-
-			reflectionHitOut = false;
-			reflectionHitDistanceOut = 0.0;
-			return vec3(0.0);
-		}
+		// What the refusal cost was the whole of the author's first report - a
+		// block's reflection was blank wherever glass, water or particles were in
+		// front of it, because every one of those pixels took this branch.
+		//
+		// `seenThrough` is still passed in and still computed by the caller,
+		// because the caller uses it for its own accounting; it is simply no longer
+		// a reason to return nothing.
 
 		// Read the material the surface programs left for this pixel. Both
 		// fetches are of this same pixel, which is why they can be exact.
@@ -510,7 +504,7 @@ vec3 EnvironmentReflection(
 						traceDither + float(sampleIndex) * 0.618034);
 
 					if (ScreenSpaceRaytrace(
-						depthtex1,
+						depthtex0,
 						gbufferProjection,
 						gbufferProjectionInverse,
 						viewPos,
@@ -520,30 +514,30 @@ vec3 EnvironmentReflection(
 						hitPos,
 						hitViewPos
 					)) {
-						// BATCH 795: colortex0, NOT colortex4, AND THAT IS WHAT
-						// LETS THE REFLECTION SEE GLASS, WATER AND PARTICLES.
+						// BATCH 796: THE MARCH WALKS depthtex0, AND THAT IS WHAT
+						// MAKES WATER AND GLASS HITS RATHER THAN WINDOWS.
 						//
-						// colortex4 is written by copy_and_fog.fsh in the DEFERRED
-						// stage, before the translucents are drawn - so water,
-						// stained glass and particles are not in it and never can
-						// be. A trace over it finds the opaque world and stops,
-						// which is why a block's reflection was blank where the
-						// glass in front of it should have been.
+						// b795 changed the COLOUR buffer to colortex0, which was
+						// right - it is the only one with the translucents in it -
+						// and left the DEPTH on depthtex1, which was wrong. depthtex1
+						// is the opaque depth: it is copied before the translucents
+						// are drawn (IrisRenderingPipeline.beginTranslucents), so a
+						// ray aimed at a lake passes straight through the surface and
+						// lands on the lake bed. The colour it then samples is the
+						// bed's, and the water's own surface is never a hit at all -
+						// which is exactly the blank the author reported.
 						//
-						// colortex0 is the frame itself, and by now it holds
-						// everything that was drawn. This pass writes colortex0, so
-						// Iris hands it the other texture of the pair and what comes
-						// back is the frame as it was before this pass touched it -
-						// which carries no reflection, so the feedback loop the note
-						// at the top of this file warns about cannot start.
+						// depthtex0 is the depth WITH the translucents. The ray still
+						// STARTS on the opaque surface - `viewPos` is handed in by the
+						// caller, which reads it from depthtex1 - and that split is the
+						// point: the reflection belongs to the block, so it leaves from
+						// the block, and it stops at the first thing in front of it,
+						// which may now be the water.
 						//
-						// The depth the trace walks still excludes the translucents
-						// (depthtex1), and that is deliberate rather than an
-						// oversight: a ray that stopped at the glass would reflect
-						// the glass's own surface, and what a reflection should show
-						// is what is BEHIND the glass, seen through it. Bliss makes
-						// the same split - its depth field comes from depthtex1 and
-						// its colour from a buffer that has the translucents in it.
+						// The hand is not a problem here. It is in depthtex0, but the
+						// caller already refuses a hit where depthtex0 is nearer than
+						// depthtex2, which is exactly the hand - see the note on
+						// handFade below.
 						tracedSum += textureLod(
 							colortex0,
 							hitPos,
