@@ -291,6 +291,54 @@ float FogViewDistance(ivec2 pixel, float depth) {
 // the fog of the sky into the wall, which is the halo this exists to remove. The
 // depth buffer says which texels belong to this fragment's surface, so the filter
 // asks the depth before it mixes.
+// The one answer this function gives when the fog buffer holds something that is
+// not a fog: no scattered light and full transmittance, which is the state the
+// fog pass itself starts from and the one the picture reads as "the scene,
+// unchanged".
+//
+// BATCH 792: THIS IS A FUNCTION NOW BECAUSE THE GUARD HAD THREE EXITS AND ONLY
+// ONE OF THEM WAS CHECKED.
+//
+// `UpsampleVolumetrics` returns from three places - the full-resolution branch at
+// the top, the weight-sum fallback in the middle, and the filtered result at the
+// bottom - and the non-finite test used to sit on the last one only. The other
+// two handed `colortex1`'s contents straight back:
+//
+//     if (fogSize == ivec2(viewWidth, viewHeight)) {
+//         return texelFetch(colortex1, ...);          // unchecked
+//     }
+//     ...
+//     if (!(weightSum > FOG_UPSAMPLE_WEIGHT_EPSILON)) {
+//         return texture(colortex1, screenCoord);     // unchecked
+//     }
+//
+// That is the reported bug. colortex1 is not cleared (colortex1Clear = false) and
+// Iris allocates it with a null data pointer, so on the first frame after a world
+// load it holds whatever the driver had in that memory. The weight-sum fallback
+// is reached on exactly the pixels where the depth gate rejected every tap - and
+// on a first frame with no valid depth history that is a large region, not a
+// handful of edge pixels. What comes back is a NaN or an infinity, it is
+// multiplied into the picture by `shown = shown * volumetrics.a + volumetrics.rgb`,
+// and the tonemapper draws it as black.
+//
+// It spreads when the camera moves because the fog pass's own history read is
+// reprojected: a bad texel is sampled by its neighbours as the view turns, and
+// each of those is written back as a bad texel. It does not spread when the
+// camera is still because that path reads the SAME texel with texelFetch, so a
+// bad texel stays exactly where it is.
+//
+// The test is the pack's usual comparison form, because a NaN fails every
+// comparison and so is rejected by the negation. A finite sixteen-bit value can
+// never trip it: RGBA16F's largest finite value is 65504, so dot(x,x) tops out
+// near 1.3e10 against a bound of 1e18.
+vec4 FogOrNothing(vec4 fog) {
+	if (!(dot(fog, fog) < 1.0e18)) {
+		return vec4(0.0, 0.0, 0.0, 1.0);
+	}
+
+	return fog;
+}
+
 vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 	ivec2 fogSize = textureSize(colortex1, 0);
 
@@ -301,8 +349,8 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 	// the buffer is the authority on how big it is - the defect batch 533 is named
 	// for was exactly those two disagreeing.
 	if (fogSize == ivec2(viewWidth, viewHeight)) {
-		return texelFetch(colortex1, clamp(ivec2(gl_FragCoord.xy),
-			ivec2(0), fogSize - 1), 0);
+		return FogOrNothing(texelFetch(colortex1, clamp(ivec2(gl_FragCoord.xy),
+			ivec2(0), fogSize - 1), 0));
 	}
 
 	vec2 fogTexel = screenCoord * vec2(fogSize) - 0.5;
@@ -396,27 +444,17 @@ vec4 UpsampleVolumetrics(vec2 screenCoord, float depth) {
 	// comparison against a NaN is false, so a sum that has somehow become a NaN
 	// takes this branch as well instead of being divided.
 	if (!(weightSum > FOG_UPSAMPLE_WEIGHT_EPSILON)) {
-		return texture(colortex1, screenCoord);
+		return FogOrNothing(texture(colortex1, screenCoord));
 	}
 
 	vec4 result = sum / weightSum;
 
-	// The last guard, held at the function's edge rather than three calls into
-	// it: whatever the fog buffer holds, nothing that is not a number leaves this
-	// function. The division cannot make one on its own - the weights are never
-	// negative, so the quotient is bounded by the largest tap - but a tap that is
-	// already a NaN or an infinity would carry straight through it, and the fog
-	// buffer is RGBA16F, which holds both. `!(dot(x, x) < 1.0e18)` catches a NaN,
-	// either infinity, and anything absurdly large in one expression; a finite
-	// sixteen-bit value can never trip it.
-	if (!(dot(result, result) < 1.0e18)) {
-		// No fog rather than a black pixel: no scattered light and full
-		// transmittance, which is the state the fog pass itself starts from and the
-		// one the picture reads as "the scene, unchanged".
-		return vec4(0.0, 0.0, 0.0, 1.0);
-	}
-
-	return result;
+	// The filtered path's own guard, kept where it was: the division cannot make a
+	// non-finite value on its own - the weights are never negative, so the quotient
+	// is bounded by the largest tap - but a tap that is already a NaN or an
+	// infinity would carry straight through it. See FogOrNothing for why the other
+	// two exits needed the same test.
+	return FogOrNothing(result);
 }
 
 // VOLUMETRIC FOG END
