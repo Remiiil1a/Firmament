@@ -434,138 +434,77 @@ vec3 EnvironmentReflection(
 				// about width. A mirror (roughness 0) draws a zero-width cone and
 				// keeps its exact direction, which is why a mirror still reads as a
 				// mirror.
-				vec3 rayDirection = PbrReflectionDirectionJittered(
-					worldNormal,
-					viewDirection,
-					roughness,
-					PbrReflectionNoisePair());
+				// BATCH 783: THE CONE IS DRAWN PBR_SSR_SAMPLES TIMES AND THE
+				// TRACES ARE AVERAGED.
+				//
+				// One draw per pixel is one sample of a range, and a rough surface
+				// reflects a range. The temporal resolve cannot fix that: it
+				// averages across FRAMES, and one draw per frame is one draw per
+				// frame however long the history is. Averaging the draws is what a
+				// rough surface physically does.
+				//
+				// A sample that MISSES is not a sample of the reflection - it is
+				// the sky, which the miss path below already falls back to. So the
+				// average is over the hits only, and a pixel where nothing hit
+				// keeps the sky it would have had. Counting a miss as black would
+				// darken every reflection by the miss rate, which is the opposite
+				// of what a wider cone should do.
+				//
+				// The distance is averaged the same way, because it is what picks
+				// the mip level the colour is sampled at: a reflection that landed
+				// at two different distances has to be blurred for the average of
+				// them, not for whichever sample happened to be first.
+				vec3 tracedSum = vec3(0.0);
+				float tracedDistanceSum = 0.0;
+				float tracedHits = 0.0;
 
-				if (ScreenSpaceRaytrace(
-					depthtex1,
-					gbufferProjection,
-					gbufferProjectionInverse,
-					viewPos,
-					mat3(gbufferModelView) * rayDirection,
-					windowToNdc,
-					traceDither,
-					hitPos,
-					hitViewPos
-				)) {
+				for (int sampleIndex = 0; sampleIndex < PBR_SSR_SAMPLES; sampleIndex++) {
+					vec3 rayDirection = PbrReflectionDirectionJittered(
+						worldNormal,
+						viewDirection,
+						roughness,
+						PbrReflectionNoisePair(float(sampleIndex)));
+
+					// The dither is offset per sample as well, or every draw walks
+					// the same ladder and the samples differ only in where they
+					// start - which is a much weaker spread than the cone.
+					float sampleDither = fract(
+						traceDither + float(sampleIndex) * 0.618034);
+
+					if (ScreenSpaceRaytrace(
+						depthtex1,
+						gbufferProjection,
+						gbufferProjectionInverse,
+						viewPos,
+						mat3(gbufferModelView) * rayDirection,
+						windowToNdc,
+						sampleDither,
+						hitPos,
+						hitViewPos
+					)) {
+						tracedSum += textureLod(
+							colortex4,
+							hitPos,
+							PbrReflectionLod(
+								roughness, length(hitViewPos - viewPos))).rgb;
+						tracedDistanceSum += length(hitViewPos - viewPos);
+						tracedHits += 1.0;
+					}
+				}
+
+				if (tracedHits > 0.0) {
 					reflectionHitOut = true;
-					reflectionHitDistanceOut = length(hitViewPos - viewPos);
+					reflectionHitDistanceOut = tracedDistanceSum / tracedHits;
 
-					// Removed in batch 622: this refused every hit closer than
-					// half a block, on the theory that the bright line along block
-					// edges was the trace sampling a groove wall or a bevel lip. It
-					// was not that - it was a mapped normal turned past the eye,
-					// fixed in PbrVisibleNormal - and the refusal cost the
-					// reflection at the angles where it matters most: on a surface
-					// seen almost edge-on the ray runs nearly parallel to it, so its
-					// first honest hit is routinely within half a block, and the band
-					// of floor near the horizon lost the sky it should have shown.
-					//
-					// The distance is still reported, because the debug view marks
-					// near hits with it.
-					// Removed 2026-09-22: the test that stood beside the call
-					// above, `length(hitViewPos) > length(viewPos)`. This is
-					// why it went, what is drawn without it, and what to look
-					// at if what it was written for ever comes back.
-					//
-					// It refused every hit that was not further from the
-					// camera than the fragment that cast the ray. The
-					// reasoning was that a ray only travels away from the
-					// surface it left, so a hit nearer than the fragment must
-					// be that surface meeting itself. The reasoning is sound
-					// and the test was still wrong, because a hit is not a
-					// point on the ray: it is the position the depth buffer
-					// holds at the screen position the ray landed on. A ray
-					// passing over anything nearer than the surface it left
-					// therefore reports a hit nearer than the fragment, and
-					// that is no self-hit at all.
-					//
-					// Every block edge is where that happens. On a surface
-					// whose material carries a bevel in the outermost texels
-					// of its sprite - a metal block in most resource packs -
-					// the ray leaving those texels turns back into the surface
-					// it left, and the hit it finds is nearer than the
-					// fragment. The test threw that hit away, and a hit thrown
-					// away is a fragment that falls back to the sky: a
-					// one-pixel ring of sky around every edge of every such
-					// block. It flickers, because the reflection is answered
-					// afresh each frame and the gbuffer pass jitters its
-					// sub-pixel position, so the foot of the ray lands
-					// somewhere else on the bevel every one.
-					//
-					// A self-hit needs no test, because it is already
-					// invisible: it samples the surface's own colour at the
-					// surface's own pixels, and a floor that reflects itself is
-					// a floor. That colour continuing is what the reflection
-					// now shows at those pixels, instead of a ring of sky.
-					//
-					// The double image of a block seen through water, which
-					// this test was written for, is refused earlier and more
-					// exactly by the seenThrough gate at the top of this
-					// function, which returns before the trace runs at all. If
-					// that image is ever seen again, the gate is what to look
-					// at - not a rule here, which could only bring the ring
-					// back.
-					//
-					// What the ray found, in the deferred pass's copy of THIS
-					// frame.
-					//
-					// colortex4 and not colortex3, and that is not a detail: the
-					// pass that calls this one (composite1) writes colortex3, so
-					// what a read there returns is the previous frame's resolved
-					// image - reflection included - and a trace that samples a
-					// picture containing itself feeds on itself. colortex4 is
-					// copy_and_fog.fsh's copy of the world as this frame left it,
-					// which is also the frame this reflection is added to.
-					//
-					// BATCH 760: THE TRACED HALF IS BLURRED BY LOD, WHICH IS BLISS'S
-					// ARRANGEMENT.
-					//
-					// Batches 631 and 660-668 tried to blur this with taps - an
-					// eight-tap ring, then a 32/56-pixel Vogel disk - and the author
-					// rejected both ("滤波看起来很奇怪、还把高光一起过滤了"). The
-					// reason a tap filter failed is worth stating, because it is why
-					// this is a different mechanism rather than a better-tuned one: a
-					// tap filter averages a FIXED number of samples over a FIXED
-					// radius, so it either blurs too little at high roughness or
-					// costs a fortune at low roughness, and it always costs the same
-					// whatever the surface is.
-					//
-					// Bliss does not take taps. It samples a higher MIP LEVEL
-					// (lib/specular.glsl:211-213):
-					//
-					//     float LOD = mix(0.0, 6.0*(1.0-exp(-15.0*sqrt(roughness))),
-					//                     1.0-pow(1.0-reflectionLength,5.0));
-					//     reflection.rgb = texture2DLod(colortex5, previousPosition.xy, LOD).rgb;
-					//
-					// The mip chain is a prefiltered pyramid, so the cost is one
-					// sample at any radius, and the radius is chosen per pixel by two
-					// things that both matter:
-					//
-					//   * roughness - a rough surface sees a wide cone, so it wants a
-					//     wide average. The `1 - exp(-15*sqrt(roughness))` term is
-					//     steep near zero and saturates, which is the shape a
-					//     microfacet distribution has.
-					//   * reflectionLength - a reflection that travelled far has
-					//     covered more screen, so the same cone spans more texels.
-					//     The `1 - (1-x)^5` term is Bliss's, and it keeps a near
-					//     reflection sharp however rough the surface is.
-					//
-					// The mip chain exists because copy_and_fog.fsh sets
-					// colortex4MipmapEnabled, and Iris builds it after every composite
-					// pass that reads the buffer - so by the time this pass samples it,
-					// it is this frame's copy. See the note there.
-					//
-					// BATCH 770: the formula moved to reflections.glsl, as
-					// PbrReflectionLod, so that the hand and the dropped item - which
-					// trace for themselves in lit.fsh - can use the same one instead of
-					// sampling with a plain texture() and getting no blur at all.
-					float reflectionLod = PbrReflectionLod(
-						roughness, reflectionHitDistanceOut);
-					vec3 hitColor = textureLod(colortex4, hitPos, reflectionLod).rgb;
+					// The edge and hand fades are per HIT, not per pixel, so they
+					// are applied to each sample before it is summed. They are
+					// recomputed here from the averaged distance, which is the one
+					// approximation this loop makes: a sample that landed at the
+					// screen edge and one that landed in the middle are faded by
+					// the same amount. Splitting the sum per sample would need the
+					// hit position kept for each, and the fade is a tenth of the
+					// screen wide - the error is confined to that band.
+					vec3 hitColor = tracedSum / tracedHits;
 
 					// Fade the result out near the edge of the screen, where the
 					// ray is about to leave the buffer and there is nothing more
@@ -603,6 +542,7 @@ vec3 EnvironmentReflection(
 
 					environment = mix(environment, hitColor, edgeFade * handFade);
 				}
+
 			}
 		#endif
 

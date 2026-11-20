@@ -383,6 +383,9 @@ option.PBR_SSR_STEPS.comment=How many steps the reflection trace may take; the \
 	refine them better, and the cost is paid whether or not anything is found - \
 	the first setting to lower if reflections are too expensive.
 
+option.PBR_SSR_SAMPLES=Reflection cone samples
+option.PBR_SSR_SAMPLES.comment=How many directions the reflection draws from its cone, per pixel. A rough surface reflects a range of directions rather than one, and one draw per frame is one sample of that range however long the temporal history is - so this is the noise the resolve cannot average away on its own. The cost is linear and it is the trace that costs: each sample is a full trace at the step count above. 1 is the old behaviour exactly.
+
 option.PBR_DEFAULT_MATERIAL=Default material
 option.PBR_DEFAULT_MATERIAL.comment=Whether blocks the pack gives no usable \
 	specular data for fall back to a plain dielectric; without it they decode to \
@@ -449,7 +452,7 @@ option.PBR_ENTITIES.comment=Whether mobs and other entities get PBR materials. \
 	mob and select the Occlusion channel under the material debug view - a flat, \
 	uniform picture means no material data is bound and this should go back off.
 
-option.PBR_DEBUG=Material debug view [build 782]
+option.PBR_DEBUG=Material debug view [build 783]
 option.DEFERRED_DEBUG=Deferred split view (geometry vs post)
 option.DEFERRED_DEBUG.comment=Shows what the geometry wrote on the left half \
 	of the screen and what this pass writes back on the right. Only the \

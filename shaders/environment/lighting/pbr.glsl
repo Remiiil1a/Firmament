@@ -817,6 +817,25 @@ const float PBR_WETNESS_DARKENING = 0.66;
 // what batch 621 tuned the dither against.
 #define PBR_SSR_STEPS 12 // [8 12 16 24 32 48]
 
+// How many directions the reflection draws from its cone, per pixel.
+//
+// BATCH 783. The reflection used to draw ONE direction and trace it, so a rough
+// surface showed one sample of the range it actually reflects - which is why the
+// reflection read as noisy rather than as smeared. Averaging several draws is
+// what a rough surface physically does, and it is the one noise source the
+// temporal resolve cannot fix on its own: the resolve averages across FRAMES,
+// and a single draw per frame is a single draw per frame however long the
+// history is.
+//
+// The cost is linear and it is the trace that costs, not the draw: each sample
+// is a full ScreenSpaceRaytrace at PBR_SSR_STEPS steps. So this is the second
+// setting to lower if reflections are too expensive, after PBR_SSR_STEPS.
+//
+// 1 is the old behaviour exactly - one draw, one trace - which is what makes
+// this safe to ship as a default: the option can only add samples, never change
+// what the first one is.
+#define PBR_SSR_SAMPLES 1 // [1 2 3 4]
+
 // How much sky a surface has to see before it reflects any of it.
 //
 // This is what keeps sky reflections out of caves and interiors. Minecraft's sky

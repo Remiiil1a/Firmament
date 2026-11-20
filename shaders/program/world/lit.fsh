@@ -1894,13 +1894,79 @@ void main() {
 				// The noise is Bayer8 of the fragment, the same spatial dither the
 				// rest of this file uses, so the cost is zero and the two paths stay
 				// correlated with the world one.
-				vec2 handNoise = PbrReflectionNoisePair();
+				//
+				// BATCH 783: DRAWN PBR_SSR_SAMPLES TIMES, LIKE THE WORLD'S PATH.
+				// The cone is a range and one draw is one sample of it; the note
+				// on the option in pbr.glsl has the reasoning. The hand traces
+				// with Raytrace rather than ScreenSpaceRaytrace, so the loop is
+				// written out here rather than shared - but the contract is the
+				// same: average the hits, and a pixel with no hit keeps what it
+				// already had.
+				vec3 handEnvironment = vec3(0.0);
+				float handHits = 0.0;
 
-				vec3 handViewReflected = handView * PbrReflectionDirectionJittered(
-					pbrNormal,
-					viewDirection,
-					pbr.roughness,
-					handNoise);
+				for (int sampleIndex = 0; sampleIndex < PBR_SSR_SAMPLES; sampleIndex++) {
+					vec2 handNoise = PbrReflectionNoisePair(float(sampleIndex));
+
+					vec3 handViewReflected = handView * PbrReflectionDirectionJittered(
+						pbrNormal,
+						viewDirection,
+						pbr.roughness,
+						handNoise);
+
+					vec2 handHitPos;
+					vec3 handHitViewPos;
+
+					if (Raytrace(
+						depthtex2,
+						gbufferProjection,
+						gbufferProjectionInverse,
+						handViewPos,
+						handViewReflected,
+						vec2(0.5, 1.0),
+						handHitPos,
+						handHitViewPos
+					) && length(handHitViewPos) > length(handViewPos)) {
+						// Faded out near the edge of the screen, where the ray is
+						// about to leave the buffer and there is nothing left to
+						// find. The world's reflection does the same, for the same
+						// reason, and with the same width.
+						vec2 handHitAbs = abs(handHitPos * 2.0 - 1.0);
+						float handHitFade = min(
+							1.0,
+							(1.0 - max(handHitAbs.x, handHitAbs.y)) / 0.10);
+
+						// BATCH 770: THE HAND IS BLURRED LIKE THE WORLD IS.
+						//
+						// This sampled with a plain texture(), whose implicit LOD is
+						// always 0, so a held item's reflection was the sharp picture
+						// however rough the material was - the author's report that held
+						// items have no blur where blocks do. The world's formula is
+						// PbrReflectionLod in reflections.glsl, and it is shared now
+						// rather than copied so the three paths cannot drift apart.
+						//
+						// pbr.roughness, NOT reflectionRoughness: the latter is 1.0 on
+						// this path because the SHARED reflection is switched off for the
+						// hand (see the note where it is set), and 1.0 would make the LOD
+						// zero - which is what batch 770 did, and why the author reported
+						// that the hand still had no blur after it.
+						//
+						// The material itself is untouched: the hand has its own trace
+						// precisely so that it can reflect the world without the shared
+						// path painting the scene through it.
+						float handLod = PbrReflectionLod(
+							pbr.roughness,
+							length(handHitViewPos - handViewPos));
+
+						handEnvironment +=
+							textureLod(colortex4, handHitPos, handLod).rgb * handHitFade;
+						handHits += 1.0;
+					}
+				}
+
+				if (handHits > 0.0) {
+					handEnvironment /= handHits;
+				}
 
 				float handNdotV = max(dot(pbrNormal, viewDirection), 1.0e-4);
 
@@ -1915,74 +1981,6 @@ void main() {
 						pbr.roughness)
 					* PbrReflectionSmoothness(pbr.roughness, handMetalness);
 
-				// What the item reflects: the world, and nothing where the ray
-				// found none of it.
-				//
-				// There is no sky here, and that is deliberate rather than
-				// unfinished. The world's reflection falls back to the sky
-				// model, and a held item was given the same fallback first - but
-				// the sky a face turned towards the camera reflects is the sky
-				// behind the player, and over an item that is a wash of pale
-				// blue rather than a reflection: on a gold apple it reads as the
-				// item going white. It was the whole of what a held item showed
-				// before the trace existed, which is why the trace was worth
-				// asking for; with the trace there, the fallback is in the way
-				// of it.
-				//
-				// So a pixel whose ray found nothing keeps what it already has -
-				// its own diffuse response, and the ambient specular the surface
-				// programs apply to every material - and only a pixel the ray
-				// reached is given anything on top.
-				vec3 handEnvironment = vec3(0.0);
-
-				vec2 handHitPos;
-				vec3 handHitViewPos;
-
-				if (Raytrace(
-					depthtex2,
-					gbufferProjection,
-					gbufferProjectionInverse,
-					handViewPos,
-					handViewReflected,
-					vec2(0.5, 1.0),
-					handHitPos,
-					handHitViewPos
-				) && length(handHitViewPos) > length(handViewPos)) {
-					// Faded out near the edge of the screen, where the ray is
-					// about to leave the buffer and there is nothing left to
-					// find. The world's reflection does the same, for the same
-					// reason, and with the same width.
-					vec2 handHitAbs = abs(handHitPos * 2.0 - 1.0);
-					float handHitFade = min(
-						1.0,
-						(1.0 - max(handHitAbs.x, handHitAbs.y)) / 0.10);
-
-					// BATCH 770: THE HAND IS BLURRED LIKE THE WORLD IS.
-					//
-					// This sampled with a plain texture(), whose implicit LOD is
-					// always 0, so a held item's reflection was the sharp picture
-					// however rough the material was - the author's report that held
-					// items have no blur where blocks do. The world's formula is
-					// PbrReflectionLod in reflections.glsl, and it is shared now
-					// rather than copied so the three paths cannot drift apart.
-					//
-					// pbr.roughness, NOT reflectionRoughness: the latter is 1.0 on
-					// this path because the SHARED reflection is switched off for the
-					// hand (see the note where it is set), and 1.0 would make the LOD
-					// zero - which is what batch 770 did, and why the author reported
-					// that the hand still had no blur after it.
-					//
-					// The material itself is untouched: the hand has its own trace
-					// precisely so that it can reflect the world without the shared
-					// path painting the scene through it.
-					float handLod = PbrReflectionLod(
-						pbr.roughness,
-						length(handHitViewPos - handViewPos));
-
-					handEnvironment =
-						textureLod(colortex4, handHitPos, handLod).rgb * handHitFade;
-
-				}
 				fragmentColor.rgb += handWeight * handEnvironment;
 			#endif
 
@@ -1996,13 +1994,76 @@ void main() {
 					vec3 entityViewPos = entityView * cameraRelativePos;
 
 					// BATCH 772: drawn from the cone, for the hand reason above.
-					vec2 entityNoise = PbrReflectionNoisePair();
+					//
+					// BATCH 783: and drawn PBR_SSR_SAMPLES times, for the same
+					// reason the hand is. The sky fallback below is applied to the
+					// AVERAGE, not to each sample: a pixel where some draws hit
+					// and some missed is a pixel that reflects the world, and
+					// filling the misses with sky before averaging would dilute
+					// every reflection by the miss rate.
+					vec3 entityEnvironment = vec3(0.0);
+					float entityHits = 0.0;
 
-					vec3 entityViewReflected = entityView * PbrReflectionDirectionJittered(
-						pbrNormal,
-						viewDirection,
-						pbr.roughness,
-						entityNoise);
+					// The last drawn direction, kept for the sky fallback: a pixel
+					// where nothing hit still has to be given a direction to look
+					// up, and any of the draws will do - they are all samples of
+					// the same cone.
+					vec3 entityViewReflected = vec3(0.0, 0.0, 1.0);
+
+					for (int sampleIndex = 0; sampleIndex < PBR_SSR_SAMPLES; sampleIndex++) {
+						vec2 entityNoise = PbrReflectionNoisePair(float(sampleIndex));
+
+						entityViewReflected = entityView * PbrReflectionDirectionJittered(
+							pbrNormal,
+							viewDirection,
+							pbr.roughness,
+							entityNoise);
+
+						vec2 entityHitPos;
+						vec3 entityHitViewPos;
+
+						// depthtex1, not depthtex2: this is not the hand, and the world
+						// it reflects is the opaque one.
+						if (Raytrace(
+							depthtex1,
+							gbufferProjection,
+							gbufferProjectionInverse,
+							entityViewPos,
+							entityViewReflected,
+							vec2(0.5, 1.0),
+							entityHitPos,
+							entityHitViewPos)
+							&& length(entityHitViewPos) > length(entityViewPos)) {
+
+							vec2 entityHitAbs = abs(entityHitPos * 2.0 - 1.0);
+							float entityHitFade = min(
+								1.0,
+								(1.0 - max(entityHitAbs.x, entityHitAbs.y)) / 0.10);
+
+							// BATCH 770: THE DROPPED ITEM IS BLURRED LIKE THE WORLD IS.
+							//
+							// Same defect as the hand above: a plain texture() has an
+							// implicit LOD of 0, so a dropped item's reflection was the
+							// sharp picture however rough the material was. The formula
+							// is PbrReflectionLod in reflections.glsl.
+							//
+							// pbr.roughness, for the hand reason above: the shared
+							// reflection is switched off on this path, so
+							// reflectionRoughness is 1.0 and would make the LOD zero.
+							float entityLod = PbrReflectionLod(
+								pbr.roughness,
+								length(entityHitViewPos - entityViewPos));
+
+							entityEnvironment +=
+								textureLod(colortex4, entityHitPos, entityLod).rgb
+									* entityHitFade;
+							entityHits += 1.0;
+						}
+					}
+
+					if (entityHits > 0.0) {
+						entityEnvironment /= entityHits;
+					}
 
 					float entityNdotV = max(dot(pbrNormal, viewDirection), 1.0e-4);
 
@@ -2044,50 +2105,6 @@ void main() {
 					// No sky fallback, for the hand`s reason: a face turned towards
 					// the camera reflects what is behind the player, and a wash of sky
 					// over an item reads as the item going pale.
-					vec3 entityEnvironment = vec3(0.0);
-
-					vec2 entityHitPos;
-					vec3 entityHitViewPos;
-
-					// depthtex1, not depthtex2: this is not the hand, and the world
-					// it reflects is the opaque one.
-					if (Raytrace(
-						depthtex1,
-						gbufferProjection,
-						gbufferProjectionInverse,
-						entityViewPos,
-						entityViewReflected,
-						vec2(0.5, 1.0),
-						entityHitPos,
-						entityHitViewPos)
-						&& length(entityHitViewPos) > length(entityViewPos)) {
-
-						vec2 entityHitAbs = abs(entityHitPos * 2.0 - 1.0);
-						float entityHitFade = min(
-							1.0,
-							(1.0 - max(entityHitAbs.x, entityHitAbs.y)) / 0.10);
-
-						// BATCH 770: THE DROPPED ITEM IS BLURRED LIKE THE WORLD IS.
-						//
-						// Same defect as the hand above: a plain texture() has an
-						// implicit LOD of 0, so a dropped item's reflection was the
-						// sharp picture however rough the material was. The formula
-						// is PbrReflectionLod in reflections.glsl.
-						//
-						// pbr.roughness, for the hand reason above: the shared
-						// reflection is switched off on this path, so
-						// reflectionRoughness is 1.0 and would make the LOD zero.
-						float entityLod = PbrReflectionLod(
-							pbr.roughness,
-							length(entityHitViewPos - entityViewPos));
-
-						entityEnvironment =
-							textureLod(colortex4, entityHitPos, entityLod).rgb
-								* entityHitFade;
-
-					}
-					// The sky fills in where the trace found nothing (batch 639), and
-					// the reason is a metal that went black.
 					//
 					// A metal has almost no diffuse - that is what metalness means - so
 					// its appearance is its environment and nothing else. When the trace

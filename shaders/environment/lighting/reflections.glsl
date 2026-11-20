@@ -458,8 +458,20 @@ uniform int frameCounter;
 //
 // The rotation is a cheap hash of the pixel rather than a constant, because a
 // constant offset would move the repeat rather than break it.
-vec2 PbrReflectionNoisePair() {
-	float frame = float(frameCounter) * 0.618034;
+//
+// BATCH 783: `sampleIndex` SELECTS WHICH SAMPLE OF THE CONE THIS IS.
+//
+// The draw is now taken more than once per pixel (PBR_SSR_SAMPLES), and each
+// draw has to be an independent sample of the cone or averaging them buys
+// nothing. The index is folded into the frame term rather than added to the
+// texture coordinate, because the texture lookup is the half that already
+// decorrelates across the screen: what has to differ between two draws of the
+// SAME pixel is the hash, and the hash is the second number.
+//
+// The stride is the golden ratio again, for the same reason it is used for the
+// frame: successive indices land far apart in the interval instead of adjacent.
+vec2 PbrReflectionNoisePair(float sampleIndex) {
+	float frame = (float(frameCounter) + sampleIndex * 0.618034) * 0.618034;
 
 	// The texture coordinate, wrapped to the texture's own size. The frame term
 	// is what makes the lookup move between frames; the rotation is what stops
